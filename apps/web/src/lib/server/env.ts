@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { z } from "zod";
 
 const serverEnvSchema = z
@@ -134,13 +135,31 @@ export function getCourseforgeJwtSecret() {
 }
 
 export function getBackgroundFunctionSecret() {
-  const secret = getParsedServerEnv().BACKGROUND_FUNCTION_SECRET;
-  if (!secret) {
-    throw new Error(
-      "Configuracion incompleta: falta BACKGROUND_FUNCTION_SECRET",
-    );
+  const env = getParsedServerEnv();
+  return resolveBackgroundFunctionSecret({
+    configuredSecret: env.BACKGROUND_FUNCTION_SECRET,
+    isProduction: env.NETLIFY === "true" || env.NODE_ENV === "production",
+    jwtSecret: env.COURSEFORGE_JWT_SECRET,
+  });
+}
+
+export function resolveBackgroundFunctionSecret(input: {
+  configuredSecret?: string;
+  isProduction: boolean;
+  jwtSecret?: string;
+}) {
+  if (input.configuredSecret) return input.configuredSecret;
+
+  if (!input.isProduction && input.jwtSecret) {
+    return crypto
+      .createHmac("sha256", input.jwtSecret)
+      .update("courseforge:background-function:v1")
+      .digest("hex");
   }
-  return secret;
+
+  throw new Error(
+    "Configuracion incompleta: falta BACKGROUND_FUNCTION_SECRET",
+  );
 }
 
 export function getGeminiApiKey() {

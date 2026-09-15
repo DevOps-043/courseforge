@@ -7,7 +7,9 @@ import type { CurationRow } from "../../../../../src/domains/curation/types/cura
 import { validateAutomaticCandidates } from "../workflow";
 import type { CurationValidationReport, UrlValidationResult } from "../types";
 
-function report(status: CurationValidationReport["status"]): CurationValidationReport {
+function report(
+  status: CurationValidationReport["status"],
+): CurationValidationReport {
   return {
     status,
     checked_at: new Date(0).toISOString(),
@@ -27,48 +29,57 @@ function report(status: CurationValidationReport["status"]): CurationValidationR
 async function run() {
   const existing = new Set(["https://existing.example/"]);
   const selected = await validateAutomaticCandidates({
-  candidates: [
-    {
-      lesson_id: "lesson-1",
-      url: "https://invalid.example/",
-      title: "Invalid",
-      rationale: "",
-    },
-    {
-      lesson_id: "lesson-1",
-      url: "https://valid-one.example/",
-      title: "Valid one",
-      rationale: "",
-    },
-    {
-      lesson_id: "lesson-1",
-      url: "https://valid-two.example/",
-      title: "Valid two",
-      rationale: "",
-    },
-    {
-      lesson_id: "lesson-1",
-      url: "https://valid-three.example/",
-      title: "Valid three",
-      rationale: "",
-    },
-  ],
-  existingNormalizedUrls: existing,
-  validate: async (url): Promise<UrlValidationResult> => ({
-    isValid: !url.includes("invalid"),
-    normalizedUrl: url,
-    report: report(url.includes("invalid") ? "invalid" : "valid"),
-  }),
+    candidates: [
+      {
+        lesson_id: "lesson-1",
+        url: "https://invalid.example/",
+        title: "Invalid",
+        rationale: "",
+      },
+      {
+        lesson_id: "lesson-1",
+        url: "https://valid-one.example/",
+        title: "Valid one",
+        rationale: "",
+      },
+      {
+        lesson_id: "lesson-1",
+        url: "https://valid-two.example/",
+        title: "Valid two",
+        rationale: "",
+      },
+      {
+        lesson_id: "lesson-1",
+        url: "https://valid-three.example/",
+        title: "Valid three",
+        rationale: "",
+      },
+    ],
+    existingNormalizedUrls: existing,
+    limit: 3,
+    validate: async (url): Promise<UrlValidationResult> => ({
+      isValid: !url.includes("invalid"),
+      normalizedUrl: url,
+      report: report(url.includes("invalid") ? "invalid" : "valid"),
+    }),
   });
 
   assert.deepEqual(
     selected.map((item) => item.candidate.title),
-    ["Valid one", "Valid two"],
+    ["Valid one", "Valid two", "Valid three"],
   );
   assert.equal(existing.has("https://valid-one.example/"), true);
-  assert.equal(existing.has("https://valid-three.example/"), false);
+  assert.equal(existing.has("https://valid-three.example/"), true);
+  assert.equal(
+    existing.has("https://invalid.example/"),
+    true,
+    "invalid candidates must be excluded from later autonomous rounds",
+  );
 
-  const automatic = { origin: "automatic", auto_evaluated: true } as CurationRow;
+  const automatic = {
+    origin: "automatic",
+    auto_evaluated: true,
+  } as CurationRow;
   const manual = { origin: "manual", auto_evaluated: true } as CurationRow;
   assert.equal(SYSTEM_GENERATED_CURATION_ROW_FILTER, "origin.eq.automatic");
   assert.equal(isSystemGeneratedCurationRow(automatic), true);

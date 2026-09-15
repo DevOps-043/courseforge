@@ -4,12 +4,13 @@ import type { Handler } from '@netlify/functions';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import {
-    createGoogleAIProvider,
     createServiceRoleClient,
+    resolveAiModel,
     resolveModelSetting,
 } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
 import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from './shared/http';
+import { resolveInstructionalPlanAudience } from '../../src/domains/plan/lib/instructional-plan-validation-context';
 
 // EMBEDDED PROMPT TO AVOID IMPORT ISSUES
 const INSTRUCTIONAL_PLAN_VALIDATION_PROMPT = `Actúa como un Auditor de Calidad Instruccional Senior y Experto en Validación Curricular.
@@ -106,9 +107,6 @@ const ValidationResultSchema = z.object({
     actualidad_check: ValidationCheckSchema
 });
 
-// Setup Clients
-const googleAI = createGoogleAIProvider();
-
 export const handler: Handler = async (event) => {
     // 1. Parsing Request
     if (event.httpMethod !== 'POST') {
@@ -143,15 +141,14 @@ export const handler: Handler = async (event) => {
 
         const { data: artifact, error: artifactError } = await supabase
             .from('artifacts')
-            .select('idea_central, nombres, audiencia_objetivo, organization_id')
+            .select('idea_central, nombres, descripcion, generation_metadata, organization_id')
             .eq('id', artifactId)
             .maybeSingle();
 
-        if (
-            artifactError ||
-            !artifact ||
-            artifact.organization_id !== (organizationId ?? null)
-        ) {
+        if (artifactError) {
+            throw new Error(`Artifact lookup failed: ${artifactError.message}`);
+        }
+        if (!artifact || artifact.organization_id !== (organizationId ?? null)) {
             return { statusCode: 404, body: 'Artifact not found' };
         }
 
@@ -166,6 +163,7 @@ export const handler: Handler = async (event) => {
         if (planError || !plan) throw new Error(`Plan not found: ${planError?.message}`);
 
         const courseName = (artifact?.nombres && artifact.nombres[0]) || artifact?.idea_central || "Curso Desconocido";
+        const targetAudience = resolveInstructionalPlanAudience(artifact);
 
         // --- STEP 2: PREPARE PAYLOAD FOR AI ---
         const lessonsPayload = JSON.stringify(plan.lesson_plans, null, 2);
@@ -174,7 +172,7 @@ export const handler: Handler = async (event) => {
         FECHA ACTUAL: ${new Date().toISOString().split('T')[0]}
         
         CURSO: ${courseName}
-        AUDIENCIA: ${artifact?.audiencia_objetivo || "General"}
+        AUDIENCIA: ${targetAudience}
         
         PLAN INSTRUCCIONAL A VALIDAR:
         ${lessonsPayload}
@@ -196,7 +194,7 @@ export const handler: Handler = async (event) => {
         console.log(`[Validation Job] Validating with ${modelName}...`);
 
         const result = await generateObject({
-            model: googleAI(modelName),
+            model: resolveAiModel(modelName),
             schema: ValidationResultSchema,
             prompt: `${INSTRUCTIONAL_PLAN_VALIDATION_PROMPT}\n\n${validationContext}`,
             temperature: modelSettings.temperature,

@@ -95,17 +95,17 @@ export function SyllabusRouteSelector({ selectedRoute, onSelect, disabled = fals
 
         <h3 className="text-base font-bold text-[var(--engine-primary)] dark:text-white mb-2">Basado en Documentos</h3>
         <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-          Extrae la estructura de tus materiales existentes (PDF, DOC). La IA se adhiere a tu contenido.
+          Analiza varios documentos y construye el temario con su contenido como fuente principal.
         </p>
 
         <ul className="space-y-2">
            <li className="flex items-center gap-2 text-xs font-medium text-[var(--engine-accent)]">
              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-            PDF, DOC, PPT
+            PDF, DOCX, PPTX, TXT
           </li>
           <li className="flex items-center gap-2 text-xs font-medium text-[var(--engine-accent)]">
              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-            Mayor fidelidad
+            Documentos primero; web como apoyo
           </li>
         </ul>
       </div>

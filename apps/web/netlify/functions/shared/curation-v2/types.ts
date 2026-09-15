@@ -52,6 +52,9 @@ export interface CurationLesson {
   lesson_title: string;
   lesson_objective: string;
   module_title: string;
+  required_sources?: number;
+  video_target_seconds?: number;
+  excluded_urls?: string[];
 }
 
 export interface CurationCoverageItem {

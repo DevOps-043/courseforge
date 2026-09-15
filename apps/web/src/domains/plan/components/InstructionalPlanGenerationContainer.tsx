@@ -49,6 +49,11 @@ export function InstructionalPlanGenerationContainer({
 }: InstructionalPlanGenerationContainerProps) {
   const router = useRouter();
   const [customPrompt, setCustomPrompt] = useState("");
+  const [configuredPrompt, setConfiguredPrompt] = useState("");
+  const [promptSource, setPromptSource] = useState<
+    "organization" | "global" | "default" | null
+  >(null);
+  const [promptVersion, setPromptVersion] = useState<string | null>(null);
   const [existingPlan, setExistingPlan] =
     useState<InstructionalPlanRecord | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -63,6 +68,7 @@ export function InstructionalPlanGenerationContainer({
   const canReview = REVIEWER_ROLE_SET.has(profile?.platform_role || "");
   const lastKnownPlanStateRef = useRef<string | null>(null);
   const lastKnownValidationRef = useRef(false);
+  const promptInitializedRef = useRef(false);
   const {
     editedLesson,
     editingLessonId,
@@ -115,6 +121,13 @@ export function InstructionalPlanGenerationContainer({
         }
 
         const plan = (result.plan as InstructionalPlanRecord | null) || null;
+        if (result.generationPrompt && !promptInitializedRef.current) {
+          setConfiguredPrompt(result.generationPrompt.content);
+          setCustomPrompt(result.generationPrompt.content);
+          setPromptSource(result.generationPrompt.source);
+          setPromptVersion(result.generationPrompt.version);
+          promptInitializedRef.current = true;
+        }
         if (result.videoDurationPolicy) {
           setVideoDurationPolicy(result.videoDurationPolicy);
         }
@@ -427,10 +440,13 @@ export function InstructionalPlanGenerationContainer({
 
   return (
     <InstructionalPlanSetupView
+      configuredPrompt={configuredPrompt}
       customPrompt={customPrompt}
       isGenerating={isGenerating}
       lessonCount={0}
       onGenerate={handleGenerateFromUi}
+      promptSource={promptSource}
+      promptVersion={promptVersion}
       setCustomPrompt={setCustomPrompt}
       setUseCustomPrompt={setUseCustomPrompt}
       useCustomPrompt={useCustomPrompt}

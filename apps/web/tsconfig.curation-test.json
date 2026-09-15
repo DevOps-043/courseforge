@@ -21,6 +21,8 @@
     "netlify/functions/shared/unified-curation-helpers.ts",
     "netlify/functions/shared/unified-curation-types.ts",
     "src/domains/curation/lib/curation-row-rules.ts",
+    "src/domains/curation/lib/curation-coverage-summary.ts",
+    "src/domains/curation/lib/lesson-source-requirement.ts",
     "src/domains/curation/types/curation.types.ts",
     "src/lib/server/outbound-http.ts",
     "src/lib/server/public-url-policy.ts",

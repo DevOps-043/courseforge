@@ -5,6 +5,7 @@ import {
   resolveConfiguredModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
+import { buildLocalBackgroundHandlerUrl } from "../../src/lib/server/background-request-environment";
 import {
   methodNotAllowedResponse,
   parseVerifiedBackgroundBody,
@@ -68,14 +69,26 @@ async function triggerNextLessonWithLocalFallback(
     artifactId,
     logPrefix,
     async (signedBody) => {
-      await Promise.resolve(handler(
+      const response = await Promise.resolve(handler(
         {
           body: signedBody,
           headers: { "Content-Type": "application/json" },
           httpMethod: "POST",
+          rawUrl: buildLocalBackgroundHandlerUrl("materials-generation-background"),
         } as unknown as Parameters<Handler>[0],
         {} as Parameters<Handler>[1],
       ));
+
+      if (response && "statusCode" in response && (response.statusCode || 200) >= 400) {
+        let responseMessage = "La ejecucion local de materiales fallo.";
+        try {
+          const responseBody = JSON.parse(response.body || "{}") as { error?: string };
+          responseMessage = responseBody.error || responseMessage;
+        } catch {
+          responseMessage = response.body || responseMessage;
+        }
+        throw new Error(responseMessage);
+      }
     },
   );
 }
@@ -320,19 +333,30 @@ async function processNextPendingLesson(params: {
   await setLessonState(supabase, lesson.id, "GENERATING");
   await touchMaterialsRecord(supabase, materialsId);
 
-  const generationContext = await loadMaterialsGenerationContext(
-    supabase,
-    artifactId,
-  );
-  await generateLessonMaterials({
-    supabase,
-    lesson,
-    generationContext,
-    organizationId,
-    logPrefix,
-    models,
-    modelRuntimeConfig,
-  });
+  try {
+    const generationContext = await loadMaterialsGenerationContext(
+      supabase,
+      artifactId,
+    );
+    await generateLessonMaterials({
+      supabase,
+      lesson,
+      generationContext,
+      organizationId,
+      logPrefix,
+      models,
+      modelRuntimeConfig,
+    });
+  } catch (error) {
+    const message = getErrorMessage(error);
+    console.error(`${logPrefix} Unexpected lesson failure:`, error);
+    await setLessonState(supabase, lesson.id, "NEEDS_FIX", {
+      dod: {
+        control3_consistency: "FAIL",
+        errors: [message],
+      },
+    });
+  }
 
   console.log(`${logPrefix} Waiting ${PROCESS_NEXT_DELAY_MS}ms before next...`);
   await wait(PROCESS_NEXT_DELAY_MS);

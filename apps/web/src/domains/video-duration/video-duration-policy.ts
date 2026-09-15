@@ -16,18 +16,21 @@ export const videoDurationPolicySchema = z.object({
   version: z.literal(1),
   visualBeatCadenceSeconds: z.number().int().min(10).max(90),
 }).superRefine((policy, context) => {
-  if (policy.minimumDurationSeconds > policy.targetDurationSeconds) {
+  if (policy.minimumDurationSeconds > policy.maximumDurationSeconds) {
     context.addIssue({
       code: "custom",
-      message: "La duración mínima no puede superar la duración objetivo.",
-      path: ["minimumDurationSeconds"],
+      message: "La duración máxima debe ser mayor o igual a la duración mínima.",
+      path: ["maximumDurationSeconds"],
     });
   }
 
-  if (policy.targetDurationSeconds > policy.maximumDurationSeconds) {
+  if (
+    policy.targetDurationSeconds < policy.minimumDurationSeconds ||
+    policy.targetDurationSeconds > policy.maximumDurationSeconds
+  ) {
     context.addIssue({
       code: "custom",
-      message: "La duración objetivo no puede superar la duración máxima.",
+      message: "La duración objetivo debe estar entre la duración mínima y la máxima.",
       path: ["targetDurationSeconds"],
     });
   }

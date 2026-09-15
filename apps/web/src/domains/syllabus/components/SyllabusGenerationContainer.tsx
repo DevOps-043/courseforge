@@ -11,7 +11,6 @@ import { syllabusService } from "@/domains/syllabus/services/syllabus.service";
 import {
   Esp02Route,
   Esp02StepState,
-  SyllabusInputMode,
   SyllabusModule,
   SyllabusRow,
   TemarioEsp02,
@@ -27,6 +26,7 @@ import {
   normalizeSyllabusIterationCount,
   SYLLABUS_MAX_ITERATIONS,
 } from "../lib/syllabus-iteration";
+import type { SyllabusSourceDocument } from "../syllabus-source-documents";
 
 interface SyllabusProfile {
   platform_role?: string | null;
@@ -68,7 +68,6 @@ export function SyllabusGenerationContainer({
   className = "",
 }: SyllabusGenerationContainerProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<SyllabusInputMode>("GENERATE");
   const [route, setRoute] = useState<Esp02Route | null>("B_NO_SOURCE");
   const [status, setStatus] = useState<Esp02StepState>("STEP_DRAFT");
   const [temario, setTemario] = useState<TemarioEsp02 | null>(null);
@@ -78,6 +77,24 @@ export function SyllabusGenerationContainer({
   const [isObjectivesOpen, setIsObjectivesOpen] = useState(false);
   const [iterationCount, setIterationCount] = useState(0);
   const [hasExistingSyllabus, setHasExistingSyllabus] = useState(false);
+  const [sourceDocuments, setSourceDocuments] = useState<SyllabusSourceDocument[]>([]);
+  const [documentsUploading, setDocumentsUploading] = useState(false);
+  const [configuredPrompt, setConfiguredPrompt] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [promptError, setPromptError] = useState<string | null>(null);
+  const [promptLoading, setPromptLoading] = useState(true);
+  const [promptReloadKey, setPromptReloadKey] = useState(0);
+  const [promptSource, setPromptSource] = useState<
+    "organization" | "global" | "default" | null
+  >(null);
+  const [promptVersion, setPromptVersion] = useState<string | null>(null);
+
+  const getPromptOverride = () => {
+    const trimmedPrompt = prompt.trim();
+    return trimmedPrompt && trimmedPrompt !== configuredPrompt.trim()
+      ? trimmedPrompt
+      : undefined;
+  };
 
   const applyTemario = (generatedTemario: TemarioEsp02 | SyllabusRow) => {
     const nextTemario = buildTemarioForReview(
@@ -121,10 +138,11 @@ export function SyllabusGenerationContainer({
         objetivos: initialObjetivos,
         ideaCentral: initialIdeaCentral,
         iterationInstructions: reviewNotes.trim() || undefined,
+        promptOverride: getPromptOverride(),
+        sourceDocuments: route === "A_WITH_SOURCE" ? sourceDocuments : undefined,
       });
       await markDownstreamDirtyAction(artifactId, 2, "Temario");
     } catch (iterationError) {
-      console.error(iterationError);
       setError(
         iterationError instanceof Error
           ? iterationError.message
@@ -138,6 +156,10 @@ export function SyllabusGenerationContainer({
     if (!route) {
       return;
     }
+    if (route === "A_WITH_SOURCE" && sourceDocuments.length === 0) {
+      setError("Agrega al menos un documento para generar el temario basado en fuentes.");
+      return;
+    }
 
     setStatus("STEP_GENERATING");
     setError(null);
@@ -148,13 +170,14 @@ export function SyllabusGenerationContainer({
         route,
         objetivos: initialObjetivos,
         ideaCentral: initialIdeaCentral,
+        promptOverride: getPromptOverride(),
+        sourceDocuments: route === "A_WITH_SOURCE" ? sourceDocuments : undefined,
       });
 
       if ("modules" in result && Array.isArray(result.modules)) {
         applyTemario(result);
       }
     } catch (generationError) {
-      console.error(generationError);
       setError(
         generationError instanceof Error
           ? generationError.message
@@ -173,29 +196,12 @@ export function SyllabusGenerationContainer({
           : currentTemario,
       );
     } catch (dismissError) {
-      console.error("Error dismissing alert:", dismissError);
+      setError(
+        dismissError instanceof Error
+          ? dismissError.message
+          : "No se pudo descartar el aviso.",
+      );
     }
-  };
-
-  const handleImport = (modules: SyllabusModule[]) => {
-    const importedTemario: TemarioEsp02 = {
-      route: "B_NO_SOURCE",
-      modules,
-      validation: {
-        automatic_pass: true,
-        checks: [],
-      },
-      qa: { status: "PENDING" },
-    };
-
-    const validation = syllabusService.validateTemario(importedTemario);
-    importedTemario.validation = {
-      automatic_pass: validation.passed,
-      checks: validation.checks,
-    };
-
-    setTemario(importedTemario);
-    setStatus("STEP_READY_FOR_QA");
   };
 
   const handleSaveModules = async (modules: SyllabusModule[]) => {
@@ -208,7 +214,11 @@ export function SyllabusGenerationContainer({
       await syllabusService.updateModules(artifactId, modules);
       await markDownstreamDirtyAction(artifactId, 2, "Temario");
     } catch (saveError) {
-      console.error("Error guardando módulos:", saveError);
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "No se pudieron guardar los módulos.",
+      );
     }
   };
 
@@ -222,7 +232,11 @@ export function SyllabusGenerationContainer({
       setStatus("STEP_APPROVED");
       router.refresh();
     } catch (approveError) {
-      console.error(approveError);
+      setError(
+        approveError instanceof Error
+          ? approveError.message
+          : "No se pudo aprobar el temario.",
+      );
     }
   };
 
@@ -236,7 +250,11 @@ export function SyllabusGenerationContainer({
       setStatus("STEP_REJECTED");
       router.refresh();
     } catch (rejectError) {
-      console.error(rejectError);
+      setError(
+        rejectError instanceof Error
+          ? rejectError.message
+          : "No se pudo rechazar el temario.",
+      );
     }
   };
 
@@ -256,10 +274,15 @@ export function SyllabusGenerationContainer({
       setStatus("STEP_DRAFT");
       setReviewNotes("");
       setRoute(null);
+      setSourceDocuments([]);
       setError(null);
       setIterationCount(0);
     } catch (resetError) {
-      console.error(resetError);
+      setError(
+        resetError instanceof Error
+          ? resetError.message
+          : "No se pudo reiniciar el temario.",
+      );
     }
   };
 
@@ -275,6 +298,7 @@ export function SyllabusGenerationContainer({
             normalizeSyllabusIterationCount(data.iteration_count),
           );
           setRoute(data.route || "B_NO_SOURCE");
+          setSourceDocuments(data.source_summary?.source_documents || []);
           if (data.state === SYLLABUS_STATES.ESCALATED) {
             setError(
               data.source_summary?.error ||
@@ -298,6 +322,37 @@ export function SyllabusGenerationContainer({
 
     void checkExisting();
   }, [artifactId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPrompt = async () => {
+      setPromptLoading(true);
+      setPromptError(null);
+      try {
+        const resolvedPrompt = await syllabusService.getGenerationPrompt(artifactId);
+        if (cancelled) return;
+        setConfiguredPrompt(resolvedPrompt.content);
+        setPrompt(resolvedPrompt.content);
+        setPromptSource(resolvedPrompt.source);
+        setPromptVersion(resolvedPrompt.version);
+      } catch (promptLoadError) {
+        if (cancelled) return;
+        setPromptError(
+          promptLoadError instanceof Error
+            ? promptLoadError.message
+            : "No se pudo cargar el prompt configurado.",
+        );
+      } finally {
+        if (!cancelled) setPromptLoading(false);
+      }
+    };
+
+    void loadPrompt();
+    return () => {
+      cancelled = true;
+    };
+  }, [artifactId, promptReloadKey]);
 
   useEffect(() => {
     if (status !== "STEP_GENERATING") {
@@ -325,7 +380,9 @@ export function SyllabusGenerationContainer({
           setStatus(data.state);
         }
       } catch (pollingError) {
-        console.error("Polling error (ignorable):", pollingError);
+        if (pollingError instanceof Error) {
+          setError(pollingError.message);
+        }
       }
     }, 3000);
 
@@ -370,12 +427,22 @@ export function SyllabusGenerationContainer({
 
       {!temario && status === "STEP_DRAFT" && (
         <SyllabusSetupPanel
-          activeTab={activeTab}
+          artifactId={artifactId}
+          documents={sourceDocuments}
+          documentsUploading={documentsUploading}
           route={route}
-          onTabChange={setActiveTab}
+          configuredPrompt={configuredPrompt}
+          prompt={prompt}
+          promptError={promptError}
+          promptLoading={promptLoading}
+          promptSource={promptSource}
+          promptVersion={promptVersion}
+          onDocumentsChange={setSourceDocuments}
+          onDocumentsUploadingChange={setDocumentsUploading}
           onRouteChange={setRoute}
+          onPromptChange={setPrompt}
+          onPromptRetry={() => setPromptReloadKey((current) => current + 1)}
           onGenerate={handleGenerate}
-          onImport={handleImport}
         />
       )}
 

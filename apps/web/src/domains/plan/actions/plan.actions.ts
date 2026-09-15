@@ -23,6 +23,11 @@ import {
   getPreviousPlanIteration,
   PLAN_MAX_ITERATIONS,
 } from "@/domains/plan/lib/plan-iteration";
+import { resolvePromptWithMetadata } from "@/shared/config/prompts/prompt-resolver.service";
+import {
+  INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE,
+  instructionalPlanContextPromptDefault,
+} from "@/shared/config/prompts/pipeline.prompts";
 
 export async function generateInstructionalPlanAction(
   artifactId: string,
@@ -30,6 +35,13 @@ export async function generateInstructionalPlanAction(
   useCustomPrompt: boolean = false,
   iterationInstructions?: string,
 ) {
+  if (useCustomPrompt && (!customPrompt?.trim() || customPrompt.length > 40_000)) {
+    return {
+      success: false,
+      error: "El prompt personalizado debe contener entre 1 y 40,000 caracteres.",
+    };
+  }
+
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
   if (!authUser) return { success: false, error: "Unauthorized" };
@@ -170,14 +182,7 @@ export async function validateInstructionalPlanAction(artifactId: string) {
     return { success: false, error: "Artifact not found or inaccessible" };
   }
 
-  const { admin } = authorized;
-
   try {
-    await admin
-      .from("instructional_plans")
-      .update({ validation: null })
-      .eq("artifact_id", artifactId);
-
     await callBackgroundFunctionJson(
       "validate-plan-background",
       {
@@ -441,8 +446,16 @@ export async function getInstructionalPlanSnapshotAction(artifactId: string) {
     return { success: false, error: artifactError.message };
   }
 
+  const generationPrompt = await resolvePromptWithMetadata(
+    admin,
+    INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE,
+    instructionalPlanContextPromptDefault,
+    authorized.artifact.organization_id,
+  );
+
   return {
     success: true,
+    generationPrompt,
     plan: data,
     videoDurationPolicy: resolveArtifactVideoDurationPolicy(
       artifact?.generation_metadata,

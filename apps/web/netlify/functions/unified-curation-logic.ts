@@ -52,15 +52,16 @@ export async function processUnifiedCuration({
     artifact?.organization_id || null,
   );
   const configuredModel = setting.model || OPENAI_CURATION_DEFAULTS.model;
-  const model = configuredModel.toLowerCase().startsWith("gemini-")
-    ? OPENAI_CURATION_DEFAULTS.model
-    : configuredModel;
-  const systemPrompt = await resolvePromptWithFallback(
+  const model = configuredModel.toLowerCase().startsWith("gpt-")
+    ? configuredModel
+    : OPENAI_CURATION_DEFAULTS.model;
+  const configuredSystemPrompt = await resolvePromptWithFallback(
     supabase,
     CURATION_PROMPT_CODE,
     curationPromptDefault,
     artifact?.organization_id || null,
   );
+  const systemPrompt = customPrompt?.trim() || configuredSystemPrompt;
 
   console.log(
     `[Curation V2] OpenAI-only workflow. Model: ${model}. Artifact: ${artifactId}.`,
@@ -68,9 +69,9 @@ export async function processUnifiedCuration({
   return runCurationWorkflowV2({
     artifactId,
     curationId,
-    customPrompt,
     systemPrompt,
     model,
+    reasoningEffort: setting.thinkingLevel,
     openAiApiKey,
     supabase,
     resume,

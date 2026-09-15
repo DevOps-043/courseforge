@@ -5,6 +5,28 @@ import test from "node:test";
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
 process.env.BACKGROUND_FUNCTION_SECRET = "test-background-signature-secret-long-enough";
 
+test("derives a stable background secret only for local development", async () => {
+  const { resolveBackgroundFunctionSecret } = await import("../env");
+  const first = resolveBackgroundFunctionSecret({
+    isProduction: false,
+    jwtSecret: "local-jwt-secret-long-enough-for-development",
+  });
+  const second = resolveBackgroundFunctionSecret({
+    isProduction: false,
+    jwtSecret: "local-jwt-secret-long-enough-for-development",
+  });
+
+  assert.equal(first, second);
+  assert.match(first, /^[a-f0-9]{64}$/);
+  assert.throws(
+    () => resolveBackgroundFunctionSecret({
+      isProduction: true,
+      jwtSecret: "production-jwt-secret-must-not-be-reused",
+    }),
+    /falta BACKGROUND_FUNCTION_SECRET/,
+  );
+});
+
 test("round-trips a signed background payload and rejects tampering", async () => {
   const { signBackgroundPayload, verifyBackgroundPayload } = await import(
     "../background-payload-signature"

@@ -4,6 +4,8 @@ export interface LessonToProcess {
   lesson_objective: string;
   module_title: string;
   component_count: number;
+  required_sources: number;
+  video_target_seconds: number;
 }
 
 export interface LessonSource {

@@ -6,6 +6,7 @@ import {
   resolveArtifactVideoDurationPolicy,
   resolveVideoDurationPolicy,
   resolveVideoDurationValidationMode,
+  videoDurationPolicySchema,
   type VideoDurationContract,
 } from "../video-duration-policy";
 import {
@@ -38,6 +39,28 @@ test("accepts a safe custom duration policy", () => {
 
   assert.equal(custom.targetDurationSeconds, 540);
   assert.equal(buildVideoDurationContract(custom).minimumStoryboardTakes, 18);
+});
+
+test("requires the target duration to stay between the minimum and maximum", () => {
+  const aboveMaximum = videoDurationPolicySchema.safeParse({
+    ...DEFAULT_VIDEO_DURATION_POLICY,
+    maximumDurationSeconds: 8 * 60,
+    minimumDurationSeconds: 6 * 60,
+    targetDurationSeconds: 10 * 60,
+  });
+  const belowMinimum = videoDurationPolicySchema.safeParse({
+    ...DEFAULT_VIDEO_DURATION_POLICY,
+    maximumDurationSeconds: 8 * 60,
+    minimumDurationSeconds: 6 * 60,
+    targetDurationSeconds: 5 * 60,
+  });
+
+  assert.equal(aboveMaximum.success, false);
+  assert.equal(belowMinimum.success, false);
+  if (!aboveMaximum.success) {
+    assert.deepEqual(aboveMaximum.error.issues[0]?.path, ["targetDurationSeconds"]);
+    assert.match(aboveMaximum.error.issues[0]?.message || "", /entre.*mínima.*máxima/);
+  }
 });
 
 test("rejects invalid custom values and falls back safely", () => {

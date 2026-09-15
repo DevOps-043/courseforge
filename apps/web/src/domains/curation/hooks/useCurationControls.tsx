@@ -4,9 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { AlertCircle } from "lucide-react";
-import {
-  updateCurationStatusAction,
-} from "../actions/curation.actions";
+import { updateCurationStatusAction } from "../actions/curation.actions";
 import type { Curation, CurationRow } from "../types/curation.types";
 import type { CurationModalConfig } from "../components/CurationDashboardView";
 import { CurationResetOptions } from "../components/CurationResetOptions";
@@ -16,17 +14,15 @@ interface UseCurationControlsParams {
   artifactId: string;
   curation: Curation | null;
   isGenerating: boolean;
-  isValidating: boolean;
-  pendingValidationCount: number;
   refresh: () => Promise<void>;
   rows: CurationRow[];
   startCuration: (
     attemptNumber?: number,
     gaps?: string[],
     resume?: boolean,
+    promptOverride?: string,
   ) => Promise<void>;
   clearSystemGeneratedRows: () => Promise<void>;
-  clearInvalidRows: () => Promise<boolean>;
 }
 
 const INITIAL_MODAL_CONFIG: CurationModalConfig = {
@@ -42,29 +38,19 @@ export function useCurationControls({
   artifactId,
   curation,
   isGenerating,
-  isValidating,
-  pendingValidationCount,
   refresh,
   rows,
   startCuration,
   clearSystemGeneratedRows,
-  clearInvalidRows,
 }: UseCurationControlsParams) {
   const router = useRouter();
   const [isLoadingModal, setIsLoadingModal] = useState(false);
   const [modalConfig, setModalConfig] =
     useState<CurationModalConfig>(INITIAL_MODAL_CONFIG);
   const [progress, setProgress] = useState(5);
-  const [reviewNotes, setReviewNotes] = useState("");
 
   const closeModal = () =>
     setModalConfig((previous) => ({ ...previous, isOpen: false }));
-
-  useEffect(() => {
-    if (curation?.qa_decision?.notes) {
-      setReviewNotes(curation.qa_decision.notes);
-    }
-  }, [curation]);
 
   useEffect(() => {
     if (!isGenerating && rows.length > 0) {
@@ -74,15 +60,13 @@ export function useCurationControls({
 
     if (rows.length > 0) {
       const calculated = Math.min(Math.round((rows.length / 25) * 100), 95);
-      setProgress((previousProgress) =>
-        Math.max(previousProgress, calculated),
-      );
+      setProgress((previousProgress) => Math.max(previousProgress, calculated));
     }
   }, [rows.length, isGenerating]);
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (promptOverride?: string) => {
     setProgress(5);
-    await startCuration(1, []);
+    await startCuration(1, [], false, promptOverride);
   };
 
   const handleResetStep = () => {
@@ -195,73 +179,15 @@ export function useCurationControls({
     await startCuration(1, [], true);
   };
 
-  const handleIterateInvalidSources = async () => {
-    try {
-      const cleaned = await clearInvalidRows();
-      if (!cleaned) return;
-      await startCuration(1, [], true);
-      router.refresh();
-    } catch (error) {
-      console.error(error);
-      toast.error("No se pudo iterar las fuentes no aptas.");
-    }
-  };
-
-  const handleApprove = async () => {
-    if (isValidating) {
-      toast.warning(
-        "La validacion de fuentes sigue en progreso. Espera a que termine antes de aprobar.",
-      );
-      return;
-    }
-
-    if (pendingValidationCount > 0) {
-      toast.warning(
-        `Aun faltan ${pendingValidationCount} fuentes por validar antes de aprobar la fase.`,
-      );
-      return;
-    }
-
-    const cleaned = await clearInvalidRows();
-    if (!cleaned) return;
-
-    const result = await updateCurationStatusAction(
-      artifactId,
-      CURATION_STATES.APPROVED,
-      reviewNotes,
-    );
-    if (!result.success) {
-      toast.error(result.error || "No se pudo aprobar la Fase 4");
-      return;
-    }
-    toast.success("Fase 4 aprobada exitosamente");
-    await refresh();
-    router.refresh();
-  };
-
-  const handleReject = async () => {
-    await updateCurationStatusAction(
-      artifactId,
-      CURATION_STATES.BLOCKED,
-      reviewNotes,
-    );
-    toast.info("Fase 4 rechazada");
-    await refresh();
-    router.refresh();
-  };
-
   const handleRegenerateBlocked = async () => {
     if (
-      !confirm(
-        "¿Regenerar las fuentes automaticas? Las fuentes manuales se conservaran.",
-      )
+      !confirm("¿Reiniciar por completo la busqueda automatica de fuentes web?")
     ) {
       return;
     }
 
     try {
       await clearSystemGeneratedRows();
-      setReviewNotes("");
       await startCuration(1, []);
       router.refresh();
     } catch (error) {
@@ -272,11 +198,8 @@ export function useCurationControls({
 
   return {
     closeModal,
-    handleApprove,
     handleGenerate,
     handlePause,
-    handleIterateInvalidSources,
-    handleReject,
     handleRegenerateBlocked,
     handleResetStep,
     handleResume,
@@ -284,7 +207,5 @@ export function useCurationControls({
     isLoadingModal,
     modalConfig,
     progress,
-    reviewNotes,
-    setReviewNotes,
   };
 }

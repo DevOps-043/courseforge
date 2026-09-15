@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   CURATION_SEARCH_RESPONSE_SCHEMA,
   createCurationBatchResponseSchema,
+  createCurationSearchResponseSchema,
 } from "../structured-output.schemas";
 
 interface JsonSchemaNode {
@@ -50,5 +51,10 @@ test("batch curation schema remains strict at every object level", () => {
 test("curation search schema remains strict at every object level", () => {
   assertStrictObjectContracts(
     CURATION_SEARCH_RESPONSE_SCHEMA as unknown as JsonSchemaNode,
+  );
+  const dynamicSchema = createCurationSearchResponseSchema(9);
+  assert.equal(
+    dynamicSchema.properties.lessons.items.properties.sources.maxItems,
+    9,
   );
 });

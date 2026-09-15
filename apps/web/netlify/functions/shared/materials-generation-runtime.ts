@@ -5,6 +5,7 @@ import type {
   MaterialsGenerationOutput,
 } from "../../../src/domains/materials/types/materials.types";
 import { signBackgroundPayload } from "../../../src/lib/server/background-payload-signature";
+import { shouldDispatchBackgroundInProcess } from "../../../src/lib/server/background-request-environment";
 import {
   resolveArtifactVideoDurationPolicy,
   isVideoComponentType,
@@ -222,11 +223,28 @@ export async function triggerNextLesson(
   localFallback?: (signedBody: string) => Promise<void>,
 ) {
   const triggerTimeoutMilliseconds = 10_000;
-  const url = `${getFunctionsBaseUrl()}${MATERIALS_FUNCTION_PATH}`;
-  console.log(`${logPrefix} Triggering next at: ${url}`);
   const signedBody = JSON.stringify(
     signBackgroundPayload({ materialsId, artifactId, mode: "process-next" }),
   );
+
+  if (shouldDispatchBackgroundInProcess({
+    hasLocalHandler: Boolean(localFallback),
+    netlify: process.env.NETLIFY,
+    nodeEnv: process.env.NODE_ENV,
+  })) {
+    console.log(`${logPrefix} Scheduling next lesson in-process`);
+    setTimeout(async () => {
+      try {
+        await localFallback!(signedBody);
+      } catch (fallbackError) {
+        console.error(`${logPrefix} In-process execution failed:`, fallbackError);
+      }
+    }, 100);
+    return;
+  }
+
+  const url = `${getFunctionsBaseUrl()}${MATERIALS_FUNCTION_PATH}`;
+  console.log(`${logPrefix} Triggering next at: ${url}`);
 
   try {
     const response = await fetch(url, {
@@ -248,7 +266,7 @@ export async function triggerNextLesson(
         : "";
     const errorMessage = error instanceof Error ? error.message : "";
 
-    // Fallback local execution when not running Netlify CLI locally (ECONNREFUSED on port 8888)
+    // Defensive fallback for development environments whose runtime flags are incomplete.
     if (
       process.env.NODE_ENV !== "production" &&
       localFallback &&

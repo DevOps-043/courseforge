@@ -14,7 +14,10 @@ import {
     createDefaultVideoDurationPolicy,
     VideoDurationPolicyFields,
 } from '@/domains/artifacts/components/VideoDurationPolicyFields';
-import type { VideoDurationPolicy } from '@/domains/video-duration/video-duration-policy';
+import {
+    videoDurationPolicySchema,
+    type VideoDurationPolicy,
+} from '@/domains/video-duration/video-duration-policy';
 
 interface ArtifactIdeaFormData {
     courseId: string;
@@ -59,12 +62,21 @@ export default function ConstructorNewArtifactPage() {
     });
 
     const router = useRouter();
+    const videoDurationValidation = videoDurationPolicySchema.safeParse(videoDurationPolicy);
+    const isGenerateDisabled = isLoading || !formData.description || !videoDurationValidation.success;
 
     const handleCloudStorageProviderChange = useCallback((provider: CloudStorageProvider | null) => {
         setCloudStorageProvider(provider);
     }, []);
 
     const handleGenerate = async () => {
+        const validation = videoDurationPolicySchema.safeParse(videoDurationPolicy);
+        if (!validation.success) {
+            setIsAdvancedOpen(true);
+            toast.error(validation.error.issues[0]?.message || 'Configuración de duración inválida.');
+            return;
+        }
+
         setIsLoading(true);
         try {
             const result = await generateArtifactAction({
@@ -254,16 +266,16 @@ export default function ConstructorNewArtifactPage() {
                                 <div className="pt-4 sticky top-6">
                                     <button
                                         onClick={handleGenerate}
-                                        disabled={isLoading || !formData.description}
+                                        disabled={isGenerateDisabled}
                                         className={`
                                     relative w-full overflow-hidden group px-6 py-4 rounded-2xl font-bold font-sans shadow-2xl flex items-center justify-center gap-3 transition-all duration-300 transform
-                                    ${isLoading || !formData.description
+                                    ${isGenerateDisabled
                                                 ? 'bg-gray-200 text-gray-400 dark:bg-[var(--engine-accent)]/10 dark:text-[var(--engine-accent)]/30 cursor-not-allowed border border-transparent dark:border-[var(--engine-accent)]/10'
                                                 : 'bg-[var(--engine-primary)] text-white hover:bg-[var(--engine-primary)]/90 dark:bg-[var(--engine-accent)] dark:text-[var(--engine-primary)] dark:hover:bg-[var(--engine-accent-hover)] shadow-lg shadow-[var(--engine-primary)]/25 dark:shadow-[var(--engine-accent)]/25 hover:shadow-[var(--engine-primary)]/40 dark:hover:shadow-[var(--engine-accent)]/40 hover:-translate-y-0.5'
                                             }
                                 `}
                                     >
-                                        {!isLoading && formData.description && (
+                                        {!isGenerateDisabled && (
                                             <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                         )}
                                         {isLoading ? (
@@ -273,7 +285,7 @@ export default function ConstructorNewArtifactPage() {
                                             </>
                                         ) : (
                                             <>
-                                                <Sparkles size={20} className={`${formData.description ? 'group-hover:animate-pulse' : ''}`} />
+                                                <Sparkles size={20} className={`${!isGenerateDisabled ? 'group-hover:animate-pulse' : ''}`} />
                                                 <span className="text-lg">Generar Estructura</span>
                                                 <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                                             </>

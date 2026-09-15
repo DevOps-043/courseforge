@@ -50,36 +50,40 @@ export function createCurationBatchResponseSchema(maxSourcesPerLesson: number) {
   } as const;
 }
 
-export const CURATION_SEARCH_RESPONSE_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    lessons: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          lesson_id: { type: "string" },
-          sources: {
-            type: "array",
-            maxItems: 5,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                url: { type: "string" },
-                title: { type: "string" },
-                rationale: { type: "string" },
-                search_query: { type: "string" },
+export function createCurationSearchResponseSchema(maxSourcesPerLesson: number) {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      lessons: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            lesson_id: { type: "string" },
+            sources: {
+              type: "array",
+              maxItems: maxSourcesPerLesson,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  url: { type: "string" },
+                  title: { type: "string" },
+                  rationale: { type: "string" },
+                  search_query: { type: "string" },
+                },
+                required: ["url", "title", "rationale", "search_query"],
               },
-              required: ["url", "title", "rationale", "search_query"],
             },
           },
+          required: ["lesson_id", "sources"],
         },
-        required: ["lesson_id", "sources"],
       },
     },
-  },
-  required: ["lessons"],
-} as const;
+    required: ["lessons"],
+  } as const;
+}
+
+export const CURATION_SEARCH_RESPONSE_SCHEMA = createCurationSearchResponseSchema(5);

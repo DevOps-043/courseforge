@@ -552,3 +552,37 @@ export async function resolvePromptWithFallback(
     const dbPrompts = await fetchPromptsFromDb(supabase, [code], organizationId);
     return dbPrompts.get(code) ?? DEFAULT_PROMPTS[code] ?? fallback;
 }
+
+export interface ResolvedPromptWithMetadata {
+    content: string;
+    source: 'organization' | 'global' | 'default';
+    version: string;
+}
+
+/**
+ * Resolves one prompt and exposes only its provenance, never any tenant data.
+ * This is useful for showing an authorized user which effective prompt will run.
+ */
+export async function resolvePromptWithMetadata(
+    supabase: SupabaseClient,
+    code: string,
+    fallback: string,
+    organizationId?: string | null,
+): Promise<ResolvedPromptWithMetadata> {
+    const promptSources = new Map<string, 'organization' | 'global' | 'default'>();
+    const promptVersions = new Map<string, string>();
+    const dbPrompts = await fetchPromptsFromDb(
+        supabase,
+        [code],
+        organizationId,
+        promptSources,
+        promptVersions,
+    );
+
+    const configuredContent = dbPrompts.get(code) ?? DEFAULT_PROMPTS[code];
+    return {
+        content: configuredContent ?? fallback,
+        source: promptSources.get(code) ?? 'default',
+        version: promptVersions.get(code) ?? 'code',
+    };
+}

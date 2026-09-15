@@ -431,12 +431,16 @@ Base:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `COURSEFORGE_JWT_SECRET`
-- `BACKGROUND_FUNCTION_SECRET` (secreto dedicado de al menos 32 caracteres para firmar jobs internos)
+- `BACKGROUND_FUNCTION_SECRET` (secreto dedicado de al menos 32 caracteres para firmar jobs internos; obligatorio en producción. En desarrollo local se deriva de `COURSEFORGE_JWT_SECRET` si no está configurado)
 - `NEXT_PUBLIC_APP_URL`
 - `SOFLIA_API_URL`
 - `SOFLIA_API_KEY`
 - `SOFLIA_INBOX_SUPABASE_URL`
 - `SOFLIA_INBOX_SUPABASE_KEY`
+
+Las invocaciones directas de handlers en `localhost` validan firma y expiración,
+pero no persisten nonces. Los despliegues requieren la migración de
+`background_request_nonces` y consumen cada nonce una sola vez.
 
 IA:
 

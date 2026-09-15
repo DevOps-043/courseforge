@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { z } from "zod";
 import { GeneratedInstructionalPlanSchema } from "../instructional-plan-generation.schema";
+import { buildInstructionalPlanContextPrompt } from "../instructional-plan-prompt";
+import { resolveInstructionalPlanAudience } from "../instructional-plan-validation-context";
 
 interface JsonSchemaObject {
   additionalProperties?: boolean;
@@ -65,4 +67,47 @@ test("accepts nullable pedagogical fields while keeping every key present", () =
 
   assert.equal(parsed.lesson_plans[0]?.oa_bloom_verb, null);
   assert.deepEqual(parsed.blockers, []);
+});
+
+test("uses the company prompt until an explicit per-generation edit is enabled", () => {
+  const configuredPrompt = "PROMPT EMPRESARIAL ${courseName}";
+  const customPrompt = "PROMPT MODIFICADO: prioriza simulaciones";
+
+  assert.equal(
+    buildInstructionalPlanContextPrompt({
+      configuredPrompt,
+      customPrompt,
+      useCustomPrompt: false,
+    }),
+    configuredPrompt,
+  );
+  assert.equal(
+    buildInstructionalPlanContextPrompt({
+      configuredPrompt,
+      customPrompt,
+      useCustomPrompt: true,
+    }),
+    customPrompt,
+  );
+});
+
+test("reads the validation audience from current artifact JSON fields", () => {
+  assert.equal(
+    resolveInstructionalPlanAudience({
+      descripcion: { publico_objetivo: "Líderes técnicos" },
+      generation_metadata: {
+        original_input: { targetAudience: "Audiencia original" },
+      },
+    }),
+    "Líderes técnicos",
+  );
+  assert.equal(
+    resolveInstructionalPlanAudience({
+      generation_metadata: {
+        original_input: { targetAudience: "Gerentes de producto" },
+      },
+    }),
+    "Gerentes de producto",
+  );
+  assert.equal(resolveInstructionalPlanAudience({}), "General");
 });

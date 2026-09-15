@@ -44,12 +44,15 @@
     "src/lib/server/external-import-error.ts",
     "src/lib/server/external-import-concurrency.ts",
     "src/lib/server/outbound-http.ts",
+    "src/lib/server/tenant-lookup-retry.ts",
     "src/lib/server/public-url-policy.ts",
     "src/lib/server/video-metadata.service.ts",
     "src/lib/server/operational-logger.ts",
     "src/lib/server/desktop-worker-job-contracts.ts",
     "src/lib/server/background-payload-signature.ts",
+    "src/lib/server/background-request-environment.ts",
     "src/lib/server/__tests__/outbound-http.test.ts",
+    "src/lib/server/__tests__/tenant-lookup-retry.test.ts",
     "src/lib/server/__tests__/video-metadata.service.test.ts",
     "src/lib/server/__tests__/api-contract.test.ts",
     "src/lib/server/__tests__/external-import-error.test.ts",
@@ -57,6 +60,7 @@
     "src/lib/server/__tests__/operational-logger.test.ts",
     "src/lib/server/__tests__/desktop-worker-job-contracts.test.ts",
     "src/lib/server/__tests__/background-payload-signature.test.ts",
+    "src/lib/server/__tests__/background-request-environment.test.ts",
     "src/lib/server/__tests__/privileged-background-inventory.test.ts"
   ],
   "exclude": ["node_modules"]

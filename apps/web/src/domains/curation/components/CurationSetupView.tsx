@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import {
   AlertCircle,
   CheckCircle2,
@@ -15,18 +17,27 @@ interface CurationSetupModule {
 }
 
 interface CurationSetupViewProps {
-  onGenerate: () => Promise<void> | void;
+  onGenerate: (promptOverride?: string) => Promise<void> | void;
   onRefresh: () => Promise<void> | void;
-  onUseOwnSources: () => Promise<void> | void;
+  configuredPrompt?: string;
   temario?: CurationSetupModule[];
+  lessonRequirements?: Array<{
+    id: string;
+    title: string;
+    requiredSources: number;
+    videoTargetSeconds: number;
+  }>;
 }
 
 export function CurationSetupView({
   onGenerate,
   onRefresh,
-  onUseOwnSources,
+  configuredPrompt = DEFAULT_PROMPT_PREVIEW,
+  lessonRequirements = [],
   temario,
 }: CurationSetupViewProps) {
+  const [prompt, setPrompt] = useState(configuredPrompt);
+
   const hasTemario = Boolean(temario && temario.length > 0);
   const lessonsCount =
     temario?.reduce((acc, module) => acc + module.lessons.length, 0) ?? 0;
@@ -38,11 +49,11 @@ export function CurationSetupView({
           <div className="p-2 rounded-lg bg-[var(--engine-info)]/10 text-[var(--engine-info)]">
             <Sparkles size={24} />
           </div>
-          Paso 4: Curaduria de Fuentes (Fase 2)
+          Paso 4: Curaduria de Fuentes
         </h2>
         <p className="text-gray-500 dark:text-[var(--engine-text-muted)] text-base leading-relaxed max-w-2xl ml-12">
-          OpenAI propone candidatos y SofLIA - Engine valida acceso, contenido y
-          calidad. Tambien puedes trabajar solo con URLs y PDFs propios.
+          GPT busca fuentes web y SofLIA - Engine valida automaticamente su
+          acceso, contenido y calidad hasta completar cada leccion.
         </p>
       </div>
 
@@ -57,14 +68,14 @@ export function CurationSetupView({
                 Busqueda automatica interna
               </h3>
               <span className="text-[10px] bg-[var(--engine-info)]/20 text-[var(--engine-info)] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
-                OpenAI
+                Automatizado
               </span>
             </div>
           </div>
 
           <p className="text-gray-600 dark:text-[var(--engine-text-muted)] text-sm leading-relaxed mb-6 max-w-lg">
             SofLIA Engine investigara fuentes recientes por leccion, validara
-            que las URLs existan y dejara los resultados listos para revision QA.
+            cada URL y repondra automaticamente las que fallen.
           </p>
 
           <div className="flex flex-wrap gap-3 mb-6">
@@ -72,14 +83,17 @@ export function CurationSetupView({
               "Web search",
               "JSON estructurado",
               "Validacion URL",
-              "URLs y PDFs propios",
-              "Revision humana",
+              "Reposicion automatica",
+              "Aprobacion automatica",
             ].map((tag) => (
               <span
                 key={tag}
                 className="text-[10px] bg-white dark:bg-[var(--engine-surface-solid)] text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5"
               >
-                <CheckCircle2 size={10} className="text-[var(--engine-accent)]" />
+                <CheckCircle2
+                  size={10}
+                  className="text-[var(--engine-accent)]"
+                />
                 {tag}
               </span>
             ))}
@@ -92,13 +106,46 @@ export function CurationSetupView({
                 Criterios de busqueda
               </h4>
             </div>
-            <p className="text-gray-600 dark:text-[var(--engine-text-muted)] text-sm leading-relaxed">
-              {DEFAULT_PROMPT_PREVIEW}
+            <textarea
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              rows={5}
+              className="w-full resize-y border border-gray-200 bg-white p-3 text-sm leading-relaxed text-gray-700 outline-none focus:border-[var(--engine-accent)] dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-surface-solid)] dark:text-gray-200"
+              aria-label="Prompt de curaduria"
+            />
+            <p className="mt-2 text-[11px] text-gray-500 dark:text-[var(--engine-muted)]">
+              Este es el prompt efectivo configurado para la empresa. Cualquier
+              cambio realizado aqui se usara en esta ejecucion.
             </p>
+            {lessonRequirements.length > 0 && (
+              <div className="mt-4 max-h-56 space-y-2 overflow-y-auto border-t border-gray-200 pt-3 dark:border-[var(--engine-muted)]/10">
+                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Fuentes requeridas por leccion
+                </p>
+                <p className="text-[11px] text-gray-500 dark:text-[var(--engine-muted)]">
+                  Se calcula una fuente por cada 3 minutos objetivo de video,
+                  con un minimo de 2.
+                </p>
+                {lessonRequirements.map((lesson) => (
+                  <div
+                    key={lesson.id}
+                    className="flex items-center justify-between gap-4 text-xs text-gray-600 dark:text-[var(--engine-text-muted)]"
+                  >
+                    <span className="min-w-0 truncate">{lesson.title}</span>
+                    <span className="shrink-0 font-semibold text-[var(--engine-info)]">
+                      {lesson.videoTargetSeconds > 0
+                        ? `${formatMinutes(lesson.videoTargetSeconds)} min · `
+                        : ""}
+                      {lesson.requiredSources} fuentes
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <button
-            onClick={onGenerate}
+            onClick={() => onGenerate(prompt)}
             disabled={!hasTemario}
             className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all relative overflow-hidden ${
               hasTemario
@@ -109,15 +156,6 @@ export function CurationSetupView({
             <Play size={20} fill="currentColor" />
             Iniciar curaduria automatica
           </button>
-          <button
-            type="button"
-            onClick={onUseOwnSources}
-            disabled={!hasTemario}
-            className="mt-3 w-full border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-[var(--engine-info)]/50 hover:text-[var(--engine-info)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#334155] dark:bg-[#10151A] dark:text-gray-300"
-          >
-            Usar solo fuentes propias
-          </button>
-
           <div className="mt-6 flex flex-col justify-center items-center gap-3 border-t border-[var(--engine-info)]/10 pt-6">
             <p className="text-gray-600 dark:text-[var(--engine-text-muted)] text-sm text-center font-medium">
               Ya hay un proceso en curso o quieres verificar resultados?
@@ -150,4 +188,9 @@ export function CurationSetupView({
       </div>
     </div>
   );
+}
+
+function formatMinutes(seconds: number) {
+  const minutes = seconds / 60;
+  return Number.isInteger(minutes) ? String(minutes) : minutes.toFixed(1);
 }

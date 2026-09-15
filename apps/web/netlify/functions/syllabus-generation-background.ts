@@ -14,8 +14,8 @@ import {
 import { SYLLABUS_PROMPT } from "../../src/domains/syllabus/config/syllabus.config";
 import {
   buildSyllabusResearchPrompt,
+  buildSyllabusGenerationPrompt,
   calculateSyllabusEstimatedHours,
-  getSyllabusRouteContext,
   parseSyllabusResponseText,
   SyllabusGenerationContent,
 } from "../../src/domains/syllabus/lib/syllabus-generation";
@@ -23,7 +23,10 @@ import { SyllabusGenerationMetadata } from "../../src/domains/syllabus/types/syl
 import { applyGeneratedLessonDurationEstimates } from "../../src/domains/syllabus/lib/lesson-duration-estimator";
 import { resolveArtifactVideoDurationPolicy } from "../../src/domains/video-duration/video-duration-policy";
 import { validateCourseDuration } from "../../src/domains/syllabus/validators/syllabus.validators";
-import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
+import {
+  resolvePromptWithFallback,
+  resolvePromptWithMetadata,
+} from "../../src/shared/config/prompts/prompt-resolver.service";
 import {
   SYLLABUS_PROMPT_CODE,
   SYLLABUS_RESEARCH_PROMPT_CODE,
@@ -51,24 +54,6 @@ function buildCorrectionRules(objectiveCount: number) {
         3. Verbos Bloom: Cada 'objective_specific' de las lecciones DEBE iniciar con un verbo de acción (Bloom) en infinitivo o tercera persona (ej: Analizar, Evalúa, Diseñar).
         4. No Duplicados: No repitas títulos de lecciones ni objetivos.
         `;
-}
-
-function buildSyllabusPrompt(
-  promptTemplate: string,
-  ideaCentral: string,
-  objetivos: string[],
-  route: string | undefined,
-  researchContext: string,
-) {
-  const contextWithResearch = `${getSyllabusRouteContext(route)}\n\n### INVESTIGACIÓN RECIENTE:\n${researchContext}\n\n${buildCorrectionRules(objetivos.length)}`;
-  const objetivosFormatted = objetivos
-    .map((objetivo, index) => `${index + 1}. ${objetivo}`)
-    .join("\n");
-
-  return promptTemplate.replace("{{ideaCentral}}", ideaCentral)
-    .replace("{{objetivos}}", objetivosFormatted)
-    .replace("{{routeContext}}", contextWithResearch)
-    .replace(/{{.*?}}/g, "");
 }
 
 function appendValidationFeedback(prompt: string, validationErrors: string[]) {
@@ -134,6 +119,8 @@ export const handler: Handler = async (event) => {
     route,
     iterationInstructions,
     iterationNumber,
+    promptOverride,
+    sourceDocuments = [],
   } = parsedBody.data;
 
   console.log(
@@ -235,7 +222,7 @@ export const handler: Handler = async (event) => {
       syllabusResearchPromptDefault,
       promptOrganizationId,
     );
-    const syllabusPromptTemplate = await resolvePromptWithFallback(
+    const resolvedSyllabusPrompt = await resolvePromptWithMetadata(
       supabase,
       SYLLABUS_PROMPT_CODE,
       SYLLABUS_PROMPT,
@@ -279,13 +266,15 @@ export const handler: Handler = async (event) => {
     }
 
     const mainModelName = modelConfig.model;
-    const basePrompt = buildSyllabusPrompt(
-      syllabusPromptTemplate,
+    const basePrompt = buildSyllabusGenerationPrompt({
+      promptTemplate: promptOverride?.trim() || resolvedSyllabusPrompt.content,
       ideaCentral,
       objetivos,
       route,
       researchContext,
-    ) + (iterationInstructions?.trim()
+      sourceDocuments,
+      additionalContext: buildCorrectionRules(objetivos.length),
+    }) + (iterationInstructions?.trim()
       ? `\n\nRETROALIMENTACION PARA ESTA ITERACION:\n${iterationInstructions.trim()}\nRegenera el temario completo aplicando esta retroalimentacion.`
       : "");
 
@@ -367,6 +356,21 @@ export const handler: Handler = async (event) => {
       generated_at: new Date().toISOString(),
       validation_attempts: attempts,
       final_validation_errors: validationErrors,
+      files: sourceDocuments.map((document) => ({
+        character_count: document.characterCount,
+        file_id: document.fileId,
+        filename: document.filename,
+        mime: document.mimeType,
+        size_bytes: document.sizeBytes,
+      })),
+      source_documents: sourceDocuments,
+      prompt_override_applied: Boolean(promptOverride?.trim()),
+      prompt_source: promptOverride?.trim()
+        ? "override"
+        : resolvedSyllabusPrompt.source,
+      prompt_version: promptOverride?.trim()
+        ? "ad-hoc"
+        : resolvedSyllabusPrompt.version,
     };
 
     content.generation_metadata = metadata;
@@ -374,6 +378,7 @@ export const handler: Handler = async (event) => {
     const { error: syllabusError } = await supabase.from("syllabus").upsert(
       {
         artifact_id: artifactId,
+        route,
         modules: content.modules,
         source_summary: metadata,
         state: "STEP_REVIEW",

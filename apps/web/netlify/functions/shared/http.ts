@@ -3,6 +3,7 @@ import {
   verifyBackgroundPayloadEnvelope,
   type SignedBackgroundPayload,
 } from "../../../src/lib/server/background-payload-signature";
+import { isLocalBackgroundInvocation } from "../../../src/lib/server/background-request-environment";
 import { createServiceRoleClient } from "./bootstrap";
 
 export function jsonResponse(
@@ -40,6 +41,14 @@ export function parseJsonBody<TData>(event: HandlerEvent): TData {
 export async function parseVerifiedBackgroundBody<TData>(event: HandlerEvent): Promise<TData> {
   const envelope = parseJsonBody<SignedBackgroundPayload>(event);
   const verified = verifyBackgroundPayloadEnvelope<TData>(envelope);
+  if (isLocalBackgroundInvocation({
+    netlify: process.env.NETLIFY,
+    nodeEnv: process.env.NODE_ENV,
+    rawUrl: event.rawUrl,
+  })) {
+    return verified.value;
+  }
+
   const admin = createServiceRoleClient();
   const { data: accepted, error } = await admin.rpc(
     "consume_background_request_nonce",

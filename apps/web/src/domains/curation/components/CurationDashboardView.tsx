@@ -26,7 +26,6 @@ export interface CurationModalConfig {
 }
 
 interface CurationDashboardViewProps {
-  canReview: boolean;
   curationApproved: boolean;
   curationBlocked: boolean;
   curationState?: string | null;
@@ -35,74 +34,51 @@ interface CurationDashboardViewProps {
   isValidating: boolean;
   invalidRowsCount: number;
   modalConfig: CurationModalConfig;
-  onApprove: () => Promise<void> | void;
   onContinue?: () => Promise<void> | void;
   onDismissDirty: () => Promise<void> | void;
   onIterateDirty: () => Promise<void> | void;
   onModalClose: () => void;
   onRegenerate: () => Promise<void> | void;
-  onIterateInvalidSources: () => Promise<void> | void;
-  onReject: () => Promise<void> | void;
   onResetStep: () => void;
   onResume: () => Promise<void> | void;
-  onValidate: () => Promise<void> | void;
   pendingValidationCount: number;
   missingCoverageCount: number;
+  completedLessonsCount: number;
+  coveredRequiredSources: number;
   lessons: CurationLessonOption[];
-  reviewNotes: string;
   rows: CurationRow[];
-  setReviewNotes: (value: string) => void;
-  updateRow: (rowId: string, updates: Partial<CurationRow>) => Promise<void>;
-  deleteRow: (rowId: string) => Promise<void>;
-  addManualUrl: (
-    lesson: { lessonId: string; lessonTitle: string },
-    url: string,
-  ) => Promise<boolean>;
-  addManualPdf: (
-    lesson: { lessonId: string; lessonTitle: string },
-    file: File,
-  ) => Promise<boolean>;
-  validateRow: (rowId: string) => Promise<boolean>;
   upstreamDirty: boolean;
   upstreamDirtySource?: string | null;
-  validatedCount: number;
+  requiredSourcesCount: number;
+  totalLessonsCount: number;
 }
 
 export function CurationDashboardView({
-  canReview,
   curationApproved,
   curationBlocked,
   curationState,
-  deleteRow,
   isGenerating,
   isLoadingModal,
   isValidating,
   invalidRowsCount,
   modalConfig,
-  onApprove,
   onContinue,
   onDismissDirty,
   onIterateDirty,
   onModalClose,
   onRegenerate,
-  onIterateInvalidSources,
-  onReject,
   onResetStep,
   onResume,
-  onValidate,
   pendingValidationCount,
   missingCoverageCount,
+  completedLessonsCount,
+  coveredRequiredSources,
   lessons,
-  reviewNotes,
   rows,
-  setReviewNotes,
-  updateRow,
   upstreamDirty,
   upstreamDirtySource,
-  validatedCount,
-  addManualUrl,
-  addManualPdf,
-  validateRow,
+  requiredSourcesCount,
+  totalLessonsCount,
 }: CurationDashboardViewProps) {
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in duration-500">
@@ -112,7 +88,7 @@ export function CurationDashboardView({
             <div className="p-2 rounded-lg bg-gray-50 dark:bg-[#0A0D12] border border-gray-200 dark:border-[var(--engine-surface-hover)] text-[var(--engine-accent)]">
               <BookOpen size={24} />
             </div>
-            Paso 4: Curaduria de Fuentes (Fase 2)
+            Paso 4: Curaduria de Fuentes
           </h2>
           <p className="text-gray-500 dark:text-[var(--engine-muted)] text-base ml-12">
             Fuentes de calidad encontradas para cada leccion.
@@ -141,13 +117,8 @@ export function CurationDashboardView({
 
       <CurationDashboard
         rows={rows}
-        onUpdateRow={updateRow}
-        onDeleteRow={deleteRow}
         isGenerating={isGenerating}
         lessons={lessons}
-        onAddUrl={addManualUrl}
-        onAddPdf={addManualPdf}
-        onRevalidate={validateRow}
       />
 
       {upstreamDirty && (
@@ -160,24 +131,19 @@ export function CurationDashboardView({
       )}
 
       <CurationReviewPanel
-        canReview={canReview}
         curationApproved={curationApproved}
         curationBlocked={curationBlocked}
         isGenerating={isGenerating}
         isValidating={isValidating}
         invalidRowsCount={invalidRowsCount}
-        onApprove={onApprove}
         onContinue={onContinue}
-        onIterateInvalidSources={onIterateInvalidSources}
         onRegenerate={onRegenerate}
-        onReject={onReject}
-        onValidate={onValidate}
         pendingValidationCount={pendingValidationCount}
         missingCoverageCount={missingCoverageCount}
-        reviewNotes={reviewNotes}
-        setReviewNotes={setReviewNotes}
-        rowsLength={rows.length}
-        validatedCount={validatedCount}
+        completedLessonsCount={completedLessonsCount}
+        coveredRequiredSources={coveredRequiredSources}
+        requiredSourcesCount={requiredSourcesCount}
+        totalLessonsCount={totalLessonsCount}
       />
 
       <ConfirmationModal

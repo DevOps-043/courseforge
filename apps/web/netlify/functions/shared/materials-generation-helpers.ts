@@ -92,6 +92,36 @@ const DEFAULT_QUIZ_SPEC: QuizSpec = {
   types: ["MULTIPLE_CHOICE", "TRUE_FALSE"],
 };
 
+function normalizeLessonReference(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (
+    !normalized ||
+    normalized.toLowerCase() === "undefined" ||
+    normalized.toLowerCase() === "null"
+  ) {
+    return null;
+  }
+
+  return normalized.replace(/-G\d+$/i, "");
+}
+
+function normalizeLessonTitle(value: string | null | undefined) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+export function buildMaterialLessonId(
+  lessonId: string | null | undefined,
+  index: number,
+) {
+  const canonicalId = normalizeLessonReference(lessonId) || `lesson-${index}`;
+  return `${canonicalId}-G${index}`;
+}
+
 function wait(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -135,9 +165,14 @@ export function matchesLesson(
   candidate: Pick<CurationRowRecord, "lesson_id" | "lesson_title">,
   lesson: Pick<MaterialLessonRecord, "lesson_id" | "lesson_title">,
 ) {
+  const candidateId = normalizeLessonReference(candidate.lesson_id);
+  const lessonId = normalizeLessonReference(lesson.lesson_id);
+  const candidateTitle = normalizeLessonTitle(candidate.lesson_title);
+  const lessonTitle = normalizeLessonTitle(lesson.lesson_title);
+
   return (
-    candidate.lesson_id === lesson.lesson_id ||
-    candidate.lesson_title === lesson.lesson_title
+    (Boolean(candidateId) && candidateId === lessonId) ||
+    (Boolean(candidateTitle) && candidateTitle === lessonTitle)
   );
 }
 
@@ -558,17 +593,55 @@ export async function findOrCreateMaterialLesson(
   index: number,
   logPrefix: string,
 ) {
-  const lessonId = `${lessonPlan.lesson_id || `L${index}`}-G${index}`;
+  const lessonId = buildMaterialLessonId(lessonPlan.lesson_id, index);
 
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("material_lessons")
     .select("*")
     .eq("materials_id", materialsId)
     .eq("lesson_id", lessonId)
     .maybeSingle();
 
+  if (existingError) {
+    throw existingError;
+  }
+
   if (existing) {
     return existing;
+  }
+
+  // Repair rows created by the former `${undefined}-Gx` fallback instead of
+  // duplicating every lesson when a stopped generation is restarted.
+  const { data: legacyRows, error: legacyError } = await supabase
+    .from("material_lessons")
+    .select("*")
+    .eq("materials_id", materialsId)
+    .eq("lesson_title", lessonPlan.lesson_title)
+    .limit(1);
+
+  if (legacyError) {
+    throw legacyError;
+  }
+
+  const legacy = legacyRows?.[0] as MaterialLessonRecord | undefined;
+  if (legacy && /^(?:undefined|null)-G\d+$/i.test(legacy.lesson_id)) {
+    const { data: repaired, error: repairError } = await supabase
+      .from("material_lessons")
+      .update({
+        lesson_id: lessonId,
+        module_id: normalizeLessonReference(lessonPlan.module_id) || `mod-${index}`,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", legacy.id)
+      .select()
+      .single();
+
+    if (repairError) {
+      throw repairError;
+    }
+
+    console.log(`${logPrefix} Repaired legacy lesson id: ${legacy.lesson_id} -> ${lessonId}`);
+    return repaired;
   }
 
   const { data: created, error } = await supabase
@@ -577,7 +650,7 @@ export async function findOrCreateMaterialLesson(
       materials_id: materialsId,
       lesson_id: lessonId,
       lesson_title: lessonPlan.lesson_title,
-      module_id: lessonPlan.module_id || `mod-${index}`,
+      module_id: normalizeLessonReference(lessonPlan.module_id) || `mod-${index}`,
       module_title: lessonPlan.module_title,
       oa_text: lessonPlan.oa_text,
       expected_components: (lessonPlan.components || []).map(

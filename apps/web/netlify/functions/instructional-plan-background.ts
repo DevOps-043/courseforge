@@ -35,6 +35,7 @@ import {
   type GeneratedInstructionalPlanBlocker,
   type GeneratedInstructionalPlanLesson,
 } from "../../src/domains/plan/lib/instructional-plan-generation.schema";
+import { buildInstructionalPlanContextPrompt } from "../../src/domains/plan/lib/instructional-plan-prompt";
 
 type BackgroundSupabaseClient = SupabaseClient;
 type GeneratedLessonPlan = GeneratedInstructionalPlanLesson;
@@ -88,31 +89,6 @@ function normalizeSyllabusModules(rawModules: unknown): SyllabusModuleRecord[] {
   }
 
   return modules;
-}
-
-function buildContextPromptTemplate(params: {
-  configuredPrompt: string;
-  customPrompt?: string;
-  iterationInstructions?: string;
-  useCustomPrompt?: boolean;
-}) {
-  const {
-    configuredPrompt,
-    customPrompt,
-    iterationInstructions,
-    useCustomPrompt,
-  } = params;
-
-  const basePrompt =
-    useCustomPrompt && customPrompt && customPrompt.trim().length > 0
-      ? customPrompt
-      : configuredPrompt || instructionalPlanContextPromptDefault;
-
-  if (!iterationInstructions?.trim()) {
-    return basePrompt;
-  }
-
-  return `${basePrompt}\n\nRETROALIMENTACION PARA ESTA ITERACION:\n${iterationInstructions.trim()}\nRegenera el plan completo aplicando esta retroalimentacion.`;
 }
 
 function renderLessonsText(lessons: SyllabusLessonRecord[]) {
@@ -263,12 +239,21 @@ async function generateModulePlans(params: {
     temperature,
   });
 
-  const moduleLessonPlans = result.object.lesson_plans.map((lessonPlan) => ({
-    ...lessonPlan,
-    module_id: module.id || `mod-${moduleIndex}`,
-    module_title: module.title,
-    module_index: moduleIndex,
-  })) as GeneratedLessonPlan[];
+  const moduleLessonPlans = result.object.lesson_plans.map((lessonPlan, lessonIndex) => {
+    const syllabusLesson = lessons[lessonIndex];
+    return {
+      ...lessonPlan,
+      // IDs are pipeline keys, not generative content. Preserve the syllabus
+      // identity even if the model emits the literal string "undefined".
+      lesson_id:
+        syllabusLesson?.id ||
+        `lesson-${moduleIndex + 1}-${lessonIndex + 1}`,
+      lesson_title: syllabusLesson?.title || lessonPlan.lesson_title,
+      module_id: module.id || `mod-${moduleIndex}`,
+      module_title: module.title,
+      module_index: moduleIndex,
+    };
+  }) as GeneratedLessonPlan[];
   const lessonPlans = applyVideoDurationPolicyToPlan(
     moduleLessonPlans,
     videoDurationPolicy,
@@ -361,8 +346,8 @@ export const handler: Handler = async (event) => {
         ),
       ]);
 
-    const contextPromptTemplate = buildContextPromptTemplate({
-      configuredPrompt: contextPromptTemplateFromDb,
+    const contextPromptTemplate = buildInstructionalPlanContextPrompt({
+      configuredPrompt: contextPromptTemplateFromDb || instructionalPlanContextPromptDefault,
       customPrompt: body.customPrompt,
       iterationInstructions: body.iterationInstructions,
       useCustomPrompt: body.useCustomPrompt,

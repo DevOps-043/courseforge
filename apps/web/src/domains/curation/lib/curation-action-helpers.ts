@@ -26,10 +26,7 @@ export function mapCurationStatus(status: string) {
   let finalStatus = status;
   let decision = "PENDING";
 
-  if (
-    status === PLAN_STATES.APPROVED ||
-    status === CURATION_STATES.APPROVED
-  ) {
+  if (status === PLAN_STATES.APPROVED || status === CURATION_STATES.APPROVED) {
     finalStatus = CURATION_STATES.APPROVED;
     decision = "APPROVED";
   } else if (
@@ -99,6 +96,7 @@ interface TriggerCurationGenerationParams {
   gaps: string[];
   ideaCentral?: string | null;
   resume: boolean;
+  customPrompt?: string;
 }
 
 export async function triggerCurationGeneration({
@@ -111,6 +109,7 @@ export async function triggerCurationGeneration({
   gaps,
   ideaCentral,
   resume,
+  customPrompt,
 }: TriggerCurationGenerationParams) {
   return callBackgroundFunctionJson(
     "curation-background",
@@ -124,6 +123,7 @@ export async function triggerCurationGeneration({
       attemptNumber,
       gaps,
       resume,
+      customPrompt,
     },
     {
       fallbackError: "Error al iniciar la curaduria",
@@ -133,7 +133,10 @@ export async function triggerCurationGeneration({
   );
 }
 
-export async function triggerCurationValidation(artifactId: string, userToken: string) {
+export async function triggerCurationValidation(
+  artifactId: string,
+  userToken: string,
+) {
   return callBackgroundFunctionJson(
     "validate-curation-background",
     {

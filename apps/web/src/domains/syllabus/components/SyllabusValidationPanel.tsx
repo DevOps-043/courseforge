@@ -14,6 +14,34 @@ export function SyllabusValidationPanel({
 }: SyllabusValidationPanelProps) {
   return (
     <div className="space-y-6 animate-in fade-in zoom-in-95 duration-200">
+      {metadata?.files && metadata.files.length > 0 ? (
+        <div className="rounded-2xl border border-[var(--engine-accent)]/20 bg-white p-6 dark:bg-[var(--engine-surface-solid)]">
+          <h4 className="mb-1 text-sm font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">
+            Documentos fuente principales
+          </h4>
+          <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+            Estos documentos se usaron como base prioritaria para estructurar el temario.
+          </p>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {metadata.files.map((file) => (
+              <li
+                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-white/10 dark:bg-white/5"
+                key={file.file_id}
+              >
+                <p className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
+                  {file.filename}
+                </p>
+                {file.character_count ? (
+                  <p className="mt-1 text-xs text-gray-500">
+                    {file.character_count.toLocaleString("es-MX")} caracteres procesados
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="bg-white dark:bg-[var(--engine-surface-solid)] rounded-2xl border border-gray-200 dark:border-white/5 p-6 space-y-4">
         <h4 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4">
           Reglas de Calidad (Agentic Checks)

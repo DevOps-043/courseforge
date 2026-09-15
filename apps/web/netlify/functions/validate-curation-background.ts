@@ -1,18 +1,30 @@
 import { Handler } from "@netlify/functions";
-import { createServiceRoleClient } from "./shared/bootstrap";
+import {
+  createServiceRoleClient,
+  getOptionalOpenAiApiKey,
+  getSupabaseServiceKey,
+  getSupabaseUrl,
+} from "./shared/bootstrap";
+import { processUnifiedCuration } from "./unified-curation-logic";
 import {
   validateAndPersistCurationSource,
   type PersistedCurationSource,
 } from "./shared/curation-v2/sources";
 import { getErrorMessage } from "./shared/errors";
-import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from "./shared/http";
+import {
+  methodNotAllowedResponse,
+  parseVerifiedBackgroundBody,
+  unauthorizedBackgroundResponse,
+} from "./shared/http";
 
 const handler: Handler = async (event) => {
   if (event.httpMethod !== "POST") return methodNotAllowedResponse();
 
   let artifactId: string | undefined;
   try {
-    artifactId = (await parseVerifiedBackgroundBody<{ artifactId?: string }>(event)).artifactId;
+    artifactId = (
+      await parseVerifiedBackgroundBody<{ artifactId?: string }>(event)
+    ).artifactId;
   } catch {
     return unauthorizedBackgroundResponse();
   }
@@ -22,7 +34,6 @@ const handler: Handler = async (event) => {
 
   const supabase = createServiceRoleClient();
   try {
-
     const { data: curation, error: curationError } = await supabase
       .from("curation")
       .select("id")
@@ -38,7 +49,10 @@ const handler: Handler = async (event) => {
 
     await supabase
       .from("curation")
-      .update({ state: "PHASE2_VALIDATING", updated_at: new Date().toISOString() })
+      .update({
+        state: "PHASE2_VALIDATING",
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", curation.id);
 
     const { data: rows, error: rowsError } = await supabase
@@ -75,17 +89,27 @@ const handler: Handler = async (event) => {
       processed += 1;
     }
 
-    await supabase
-      .from("curation")
-      .update({
-        state: "PHASE2_READY_FOR_QA",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", curation.id);
+    const openAiApiKey = getOptionalOpenAiApiKey();
+    if (!openAiApiKey) {
+      throw new Error("OPENAI_API_KEY is required for autonomous curation.");
+    }
+    const inserted = await processUnifiedCuration({
+      artifactId,
+      curationId: curation.id,
+      openAiApiKey,
+      resume: true,
+      supabaseUrl: getSupabaseUrl(),
+      supabaseKey: getSupabaseServiceKey(),
+    });
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ success: true, processed, mode: "curation-v2" }),
+      body: JSON.stringify({
+        success: true,
+        processed,
+        inserted,
+        mode: "autonomous-curation-v2",
+      }),
     };
   } catch (error) {
     console.error("[Curation V2 Validation] Error:", error);
@@ -93,7 +117,13 @@ const handler: Handler = async (event) => {
       await supabase
         .from("curation")
         .update({
-          state: "PHASE2_READY_FOR_QA",
+          state: "PHASE2_BLOCKED",
+          qa_decision: {
+            decision: "BLOCKED",
+            notes: `La validacion y reposicion automatica fallo: ${getErrorMessage(error)}`,
+            reviewed_by: "gpt:auto",
+            reviewed_at: new Date().toISOString(),
+          },
           updated_at: new Date().toISOString(),
         })
         .eq("artifact_id", artifactId);

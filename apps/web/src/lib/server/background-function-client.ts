@@ -5,6 +5,7 @@ import {
   signBackgroundPayload,
   type SignedBackgroundPayload,
 } from "@/lib/server/background-payload-signature";
+import { buildLocalBackgroundHandlerUrl } from "@/lib/server/background-request-environment";
 import { isProductionEnvironment } from "@/lib/server/env";
 
 type BackgroundFunctionPayload = Record<string, unknown>;
@@ -155,7 +156,7 @@ async function tryLocalHandler<TData>(
       path: `/.netlify/functions/${functionName}`,
       queryStringParameters: {},
       rawQuery: "",
-      rawUrl: `${getBackgroundFunctionsBaseUrl()}/.netlify/functions/${functionName}`,
+      rawUrl: buildLocalBackgroundHandlerUrl(functionName),
     },
     {},
   );

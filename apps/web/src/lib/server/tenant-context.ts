@@ -10,6 +10,7 @@ import {
   mapOrganizationRoleToPlatformRole,
   normalizePlatformRole,
 } from "@/utils/auth/platform-role";
+import { runTenantLookupWithRetry } from "@/lib/server/tenant-lookup-retry";
 
 export interface TenantContext {
   organizationId: string;
@@ -96,12 +97,14 @@ function getOrganizationBySlug(
 }
 
 const getProfilePlatformRole = cache(async (userId: string) => {
-  const admin = getAdminClient();
-  const { data, error } = await admin
-    .from("profiles")
-    .select("platform_role")
-    .eq("id", userId)
-    .maybeSingle();
+  const { data, error } = await runTenantLookupWithRetry(async () => {
+    const admin = getAdminClient();
+    return admin
+      .from("profiles")
+      .select("platform_role")
+      .eq("id", userId)
+      .maybeSingle();
+  });
 
   if (error) {
     logTenantLookupError("Error loading profile role", error);
@@ -115,13 +118,15 @@ export const getOrganizationPlatformRole = cache(async (
   userId: string,
   organizationId: string,
 ) => {
-  const admin = getAdminClient();
-  const { data, error } = await admin
-    .from("organization_user_roles")
-    .select("platform_role")
-    .eq("user_id", userId)
-    .eq("organization_id", organizationId)
-    .maybeSingle();
+  const { data, error } = await runTenantLookupWithRetry(async () => {
+    const admin = getAdminClient();
+    return admin
+      .from("organization_user_roles")
+      .select("platform_role")
+      .eq("user_id", userId)
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+  });
 
   if (error) {
     logTenantLookupError("Error loading organization role", error);
@@ -190,10 +195,10 @@ export const resolveTenantContext = cache(async (
     return null;
   }
 
-  const profilePlatformRole = await getProfilePlatformRole(bridgeUser.id);
+  const signedPlatformRole = normalizePlatformRole(bridgeUser.platform_role);
   const platformRole =
-    normalizePlatformRole(bridgeUser.platform_role) ||
-    normalizePlatformRole(profilePlatformRole);
+    signedPlatformRole ||
+    normalizePlatformRole(await getProfilePlatformRole(bridgeUser.id));
   const storedOrganizationPlatformRole = await getOrganizationPlatformRole(
     bridgeUser.id,
     organization.id,
