@@ -106,6 +106,7 @@ export function normalizeVideoDurationContent(
 export function validateVideoDurationContent(
   content: unknown,
   contract: VideoDurationContract,
+  scope: "script" | "complete" = "complete",
 ): VideoDurationValidationResult {
   const record = asRecord(content);
   const script = asRecord(record?.script ?? record?.video_script);
@@ -185,7 +186,7 @@ export function validateVideoDurationContent(
     });
   }
 
-  if (storyboard.length < contract.minimumStoryboardTakes) {
+  if (scope === "complete" && storyboard.length < contract.minimumStoryboardTakes) {
     issues.push({
       code: "STORYBOARD_TOO_SHORT",
       message: `El storyboard tiene ${storyboard.length} tomas; requiere al menos ${contract.minimumStoryboardTakes} para la cadencia configurada.`,
@@ -193,7 +194,7 @@ export function validateVideoDurationContent(
   }
 
   const brollTakes = storyboard.filter((item) => normalizeVisualType(item.visual_type).includes("B_ROLL")).length;
-  if (brollTakes < contract.minimumBrollTakes) {
+  if (scope === "complete" && brollTakes < contract.minimumBrollTakes) {
     issues.push({
       code: "INSUFFICIENT_BROLL_COVERAGE",
       message: `El storyboard contiene ${brollTakes} tomas de B-roll; requiere al menos ${contract.minimumBrollTakes} para este tipo y duración.`,
@@ -212,14 +213,14 @@ export function validateVideoDurationContent(
   }
 
   const storyboardTimelineIssue = findTimelineIssue(storyboard, scriptDurationSeconds, false);
-  if (storyboardTimelineIssue) {
+  if (scope === "complete" && storyboardTimelineIssue) {
     issues.push({
       code: "INVALID_STORYBOARD_TIMECODES",
       message: `Timecodes inválidos en el storyboard: ${storyboardTimelineIssue}`,
     });
   }
 
-  if (normalizeNarration(scriptNarration) !== normalizeNarration(storyboardNarration)) {
+  if (scope === "complete" && normalizeNarration(scriptNarration) !== normalizeNarration(storyboardNarration)) {
     issues.push({
       code: "STORYBOARD_COVERAGE_MISMATCH",
       message: "La narración del storyboard no reproduce íntegramente el guion en el mismo orden.",
@@ -283,13 +284,13 @@ function parseTimecode(value: unknown) {
   return minutes * 60 + seconds;
 }
 
-function formatTimecode(totalSeconds: number) {
+export function formatTimecode(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function allocateIntegerDuration(weights: number[], totalSeconds: number) {
+export function allocateIntegerDuration(weights: number[], totalSeconds: number) {
   if (weights.length === 0) return [];
   const safeWeights = weights.map((weight) => Math.max(0, weight));
   const weightTotal = safeWeights.reduce((total, weight) => total + weight, 0);
@@ -364,7 +365,7 @@ function countWords(text: string) {
   return text.split(/\s+/).filter(Boolean).length;
 }
 
-function countEditorialCharacters(text: string) {
+export function countEditorialCharacters(text: string) {
   return text
     .replace(/<[^>]*>/g, " ")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")

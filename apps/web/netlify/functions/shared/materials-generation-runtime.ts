@@ -1,29 +1,24 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   ComponentType,
-  MaterialsGenerationInput,
-  MaterialsGenerationOutput,
 } from "../../../src/domains/materials/types/materials.types";
 import { signBackgroundPayload } from "../../../src/lib/server/background-payload-signature";
 import { shouldDispatchBackgroundInProcess } from "../../../src/lib/server/background-request-environment";
 import {
   resolveArtifactVideoDurationPolicy,
-  isVideoComponentType,
   type VideoDurationContract,
   type VideoDurationPolicy,
 } from "../../../src/domains/video-duration/video-duration-policy";
-import { validateVideoDurationContent } from "../../../src/domains/video-duration/video-duration-validation";
-import {
-  buildVideoRepairInstructions,
-  shouldUseVideoRepairCandidate,
-} from "../../../src/domains/materials/validators/material-video.validators";
+import { generateMaterialsByComponent, type MaterialsGenerationResult } from "../../../src/domains/materials/generation/materials-generation.service";
+import { VIDEO_GENERATION_LIMITS } from "../../../src/domains/materials/generation/video-generation.contracts";
+import { generateAndTraceMaterialVideo } from "./materials-video-generation";
+import { saveGeneratedComponents } from "./material-components.repository";
 import { getFunctionsBaseUrl } from "./bootstrap";
 import {
   buildMaterialsGenerationInput,
   findLessonSources,
   findPlanDetails,
   generateWithRetry,
-  saveGeneratedComponents,
   type CurationRowRecord,
   type LessonPlanRecord,
   type MaterialLessonRecord,
@@ -37,121 +32,12 @@ export const PROCESS_NEXT_DELAY_MS = 8000;
 export const START_JITTER_MS = 3000;
 
 export interface MaterialsGenerationContext {
+  artifactId: string;
   lessonPlans: LessonPlanRecord[];
   lessonSources: CurationRowRecord[];
   videoDurationPolicy: VideoDurationPolicy;
 }
 
-type MaterialsGenerationResult = Awaited<ReturnType<typeof generateWithRetry>>;
-
-async function repairInvalidGeneratedVideos(params: {
-  componentTypes?: string[];
-  input: MaterialsGenerationInput;
-  logPrefix: string;
-  models: string[];
-  modelRuntimeConfig: MaterialsModelRuntimeConfig;
-  organizationId?: string | null;
-  result: MaterialsGenerationResult;
-  supabase: SupabaseClient;
-}): Promise<MaterialsGenerationResult> {
-  const {
-    componentTypes,
-    input,
-    logPrefix,
-    models,
-    modelRuntimeConfig,
-    organizationId,
-    result,
-    supabase,
-  } = params;
-  if (!result.success) return result;
-
-  let repairedOutput: MaterialsGenerationOutput = result.content;
-  for (const component of input.lesson.components) {
-    if (!component.duration_contract || !isVideoComponentType(component.type)) {
-      continue;
-    }
-    if (componentTypes && !componentTypes.includes(component.type)) {
-      continue;
-    }
-
-    const initialContent = repairedOutput.components[component.type];
-    if (!initialContent) continue;
-    const initialValidation = validateVideoDurationContent(
-      initialContent,
-      component.duration_contract,
-    );
-    if (initialValidation.valid) continue;
-
-    console.warn(
-      `${logPrefix} Repairing ${component.type} after ${initialValidation.issues.length} duration validation issue(s)`,
-    );
-    const repairInput: MaterialsGenerationInput = {
-      ...input,
-      fix_instructions: buildVideoRepairInstructions(
-        component.type,
-        component.duration_contract,
-        initialValidation.issues.map(
-          (issue) => `${issue.code}: ${issue.message}`,
-        ),
-      ),
-      lesson: {
-        ...input.lesson,
-        components: [component],
-      },
-    };
-    const repairResult = await generateWithRetry(
-      repairInput,
-      `${logPrefix} [Video repair]`,
-      models,
-      modelRuntimeConfig,
-      supabase,
-      [component.type],
-      organizationId,
-    );
-    if (!repairResult.success) {
-      console.warn(`${logPrefix} ${component.type} repair request failed: ${repairResult.error}`);
-      continue;
-    }
-
-    const candidateContent = repairResult.content.components[component.type];
-    if (!candidateContent) {
-      console.warn(`${logPrefix} ${component.type} repair returned no component`);
-      continue;
-    }
-    const candidateValidation = validateVideoDurationContent(
-      candidateContent,
-      component.duration_contract,
-    );
-    const candidateIsBetter = shouldUseVideoRepairCandidate(
-      initialValidation,
-      candidateValidation,
-    );
-    if (!candidateIsBetter) {
-      console.warn(
-        `${logPrefix} ${component.type} repair is still invalid; preserving the original for QA`,
-      );
-      continue;
-    }
-
-    repairedOutput = {
-      ...repairedOutput,
-      components: {
-        ...repairedOutput.components,
-        [component.type]: candidateContent,
-      },
-      source_refs_used: Array.from(new Set([
-        ...(repairedOutput.source_refs_used || []),
-        ...(repairResult.content.source_refs_used || []),
-      ])),
-    };
-    console.log(
-      `${logPrefix} ${component.type} repair ${candidateValidation.valid ? "passed" : `reduced issues to ${candidateValidation.issues.length}`}`,
-    );
-  }
-
-  return { success: true as const, content: repairedOutput };
-}
 
 export function wait(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -161,12 +47,12 @@ export async function loadLessonPlans(
   supabase: SupabaseClient,
   artifactId: string,
 ): Promise<LessonPlanRecord[]> {
-  const { data: planRecord } = await supabase
+  const { data: planRecord, error } = await supabase
     .from("instructional_plans")
     .select("lesson_plans")
     .eq("artifact_id", artifactId)
     .single();
-
+  if (error) throw error;
   return (planRecord?.lesson_plans || []) as LessonPlanRecord[];
 }
 
@@ -174,22 +60,22 @@ export async function loadAptaSources(
   supabase: SupabaseClient,
   artifactId: string,
 ): Promise<CurationRowRecord[]> {
-  const { data: curationRecord } = await supabase
+  const { data: curationRecord, error: curationError } = await supabase
     .from("curation")
     .select("id")
     .eq("artifact_id", artifactId)
-    .single();
-
+    .maybeSingle();
+  if (curationError) throw curationError;
   if (!curationRecord) {
     return [];
   }
 
-  const { data: rows } = await supabase
+  const { data: rows, error: rowsError } = await supabase
     .from("curation_rows")
-    .select("*")
+    .select("id, lesson_id, lesson_title, source_title, source_ref, cobertura_completa, source_kind, validation_report")
     .eq("curation_id", curationRecord.id)
     .eq("apta", true);
-
+  if (rowsError) throw rowsError;
   return (rows || []) as CurationRowRecord[];
 }
 
@@ -206,8 +92,9 @@ export async function loadMaterialsGenerationContext(
       .eq("id", artifactId)
       .single(),
   ]);
-
+  if (artifactResult.error) throw artifactResult.error;
   return {
+    artifactId,
     lessonPlans,
     lessonSources,
     videoDurationPolicy: resolveArtifactVideoDurationPolicy(
@@ -294,7 +181,7 @@ export async function setLessonState(
   state: string,
   extras: Record<string, unknown> = {},
 ) {
-  await supabase
+  const { error } = await supabase
     .from("material_lessons")
     .update({
       state,
@@ -302,6 +189,7 @@ export async function setLessonState(
       ...extras,
     })
     .eq("id", lessonId);
+  if (error) throw error;
 }
 
 export async function touchMaterialsRecord(
@@ -339,7 +227,7 @@ export async function processGenerationResult(params: {
   supabase: SupabaseClient;
   lessonId: string;
   lessonTitle: string;
-  result: Awaited<ReturnType<typeof generateWithRetry>>;
+  result: MaterialsGenerationResult;
   iterationNumber: number;
   logPrefix: string;
   onlyTypes?: string[];
@@ -348,17 +236,21 @@ export async function processGenerationResult(params: {
   const { supabase, lessonId, lessonTitle, result, iterationNumber, logPrefix, onlyTypes, durationContractsByType } =
     params;
 
-  if (result.success) {
+  if (result.content && Object.keys(result.content.components).length) {
     await saveGeneratedComponents(
       supabase,
       lessonId,
       result.content,
       iterationNumber,
       logPrefix,
-      onlyTypes,
+      onlyTypes || Object.keys(result.content.components),
       durationContractsByType,
     );
-    await setLessonState(supabase, lessonId, "GENERATED");
+  }
+  if (result.success) {
+    await setLessonState(supabase, lessonId, "GENERATED", {
+      dod: { control3_consistency: "PENDING", control4_sources: "PENDING", control5_quiz: "PENDING", errors: [] },
+    });
     console.log(`${logPrefix} Generated ${lessonTitle}`);
     return { success: true as const };
   }
@@ -422,24 +314,20 @@ export async function generateLessonMaterials(params: {
     console.log(`${logPrefix} Partial regen: ${componentTypes.join(", ")}`);
   }
 
-  const initialResult = await generateWithRetry(
+  const deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.lessonTimeoutMs;
+  const result = await generateMaterialsByComponent({
     input,
-    logPrefix,
-    models,
-    modelRuntimeConfig,
-    supabase,
-    componentTypes,
-    organizationId,
-  );
-  const result = await repairInvalidGeneratedVideos({
-    componentTypes,
-    input,
-    logPrefix,
-    models,
-    modelRuntimeConfig,
-    organizationId,
-    result: initialResult,
-    supabase,
+    generateStandard: (standardInput) => generateWithRetry(
+      standardInput, logPrefix, models, modelRuntimeConfig, supabase,
+      standardInput.lesson.components.map((component) => component.type), organizationId,
+      deadlineMs,
+    ),
+    generateVideo: (componentType, contract) => generateAndTraceMaterialVideo({
+      supabase, input, componentType, contract, models, modelRuntimeConfig, organizationId,
+      artifactId: generationContext.artifactId,
+      lessonId: lesson.id,
+      deadlineMs,
+    }),
   });
   return processGenerationResult({
     supabase,

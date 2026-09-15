@@ -1,6 +1,7 @@
 import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import {
   resolvePrompts,
   assemblePrompt,
@@ -21,20 +22,15 @@ import { MATERIALS_RETRY_BACKOFF_BASE_MS } from "./timing";
 import {
   buildVideoDurationContract,
   isVideoComponentType,
-  resolveVideoDurationValidationMode,
   type VideoDurationPolicy,
   videoDurationContractSchema,
-  type VideoDurationContract,
 } from "../../../src/domains/video-duration/video-duration-policy";
 import {
-  normalizeVideoDurationContent,
-  validateVideoDurationContent,
-} from "../../../src/domains/video-duration/video-duration-validation";
-import {
   buildVideoGenerationGuardrails,
-  validateMaterialVideoComponent,
 } from "../../../src/domains/materials/validators/material-video.validators";
-import { parseModelJsonResponse } from "../../../src/shared/ai/model-json-response";
+import { requestGeminiJson, requestOpenAiJson, type MaterialsModelRuntimeConfig } from "./materials-model-client";
+import { VIDEO_GENERATION_LIMITS } from "../../../src/domains/materials/generation/video-generation.contracts";
+export type { MaterialsModelRuntimeConfig } from "./materials-model-client";
 import { getMaterialsModelProvider } from "../../../src/shared/ai/materials-model-provider";
 import { createGeminiClient, createOpenAiClient } from "./bootstrap";
 
@@ -66,11 +62,6 @@ export interface MaterialLessonRecord {
   quiz_spec?: QuizSpec | null;
   requires_demo_guide?: boolean | null;
   iteration_count?: number | null;
-}
-
-export interface MaterialsModelRuntimeConfig {
-  temperature: number;
-  thinkingLevel: string;
 }
 
 export interface CurationRowRecord {
@@ -251,6 +242,7 @@ export async function generateWithRetry(
   supabase?: SupabaseClient,
   componentTypes?: string[],
   organizationId?: string | null,
+  deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.lessonTimeoutMs,
 ) {
   const modelsToTry = Array.from(new Set(models.filter(Boolean)));
   if (modelsToTry.length === 0) {
@@ -267,6 +259,7 @@ export async function generateWithRetry(
 
   for (let retry = 0; retry < 2; retry++) {
     for (const model of modelsToTry) {
+      if (Date.now() >= deadlineMs) return { success: false as const, error: "MATERIALS_TIME_BUDGET_EXHAUSTED: Se agotó el tiempo de generación de la lección." };
       if (unavailableModels.has(model)) {
         continue;
       }
@@ -290,6 +283,7 @@ export async function generateWithRetry(
               componentTypes,
               organizationId,
               modelRuntimeConfig,
+              deadlineMs,
             )
           : await generateMaterialsWithOpenAI(
               (openAiClient ||= createOpenAiClient()),
@@ -300,6 +294,7 @@ export async function generateWithRetry(
               componentTypes,
               organizationId,
               modelRuntimeConfig,
+              deadlineMs,
             );
         return { success: true as const, content };
       } catch (error) {
@@ -331,7 +326,7 @@ export async function generateWithRetry(
         }
 
         if (message.includes("429") || message.includes("rate limit")) {
-          await wait(MATERIALS_RETRY_BACKOFF_BASE_MS * (retry + 1));
+          await wait(Math.max(0, Math.min(MATERIALS_RETRY_BACKOFF_BASE_MS * (retry + 1), deadlineMs - Date.now())));
           continue;
         }
       }
@@ -360,6 +355,7 @@ export async function generateMaterialsWithGemini(
     temperature: 0.7,
     thinkingLevel: "medium",
   },
+  deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.requestTimeoutMs,
 ) {
   const prompt = await buildMaterialsPrompt(
     input,
@@ -371,21 +367,8 @@ export async function generateMaterialsWithGemini(
 
   console.log(`${logPrefix} Calling ${model} through Gemini`);
 
-  const response = await genAI.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      temperature: modelRuntimeConfig.temperature,
-      maxOutputTokens: 16000,
-      responseMimeType: "application/json",
-    },
-  });
-
-  return parseAndValidateMaterialsOutput(
-    input,
-    response.text,
-    response.candidates?.[0]?.finishReason,
-  );
+  const response = await requestGeminiJson(genAI, model, prompt, modelRuntimeConfig, remainingRequestTime(deadlineMs));
+  return parseAndValidateMaterialsOutput(input, response.content);
 }
 
 export async function generateMaterialsWithOpenAI(
@@ -400,6 +383,7 @@ export async function generateMaterialsWithOpenAI(
     temperature: 0.7,
     thinkingLevel: "medium",
   },
+  deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.requestTimeoutMs,
 ) {
   const prompt = await buildMaterialsPrompt(
     input,
@@ -411,22 +395,14 @@ export async function generateMaterialsWithOpenAI(
 
   console.log(`${logPrefix} Calling ${model} through OpenAI`);
 
-  const response = await client.responses.create({
-    model,
-    input: prompt,
-    max_output_tokens: 16000,
-    reasoning: { effort: normalizeReasoningEffort(modelRuntimeConfig.thinkingLevel) },
-    text: { format: { type: "json_object" } },
-  });
-  const incompleteReason = response.incomplete_details?.reason;
+  const response = await requestOpenAiJson(client, model, prompt, modelRuntimeConfig, remainingRequestTime(deadlineMs));
+  return parseAndValidateMaterialsOutput(input, response.content);
+}
 
-  return parseAndValidateMaterialsOutput(
-    input,
-    response.output_text,
-    response.status === "incomplete" && incompleteReason === "max_output_tokens"
-      ? "MAX_TOKENS"
-      : response.status,
-  );
+function remainingRequestTime(deadlineMs: number) {
+  const remainingMs = deadlineMs - Date.now();
+  if (remainingMs <= 0) throw new Error("MATERIALS_TIME_BUDGET_EXHAUSTED: Se agotó el tiempo de generación de la lección.");
+  return Math.min(remainingMs, VIDEO_GENERATION_LIMITS.requestTimeoutMs);
 }
 
 async function buildMaterialsPrompt(
@@ -497,51 +473,24 @@ async function buildMaterialsPrompt(
   );
 }
 
-function normalizeReasoningEffort(
-  value: string,
-): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
-  const normalized = value.trim().toLowerCase();
-  switch (normalized) {
-    case "none":
-    case "minimal":
-    case "low":
-    case "medium":
-    case "high":
-    case "xhigh":
-      return normalized;
-    default:
-      return "medium";
-  }
-}
-
 function parseAndValidateMaterialsOutput(
   input: MaterialsGenerationInput,
-  responseText?: string | null,
-  finishReason?: string | null,
+  response: unknown,
 ) {
-  const generated = parseModelJsonResponse<MaterialsGenerationOutput>({
-    finishReason,
-    responseText,
-  });
-  normalizeGeneratedVideoDurations(input, generated);
-  reportGeneratedVideoDurationIssues(input, generated);
-  return generated;
-}
-
-function normalizeGeneratedVideoDurations(
-  input: MaterialsGenerationInput,
-  generated: MaterialsGenerationOutput,
-) {
-  const generatedComponents = generated.components as Record<string, unknown>;
-  for (const component of input.lesson.components) {
-    if (!isVideoComponentType(component.type) || !generatedComponents[component.type]) {
-      continue;
-    }
-    generatedComponents[component.type] = normalizeVideoDurationContent(
-      generatedComponents[component.type],
-      component.duration_contract,
-    );
+  const generated = z.object({
+    components: z.record(z.string(), z.record(z.string(), z.unknown())),
+    source_refs_used: z.array(z.string()),
+  }).parse(response);
+  const requested = input.lesson.components.map((component) => component.type);
+  if (requested.some((type) => !generated.components[type])
+      || Object.keys(generated.components).some((type) => !requested.includes(type as ComponentType))) {
+    throw new Error("MATERIALS_COMPONENT_MISMATCH: La respuesta debe incluir exactamente los componentes solicitados.");
   }
+  const sources = new Set(input.sources.map((source) => source.id));
+  if (generated.source_refs_used.some((ref) => !sources.has(ref))) {
+    throw new Error("UNKNOWN_SOURCE_REFS: La respuesta usa fuentes ajenas a la lección.");
+  }
+  return generated as unknown as MaterialsGenerationOutput;
 }
 
 function resolveComponentDurationContract(
@@ -557,33 +506,6 @@ function resolveComponentDurationContract(
       ? parsed.data
       : buildVideoDurationContract(fallbackPolicy, componentType),
   };
-}
-
-function reportGeneratedVideoDurationIssues(
-  input: MaterialsGenerationInput,
-  generated: MaterialsGenerationOutput,
-) {
-  const failures: string[] = [];
-  for (const component of input.lesson.components) {
-    if (!component.duration_contract || !isVideoComponentType(component.type)) continue;
-    const content = generated.components?.[component.type];
-    if (!content) continue;
-    const result = validateVideoDurationContent(content, component.duration_contract);
-    failures.push(...result.issues.map((issue) => `${component.type}/${issue.code}: ${issue.message}`));
-  }
-
-  if (failures.length > 0) {
-    const message = `VIDEO_DURATION_VALIDATION_FAILED: ${failures.join(" | ")}`;
-    const validationMode = resolveVideoDurationValidationMode(
-      process.env.VIDEO_DURATION_VALIDATION_MODE,
-    );
-    console.warn(`[Video Duration] mode=${validationMode} ${message}`);
-    if (validationMode === "enforce") {
-      console.warn(
-        "[Video Duration] Enforcement is deferred until the targeted repair finishes so recoverable output is not discarded.",
-      );
-    }
-  }
 }
 
 export async function findOrCreateMaterialLesson(
@@ -678,77 +600,4 @@ export async function findOrCreateMaterialLesson(
 
   console.log(`${logPrefix} Created: ${lessonId}`);
   return created;
-}
-
-export async function saveGeneratedComponents(
-  supabase: SupabaseClient,
-  lessonId: string,
-  content: MaterialsGenerationOutput,
-  iteration: number,
-  logPrefix: string,
-  onlyTypes?: string[],
-  durationContractsByType: Partial<Record<ComponentType, VideoDurationContract>> = {},
-) {
-  const components = content.components || {};
-  const refs = content.source_refs_used || [];
-  const componentTypesToReplace =
-    onlyTypes && onlyTypes.length > 0 ? onlyTypes : Object.keys(components);
-
-  if (!onlyTypes || componentTypesToReplace.length > 0) {
-    let deleteQuery = supabase
-      .from("material_components")
-      .delete()
-      .eq("material_lesson_id", lessonId);
-
-    if (onlyTypes && onlyTypes.length > 0) {
-      deleteQuery = deleteQuery.in("type", componentTypesToReplace);
-    }
-
-    const { error: deleteError } = await deleteQuery;
-    if (deleteError) {
-      throw deleteError;
-    }
-
-    console.log(
-      `${logPrefix} Replaced existing component(s): ${
-        onlyTypes ? componentTypesToReplace.join(", ") : "all"
-      }`,
-    );
-  }
-
-  for (const [type, data] of Object.entries(components)) {
-    if (!data) {
-      continue;
-    }
-
-    const durationContract = durationContractsByType[type as ComponentType];
-    const componentValidation = validateMaterialVideoComponent(
-      type,
-      data,
-      durationContract,
-    );
-    const { error: insertError } = await supabase.from("material_components").insert({
-      ...(durationContract ? {
-        assets: {
-          assembly_target_duration_seconds: durationContract.targetDurationSeconds,
-          video_duration_contract: durationContract,
-        },
-      } : {}),
-      material_lesson_id: lessonId,
-      type,
-      content: data,
-      source_refs: refs,
-      validation_status: componentValidation.status,
-      validation_errors: componentValidation.errors,
-      iteration_number: iteration,
-    });
-
-    if (insertError) {
-      throw insertError;
-    }
-  }
-
-  console.log(
-    `${logPrefix} Saved ${Object.keys(components).length} component(s)${onlyTypes ? " (partial)" : ""}`,
-  );
 }

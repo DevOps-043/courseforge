@@ -64,7 +64,6 @@ export const videoDurationContractSchema = videoDurationPolicySchema.extend({
 });
 
 export type VideoDurationContract = z.infer<typeof videoDurationContractSchema>;
-export type VideoDurationValidationMode = "enforce" | "warn";
 
 /** Editorial pacing used by the materials prompt before real TTS audio exists. */
 export const VIDEO_NARRATION_CHARACTERS_PER_MINUTE = 900;
@@ -91,8 +90,8 @@ export function buildVideoNarrationCharacterBudget(
     absoluteMaximum: charactersForDuration(contract.maximumDurationSeconds),
     absoluteMinimum: charactersForDuration(contract.minimumDurationSeconds),
     target,
-    targetMaximum: Math.round(target * (1 + VIDEO_NARRATION_TARGET_TOLERANCE_RATIO)),
-    targetMinimum: Math.round(target * (1 - VIDEO_NARRATION_TARGET_TOLERANCE_RATIO)),
+    targetMaximum: Math.min(charactersForDuration(contract.maximumDurationSeconds), Math.round(target * (1 + VIDEO_NARRATION_TARGET_TOLERANCE_RATIO))),
+    targetMinimum: Math.max(charactersForDuration(contract.minimumDurationSeconds), Math.round(target * (1 - VIDEO_NARRATION_TARGET_TOLERANCE_RATIO))),
   };
 }
 
@@ -105,13 +104,6 @@ export function resolveVideoDurationPolicy(value: unknown): VideoDurationPolicy 
   return parsed.success ? parsed.data : { ...DEFAULT_VIDEO_DURATION_POLICY };
 }
 
-export function resolveVideoDurationValidationMode(
-  value: unknown,
-): VideoDurationValidationMode {
-  return typeof value === "string" && value.trim().toLowerCase() === "enforce"
-    ? "enforce"
-    : "warn";
-}
 
 export function resolveArtifactVideoDurationPolicy(metadata: unknown): VideoDurationPolicy {
   if (!isRecord(metadata)) return { ...DEFAULT_VIDEO_DURATION_POLICY };

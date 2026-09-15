@@ -2,11 +2,9 @@ import {
   buildVideoNarrationCharacterBudget,
   isVideoComponentType,
   videoDurationContractSchema,
-  type VideoDurationContract,
 } from "../../video-duration/video-duration-policy";
 import {
   validateVideoDurationContent,
-  type VideoDurationValidationResult,
 } from "../../video-duration/video-duration-validation";
 
 export type MaterialVideoValidationStatus = "FAIL" | "PASS" | "PENDING";
@@ -55,29 +53,6 @@ export function buildVideoGenerationGuardrails(
   ].join("\n");
 }
 
-export function buildVideoRepairInstructions(
-  componentType: string,
-  contract: VideoDurationContract,
-  validationErrors: string[],
-) {
-  const characterBudget = buildVideoNarrationCharacterBudget(contract);
-  return [
-    `Corrige únicamente ${componentType}.`,
-    `Problemas detectados: ${validationErrors.join(" | ")}`,
-    `La narración debe quedar entre ${characterBudget.targetMinimum} y ${characterBudget.targetMaximum} caracteres editoriales, con objetivo ${characterBudget.target}, sin relleno ni repeticiones.`,
-    "No intentes compensar texto insuficiente aumentando duration_seconds; el servidor derivará la duración desde los caracteres.",
-    `El storyboard debe incluir al menos ${contract.minimumStoryboardTakes} tomas, ${contract.minimumBrollTakes} tomas B-roll y cobertura visual suficiente para ${contract.minimumSlideCount} diapositivas potenciales.`,
-    "Todos los timecodes deben iniciar en 00:00, ser contiguos, no solaparse y finalizar exactamente con el guion.",
-    "Conserva información sustantiva, decisiones, estados observables, errores y verificación; no inventes datos ni interfaces.",
-  ].join(" ");
-}
-
-export function shouldUseVideoRepairCandidate(
-  _initial: Pick<VideoDurationValidationResult, "issues" | "valid">,
-  candidate: Pick<VideoDurationValidationResult, "issues" | "valid">,
-) {
-  return candidate.valid;
-}
 
 export function validateMaterialVideoComponent(
   componentType: string,

@@ -5,7 +5,6 @@ import {
   DEFAULT_VIDEO_DURATION_POLICY,
   resolveArtifactVideoDurationPolicy,
   resolveVideoDurationPolicy,
-  resolveVideoDurationValidationMode,
   videoDurationPolicySchema,
   type VideoDurationContract,
 } from "../video-duration-policy";
@@ -74,11 +73,6 @@ test("rejects invalid custom values and falls back safely", () => {
   }), DEFAULT_VIDEO_DURATION_POLICY);
 });
 
-test("keeps validation in warning mode until enforcement is explicitly enabled", () => {
-  assert.equal(resolveVideoDurationValidationMode(undefined), "warn");
-  assert.equal(resolveVideoDurationValidationMode("invalid"), "warn");
-  assert.equal(resolveVideoDurationValidationMode(" ENFORCE "), "enforce");
-});
 
 test("keeps every global video prompt aligned with the centralized duration contract", () => {
   const expectedCodes = [
