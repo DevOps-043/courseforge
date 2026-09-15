@@ -101,7 +101,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
     materials?.state === 'PHASE3_GENERATING' ||
     Boolean(materials?.lessons?.some((lesson) => lesson.state === 'GENERATING'));
 
-  usePolling(loadMaterials, isGenerating, { intervalMs: 8000 });
+  usePolling(loadMaterials, isGenerating || materials?.state === 'PHASE3_VALIDATING', { intervalMs: 8000 });
 
   const startGeneration = useCallback(async () => {
     try {

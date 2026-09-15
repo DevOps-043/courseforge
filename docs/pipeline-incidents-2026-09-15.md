@@ -76,3 +76,28 @@ Para rollback, revertir primero el código de aplicación; las nuevas funciones 
 ## 6. Mejoras adicionales
 
 Como evolución independiente, una cola durable con recuperación programada permitiría reanudar automáticamente ejecuciones tras caídas del proceso. No es una garantía que ofrezca este cambio ni se introdujo una segunda infraestructura de ejecución para corregir estas incidencias.
+
+## Seguimiento: capturas de Publi y Productividad
+
+En la revisión posterior, la base remota ya tenía las funciones de la migración. Se verificó específicamente:
+
+- **Publi** (`66630878-4017-402b-ad46-4f10cc56f61d`): figuraba `ESCALATED` con un error genérico y sin evento persistido del fallo original. Se ejecutó de nuevo la función completa usando su entrada guardada y el modelo de la organización (`gpt-5.6-luna`). Terminó con HTTP 200, estado `APPROVED`, tres nombres y cinco objetivos. No se pudo determinar la causa histórica exacta con los registros disponibles; no se atribuye a créditos. Ahora los fallos guardan etapa, modelo, tipo de error y estado HTTP, sin almacenar cuerpos del proveedor.
+- **Productividad en el mundo corporativo** (`048b83f5-3a59-4df5-a5e0-def7a5ea7ab1`): el padre estaba en `PHASE3_NEEDS_FIX`, pero 16 de sus 20 lecciones conservaban `GENERATING` desde las 17:29–17:44 UTC. El detector anterior solo recuperaba padres en `PHASE3_GENERATING`, por lo que nunca terminaba el indicador de carga de los reintentos individuales.
+
+La recuperación ahora comprueba la fecha de cada lección, independientemente del estado del padre. Una actualización compara ID, estado, iteración y timestamp antes de marcar `NEEDS_FIX`: no pisa un reintento nuevo ni borra componentes. Se recuperaron las 16 ejecuciones antiguas en la base remota, manteniendo los errores de validación previos. Tres lecciones aprobables y una generada se conservaron intactas.
+
+También se corrigió la referencia histórica `undefined-Gn`: se elimina el sufijo antes de detectar el identificador inválido, permitiendo recuperar por título los planes y fuentes de esas lecciones antiguas. Los IDs válidos distintos nunca se asocian por tener el mismo título.
+
+La lectura de materiales ahora propaga fallos de consulta en vez de devolver un curso aparentemente vacío. El polling cubre también la validación. Los tests de recuperación comprueban expiración individual, preservación de errores, lecciones recientes, carreras con nuevas iteraciones y errores de base de datos.
+
+Esta recuperación no aprueba materiales inválidos. Los guiones anteriores que no cumplan el contrato de duración continúan pendientes de corrección. Los cambios adicionales de aplicación deben desplegarse; no requieren una nueva migración.
+
+### Prueba real de corrección de video
+
+La lección 4.2 (`ea805887-1f7f-42f6-8d5b-871596e94533`) reprodujo un segundo problema: los tres intentos del guion excedieron el objetivo de 420 segundos (577, 503 y 522 segundos). Se conservaron los componentes anteriores y la ejecución terminó en `NEEDS_FIX`.
+
+El prompt de corrección ahora calcula presupuestos proporcionales por sección a partir de los caracteres reales del borrador, incluyendo los espacios entre secciones, y ofrece una estimación de palabras basada en su vocabulario. No trunca contenido ni flexibiliza la validación.
+
+Con el mismo modelo y configuración, la siguiente ejecución corrigió 8,683 caracteres a 6,600 en el segundo intento: 440 segundos, dentro de la tolerancia de ±5% respecto a 420. El storyboard pasó en el primer intento. La función completa respondió HTTP 200, guardó únicamente el componente VIDEO_DEMO validado y dejó la lección `GENERATED`, iteración 4. Las llamadas del proveedor sumaron aproximadamente 167 segundos. Esto verifica una corrección real, no la aprobación de todo el curso.
+
+Verificación final: 15 lecciones `NEEDS_FIX`, 3 `APPROVABLE`, 2 `GENERATED`, ninguna `GENERATING`. Pasaron `test:materials-generation`, `test:video-duration`, `typecheck`, `lint`, `build` y `git diff --check`. El build conserva las cuatro advertencias previas de plantillas de producción. Quedan por corregir y validar los demás contenidos pendientes y desplegar el código; no se ejecutó un recorrido autenticado de navegador.

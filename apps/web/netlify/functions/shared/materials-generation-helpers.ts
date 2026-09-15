@@ -85,7 +85,7 @@ const DEFAULT_QUIZ_SPEC: QuizSpec = {
 };
 
 function normalizeLessonReference(value: string | null | undefined) {
-  const normalized = value?.trim();
+  const normalized = value?.trim().replace(/-G\d+$/i, "");
   if (
     !normalized ||
     normalized.toLowerCase() === "undefined" ||
@@ -94,7 +94,7 @@ function normalizeLessonReference(value: string | null | undefined) {
     return null;
   }
 
-  return normalized.replace(/-G\d+$/i, "");
+  return normalized;
 }
 
 function normalizeLessonTitle(value: string | null | undefined) {

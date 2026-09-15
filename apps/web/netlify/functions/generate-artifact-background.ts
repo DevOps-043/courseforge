@@ -94,6 +94,8 @@ export const handler: Handler = async (event) => {
     return unauthorizedBackgroundResponse();
   }
 
+  let stage = "request";
+  let activeModel: string | undefined;
   try {
     const { artifactId, runId, formData, userId, feedback, useGoogleDrive, organizationId } = body;
     const cloudStorageProvider = isCloudStorageProvider(body.cloudStorageProvider)
@@ -150,6 +152,7 @@ export const handler: Handler = async (event) => {
       }
     }
 
+    stage = "configuration";
     const modelConfig = await resolveModelSetting(
       serviceSupabase,
       "ARTIFACT_BASE",
@@ -193,6 +196,7 @@ export const handler: Handler = async (event) => {
         : "",
     });
 
+    stage = "research";
     for (const modelName of searchModels) {
       try {
         console.log(`[Background Job] Researching with ${modelName}...`);
@@ -244,9 +248,7 @@ export const handler: Handler = async (event) => {
       researchContext = "Research unavailable due to API errors.";
     }
 
-    const genModels = [modelConfig.model, modelConfig.fallbackModel].filter(
-      Boolean,
-    ) as string[];
+    const genModels = [...new Set([modelConfig.model, modelConfig.fallbackModel].filter(Boolean))];
     const hardcodedSystemPrompt = `
             Eres un Diseñador Instruccional Experto y Copywriter Senior.
             CONTEXTO RESEARCH: ${researchContext}
@@ -285,12 +287,14 @@ export const handler: Handler = async (event) => {
 
     for (const modelName of genModels) {
       try {
+        stage = "generation";
+        activeModel = modelName;
         console.log(`[Background Job] Generating Phase 1 with ${modelName}...`);
         const result = await generateObject({
           model: resolveAiModel(modelName),
           schema: ArtifactBaseGenerationSchema,
           prompt: systemPrompt,
-          temperature: 0.7,
+          ...(modelName.startsWith("gemini-") ? { temperature: modelConfig.temperature } : {}),
           abortSignal: AbortSignal.timeout(PIPELINE_GENERATION_LIMITS.requestTimeoutMs),
           maxRetries: 0,
         });
@@ -363,6 +367,7 @@ export const handler: Handler = async (event) => {
 
     const allPassed = validationReport.every((result) => result.passed);
 
+    stage = "persistence";
     let updateArtifactQuery = serviceSupabase
       .from("artifacts")
       .update({
@@ -401,7 +406,13 @@ export const handler: Handler = async (event) => {
   } catch (error: unknown) {
     console.error("[Background Job] Failed", error);
     if (body.artifactId && body.runId) {
-      await markArtifactGenerationFailed(createServiceRoleClient(), body.artifactId, body.runId, error);
+      const status = error && typeof error === "object"
+        ? "statusCode" in error ? Number(error.statusCode) : "status" in error ? Number(error.status) : undefined
+        : undefined;
+      await markArtifactGenerationFailed(createServiceRoleClient(), body.artifactId, body.runId, error, undefined, {
+        stage, model: activeModel, errorName: error instanceof Error ? error.name : "PersistenceError",
+        status: Number.isFinite(status) ? status : undefined,
+      });
     }
     return {
       statusCode: 500,

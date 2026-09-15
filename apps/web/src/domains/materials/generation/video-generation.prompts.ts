@@ -6,6 +6,26 @@ import type { MaterialsGenerationInput } from "../types/materials.types";
 import { buildVideoGenerationGuardrails } from "../validators/material-video.validators";
 import { videoScriptDraftSchema, videoStoryboardDraftSchema, type VideoGenerationStage } from "./video-generation.contracts";
 import type { StoryboardNarrationTake } from "./video-storyboard-timeline";
+import { countEditorialCharacters, allocateIntegerDuration } from "../../video-duration/video-duration-validation";
+
+export function buildNarrationRevisionBudget(previousDraft: unknown, target: number): string[] {
+  const parsed = videoScriptDraftSchema.safeParse(previousDraft);
+  if (!parsed.success) return [];
+  const sections = parsed.data.script.sections;
+  const counts = sections.map((section) => countEditorialCharacters(section.narration_text));
+  const total = countEditorialCharacters(sections.map((section) => section.narration_text).join(" "));
+  if (!total) return [];
+  const targets = allocateIntegerDuration(counts.map((count) => Math.max(1, count)), target - sections.length + 1);
+  return [
+    "## PRESUPUESTO MEDIDO DE REESCRITURA",
+    `El borrador tiene ${total} caracteres; la meta es ${target}. Ajusta la narración al ${Math.round(target / total * 100)}% de su extensión actual.`,
+    "Conserva las secciones y reescribe cada una según su presupuesto. Los caracteres de títulos y notas visuales no cuentan. Prioriza el objetivo y elimina redundancias antes de quitar pasos necesarios. No copies el borrador con cambios mínimos si excede el presupuesto.",
+    ...sections.map((section, index) => {
+      const words = section.narration_text.trim().split(/\s+/).length;
+      return `Sección ${index + 1}: actual ${counts[index]} caracteres; objetivo ${targets[index]} caracteres (aproximadamente ${Math.round(words * targets[index] / Math.max(1, counts[index]))} palabras con el vocabulario actual).`;
+    }),
+  ];
+}
 
 export function buildStagedVideoPrompt(params: {
   input: MaterialsGenerationInput;
@@ -51,6 +71,7 @@ export function buildStagedVideoPrompt(params: {
     ...(narration ? ["## TOMAS CON NARRACIÓN APROBADA", JSON.stringify(narration)] : []),
     ...(previousDraft ? ["## BORRADOR ANTERIOR PARA CORRECCIÓN", JSON.stringify(previousDraft)] : []),
     ...(feedback.length ? ["## ERRORES MEDIDOS QUE DEBES CORREGIR", ...feedback] : []),
+    ...(scriptStage && previousDraft ? buildNarrationRevisionBudget(previousDraft, budget.target) : []),
     "Responde únicamente con JSON válido conforme al schema de esta etapa.",
   ].filter(Boolean).join("\n\n");
 }

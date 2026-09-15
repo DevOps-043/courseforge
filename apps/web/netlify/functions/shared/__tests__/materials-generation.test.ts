@@ -89,6 +89,7 @@ test("an exhausted lesson budget prevents non-video provider calls", async () =>
 });
 
 test("matching titles never assign another identified lesson's sources", () => {
+  assert.equal(matchesLesson({ lesson_id: "lesson-1", lesson_title: "Introduction" }, { lesson_id: "undefined-G1", lesson_title: "Introduction" }), true);
   assert.equal(matchesLesson({ lesson_id: "lesson-2", lesson_title: "Introduction" }, { lesson_id: "lesson-1-G1", lesson_title: "Introduction" }), false);
   assert.equal(matchesLesson({ lesson_id: "lesson-1", lesson_title: "Introduction" }, { lesson_id: "lesson-1-G1", lesson_title: "Introduction" }), true);
 });
@@ -106,6 +107,9 @@ test("source-required lessons fail before spending provider tokens when coverage
 });
 
 test("provider failures are actionable without leaking response bodies", () => {
+  assert.match(generationFailureMessage({ status: 404 }), /modelo.*no está disponible/);
+  assert.match(generationFailureMessage(new Error("No object generated: response did not match schema")), /formato inválido/);
+  assert.match(generationFailureMessage({ code: "23514", message: "secret payload" }), /base de datos/);
   assert.match(generationFailureMessage({ status: 429, code: "insufficient_quota", message: "secret" }), /saldo/);
   assert.equal(isPermanentProviderFailure({ status: 429, code: "insufficient_quota" }), true);
   assert.equal(isPermanentProviderFailure({ status: 429 }), false);

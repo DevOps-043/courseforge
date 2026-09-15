@@ -18,6 +18,15 @@ export function generationFailureMessage(error: unknown): string {
   } : {};
   const status = detail.status ?? detail.statusCode;
   const message = `${detail.code || ""} ${detail.message || ""}`.toLowerCase();
+  if (status === 404 || message.includes("model_not_found")) {
+    return "El modelo de IA configurado no está disponible para esta cuenta. Revisa el modelo principal y su respaldo en Configuración.";
+  }
+  if (/no object generated|schema|type validation|invalid_json|json.*parse/i.test(message)) {
+    return "El proveedor respondió con un formato inválido. No se guardó contenido incompleto; puedes reintentar la generación.";
+  }
+  if (typeof detail.code === "string" && /^(?:[0-9]{5}|PGRST\d+)$/.test(detail.code)) {
+    return "No se pudo guardar el resultado en la base de datos. Revisa las migraciones y los registros de esta ejecución antes de reintentar.";
+  }
   if (message.includes("insufficient_quota") || message.includes("billing") || message.includes("credit")) {
     return "El proveedor de IA rechazó la solicitud por cuota o saldo. Revisa la facturación del proveedor antes de reintentar.";
   }

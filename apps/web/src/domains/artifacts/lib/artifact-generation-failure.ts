@@ -7,12 +7,14 @@ export async function markArtifactGenerationFailed(
   runId: string | undefined,
   error: unknown,
   updatedAt?: string,
+  diagnostics?: { stage: string; model?: string; errorName?: string; status?: number },
 ) {
   let query = supabase.from("artifacts").update({
     state: "ESCALATED",
     validation_report: {
       all_passed: false,
       results: [{ code: "GENERATION_FAILED", passed: false, message: generationFailureMessage(error) }],
+      ...(diagnostics ? { diagnostics } : {}),
     },
   }).eq("id", artifactId).eq("state", "GENERATING");
   query = runId ? query.eq("generation_metadata->>run_id", runId) : query.is("generation_metadata->>run_id", null);

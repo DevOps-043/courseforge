@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isGenerationStale } from "@/lib/pipeline-generation-policy";
+import { recoverExpiredMaterialLessons } from "../services/materials-generation-recovery";
 import type {
   Esp05StepState,
   QADecision,
@@ -98,7 +99,7 @@ export async function fetchMaterialsSnapshot(
 
   return {
     materials,
-    lessons: lessons || [],
+    lessons: lessonsError ? [] : await recoverExpiredMaterialLessons(admin, materials.id, lessons || []),
     error: lessonsError,
   };
 }

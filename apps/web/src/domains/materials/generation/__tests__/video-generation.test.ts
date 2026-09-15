@@ -8,6 +8,16 @@ import { VIDEO_GENERATION_LIMITS, VideoModelResponseError, type VideoModelReques
 import { buildStoryboardNarration, assembleStoryboard, type StoryboardNarrationTake } from "../video-storyboard-timeline";
 import { generateMaterialsByComponent } from "../materials-generation.service";
 import { buildMaterialComponentWrites } from "../material-component-write";
+import { buildNarrationRevisionBudget } from "../video-generation.prompts";
+
+test("revision budgets use measured narration and account for section separators", () => {
+  const budget = buildNarrationRevisionBudget(scriptDraft(8_650), 6_300).join("\n");
+  assert.match(budget, /73%/);
+  const targets = [...budget.matchAll(/objetivo (\d+) caracteres/g)].map((match) => Number(match[1]));
+  assert.equal(targets.length, 8);
+  assert.equal(targets.reduce((sum, count) => sum + count, 0) + targets.length - 1, 6_300);
+  assert.deepEqual(buildNarrationRevisionBudget({}, 6_300), []);
+});
 
 const contract = buildVideoDurationContract({ ...DEFAULT_VIDEO_DURATION_POLICY, minimumDurationSeconds: 600, targetDurationSeconds: 660, maximumDurationSeconds: 720 }, "VIDEO_DEMO");
 const input: MaterialsGenerationInput = {

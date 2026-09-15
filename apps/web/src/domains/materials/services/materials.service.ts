@@ -27,7 +27,7 @@ export const materialsService = {
     const result = await getMaterialsSnapshotAction(artifactId);
     if (!result.success) {
       console.error("Error fetching materials snapshot:", result.error);
-      return null;
+      throw new Error(result.error || "No se pudo consultar el estado de materiales.");
     }
 
     const data = result.materials;
