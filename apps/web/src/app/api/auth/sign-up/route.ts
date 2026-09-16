@@ -1,25 +1,46 @@
 import { createClient } from '@/utils/supabase/server'
-import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import { getSofliaInboxEnv, getSupabaseUrl } from '@/lib/server/env'
+import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract'
+import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response'
+import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger'
 
-interface SignUpRequestBody {
-  email?: string
-  firstName?: string
-  lastNameFather?: string
-  lastNameMother?: string
-  password?: string
-  username?: string
-}
+const MAX_SIGN_UP_REQUEST_BYTES = 8 * 1024
+
+const signUpRequestSchema = z.object({
+  email: z.string().email().max(320),
+  firstName: z.string().trim().max(100).optional(),
+  lastNameFather: z.string().trim().max(100).optional(),
+  lastNameMother: z.string().trim().max(100).optional(),
+  password: z.string().min(10).max(128),
+  username: z.string().trim().min(3).max(60).regex(/^[a-zA-Z0-9._-]+$/).optional(),
+}).strict()
 
 export async function POST(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get('x-request-id'))
+  const logger = createOperationalLogger('auth.sign_up', { correlationId: requestId })
   try {
     const requestUrl = new URL(request.url)
-    const { email, password, firstName, lastNameFather, lastNameMother, username } =
-      (await request.json()) as SignUpRequestBody
-    const supabase = await createClient()
-
-    if (!email || !password) {
-      return NextResponse.json({ error: 'Email y password son requeridos' }, { status: 400 })
+    const parsed = await parseJsonRequest(request, signUpRequestSchema, MAX_SIGN_UP_REQUEST_BYTES)
+    if (!parsed.success) {
+      return apiErrorResponse({
+        code: parsed.reason === 'too_large' ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+        message: parsed.reason === 'too_large' ? 'La solicitud excede el tamaño permitido.' : 'Datos de registro inválidos.',
+        requestId,
+        status: parsed.reason === 'too_large' ? 413 : 400,
+      })
     }
+    const { email, password, firstName, lastNameFather, lastNameMother, username } = parsed.data
+
+    // Login is authoritative in Learning/SofLIA. Never create an identity in a
+    // different Supabase project because that account could not log in here.
+    const courseforgeHost = new URL(getSupabaseUrl()).host.toLowerCase()
+    const sofliaHost = new URL(getSofliaInboxEnv().url).host.toLowerCase()
+    if (courseforgeHost !== sofliaHost) {
+      return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, message: 'El registro directo no está disponible. Solicita una invitación a tu administrador.', requestId, status: 503 })
+    }
+
+    const supabase = await createClient()
 
     const { error } = await supabase.auth.signUp({
       email,
@@ -36,11 +57,13 @@ export async function POST(request: Request) {
     })
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      logger.warn('auth.sign_up.rejected', { providerCode: error.code })
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: 'No se pudo completar el registro.', requestId, status: 400 })
     }
 
-    return NextResponse.json({ success: true }, { status: 200 })
-  } catch {
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return apiSuccessResponse({}, { requestId })
+  } catch (error: unknown) {
+    logger.error('auth.sign_up.failed', error)
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo completar el registro.', requestId, retryable: true, status: 500 })
   }
 }

@@ -14,4 +14,5 @@ export const PUBLIC_PRODUCTION_MEDIA_BUCKETS = new Set(["production-assets", "pr
 export const HYPERFRAMES_SOURCE_BUCKETS = new Set([
   "production-assets",
   HYPERFRAMES_PRIVATE_SOURCE_BUCKET,
+  "sound-effect-assets",
 ]);

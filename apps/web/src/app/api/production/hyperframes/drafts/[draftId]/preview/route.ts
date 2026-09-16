@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { getCurrentCompositionDocument, CompositionDocumentError } from "@/domains/production/composition-editor/composition-document.service";
@@ -13,6 +12,9 @@ import {
   type CompositionPreviewAssetDiagnostics,
 } from "@/domains/production/composition-editor/composition-preview-performance";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { apiErrorResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 interface RouteContext { params: Promise<{ draftId: string }>; }
 
@@ -20,10 +22,12 @@ interface RouteContext { params: Promise<{ draftId: string }>; }
 export async function GET(request: Request, context: RouteContext) {
   const requestStartedAt = performance.now();
   const correlationId = createPreviewCorrelationId(request.headers.get("x-correlation-id"));
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.draft.preview", { correlationId: requestId, previewCorrelationId: correlationId });
   try {
     const authorizationStartedAt = performance.now();
-    const authorization = await authorize();
-    if (authorization instanceof NextResponse) return authorization;
+    const authorization = await authorize(requestId);
+    if (authorization.response) return authorization.response;
     const authorizationMs = elapsedMilliseconds(authorizationStartedAt);
     const draftId = z.string().uuid().parse((await context.params).draftId);
     const documentStartedAt = performance.now();
@@ -57,7 +61,7 @@ export async function GET(request: Request, context: RouteContext) {
       documentMs,
       totalMs: elapsedMilliseconds(requestStartedAt),
     };
-    console.info("[CompositionPreviewPerformance] Preview compiled", {
+    logger.info("production.hyperframes.draft.preview_compiled", {
       assetDiagnostics,
       clipCount: current.document.clips.length,
       correlationId,
@@ -73,28 +77,26 @@ export async function GET(request: Request, context: RouteContext) {
         "Server-Timing": formatServerTimingHeader(timings),
         "X-Correlation-Id": correlationId,
         "X-Content-Type-Options": "nosniff",
+        "x-request-id": requestId,
       },
     });
   } catch (error) {
-    if (error instanceof z.ZodError) return NextResponse.json({ error: "Identificador de borrador inválido." }, { status: 400 });
+    if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de borrador inválido.", requestId, status: 400 });
     if (error instanceof CompositionDocumentError || error instanceof CompositionPreviewCompilerError) {
-      return NextResponse.json({ error: error.message }, { status: error instanceof CompositionDocumentError ? error.status : 400 });
+      const status = error instanceof CompositionDocumentError ? error.status : 400;
+      return apiErrorResponse({ code: status === 404 ? API_ERROR_CODE.resourceNotFound : status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest, message: error.message, requestId, status });
     }
-    console.error("[API /production/hyperframes/drafts/:id/preview] Unexpected error:", {
-      correlationId,
-      durationMs: Math.round(elapsedMilliseconds(requestStartedAt)),
-      message: getErrorMessage(error),
-    });
-    return NextResponse.json({ error: "No se pudo preparar el preview de la composición." }, { status: 500 });
+    logger.error("production.hyperframes.draft.preview_failed", error, { durationMs: Math.round(elapsedMilliseconds(requestStartedAt)) });
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar el preview de la composición.", requestId, retryable: true, status: 500 });
   }
 }
 
-async function authorize() {
+async function authorize(requestId: string) {
   const supabase = await createClient();
   const user = await getAuthenticatedUser(supabase);
-  if (!user) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
-  if (!(await canReviewContent(user.userId))) return NextResponse.json({ error: "No tienes permisos para previsualizar el video." }, { status: 403 });
+  if (!user) return { response: apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 }) } as const;
+  if (!(await canReviewContent(user.userId))) return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para previsualizar el video.", requestId, status: 403 }) } as const;
   const tenant = await resolveActiveTenantContext();
-  if (!tenant) return NextResponse.json({ error: "Empresa no válida o no autorizada." }, { status: 403 });
-  return { admin: getServiceRoleClient(), organizationId: tenant.organizationId };
+  if (!tenant) return { response: apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 }) } as const;
+  return { admin: getServiceRoleClient(), organizationId: tenant.organizationId, response: null };
 }

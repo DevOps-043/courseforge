@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "baseUrl": ".",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".tmp/materials-generation-tests",
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": [
+    "netlify/functions/shared/materials-generation-runtime.ts",
+    "src/domains/materials/services/__tests__/materials-generation-recovery.test.ts",
+    "netlify/functions/shared/__tests__/materials-generation.test.ts"
+  ]
+}

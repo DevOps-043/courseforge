@@ -1,15 +1,29 @@
-import type { GoogleGenAI } from "@google/genai";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type {
+  ComponentType,
+} from "../../../src/domains/materials/types/materials.types";
+import { signBackgroundPayload } from "../../../src/lib/server/background-payload-signature";
+import { shouldDispatchBackgroundInProcess } from "../../../src/lib/server/background-request-environment";
+import {
+  resolveArtifactVideoDurationPolicy,
+  type VideoDurationContract,
+  type VideoDurationPolicy,
+} from "../../../src/domains/video-duration/video-duration-policy";
+import { generateMaterialsByComponent, type MaterialsGenerationResult } from "../../../src/domains/materials/generation/materials-generation.service";
+import { VIDEO_GENERATION_LIMITS } from "../../../src/domains/materials/generation/video-generation.contracts";
+import { generateAndTraceMaterialVideo } from "./materials-video-generation";
+import { commitGeneratedLesson } from "./material-components.repository";
+import { getLessonSourceRequirement } from "../../../src/domains/curation/lib/lesson-source-requirement";
 import { getFunctionsBaseUrl } from "./bootstrap";
 import {
   buildMaterialsGenerationInput,
   findLessonSources,
   findPlanDetails,
   generateWithRetry,
-  saveGeneratedComponents,
   type CurationRowRecord,
   type LessonPlanRecord,
   type MaterialLessonRecord,
+  type MaterialsModelRuntimeConfig,
 } from "./materials-generation-helpers";
 
 const MATERIALS_FUNCTION_PATH =
@@ -19,9 +33,13 @@ export const PROCESS_NEXT_DELAY_MS = 8000;
 export const START_JITTER_MS = 3000;
 
 export interface MaterialsGenerationContext {
+  artifactId: string;
   lessonPlans: LessonPlanRecord[];
   lessonSources: CurationRowRecord[];
+  videoDurationPolicy: VideoDurationPolicy;
+  requiresSources: boolean;
 }
+
 
 export function wait(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -31,12 +49,12 @@ export async function loadLessonPlans(
   supabase: SupabaseClient,
   artifactId: string,
 ): Promise<LessonPlanRecord[]> {
-  const { data: planRecord } = await supabase
+  const { data: planRecord, error } = await supabase
     .from("instructional_plans")
     .select("lesson_plans")
     .eq("artifact_id", artifactId)
     .single();
-
+  if (error) throw error;
   return (planRecord?.lesson_plans || []) as LessonPlanRecord[];
 }
 
@@ -44,42 +62,80 @@ export async function loadAptaSources(
   supabase: SupabaseClient,
   artifactId: string,
 ): Promise<CurationRowRecord[]> {
-  const { data: curationRecord } = await supabase
+  const { data: curationRecord, error: curationError } = await supabase
     .from("curation")
     .select("id")
     .eq("artifact_id", artifactId)
-    .single();
-
+    .maybeSingle();
+  if (curationError) throw curationError;
   if (!curationRecord) {
     return [];
   }
 
-  const { data: rows } = await supabase
+  const { data: rows, error: rowsError } = await supabase
     .from("curation_rows")
-    .select("*")
+    .select("id, lesson_id, lesson_title, source_title, source_ref, cobertura_completa, source_kind, validation_report")
     .eq("curation_id", curationRecord.id)
     .eq("apta", true);
-
-  return (rows || []) as CurationRowRecord[];
+  if (rowsError) throw rowsError;
+  return (rows || []).filter((row) => !row.validation_report?.status || row.validation_report.status === "valid") as CurationRowRecord[];
 }
 
 export async function loadMaterialsGenerationContext(
   supabase: SupabaseClient,
   artifactId: string,
 ): Promise<MaterialsGenerationContext> {
-  const [lessonPlans, lessonSources] = await Promise.all([
+  const [lessonPlans, lessonSources, artifactResult, syllabusResult] = await Promise.all([
     loadLessonPlans(supabase, artifactId),
     loadAptaSources(supabase, artifactId),
+    supabase
+      .from("artifacts")
+      .select("generation_metadata")
+      .eq("id", artifactId)
+      .single(),
+    supabase.from("syllabus").select("route").eq("artifact_id", artifactId).single(),
   ]);
-
-  return { lessonPlans, lessonSources };
+  if (artifactResult.error) throw artifactResult.error;
+  if (syllabusResult.error) throw syllabusResult.error;
+  return {
+    artifactId,
+    lessonPlans,
+    lessonSources,
+    requiresSources: syllabusResult.data.route !== "B_NO_SOURCE",
+    videoDurationPolicy: resolveArtifactVideoDurationPolicy(
+      artifactResult.data?.generation_metadata,
+    ),
+  };
 }
 
 export async function triggerNextLesson(
   materialsId: string,
   artifactId: string,
   logPrefix: string,
+  localFallback?: (signedBody: string) => Promise<void>,
+  version?: number,
 ) {
+  const triggerTimeoutMilliseconds = 10_000;
+  const signedBody = JSON.stringify(
+    signBackgroundPayload({ materialsId, artifactId, version, mode: "process-next" }),
+  );
+
+  if (shouldDispatchBackgroundInProcess({
+    hasLocalHandler: Boolean(localFallback),
+    netlify: process.env.NETLIFY,
+    nodeEnv: process.env.NODE_ENV,
+  })) {
+    console.log(`${logPrefix} Scheduling next lesson in-process`);
+    setTimeout(async () => {
+      try {
+        await localFallback!(signedBody);
+      } catch (fallbackError) {
+        console.error(`${logPrefix} In-process execution failed:`, fallbackError);
+      }
+    }, 100);
+    return;
+  }
+
   const url = `${getFunctionsBaseUrl()}${MATERIALS_FUNCTION_PATH}`;
   console.log(`${logPrefix} Triggering next at: ${url}`);
 
@@ -87,134 +143,110 @@ export async function triggerNextLesson(
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ materialsId, artifactId, mode: "process-next" }),
+      body: signedBody,
+      signal: AbortSignal.timeout(triggerTimeoutMilliseconds),
     });
     console.log(`${logPrefix} Trigger response: ${response.status}`);
-  } catch (error: any) {
+    if (!response.ok) {
+      throw new Error(`El encadenamiento de materiales respondió HTTP ${response.status}.`);
+    }
+  } catch (error: unknown) {
     console.error(`${logPrefix} Trigger failed:`, error);
 
-    // Fallback local execution when not running Netlify CLI locally (ECONNREFUSED on port 8888)
+    const errorCode =
+      typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : "";
+    const errorMessage = error instanceof Error ? error.message : "";
+
+    // Defensive fallback for development environments whose runtime flags are incomplete.
     if (
       process.env.NODE_ENV !== "production" &&
-      (error?.code === "ECONNREFUSED" || error?.message?.includes("fetch failed"))
+      localFallback &&
+      (errorCode === "ECONNREFUSED" || errorMessage.includes("fetch failed"))
     ) {
       console.log(`${logPrefix} Local fallback: Running next step in-process...`);
-      try {
-        const { handler } = await import("../materials-generation-background");
-        if (handler) {
-          setTimeout(async () => {
-            try {
-              console.log(`${logPrefix} [Fallback] Starting process-next execution...`);
-              await handler(
-                {
-                  body: JSON.stringify({
-                    materialsId,
-                    artifactId,
-                    mode: "process-next",
-                  }),
-                  headers: { "Content-Type": "application/json" },
-                  httpMethod: "POST",
-                } as any,
-                {} as any,
-              );
-            } catch (fallbackErr) {
-              console.error(`${logPrefix} [Fallback] Execution failed:`, fallbackErr);
-            }
-          }, 100);
+      setTimeout(async () => {
+        try {
+          console.log(`${logPrefix} [Fallback] Starting process-next execution...`);
+          await localFallback(signedBody);
+        } catch (fallbackErr) {
+          console.error(`${logPrefix} [Fallback] Execution failed:`, fallbackErr);
         }
-      } catch (importErr) {
-        console.error(`${logPrefix} [Fallback] Failed to import background handler:`, importErr);
-      }
+      }, 100);
+      return;
     }
-  }
-}
 
-export async function setLessonState(
-  supabase: SupabaseClient,
-  lessonId: string,
-  state: string,
-  extras: Record<string, unknown> = {},
-) {
-  await supabase
-    .from("material_lessons")
-    .update({
-      state,
-      updated_at: new Date().toISOString(),
-      ...extras,
-    })
-    .eq("id", lessonId);
+    throw error;
+  }
 }
 
 export async function touchMaterialsRecord(
   supabase: SupabaseClient,
   materialsId: string,
 ) {
-  await supabase
+  const { error } = await supabase
     .from("materials")
     .update({ updated_at: new Date().toISOString() })
     .eq("id", materialsId);
+  if (error) throw error;
 }
 
 export async function markMaterialsValidating(
   supabase: SupabaseClient,
   materialsId: string,
+  version: number,
 ) {
-  await supabase
+  const { data: lessons, error: lessonsError } = await supabase.from("material_lessons")
+    .select("state").eq("materials_id", materialsId);
+  if (lessonsError) throw lessonsError;
+  const complete = Boolean(lessons?.length) && lessons!.every((lesson) =>
+    ["GENERATED", "APPROVABLE"].includes(lesson.state));
+  const { data: updated, error } = await supabase
     .from("materials")
-    .update({ state: "PHASE3_VALIDATING", updated_at: new Date().toISOString() })
-    .eq("id", materialsId);
-}
-
-export async function resetGeneratingLessons(
-  supabase: SupabaseClient,
-  materialsId: string,
-) {
-  return supabase
-    .from("material_lessons")
-    .update({ state: "PENDING", updated_at: new Date().toISOString() })
-    .eq("materials_id", materialsId)
-    .eq("state", "GENERATING");
+    .update({ state: complete ? "PHASE3_VALIDATING" : "PHASE3_NEEDS_FIX", updated_at: new Date().toISOString() })
+    .eq("id", materialsId).eq("version", version).eq("state", "PHASE3_GENERATING").select("id").maybeSingle();
+  if (error) throw error;
+  return complete && Boolean(updated);
 }
 
 export async function processGenerationResult(params: {
+  execution: { materialsId: string; version: number };
   supabase: SupabaseClient;
   lessonId: string;
   lessonTitle: string;
-  result: Awaited<ReturnType<typeof generateWithRetry>>;
+  result: MaterialsGenerationResult;
   iterationNumber: number;
   logPrefix: string;
   onlyTypes?: string[];
+  durationContractsByType?: Partial<Record<ComponentType, VideoDurationContract>>;
 }) {
-  const { supabase, lessonId, lessonTitle, result, iterationNumber, logPrefix, onlyTypes } =
+  const { supabase, lessonId, lessonTitle, result, iterationNumber, logPrefix, onlyTypes, durationContractsByType } =
     params;
 
-  if (result.success) {
-    await saveGeneratedComponents(
+  const committed = await commitGeneratedLesson(
       supabase,
       lessonId,
-      result.content,
+      result.content || { components: {}, source_refs_used: [] },
       iterationNumber,
       logPrefix,
-      onlyTypes,
+      onlyTypes || Object.keys(result.content?.components || {}),
+      durationContractsByType,
+      { ...params.execution, success: result.success, error: result.success ? undefined : result.error },
     );
-    await setLessonState(supabase, lessonId, "GENERATED");
+  if (!committed) return { success: false as const, superseded: true };
+  if (result.success) {
     console.log(`${logPrefix} Generated ${lessonTitle}`);
     return { success: true as const };
   }
 
-  await setLessonState(supabase, lessonId, "NEEDS_FIX", {
-    dod: {
-      control3_consistency: "FAIL",
-      errors: [result.error || "Failed"],
-    },
-  });
   console.log(`${logPrefix} Failed ${lessonTitle}: ${result.error}`);
   return { success: false as const, error: result.error };
 }
 
 export async function generateLessonMaterials(params: {
+  execution: { materialsId: string; version: number };
   supabase: SupabaseClient;
-  genAI: GoogleGenAI;
   lesson: MaterialLessonRecord;
   generationContext: MaterialsGenerationContext;
   organizationId?: string | null;
@@ -223,12 +255,13 @@ export async function generateLessonMaterials(params: {
   iterationNumber?: number;
   /** If set, only regenerate these component types (partial regen). */
   componentTypes?: string[];
-  /** Models to use in order of preference. Falls back to DEFAULT_MODELS if not provided. */
-  models?: string[];
+  /** Database-configured models in primary/fallback order. */
+  models: string[];
+  /** Provider-specific generation controls resolved from model_settings. */
+  modelRuntimeConfig: MaterialsModelRuntimeConfig;
 }) {
   const {
     supabase,
-    genAI,
     lesson,
     generationContext,
     organizationId,
@@ -237,17 +270,27 @@ export async function generateLessonMaterials(params: {
     iterationNumber,
     componentTypes,
     models,
+    modelRuntimeConfig,
   } = params;
 
   const lessonSources = findLessonSources(generationContext.lessonSources, lesson);
   const planDetails = findPlanDetails(generationContext.lessonPlans, lesson);
   const currentIteration = iterationNumber || lesson.iteration_count || 1;
+  const requiredSources = getLessonSourceRequirement(planDetails).requiredSources;
+  if (generationContext.requiresSources && new Set(lessonSources.map((source) => source.source_ref)).size < requiredSources) {
+    return processGenerationResult({
+      supabase, lessonId: lesson.id, lessonTitle: lesson.lesson_title, iterationNumber: currentIteration,
+      logPrefix, execution: params.execution,
+      result: { success: false, error: `Fuentes insuficientes para la lección (${lessonSources.length}/${requiredSources}). Completa la curaduría antes de generar materiales.` },
+    });
+  }
   const input = buildMaterialsGenerationInput({
     lesson,
     planDetails,
     lessonSources,
     iterationNumber: currentIteration,
     fixInstructions,
+    videoDurationPolicy: generationContext.videoDurationPolicy,
   });
 
   const isPartial = componentTypes && componentTypes.length > 0;
@@ -259,16 +302,23 @@ export async function generateLessonMaterials(params: {
     console.log(`${logPrefix} Partial regen: ${componentTypes.join(", ")}`);
   }
 
-  const result = await generateWithRetry(
-    genAI,
+  const deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.lessonTimeoutMs;
+  const result = await generateMaterialsByComponent({
     input,
-    logPrefix,
-    supabase,
-    componentTypes,
-    organizationId,
-    models,
-  );
+    generateStandard: (standardInput) => generateWithRetry(
+      standardInput, logPrefix, models, modelRuntimeConfig, supabase,
+      standardInput.lesson.components.map((component) => component.type), organizationId,
+      deadlineMs,
+    ),
+    generateVideo: (componentType, contract) => generateAndTraceMaterialVideo({
+      supabase, input, componentType, contract, models, modelRuntimeConfig, organizationId,
+      artifactId: generationContext.artifactId,
+      lessonId: lesson.id,
+      deadlineMs,
+    }),
+  });
   return processGenerationResult({
+    execution: params.execution,
     supabase,
     lessonId: lesson.id,
     lessonTitle: lesson.lesson_title,
@@ -276,5 +326,10 @@ export async function generateLessonMaterials(params: {
     iterationNumber: input.iteration_number,
     logPrefix,
     onlyTypes: isPartial ? componentTypes : undefined,
+    durationContractsByType: Object.fromEntries(
+      input.lesson.components.flatMap((component) => component.duration_contract
+        ? [[component.type, component.duration_contract]]
+        : []),
+    ),
   });
 }

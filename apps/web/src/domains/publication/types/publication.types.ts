@@ -78,6 +78,8 @@ export interface PublicationRequestRecord extends PublicationCourseData {
   selected_lessons?: string[] | null;
   upstream_dirty?: boolean;
   upstream_dirty_source?: string;
+  publish_step?: "QUEUED" | "RUNNING" | "SENT" | null;
+  publish_last_error?: string | null;
   status: PublicationRequestStatus | string;
 }
 

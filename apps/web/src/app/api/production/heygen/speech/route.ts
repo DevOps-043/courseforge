@@ -1,7 +1,4 @@
-import { NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -29,26 +26,41 @@ import {
 } from "@/domains/production/providers/heygen/heygen-video.service";
 import { heygenGenerateVoiceoverRequestSchema } from "@/domains/production/providers/heygen/heygen.validators";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { heygenCredentialErrorResponse, heygenProviderErrorResponse, heygenServiceErrorResponse } from "@/lib/server/heygen-route-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+
+const MAX_HEYGEN_SPEECH_REQUEST_BYTES = 128 * 1024;
 
 /** Generates TTS with HeyGen's audio-only endpoint. No avatar video is submitted. */
 export async function POST(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.heygen.speech", { correlationId: requestId });
   try {
-    const payload = heygenGenerateVoiceoverRequestSchema.parse(
-      await request.json().catch(() => ({})),
-    );
+    const parsedRequest = await parseJsonRequest(request, heygenGenerateVoiceoverRequestSchema, MAX_HEYGEN_SPEECH_REQUEST_BYTES);
+    if (!parsedRequest.success) {
+      return apiErrorResponse({
+        code: parsedRequest.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+        message: parsedRequest.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "Payload inválido para voz en off.",
+        requestId,
+        status: parsedRequest.reason === "too_large" ? 413 : 400,
+      });
+    }
+    const payload = parsedRequest.data;
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);
-    if (!user) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+    if (!user) return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     if (!(await canReviewContent(user.userId))) {
-      return NextResponse.json({ error: "No tienes permisos para generar voz en off." }, { status: 403 });
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para generar voz en off.", requestId, status: 403 });
     }
     const tenant = await resolveActiveTenantContext();
-    if (!tenant) return NextResponse.json({ error: "Empresa no válida o no autorizada." }, { status: 403 });
+    if (!tenant) return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 });
 
     if (payload.componentId) {
       const authorized = await getAuthorizedMaterialComponentAdmin(payload.componentId);
       if (!authorized) {
-        return NextResponse.json({ error: "Componente no encontrado para esta empresa." }, { status: 404 });
+        return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado para esta empresa.", requestId, status: 404 });
       }
       const auth = await getHeygenClientForOrganization({
         allowGlobalFallback: false,
@@ -71,14 +83,13 @@ export async function POST(request: Request) {
         },
         organizationId: tenant.organizationId,
       });
-      return NextResponse.json({
-        success: true,
+      return apiSuccessResponse({
         data: {
           ...data,
           providerJobId: data.voiceAsset.providerRequestId,
           standalone: false,
         },
-      });
+      }, { requestId });
     }
 
     const script = payload.script!;
@@ -90,7 +101,7 @@ export async function POST(request: Request) {
       presetId: payload.voicePresetId,
     });
     if (!voice?.heygen_voice_id) {
-      return NextResponse.json({ error: "Selecciona una voz HeyGen válida." }, { status: 400 });
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Selecciona una voz HeyGen válida.", requestId, status: 400 });
     }
     const auth = await getHeygenClientForOrganization({
       allowGlobalFallback: false,
@@ -107,8 +118,8 @@ export async function POST(request: Request) {
     });
     assertSafeHeygenAudioUrl(speech.audioUrl);
     const downloaded = await downloadHeygenAudioWithLimits({ url: speech.audioUrl });
-    const requestId = speech.requestId || crypto.randomUUID();
-    const safeRequestId = requestId.replace(/[^a-z0-9_-]+/gi, "-").slice(0, 120) || crypto.randomUUID();
+    const providerRequestId = speech.requestId || crypto.randomUUID();
+    const safeRequestId = providerRequestId.replace(/[^a-z0-9_-]+/gi, "-").slice(0, 120) || crypto.randomUUID();
     const objectPath = `heygen/standalone/${tenant.organizationId}/${safeRequestId}.${downloaded.extension}`;
     const { error: uploadError } = await admin.storage
       .from("production-assets")
@@ -144,10 +155,9 @@ export async function POST(request: Request) {
       .select("id")
       .single();
     if (assetError) throw assetError;
-    return NextResponse.json({
-      success: true,
+    return apiSuccessResponse({
       data: {
-        jobId: requestId,
+        jobId: providerRequestId,
         providerJobId: speech.requestId || null,
         standalone: true,
         status: "SUCCEEDED",
@@ -161,24 +171,18 @@ export async function POST(request: Request) {
           wordTimestamps: speech.wordTimestamps,
         },
       },
-    });
+    }, { requestId });
   } catch (error: unknown) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues[0]?.message || "Payload inválido para voz en off." }, { status: 400 });
-    }
     if (error instanceof HeygenVideoServiceError || error instanceof HeygenRequestValidationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return heygenServiceErrorResponse(error, requestId);
     }
     if (error instanceof HeygenCredentialResolverError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+      return heygenCredentialErrorResponse(error, requestId);
     }
     if (error instanceof HeygenApiError) {
-      return NextResponse.json(
-        { error: error.message, providerCode: error.providerCode || null },
-        { status: error.status === 429 ? 429 : 502 },
-      );
+      return heygenProviderErrorResponse({ error, failureMessage: "HeyGen no pudo generar la voz en off.", requestId });
     }
-    console.error("[API /production/heygen/speech] Unexpected error:", { message: getErrorMessage(error) });
-    return NextResponse.json({ error: "Error interno al generar la voz en off." }, { status: 500 });
+    logger.error("production.heygen.speech.generate_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno al generar la voz en off.", requestId, retryable: true, status: 500 });
   }
 }

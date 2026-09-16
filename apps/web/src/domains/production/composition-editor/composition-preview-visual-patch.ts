@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { CompositionEditorDocument } from "./composition-document.types";
 import type { CompositionEditorPatchOperation } from "./editor-patch.types";
+import { buildCompositionMotionRuntime, compositionMotionRuntimeSchema } from "./composition-motion-runtime";
 import { resolveCompositionCropInsets } from "./composition-visual-crop.service";
 import {
   resolveCompositionPreviewAspectAnchor,
@@ -35,8 +36,9 @@ export const compositionPreviewVisualChangeSchema = z.object({
 }).strict().refine((change) => Object.keys(change).some((key) => key !== "hfId"), "El patch visual está vacío.");
 
 export const compositionPreviewVisualPatchSchema = z.object({
-  changes: z.array(compositionPreviewVisualChangeSchema).min(1).max(100),
-}).strict();
+  changes: z.array(compositionPreviewVisualChangeSchema).max(100),
+  motion: compositionMotionRuntimeSchema.optional(),
+}).strict().refine((patch) => patch.changes.length > 0 || patch.motion !== undefined, "El patch está vacío.");
 
 export type CompositionPreviewVisualChange = z.infer<typeof compositionPreviewVisualChangeSchema>;
 export type CompositionPreviewVisualPatch = z.infer<typeof compositionPreviewVisualPatchSchema>;
@@ -46,6 +48,9 @@ export function buildCompositionPreviewVisualPatch(params: {
   document: CompositionEditorDocument;
   operations: CompositionEditorPatchOperation[];
 }): CompositionPreviewVisualPatch | null {
+  if (params.operations.length && params.operations.every((operation) => operation.type.startsWith("animation."))) {
+    return compositionPreviewVisualPatchSchema.parse({ changes: [], motion: buildCompositionMotionRuntime(params.document) });
+  }
   const changesByHfId = new Map<string, CompositionPreviewVisualChange>();
   const tracksById = new Map(params.document.tracks.map((track) => [track.id, track]));
 

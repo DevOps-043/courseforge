@@ -28,12 +28,12 @@ export class CompositionAgentProposalError extends Error {
   }
 }
 
-const proposalInputSchema = z.object({
+export const compositionAgentProposalInputSchema = z.object({
   instruction: z.string().trim().min(3).max(1_500),
   selectedClipId: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i).nullable().optional(),
 }).strict();
 
-export type CompositionAgentProposalInput = z.infer<typeof proposalInputSchema>;
+export type CompositionAgentProposalInput = z.infer<typeof compositionAgentProposalInputSchema>;
 
 /** Generates a constrained proposal; persistence always remains a separate approval action. */
 export async function proposeCompositionEdits(params: {
@@ -43,7 +43,7 @@ export async function proposeCompositionEdits(params: {
   organizationId: string;
   supabase: Parameters<typeof getHyperframesGenerationSettings>[0]["supabase"];
 }) {
-  const input = proposalInputSchema.parse(params.input);
+  const input = compositionAgentProposalInputSchema.parse(params.input);
   const settings = await getHyperframesGenerationSettings({
     organizationId: params.organizationId,
     supabase: params.supabase,

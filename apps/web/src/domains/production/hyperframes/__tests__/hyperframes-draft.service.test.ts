@@ -8,6 +8,7 @@ import {
   contentVersion,
   studioProjectDescriptor,
 } from "../hyperframes-draft.service";
+import { getOrCreateHyperframesCompositionDraft } from "../hyperframes-composition.service";
 
 test("creates a Studio-safe descriptor without exposing a storage path", () => {
   assert.deepEqual(studioProjectDescriptor("ea635d7c-2dd0-4214-a0df-1fc3cedcc05e", 4), {
@@ -80,4 +81,70 @@ test("reconciles an existing draft with the active Production avatar only", () =
   assert.equal(avatar?.source.type === "PRODUCTION_ASSET" ? avatar.source.hasAudio : undefined, true);
   assert.equal(reconciled.clips.find((clip) => clip.source.type === "DECK_SLIDE")?.layout.x, 123);
   assert.equal(reconciled.clips.find((clip) => clip.source.type === "DECK_SLIDE")?.timingSource, "USER_EDITED");
+});
+
+test("recovers the composition that wins a concurrent initialization", async () => {
+  const winner = {
+    active_revision_id: null,
+    artifact_id: "00000000-0000-4000-8000-000000000602",
+    created_at: "2026-09-04T12:00:00.000Z",
+    id: "00000000-0000-4000-8000-000000000603",
+    material_component_id: "00000000-0000-4000-8000-000000000601",
+    name: "Ganadora",
+    status: "DRAFT",
+    updated_at: "2026-09-04T12:00:00.000Z",
+  };
+  let compositionLookupCount = 0;
+  const supabase = {
+    from(table: string) {
+      let inserting = false;
+      const query = {
+        eq() { return query; },
+        insert() { inserting = true; return query; },
+        limit() { return query; },
+        maybeSingle() {
+          compositionLookupCount += 1;
+          return Promise.resolve({ data: compositionLookupCount === 1 ? null : winner, error: null });
+        },
+        neq() { return query; },
+        order() { return query; },
+        select() { return query; },
+        single() {
+          if (table === "material_components") {
+            return Promise.resolve({
+              data: {
+                id: winner.material_component_id,
+                material_lesson_id: "00000000-0000-4000-8000-000000000604",
+                material_lessons: {
+                  lesson_id: "lesson-1",
+                  materials: {
+                    artifact_id: winner.artifact_id,
+                    artifacts: { organization_id: "00000000-0000-4000-8000-000000000605" },
+                  },
+                },
+                type: "VIDEO_THEORETICAL",
+              },
+              error: null,
+            });
+          }
+          return Promise.resolve(inserting
+            ? { data: null, error: { code: "23505", message: "duplicate key" } }
+            : { data: null, error: null });
+        },
+      };
+      return query;
+    },
+  };
+
+  const result = await getOrCreateHyperframesCompositionDraft({
+    componentId: winner.material_component_id,
+    createdBy: "00000000-0000-4000-8000-000000000606",
+    name: "Composición concurrente",
+    organizationId: "00000000-0000-4000-8000-000000000605",
+    supabase: supabase as any,
+  });
+
+  assert.equal(result.created, false);
+  assert.equal(result.composition.id, winner.id);
+  assert.equal(compositionLookupCount, 2);
 });

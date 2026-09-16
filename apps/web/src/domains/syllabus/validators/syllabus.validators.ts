@@ -1,4 +1,5 @@
 import { SyllabusModule, ValidationCheck } from "../types/syllabus.types";
+import { COURSE_CONFIG } from "../config/syllabus.config";
 
 export interface ValidationResult {
   passed: boolean;
@@ -138,13 +139,13 @@ export function validateCourseDuration(modules: SyllabusModule[]): ValidationChe
   }
 
   const totalHours = totalMinutes / 60;
-  const pass = totalHours <= 12;
+  const pass = totalHours <= COURSE_CONFIG.maxTotalHours;
 
   const hoursDisplay = Math.round(totalHours * 10) / 10;
   
   let message = pass
-       ? `Duración estimada (${hoursDisplay}h) dentro del límite de 12h`
-       : `La duración total (${hoursDisplay}h) excede el máximo de 12h`;
+       ? `Duración estimada (${hoursDisplay}h) dentro del límite de ${COURSE_CONFIG.maxTotalHours}h`
+       : `La duración total (${hoursDisplay}h) excede el máximo de ${COURSE_CONFIG.maxTotalHours}h`;
 
   if (missingEstimates) {
       message += " (Algunas lecciones no tienen duración asignada, cálculo parcial)";

@@ -1,9 +1,13 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+
+const MAX_AUTOMATION_CONFIGURATION_BYTES = 256 * 1024;
+const runIdSchema = z.string().uuid();
 
 const avatarSchema = z.object({
   aspectRatio: z.enum(["16:9", "9:16"]),
@@ -38,16 +42,28 @@ const configurationSchema = z.object({
 }).strict();
 
 export async function PUT(request: Request, context: { params: Promise<{ runId: string }> }) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.automation.configuration", { correlationId: requestId });
   try {
-    const input = configurationSchema.parse(await request.json().catch(() => ({})));
+    const parsedRequest = await parseJsonRequest(request, configurationSchema, MAX_AUTOMATION_CONFIGURATION_BYTES);
+    if (!parsedRequest.success) {
+      return apiErrorResponse({
+        code: parsedRequest.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+        message: parsedRequest.reason === "too_large" ? "La configuración excede el tamaño permitido." : "Configuración inválida.",
+        requestId,
+        status: parsedRequest.reason === "too_large" ? 413 : 400,
+      });
+    }
+    const input = parsedRequest.data;
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);
-    if (!user) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+    if (!user) return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     const tenant = await resolveActiveTenantContext();
     if (!tenant || !(await canReviewContent(user.userId, tenant))) {
-      return NextResponse.json({ error: "No tienes permisos para configurar produccion." }, { status: 403 });
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para configurar producción.", requestId, status: 403 });
     }
     const { runId } = await context.params;
+    if (!runIdSchema.safeParse(runId).success) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "runId inválido.", requestId, status: 400 });
     const admin = getServiceRoleClient();
     const { data: run, error: runError } = await admin
       .from("production_runs")
@@ -56,7 +72,7 @@ export async function PUT(request: Request, context: { params: Promise<{ runId: 
       .eq("organization_id", tenant.organizationId)
       .maybeSingle();
     if (runError) throw runError;
-    if (!run) return NextResponse.json({ error: "Ejecucion de produccion no encontrada." }, { status: 404 });
+    if (!run) return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Ejecución de producción no encontrada.", requestId, status: 404 });
 
     const componentIds = input.items.map((item) => item.componentId);
     const { data: knownItems, error: knownItemsError } = await admin
@@ -67,7 +83,7 @@ export async function PUT(request: Request, context: { params: Promise<{ runId: 
     if (knownItemsError) throw knownItemsError;
     const itemByComponentId = new Map((knownItems || []).map((item) => [item.material_component_id, item]));
     if (componentIds.some((componentId) => !itemByComponentId.has(componentId))) {
-      return NextResponse.json({ error: "Uno o más componentes no pertenecen a esta ejecucion." }, { status: 400 });
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Uno o más componentes no pertenecen a esta ejecución.", requestId, status: 400 });
     }
 
     const now = new Date().toISOString();
@@ -119,10 +135,13 @@ export async function PUT(request: Request, context: { params: Promise<{ runId: 
         return unresolved.length > 0 ? [`${item.material_component_id}: ${unresolved.join(", ")}`] : [];
       });
       if (incomplete.length > 0) {
-        return NextResponse.json({
-          error: "Antes de aprobar, configura todos los assets requeridos de forma general o por leccion.",
-          incomplete,
-        }, { status: 400 });
+        return apiErrorResponse({
+          code: API_ERROR_CODE.invalidRequest,
+          details: { incomplete },
+          message: "Antes de aprobar, configura todos los assets requeridos de forma general o por lección.",
+          requestId,
+          status: 400,
+        });
       }
     }
     const { error: updateRunError } = await admin
@@ -140,14 +159,13 @@ export async function PUT(request: Request, context: { params: Promise<{ runId: 
       .eq("id", runId)
       .eq("organization_id", tenant.organizationId);
     if (updateRunError) throw updateRunError;
-    return NextResponse.json({ success: true, approved: input.approve });
-  } catch (error) {
-    if (error instanceof z.ZodError) return NextResponse.json({ error: "Configuracion invalida." }, { status: 400 });
-    console.error("[API /production/automation/runs/:runId/configuration] Unexpected error:", error);
-    return NextResponse.json({ error: getErrorMessage(error, "No se pudo guardar la configuracion.") }, { status: 500 });
+    return apiSuccessResponse({ approved: input.approve }, { requestId });
+  } catch (error: unknown) {
+    logger.error("production.automation.configuration.failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo guardar la configuración.", requestId, retryable: true, status: 500 });
   }
 }
 
-function asObject(value: unknown): Record<string, any> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {};
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }

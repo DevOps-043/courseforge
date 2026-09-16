@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { PremiumSelect } from "@/shared/components/PremiumSelect";
+import { HelpTooltip } from "@/components/ui/HelpTooltip";
 import {
   getModelSettingsAction,
   getSystemPromptHistoryAction,
@@ -33,6 +34,14 @@ import type { SystemPrompt } from "@/domains/prompts/types";
 type CurationConfig = ModelSettingsRecord;
 
 const OBSOLETE_SETTING_TYPES = new Set(["LIA MODEL", "LIA_MODEL", "COMPUTER"]);
+const DETERMINISTIC_SLIDE_SETTING_TYPES = new Set([
+  "SLIDES_DECK_BRIEF_AGENT",
+  "SLIDES_EVIDENCE_AGENT",
+  "SLIDES_STRATEGY_AGENT",
+  "SLIDE_TEMPLATE_TYPE_AGENT",
+  "SLIDES_VISUAL_TEMPLATE_AGENT",
+  "SLIDES_QA_AGENT",
+]);
 
 const SETTING_ORDER = [
   "ARTIFACT_BASE",
@@ -402,9 +411,11 @@ const OPENAI_REASONING_LEVEL_OPTIONS = [
 ];
 
 function getModelOptions(settingType: string) {
-  return settingType === "SLIDES_IMAGE_GENERATION"
-    ? IMAGE_MODEL_OPTIONS
-    : ALL_MODEL_OPTIONS;
+  if (settingType === "SLIDES_IMAGE_GENERATION") {
+    return IMAGE_MODEL_OPTIONS;
+  }
+
+  return ALL_MODEL_OPTIONS;
 }
 
 function getReasoningOptions(settingType: string) {
@@ -498,22 +509,7 @@ function getPromptHelpText(prompt: SystemPrompt) {
 }
 
 function PromptHelpTooltip({ text }: { text: string }) {
-  return (
-    <span className="relative inline-flex group">
-      <button
-        type="button"
-        onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => event.stopPropagation()}
-        aria-label="Ver ayuda del prompt"
-        className="w-5 h-5 rounded-full border border-gray-300 dark:border-[var(--engine-muted)]/40 text-[11px] font-bold text-gray-500 dark:text-[var(--engine-text-muted)] hover:border-[var(--engine-accent)] hover:text-[var(--engine-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--engine-accent)]/30 transition-colors"
-      >
-        ?
-      </button>
-      <span className="pointer-events-none absolute left-1/2 top-7 z-30 hidden w-80 -translate-x-1/2 rounded-lg border border-gray-200 bg-white p-3 text-left text-xs font-normal leading-relaxed text-gray-600 shadow-xl shadow-black/10 group-hover:block group-focus-within:block dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-surface-solid)] dark:text-gray-300">
-        {text}
-      </span>
-    </span>
-  );
+  return <HelpTooltip ariaLabel="Ver ayuda del prompt" stopPropagation>{text}</HelpTooltip>;
 }
 
 function PhasePromptEditor({
@@ -934,6 +930,7 @@ export function CurationSettingsManager() {
     const isGreen = metadata.accent === "green";
     const modelOptions = getModelOptions(setting.setting_type);
     const reasoningOptions = getReasoningOptions(setting.setting_type);
+    const usesConfiguredModel = !DETERMINISTIC_SLIDE_SETTING_TYPES.has(setting.setting_type);
     const accentText = isGreen ? "text-[#10B981]" : "text-[var(--engine-accent)]";
     const accentBg = isGreen
       ? "bg-[#10B981]/10 text-[#10B981]"
@@ -956,7 +953,7 @@ export function CurationSettingsManager() {
 
         <div className="engine-settings-phase__content">
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+        {usesConfiguredModel ? <><div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
           <PremiumSelect
             label="Modelo Principal"
             icon={<Zap size={12} className={accentText} />}
@@ -1031,9 +1028,13 @@ export function CurationSettingsManager() {
               <span>Creativo (1.0)</span>
             </div>
           </div>
-        </div>
+        </div></> : (
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-100">
+            Esta etapa usa reglas deterministas y validación tipada. Cambiar modelo, temperatura o prompt no modifica su resultado.
+          </div>
+        )}
 
-        <div className="space-y-3">
+        {usesConfiguredModel && <div className="space-y-3">
           <div className="flex items-center gap-2">
             <MessageSquareCode size={15} className={accentText} />
             <h5 className="text-xs font-bold text-gray-500 dark:text-[var(--engine-text-muted)] uppercase tracking-wider">
@@ -1064,7 +1065,7 @@ export function CurationSettingsManager() {
               No hay prompts configurables asociados directamente a este paso.
             </div>
           )}
-        </div>
+        </div>}
 
         </div>
 

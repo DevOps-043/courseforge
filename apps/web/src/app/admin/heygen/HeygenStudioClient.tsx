@@ -1,15 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { SceneVisualSelector } from "@/domains/materials/components/composition-editor/SceneVisualSelector";
+import type { SceneVisualCatalog } from "@/domains/production/composition-editor/composition-narrative.types";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   AudioLines,
   ArrowLeft,
+  BookOpen,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Layers3,
   Loader2,
   Plus,
   RefreshCw,
@@ -21,6 +26,18 @@ import {
 import { toast } from "sonner";
 import { EngineSelect } from "@/components/ui/EngineSelect";
 import { readApiResponse } from "@/lib/client/api-response";
+import type { ProductionCourseContext } from "@/domains/production/course-context/production-course-context";
+import {
+  buildSceneGenerateAllPlan,
+  sceneSupportsGenerationTarget,
+  selectSceneIdsForGeneration,
+} from "@/domains/production/providers/heygen/heygen-scene-generation-policy";
+import {
+  estimateHeygenGenerationQuote,
+  estimateHeygenSceneGenerationQuote,
+  type HeygenGenerationQuote,
+  type HeygenSceneGenerationQuote,
+} from "@/domains/production/providers/heygen/heygen-cost.service";
 
 type AspectRatio = "16:9" | "9:16";
 type Engine = "avatar_iv" | "avatar_v";
@@ -29,6 +46,8 @@ type OutputFormat = "mp4" | "webm";
 type AvatarGenerationMode = "scene_clips" | "single_video" | "voiceover";
 
 interface AvatarSceneClip {
+  visual_plan?: import("@/domains/production/composition-editor/composition-narrative.types").SceneVisualPlan;
+  asset_name?: string;
   avatar_preset_id?: string;
   background?: {
     asset_id?: string;
@@ -38,6 +57,7 @@ interface AvatarSceneClip {
   deleted?: boolean;
   duration?: number;
   error_message?: string;
+  expected_media_mode?: "avatar" | "voice_only" | "none";
   external_id?: string;
   file_name?: string;
   generation_revision?: number;
@@ -71,8 +91,27 @@ interface VoiceSceneClip {
   status: "DRAFT" | "COMPLETED" | "FAILED" | "STALE";
 }
 
+interface HistoricalSceneRecoveryReport {
+  alreadyAvailableAvatarCount: number;
+  expectedAvatarSceneCount: number;
+  expectedVoiceOnlySceneCount: number;
+  incompleteExpectedMediaCount: number;
+  importedHistoricalAvatarCount: number;
+  matchedJobCount: number;
+  pendingAvatarCount: number;
+  pendingExpectedMediaCount: number;
+  recoveredAvatarCount: number;
+  recoveredVoiceCount: number;
+  renamedAssetCount: number;
+  skipped: string[];
+  readySceneCount: number;
+  unconfiguredSceneCount: number;
+  unresolvedSceneCount: number;
+}
+
 interface AvatarPreset {
   archived_at?: string | null;
+  avatar_type?: string | null;
   heygen_avatar_look_id?: string | null;
   id: string;
   is_default?: boolean;
@@ -134,6 +173,7 @@ interface CurrentJob {
 }
 
 interface HeygenStudioClientProps {
+  courseContext?: ProductionCourseContext | null;
   organizationLabel: string;
 }
 
@@ -162,7 +202,15 @@ const CLIP_STATUS_LABELS: Record<AvatarSceneClip["status"], string> = {
   WAITING_PROVIDER: "Esperando proveedor",
 };
 
+const EXPECTED_MEDIA_MODE_LABELS = {
+  avatar: "Espera avatar",
+  none: "Sin medio hablado",
+  unconfigured: "Modalidad pendiente",
+  voice_only: "Espera sólo voz",
+} as const;
+
 export default function HeygenStudioClient({
+  courseContext,
   organizationLabel,
 }: HeygenStudioClientProps) {
   const router = useRouter();
@@ -204,6 +252,7 @@ export default function HeygenStudioClient({
   const [avatarGenerationMode, setAvatarGenerationMode] =
     useState<AvatarGenerationMode>(isCourseContext ? "scene_clips" : "single_video");
   const [sceneClips, setSceneClips] = useState<AvatarSceneClip[]>([]);
+  const [visualCatalog, setVisualCatalog] = useState<SceneVisualCatalog | null>(null);
   const [voiceClips, setVoiceClips] = useState<VoiceSceneClip[]>([]);
   const [generatingVoiceClipIds, setGeneratingVoiceClipIds] = useState<string[]>([]);
   const [resettingSceneClipIds, setResettingSceneClipIds] = useState<string[]>([]);
@@ -222,7 +271,9 @@ export default function HeygenStudioClient({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoadingScenes, setIsLoadingScenes] = useState(false);
   const [isGeneratingClips, setIsGeneratingClips] = useState(false);
-  const [sceneGenerationTarget, setSceneGenerationTarget] = useState<"avatar" | "voice_only" | null>(null);
+  const [isRecoveringHistoricalAssets, setIsRecoveringHistoricalAssets] = useState(false);
+  const [historicalRecoveryReport, setHistoricalRecoveryReport] = useState<HistoricalSceneRecoveryReport | null>(null);
+  const [sceneGenerationTarget, setSceneGenerationTarget] = useState<"all" | "avatar" | "voice_only" | null>(null);
   const [isCheckingClipStatus, setIsCheckingClipStatus] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -341,6 +392,7 @@ export default function HeygenStudioClient({
       }
 
       const clips = (payload.data?.clips || []) as AvatarSceneClip[];
+      setVisualCatalog((payload.data?.visualCatalog as SceneVisualCatalog) || null);
       setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
       const loadedMode = (payload.data?.avatarGenerationMode as AvatarGenerationMode) || "scene_clips";
       setAvatarGenerationMode(loadedMode);
@@ -364,7 +416,7 @@ export default function HeygenStudioClient({
       }
       setSceneClips(clips);
       setSelectedSceneClipIds((current) =>
-        current.length > 0 ? current : clips.map((clip) => clip.id),
+        current.filter((clipId) => clips.some((clip) => clip.id === clipId && !clip.deleted)),
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error al cargar escenas de avatar.";
@@ -754,7 +806,10 @@ export default function HeygenStudioClient({
 
   const handleReturnToCourseFlow = () => {
     if (safeReturnTo) {
-      router.push(safeReturnTo);
+      // Production assets are updated by background workers while this module
+      // is open. A client-router return can reuse the previous RSC payload and
+      // display only the clips that existed before entering HeyGen.
+      window.location.assign(safeReturnTo);
       return;
     }
 
@@ -797,6 +852,52 @@ export default function HeygenStudioClient({
     }
   };
 
+  const handleRecoverHistoricalAssets = async () => {
+    if (!componentId || !connection.connected) {
+      toast.error("Conecta HeyGen para consultar los videos históricos de esta lección.");
+      return;
+    }
+
+    setIsRecoveringHistoricalAssets(true);
+    setHistoricalRecoveryReport(null);
+    setErrorMessage(null);
+    try {
+      const response = await fetch("/api/production/heygen/scenes", {
+        body: JSON.stringify({ componentId }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const payload = await readApiResponse(response);
+      if (!response.ok || !payload.success) {
+        throw new Error(readApiErrorMessage(payload, "No se pudieron recuperar los assets históricos."));
+      }
+
+      const report = payload.data?.report as HistoricalSceneRecoveryReport;
+      setSceneClips((payload.data?.clips || []) as AvatarSceneClip[]);
+      setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
+      setHistoricalRecoveryReport(report);
+      if (payload.data?.editorSyncWarning) toast.warning(payload.data.editorSyncWarning);
+      if (report.pendingAvatarCount > 0) {
+        toast.success(`Recuperación iniciada: ${report.pendingAvatarCount} videos históricos siguen procesándose.`);
+      } else if (report.recoveredAvatarCount > 0 || report.recoveredVoiceCount > 0) {
+        toast.success("Assets históricos recuperados y sincronizados con el editor.");
+      } else {
+        toast.success("La revisión terminó; los assets disponibles ya estaban sincronizados.");
+      }
+      if (report.unconfiguredSceneCount > 0) {
+        toast.warning(`${report.unconfiguredSceneCount} escenas todavía requieren definir si esperan avatar, sólo voz o ningún medio hablado.`);
+      } else if (report.incompleteExpectedMediaCount > 0) {
+        toast.warning(`${report.incompleteExpectedMediaCount} escenas aún no cumplen el medio configurado.`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudieron recuperar los assets históricos.";
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setIsRecoveringHistoricalAssets(false);
+    }
+  };
+
   const handleGenerateSelectedClips = async (generationTarget: "avatar" | "voice_only") => {
     if (!connection.connected || !componentId) {
       toast.error("Configura la API key de HeyGen antes de generar contenido.");
@@ -805,6 +906,20 @@ export default function HeygenStudioClient({
 
     if (selectedSceneClipIds.length === 0) {
       toast.error("Selecciona al menos una escena.");
+      return;
+    }
+
+    const incompatibleClips = sceneClips.filter(
+      (clip) => selectedSceneClipIds.includes(clip.id)
+        && !sceneSupportsGenerationTarget(clip, generationTarget),
+    );
+    if (incompatibleClips.length > 0) {
+      const sceneLabels = incompatibleClips.map((clip) => clip.order).join(", ");
+      toast.error(
+        generationTarget === "avatar"
+          ? `Las escenas ${sceneLabels} no están configuradas para avatar. Selecciona “Avatares” para evitar cargos incorrectos.`
+          : `Las escenas ${sceneLabels} no están configuradas para voz. Define primero el medio esperado.`,
+      );
       return;
     }
 
@@ -861,6 +976,122 @@ export default function HeygenStudioClient({
       const message = error instanceof Error
         ? error.message
         : `Error al generar ${generationTarget === "voice_only" ? "voces" : "clips de avatar"}.`;
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setIsGeneratingClips(false);
+      setSceneGenerationTarget(null);
+    }
+  };
+
+  const handleGenerateAllClips = async () => {
+    if (!connection.connected || !componentId) {
+      toast.error("Configura la API key de HeyGen antes de generar contenido.");
+      return;
+    }
+
+    const selectedAvatar = avatarPresets.find((preset) => preset.id === selectedAvatarPresetId);
+    const generationQuote = estimateHeygenSceneGenerationQuote({
+      avatarType: selectedAvatar?.avatar_type,
+      clips: sceneClips,
+      engine,
+      resolution,
+      selectedClipIds: selectedSceneClipIds,
+      speed: voiceSpeed,
+    });
+    const plan = generationQuote.plan;
+    if (plan.avatarClipIds.length === 0 && plan.voiceOnlyClipIds.length === 0) {
+      toast.error("La selección no contiene escenas configuradas para avatar o sólo voz.");
+      return;
+    }
+    if (generationQuote.emptyScriptClipIds.length > 0) {
+      const scenes = sceneClips
+        .filter((clip) => generationQuote.emptyScriptClipIds.includes(clip.id))
+        .map((clip) => clip.order)
+        .join(", ");
+      toast.error(`Agrega un guion a la${generationQuote.emptyScriptClipIds.length === 1 ? " escena" : "s escenas"} ${scenes} antes de generar. No se envió ninguna solicitud a HeyGen.`);
+      return;
+    }
+    const confirmed = window.confirm(
+      [
+        "Se generará todo el contenido hablado seleccionado:",
+        `• ${plan.avatarClipIds.length} escena${plan.avatarClipIds.length === 1 ? "" : "s"} con avatar y voz`,
+        `• ${plan.voiceOnlyClipIds.length} escena${plan.voiceOnlyClipIds.length === 1 ? "" : "s"} sólo con voz`,
+        `Referencia estimada: US$${generationQuote.total.totalUsd.toFixed(2)} (avatar US$${generationQuote.avatar.totalUsd.toFixed(2)} + sólo voz US$${generationQuote.voiceOnly.totalUsd.toFixed(2)}).`,
+        "HeyGen puede cobrar según la duración final y el plan contratado. ¿Deseas continuar?",
+      ].join("\n"),
+    );
+    if (!confirmed) return;
+
+    setIsGeneratingClips(true);
+    setSceneGenerationTarget("all");
+    setErrorMessage(null);
+
+    let submittedAvatarCount = 0;
+    let submittedVoiceCount = 0;
+    try {
+      let clips = await saveSceneClips(sceneClips);
+      let latestVoiceClips = voiceClips;
+
+      const submitBatch = async (
+        generationTarget: "avatar" | "voice_only",
+        clipIds: string[],
+      ) => {
+        const response = await fetch("/api/production/heygen/clips/generate", {
+          body: JSON.stringify({
+            aspectRatio,
+            caption,
+            clipIds,
+            clips,
+            componentId,
+            engine,
+            generationTarget,
+            brandGlossaryId: brandGlossaryId || undefined,
+            locale: voiceLocale || undefined,
+            motionPrompt: motionPrompt || undefined,
+            outputFormat,
+            pitch: voicePitch,
+            removeBackground: outputFormat === "webm" || removeBackground,
+            resolution,
+            speed: Math.min(1.5, voiceSpeed),
+            volume: voiceVolume,
+          }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const payload = await readApiResponse(response);
+        if (!response.ok || !payload.success) {
+          throw new Error(readApiErrorMessage(
+            payload,
+            generationTarget === "avatar"
+              ? "No se pudieron encolar los avatares."
+              : "No se pudieron encolar las voces.",
+          ));
+        }
+
+        clips = (payload.data?.clips || clips) as AvatarSceneClip[];
+        latestVoiceClips = (payload.data?.voiceClips || latestVoiceClips) as VoiceSceneClip[];
+        setSceneClips(clips);
+        setVoiceClips(latestVoiceClips);
+      };
+
+      if (plan.avatarClipIds.length > 0) {
+        await submitBatch("avatar", plan.avatarClipIds);
+        submittedAvatarCount = plan.avatarClipIds.length;
+      }
+      if (plan.voiceOnlyClipIds.length > 0) {
+        await submitBatch("voice_only", plan.voiceOnlyClipIds);
+        submittedVoiceCount = plan.voiceOnlyClipIds.length;
+      }
+
+      toast.success(
+        `Generación completa en cola: ${submittedAvatarCount} avatares y ${submittedVoiceCount} voces.`,
+      );
+    } catch (error) {
+      const partialSubmission = submittedAvatarCount > 0 || submittedVoiceCount > 0
+        ? ` Ya quedaron en cola ${submittedAvatarCount} avatares y ${submittedVoiceCount} voces; no los vuelvas a enviar.`
+        : "";
+      const message = `${error instanceof Error ? error.message : "No se pudo generar todo el contenido."}${partialSubmission}`;
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -943,6 +1174,23 @@ export default function HeygenStudioClient({
   ));
   const completedSceneClips = visibleSceneClips.filter((clip) => clip.status === "COMPLETED");
   const completedVoiceClips = voiceClips.filter((clip) => clip.status === "COMPLETED");
+  const selectedAvatar = avatarPresets.find((preset) => preset.id === selectedAvatarPresetId);
+  const sceneGenerationQuote = estimateHeygenSceneGenerationQuote({
+    avatarType: selectedAvatar?.avatar_type,
+    clips: visibleSceneClips,
+    engine,
+    resolution,
+    selectedClipIds: selectedSceneClipIds,
+    speed: voiceSpeed,
+  });
+  const standaloneQuote = estimateHeygenGenerationQuote({
+    avatarType: selectedAvatar?.avatar_type,
+    engine: isVoiceoverMode ? undefined : engine,
+    includeSpeech: true,
+    resolution,
+    scripts: [standaloneScript],
+    speed: voiceSpeed,
+  });
   const sceneDurationSeconds = completedSceneClips.reduce(
     (total, clip) => total + (typeof clip.duration === "number" ? clip.duration : 0),
     0,
@@ -1032,9 +1280,68 @@ export default function HeygenStudioClient({
         </div>
       </header>
 
+      {isCourseContext ? (
+        courseContext ? (
+          <section
+            aria-label="Contexto del taller"
+            className="grid gap-3 rounded-2xl border border-rose-200 bg-gradient-to-r from-rose-50 to-orange-50 p-4 dark:border-rose-500/20 dark:from-rose-500/10 dark:to-orange-500/5 sm:grid-cols-2"
+          >
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-rose-600 shadow-sm dark:bg-white/10 dark:text-rose-300">
+                <Layers3 size={17} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-rose-700/70 dark:text-rose-300/70">Taller</p>
+                <p className="mt-1 truncate text-sm font-bold text-gray-950 dark:text-white" title={courseContext.workshopTitle}>
+                  {courseContext.workshopTitle}
+                </p>
+              </div>
+            </div>
+            <div className="flex min-w-0 items-start gap-3 sm:border-l sm:border-rose-200 sm:pl-4 dark:sm:border-rose-500/20">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-rose-600 shadow-sm dark:bg-white/10 dark:text-rose-300">
+                <BookOpen size={17} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-rose-700/70 dark:text-rose-300/70">Lección</p>
+                <p className="mt-1 truncate text-sm font-bold text-gray-950 dark:text-white" title={courseContext.lessonTitle}>
+                  {courseContext.lessonTitle}
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-700 dark:text-amber-300">
+            No se pudo verificar el taller y la lección asociados a este componente.
+          </div>
+        )
+      ) : null}
+
       {errorMessage ? (
         <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-600 dark:text-red-300">
           {errorMessage}
+        </div>
+      ) : null}
+
+      {historicalRecoveryReport ? (
+        <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-sm text-blue-800 dark:text-blue-200">
+          <p className="font-bold">Reporte de recuperación histórica</p>
+          <p className="mt-1">
+            {historicalRecoveryReport.recoveredAvatarCount} avatares vinculados a escenas vigentes, {historicalRecoveryReport.importedHistoricalAvatarCount} videos históricos importados y {historicalRecoveryReport.recoveredVoiceCount} voces recuperadas; {historicalRecoveryReport.alreadyAvailableAvatarCount} avatares ya estaban disponibles; {historicalRecoveryReport.pendingAvatarCount} siguen procesándose.
+          </p>
+          <p className="mt-1 text-xs text-blue-700/80 dark:text-blue-300/80">
+            Completas según modalidad: {historicalRecoveryReport.readySceneCount}. Avatar esperado: {historicalRecoveryReport.expectedAvatarSceneCount}. Sólo voz: {historicalRecoveryReport.expectedVoiceOnlySceneCount}. Modalidad pendiente: {historicalRecoveryReport.unconfiguredSceneCount}. Medios faltantes: {historicalRecoveryReport.incompleteExpectedMediaCount}. En proceso: {historicalRecoveryReport.pendingExpectedMediaCount}.
+          </p>
+          <p className="mt-1 text-xs text-blue-700/80 dark:text-blue-300/80">
+            Jobs relacionados: {historicalRecoveryReport.matchedJobCount}. Nombres/metadatos actualizados: {historicalRecoveryReport.renamedAssetCount}. Escenas que requieren decisión o acción: {historicalRecoveryReport.unresolvedSceneCount}.
+          </p>
+          {historicalRecoveryReport.skipped.length > 0 ? (
+            <details className="mt-2 text-xs">
+              <summary className="cursor-pointer font-semibold">Ver escenas no recuperables</summary>
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                {historicalRecoveryReport.skipped.map((message) => <li key={message}>{message}</li>)}
+              </ul>
+            </details>
+          ) : null}
         </div>
       ) : null}
 
@@ -1161,10 +1468,25 @@ export default function HeygenStudioClient({
                   <button
                     type="button"
                     onClick={handleSaveSceneEdits}
-                    disabled={isGeneratingClips || isLoadingScenes}
+                    disabled={isGeneratingClips || isLoadingScenes || isRecoveringHistoricalAssets}
                     className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
                   >
                     Guardar cambios
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRecoverHistoricalAssets()}
+                    disabled={
+                      !connection.connected
+                      || isGeneratingClips
+                      || isLoadingScenes
+                      || isRecoveringHistoricalAssets
+                    }
+                    className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300"
+                    title="Recupera archivos desde jobs y video IDs existentes; no genera videos nuevos ni consume créditos"
+                  >
+                    {isRecoveringHistoricalAssets ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                    Recuperar históricos
                   </button>
                   {resettableSceneClipIds.length > 0 ? (
                     <button
@@ -1188,10 +1510,17 @@ export default function HeygenStudioClient({
                   ) : null}
                   <button
                     type="button"
-                    onClick={() => setSelectedSceneClipIds(visibleSceneClips.map((clip) => clip.id))}
+                    onClick={() => setSelectedSceneClipIds(selectSceneIdsForGeneration(visibleSceneClips, "voice_only"))}
                     className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
                   >
-                    Todas
+                    Voces
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSceneClipIds(selectSceneIdsForGeneration(visibleSceneClips, "avatar"))}
+                    className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                  >
+                    Avatares
                   </button>
                   <button
                     type="button"
@@ -1261,17 +1590,22 @@ export default function HeygenStudioClient({
                                   {clip.visual_type}
                                 </span>
                               ) : null}
+                              <span className={`rounded-full px-2 py-1 text-xs font-semibold ${getExpectedMediaModeClassName(clip.expected_media_mode)}`}>
+                                {EXPECTED_MEDIA_MODE_LABELS[clip.expected_media_mode || "unconfigured"]}
+                              </span>
                             </label>
                           </div>
                           <div className="flex items-center gap-2">
-                            {clip.voice_status ? (
-                              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getClipStatusClassName(clip.voice_status)}`}>
-                                Voz: {CLIP_STATUS_LABELS[clip.voice_status] || clip.voice_status}
+                            {(clip.expected_media_mode === "voice_only" || clip.voice_status) ? (
+                              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getClipStatusClassName(clip.voice_status || "DRAFT")}`}>
+                                Voz: {CLIP_STATUS_LABELS[clip.voice_status || "DRAFT"]}
                               </span>
                             ) : null}
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getClipStatusClassName(clip.status)}`}>
-                              Avatar: {CLIP_STATUS_LABELS[clip.status] || clip.status}
-                            </span>
+                            {(clip.expected_media_mode === "avatar" || hasGeneratedAssets && clip.status !== "DRAFT") ? (
+                              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getClipStatusClassName(clip.status)}`}>
+                                Avatar: {CLIP_STATUS_LABELS[clip.status] || clip.status}
+                              </span>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => (
@@ -1308,12 +1642,49 @@ export default function HeygenStudioClient({
                           </p>
                         ) : (
                           <>
+                            <label className="mt-3 flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
+                              Medio esperado
+                              <select
+                                value={clip.expected_media_mode || ""}
+                                disabled={isGeneratingClips || clip.status === "WAITING_PROVIDER" || clip.voice_status === "WAITING_PROVIDER"}
+                                onChange={(event) => updateSceneClip(clip.id, {
+                                  expected_media_mode: (event.target.value || undefined) as AvatarSceneClip["expected_media_mode"],
+                                })}
+                                className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
+                              >
+                                <option value="" disabled={Boolean(clip.expected_media_mode)}>Pendiente de definir</option>
+                                <option value="avatar">Avatar y voz separada</option>
+                                <option value="voice_only">Sólo voz en off</option>
+                                <option value="none">No requiere medio hablado</option>
+                              </select>
+                              <span className="font-normal normal-case tracking-normal text-gray-400 dark:text-slate-500">
+                                Define qué debe existir para considerar completa esta escena.
+                              </span>
+                            </label>
+                            <label className="mt-3 flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
+                              Nombre del asset
+                              <input
+                                type="text"
+                                maxLength={120}
+                                value={clip.asset_name || ""}
+                                disabled={isGeneratingClips}
+                                onChange={(event) => updateSceneClip(clip.id, {
+                                  asset_name: event.target.value || undefined,
+                                })}
+                                placeholder={`Se usará el nombre de la lección · Escena ${String(clip.order).padStart(2, "0")}`}
+                                className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
+                              />
+                              <span className="font-normal normal-case tracking-normal text-gray-400 dark:text-slate-500">
+                                Se mostrará como título en HeyGen y nombrará el MP4/MP3 al regresar.
+                              </span>
+                            </label>
                             <textarea
                               value={clip.script_text}
                               disabled={isGeneratingClips}
                               onChange={(event) => updateSceneClip(clip.id, { script_text: event.target.value })}
                               className="mt-3 min-h-28 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm leading-relaxed text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
                             />
+                            <SceneVisualSelector catalog={visualCatalog} scriptText={clip.script_text} plan={clip.visual_plan} disabled={isGeneratingClips || isGeneratingVoice} onChange={(visual_plan) => updateSceneClip(clip.id, { visual_plan })} />
                             {clip.error_message ? (
                               <p className="mt-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-600 dark:text-red-300">
                                 {clip.error_message}
@@ -1553,9 +1924,35 @@ export default function HeygenStudioClient({
             </details>
           ) : null}
 
+          {(isSceneMode || !isCourseContext) ? (
+            <GenerationQuote
+              quote={isSceneMode ? sceneGenerationQuote.total : standaloneQuote}
+              sceneGenerationQuote={isSceneMode ? sceneGenerationQuote : undefined}
+              title={isSceneMode ? "Cotización de la selección" : "Cotización previa"}
+            />
+          ) : null}
+
           <div className="mt-5 flex flex-wrap gap-3">
             {isSceneMode ? (
               <>
+                <button
+                  type="button"
+                  onClick={handleGenerateAllClips}
+                  disabled={
+                    isGeneratingClips ||
+                    isLoadingPresets ||
+                    !connection.connected ||
+                    (
+                      buildSceneGenerateAllPlan(visibleSceneClips, selectedSceneClipIds).avatarClipIds.length === 0 &&
+                      buildSceneGenerateAllPlan(visibleSceneClips, selectedSceneClipIds).voiceOnlyClipIds.length === 0
+                    )
+                  }
+                  title="Genera, dentro de la selección, avatar sólo donde corresponde y voz en las escenas configuradas como sólo voz"
+                  className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/15 transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {sceneGenerationTarget === "all" ? <Loader2 size={16} className="animate-spin" /> : <Layers3 size={16} />}
+                  Generar todo
+                </button>
                 <button
                   type="button"
                   onClick={() => handleGenerateSelectedClips("voice_only")}
@@ -1731,6 +2128,7 @@ export default function HeygenStudioClient({
           }))}
           kind="avatar"
           onArchive={(presetId) => handlePresetArchived("avatar", presetId, true)}
+          paginationKey={`${normalizedCatalogQuery}:${catalogOwnership}`}
           title="Avatares"
           updatingPresetId={updatingPresetId}
         />
@@ -1745,6 +2143,7 @@ export default function HeygenStudioClient({
           }))}
           kind="voice"
           onArchive={(presetId) => handlePresetArchived("voice", presetId, true)}
+          paginationKey={normalizedCatalogQuery}
           title="Voces"
           updatingPresetId={updatingPresetId}
         />
@@ -1830,6 +2229,53 @@ function InsertSceneClipButton({
   );
 }
 
+function GenerationQuote({
+  quote,
+  sceneGenerationQuote,
+  title,
+}: {
+  quote: HeygenGenerationQuote;
+  sceneGenerationQuote?: HeygenSceneGenerationQuote;
+  title: string;
+}) {
+  const hasContent = quote.durationSeconds > 0;
+  return (
+    <div className="mt-5 rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 text-sm text-violet-950 dark:text-violet-100">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="font-bold">{title}</p>
+        <span className="text-base font-extrabold tabular-nums">
+          {hasContent ? `≈ US$${quote.totalUsd.toFixed(2)}` : "Escribe o selecciona un guion"}
+        </span>
+      </div>
+      {hasContent ? (
+        <p className="mt-1 text-xs text-violet-800/80 dark:text-violet-200/80">
+          {sceneGenerationQuote
+            ? <>
+              {sceneGenerationQuote.plan.avatarClipIds.length} avatar{sceneGenerationQuote.plan.avatarClipIds.length === 1 ? "" : "es"} + {sceneGenerationQuote.plan.voiceOnlyClipIds.length} sólo voz · {formatDuration(quote.durationSeconds)} estimados. Avatar: US${sceneGenerationQuote.avatar.totalUsd.toFixed(2)} · sólo voz: US${sceneGenerationQuote.voiceOnly.totalUsd.toFixed(2)}.
+            </>
+            : <>
+              {formatDuration(quote.durationSeconds)} estimados · avatar US${quote.avatarUsd.toFixed(2)}
+              {quote.includesSpeech ? ` + voz US$${quote.speechUsd.toFixed(2)}` : ""}.
+            </>}
+        </p>
+      ) : null}
+      {sceneGenerationQuote?.emptyScriptClipIds.length ? (
+        <p className="mt-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+          Hay {sceneGenerationQuote.emptyScriptClipIds.length} escena{sceneGenerationQuote.emptyScriptClipIds.length === 1 ? "" : "s"} facturable{sceneGenerationQuote.emptyScriptClipIds.length === 1 ? "" : "s"} sin guion. El envío se bloqueará hasta corregirla{sceneGenerationQuote.emptyScriptClipIds.length === 1 ? "" : "s"}.
+        </p>
+      ) : null}
+      {sceneGenerationQuote?.ignoredClipIds.length ? (
+        <p className="mt-1 text-[11px] text-violet-800/70 dark:text-violet-200/70">
+          {sceneGenerationQuote.ignoredClipIds.length} escena{sceneGenerationQuote.ignoredClipIds.length === 1 ? "" : "s"} seleccionada{sceneGenerationQuote.ignoredClipIds.length === 1 ? "" : "s"} no requiere{sceneGenerationQuote.ignoredClipIds.length === 1 ? "" : "n"} contenido hablado y no se incluye{sceneGenerationQuote.ignoredClipIds.length === 1 ? "" : "n"} en el monto.
+        </p>
+      ) : null}
+      <p className="mt-1 text-[11px] text-violet-800/70 dark:text-violet-200/70">
+        Referencia de tarifa API por duración; no es una factura ni una confirmación de cobro de HeyGen. La opción “Sólo voz” no incluye render de avatar.
+      </p>
+    </div>
+  );
+}
+
 function StatusRow({
   label,
   mono,
@@ -1871,6 +2317,13 @@ function getClipStatusClassName(status: AvatarSceneClip["status"]) {
     return "bg-blue-500/10 text-blue-700 dark:text-blue-300";
   }
   return "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-slate-300";
+}
+
+function getExpectedMediaModeClassName(mode: AvatarSceneClip["expected_media_mode"]) {
+  if (mode === "avatar") return "bg-rose-500/10 text-rose-700 dark:text-rose-300";
+  if (mode === "voice_only") return "bg-blue-500/10 text-blue-700 dark:text-blue-300";
+  if (mode === "none") return "bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-slate-300";
+  return "bg-amber-500/10 text-amber-700 dark:text-amber-300";
 }
 
 function readApiErrorMessage(payload: any, fallback: string) {
@@ -2027,6 +2480,7 @@ function PresetList({
   items,
   kind,
   onArchive,
+  paginationKey,
   title,
   updatingPresetId,
 }: {
@@ -2041,9 +2495,25 @@ function PresetList({
   }[];
   kind: "avatar" | "voice";
   onArchive: (presetId: string) => void;
+  paginationKey: string;
   title: string;
   updatingPresetId: string | null;
 }) {
+  const pageSize = kind === "avatar" ? 9 : 10;
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const [currentPage, setCurrentPage] = useState(1);
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStart = (safeCurrentPage - 1) * pageSize;
+  const visibleItems = items.slice(pageStart, pageStart + pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [paginationKey]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
+
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-white/5 dark:bg-[var(--engine-surface-solid)]">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -2057,46 +2527,78 @@ function PresetList({
           {emptyText}
         </div>
       ) : (
-        <div className={title === "Avatares" ? "engine-avatar-gallery" : "engine-voice-gallery"}>
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="engine-preset-card"
-            >
-              {item.imageUrl ? (
-                <img
-                  src={item.imageUrl}
-                  alt=""
-                  className="engine-preset-card__image"
-                />
-              ) : (
-                <div className="engine-preset-card__fallback">
-                  <UserRoundCog size={20} />
+        <>
+          <div className={kind === "avatar" ? "engine-avatar-gallery" : "engine-voice-gallery"}>
+            {visibleItems.map((item) => (
+              <div
+                key={item.id}
+                className="engine-preset-card"
+              >
+                {item.imageUrl ? (
+                  <img
+                    src={item.imageUrl}
+                    alt=""
+                    className="engine-preset-card__image"
+                  />
+                ) : (
+                  <div className="engine-preset-card__fallback">
+                    <UserRoundCog size={20} />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{item.name}</p>
+                  <p className="truncate font-mono text-[10px] text-gray-500 dark:text-slate-400">
+                    {item.meta || item.id}
+                  </p>
                 </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{item.name}</p>
-                <p className="truncate font-mono text-[10px] text-gray-500 dark:text-slate-400">
-                  {item.meta || item.id}
-                </p>
+                {item.isDefault ? (
+                  <CheckCircle2 className="shrink-0 text-emerald-500" size={18} />
+                ) : (
+                  <button
+                    type="button"
+                    disabled={updatingPresetId === item.id}
+                    onClick={() => onArchive(item.id)}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-400 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 disabled:opacity-60 dark:border-white/10 dark:hover:border-amber-500/30 dark:hover:bg-amber-500/10 dark:hover:text-amber-300"
+                    title={`Ocultar ${kind === "avatar" ? "avatar" : "voz"}${item.isDuplicate ? " duplicado" : ""}`}
+                  >
+                    {updatingPresetId === item.id ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                  </button>
+                )}
+                {item.isDuplicate ? <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[9px] font-bold uppercase text-amber-700 dark:text-amber-300">Duplicado</span> : null}
               </div>
-              {item.isDefault ? (
-                <CheckCircle2 className="shrink-0 text-emerald-500" size={18} />
-              ) : (
+            ))}
+          </div>
+          {totalPages > 1 ? (
+            <nav className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-white/5" aria-label={`Paginación de ${title.toLowerCase()}`}>
+              <span className="text-xs font-medium text-gray-500 dark:text-slate-400">
+                Mostrando {pageStart + 1}–{Math.min(pageStart + pageSize, items.length)} de {items.length}
+              </span>
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={updatingPresetId === item.id}
-                  onClick={() => onArchive(item.id)}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-400 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 disabled:opacity-60 dark:border-white/10 dark:hover:border-amber-500/30 dark:hover:bg-amber-500/10 dark:hover:text-amber-300"
-                  title={`Ocultar ${kind === "avatar" ? "avatar" : "voz"}${item.isDuplicate ? " duplicado" : ""}`}
+                  disabled={safeCurrentPage === 1}
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                  aria-label={`Página anterior de ${title.toLowerCase()}`}
                 >
-                  {updatingPresetId === item.id ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                  <ChevronLeft size={14} /> Anterior
                 </button>
-              )}
-              {item.isDuplicate ? <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[9px] font-bold uppercase text-amber-700 dark:text-amber-300">Duplicado</span> : null}
-            </div>
-          ))}
-        </div>
+                <span className="min-w-16 text-center text-xs font-semibold text-gray-600 dark:text-slate-300">
+                  {safeCurrentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={safeCurrentPage === totalPages}
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                  aria-label={`Página siguiente de ${title.toLowerCase()}`}
+                >
+                  Siguiente <ChevronRight size={14} />
+                </button>
+              </div>
+            </nav>
+          ) : null}
+        </>
       )}
     </section>
   );

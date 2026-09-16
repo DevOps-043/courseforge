@@ -43,5 +43,5 @@ async function toHeygenError(response: Response): Promise<HeygenHttpError> {
   } catch {
     // Keep the safe status-only fallback; never log a provider response body.
   }
-  return new HeygenHttpError(message, response.status);
+  return new HeygenHttpError(`HeyGen GET render: HTTP ${response.status}. ${message}`, response.status);
 }

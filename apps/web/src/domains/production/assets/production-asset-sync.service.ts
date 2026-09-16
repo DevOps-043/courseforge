@@ -31,21 +31,20 @@ export async function syncBrollPromptsToMaterialComponent(params: {
         prepared_spec: slideDeckSpec,
       }
     : currentAssets.slides;
-  const updatedAssets: MaterialAssets = {
-    ...currentAssets,
+  const assetsPatch: Partial<MaterialAssets> = {
     b_roll_prompts: promptsText,
     ...(preparedSlides ? { slides: preparedSlides } : {}),
     updated_at: new Date().toISOString(),
   };
 
-  const { error: updateError } = await supabase
-    .from("material_components")
-    .update({ assets: updatedAssets })
-    .eq("id", componentId);
+  const { data: updatedAssets, error: updateError } = await supabase.rpc(
+    "patch_material_component_assets",
+    { p_component_id: componentId, p_assets_patch: assetsPatch },
+  );
 
   if (updateError) {
     throw updateError;
   }
 
-  return updatedAssets;
+  return updatedAssets as MaterialAssets;
 }

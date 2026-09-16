@@ -7,6 +7,7 @@ import {
 } from "../types/syllabus.types";
 import { SyllabusModuleCard } from "./SyllabusModuleCard";
 import { SyllabusValidationPanel } from "./SyllabusValidationPanel";
+import { estimateLessonDurationMinutes } from "../lib/lesson-duration-estimator";
 
 interface SyllabusViewerProps {
   modules: SyllabusModule[];
@@ -101,7 +102,10 @@ export function SyllabusViewer({
         {
           title: "Nueva Lección",
           objective_specific: "",
-          estimated_minutes: 30,
+          estimated_minutes: estimateLessonDurationMinutes({
+            title: "Nueva Lección",
+            objective_specific: "",
+          }),
         },
       ],
     };
@@ -116,7 +120,10 @@ export function SyllabusViewer({
       draft[moduleIndex].lessons.push({
         title: "Nueva Lección",
         objective_specific: "",
-        estimated_minutes: 30,
+        estimated_minutes: estimateLessonDurationMinutes({
+          title: "Nueva Lección",
+          objective_specific: "",
+        }),
       });
     });
   };

@@ -3,6 +3,10 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { HyperframesAnimatedDeckSource, HyperframesAssetManifestItem } from "./hyperframes.types";
+import {
+  normalizeAnimatedDeckAppearance,
+  repairLegacyAnimatedDeckAppearanceSelectors,
+} from "../animated-deck/animated-deck-appearance.service";
 import type { HyperframesPlan } from "./hyperframes-plan.service";
 
 export interface HyperframesProjectAsset extends HyperframesAssetManifestItem {
@@ -188,14 +192,14 @@ function renderInternalComposition(params: {
     p { margin: 0; max-width: 860px; font-size: 42px; line-height: 1.32; color: #dbeafe; }
     .copy-inner { animation: enter .7s ease-out both; }
     @keyframes enter { from { opacity: 0; transform: translateY(36px); } to { opacity: 1; transform: translateY(0); } }
-    ${params.animatedDeck?.css || ""}
+    ${params.animatedDeck ? repairLegacyAnimatedDeckAppearanceSelectors(params.animatedDeck.css) : ""}
   </style>
 </head>
 <body>
   ${params.runtimeScript}
   <div id="root" data-composition-id="courseforge-internal" data-start="0" data-width="1920" data-height="1080" data-duration="${params.plan.durationSeconds}">
     ${params.animatedDeck ? visual : `<section class="clip" data-start="0" data-duration="${params.plan.durationSeconds}" data-track-index="0">${visual}<div class="shade"></div></section>`}
-    ${params.animatedDeck ? "" : `<section class="clip" data-start="0" data-duration="${params.plan.durationSeconds}" data-track-index="2"><div class="copy"><div class="copy-inner"><div class="eyebrow">Courseforge</div><h1 data-var-text="title">${escapeHtml(params.plan.title)}</h1><p data-var-text="subtitle">${escapeHtml(params.plan.subtitle)}</p></div></div></section>`}
+    ${params.animatedDeck ? "" : `<section class="clip" data-start="0" data-duration="${params.plan.durationSeconds}" data-track-index="2"><div class="copy"><div class="copy-inner"><div class="eyebrow">SofLIA - Engine</div><h1 data-var-text="title">${escapeHtml(params.plan.title)}</h1><p data-var-text="subtitle">${escapeHtml(params.plan.subtitle)}</p></div></div></section>`}
     ${audio}
   </div>
   ${renderTimelineController(params.plan.durationSeconds)}
@@ -209,11 +213,12 @@ function renderAnimatedDeckClips(deck: HyperframesAnimatedDeckSource, durationSe
   const offsetX = (1920 - deck.width * scale) / 2;
   const offsetY = (1080 - deck.height * scale) / 2;
   const fontImports = deck.fonts.map((font) => `@import url("${escapeAttribute(font.href)}");`).join("\n");
+  const appearance = normalizeAnimatedDeckAppearance(deck.appearance);
   return `${fontImports ? `<style>${fontImports}</style>` : ""}${deck.slides.map((slide, position) => {
     const start = roundSeconds(position * slideDuration);
     const duration = roundSeconds(position === deck.slides.length - 1 ? durationSeconds - start : slideDuration);
     const classes = normalizeDeckClasses(slide.classes);
-    return `<section id="deck-slide-${slide.index}" class="clip deck-clip" data-start="${start}" data-duration="${duration}" data-track-index="1"><div class="deck-scope" data-deck-start="${start}" data-deck-duration="${duration}" style="--deck-t:0;position:absolute;width:${deck.width}px;height:${deck.height}px;left:${offsetX}px;top:${offsetY}px;transform:scale(${scale});transform-origin:top left;overflow:hidden"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(classes)}">${slide.html}</section></main></div></div></section>`;
+    return `<section id="deck-slide-${slide.index}" class="clip deck-clip" data-start="${start}" data-duration="${duration}" data-track-index="1"><div class="deck-scope" data-appearance="${appearance}" data-deck-start="${start}" data-deck-duration="${duration}" style="--deck-t:0;position:absolute;width:${deck.width}px;height:${deck.height}px;left:${offsetX}px;top:${offsetY}px;transform:scale(${scale});transform-origin:top left;overflow:hidden"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(classes)}">${slide.html}</section></main></div></div></section>`;
   }).join("")}`;
 }
 

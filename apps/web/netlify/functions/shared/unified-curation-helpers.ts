@@ -1,4 +1,5 @@
 import type { CurationRowInsert } from "../../../src/shared/types/curation.types";
+import { getLessonSourceRequirement } from "../../../src/domains/curation/lib/lesson-source-requirement";
 import {
   resolveRedirectUrl,
   validateUrlWithContent,
@@ -190,6 +191,7 @@ export function buildLessonsToProcess(
 
   return lessonPlans.map((rawLesson, index) => {
     const lesson = (rawLesson || {}) as LessonPlanLike;
+    const sourceRequirement = getLessonSourceRequirement(lesson);
     const baseId = lesson.lesson_id || lesson.id || "";
     const isValidId =
       hasString(baseId) &&
@@ -206,6 +208,8 @@ export function buildLessonsToProcess(
       component_count: Array.isArray(lesson.components)
         ? lesson.components.length
         : 0,
+      required_sources: sourceRequirement.requiredSources,
+      video_target_seconds: sourceRequirement.videoTargetSeconds,
     };
   });
 }

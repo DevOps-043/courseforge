@@ -1,6 +1,4 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -17,25 +15,44 @@ import {
   disconnectHeygenHyperframesWebhook,
 } from "@/domains/production/providers/heygen/heygen-webhook.service";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+
+const MAX_HYPERFRAMES_CONNECTION_REQUEST_BYTES = 4 * 1024;
 
 const connectionRequestSchema = z.object({ apiKey: z.string().trim().min(12).max(500) }).strict();
 
-export async function GET() {
+export async function GET(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.connection", { correlationId: requestId });
   try {
-    const context = await resolveAuthorizedContext("consultar");
+    const context = await resolveAuthorizedContext("consultar", requestId);
     if (context.response) return context.response;
     const service = new HyperframesConnectionService(getServiceRoleClient());
     const status = await service.getStatus(context.tenant.organizationId);
-    return NextResponse.json({ success: true, data: status });
+    return apiSuccessResponse({ data: status }, { requestId });
   } catch (error) {
-    return unexpected(error);
+    logger.error("production.hyperframes.connection.read_failed", error);
+    return unexpected(requestId);
   }
 }
 
 export async function POST(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.connection", { correlationId: requestId });
   try {
-    const payload = connectionRequestSchema.parse(await request.json().catch(() => ({})));
-    const context = await resolveAuthorizedContext("configurar");
+    const parsed = await parseJsonRequest(request, connectionRequestSchema, MAX_HYPERFRAMES_CONNECTION_REQUEST_BYTES);
+    if (!parsed.success) {
+      return apiErrorResponse({
+        code: parsed.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+        message: parsed.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "Ingresa una API key de HyperFrames Cloud válida.",
+        requestId,
+        status: parsed.reason === "too_large" ? 413 : 400,
+      });
+    }
+    const payload = parsed.data;
+    const context = await resolveAuthorizedContext("configurar", requestId);
     if (context.response) return context.response;
     const admin = getServiceRoleClient();
     const service = new HyperframesConnectionService(admin);
@@ -55,21 +72,21 @@ export async function POST(request: Request) {
       previousApiKey: previous?.secret,
       supabase: admin,
     });
-    return NextResponse.json({ success: true, data: status });
+    return apiSuccessResponse({ data: status }, { requestId });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: "Ingresa una API key de HyperFrames Cloud válida." }, { status: 400 });
-    }
     if (error instanceof ProductionProviderCredentialError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+      return apiErrorResponse({ code: error.status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest, details: { providerCode: error.code }, message: error.message, requestId, status: error.status });
     }
-    return unexpected(error);
+    logger.error("production.hyperframes.connection.save_failed", error);
+    return unexpected(requestId);
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.connection", { correlationId: requestId });
   try {
-    const context = await resolveAuthorizedContext("desconectar");
+    const context = await resolveAuthorizedContext("desconectar", requestId);
     if (context.response) return context.response;
     const admin = getServiceRoleClient();
     const service = new ProductionProviderCredentialsService({ supabase: admin });
@@ -97,25 +114,25 @@ export async function DELETE() {
       organizationId: context.tenant.organizationId,
       provider: "hyperframes_cloud",
     });
-    return NextResponse.json({ success: true, data: status });
+    return apiSuccessResponse({ data: status }, { requestId });
   } catch (error) {
-    return unexpected(error);
+    logger.error("production.hyperframes.connection.disconnect_failed", error);
+    return unexpected(requestId);
   }
 }
 
-async function resolveAuthorizedContext(action: string) {
+async function resolveAuthorizedContext(action: string, requestId: string) {
   const supabase = await createClient();
   const user = await getAuthenticatedUser(supabase);
-  if (!user) return { response: NextResponse.json({ error: "No autorizado." }, { status: 401 }), tenant: null as never, user: null as never };
+  if (!user) return { response: apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 }), tenant: null as never, user: null as never };
   if (!(await canReviewContent(user.userId))) {
-    return { response: NextResponse.json({ error: `No tienes permisos para ${action} HyperFrames Cloud.` }, { status: 403 }), tenant: null as never, user };
+    return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: `No tienes permisos para ${action} HyperFrames Cloud.`, requestId, status: 403 }), tenant: null as never, user };
   }
   const tenant = await resolveActiveTenantContext();
-  if (!tenant) return { response: NextResponse.json({ error: "Empresa no válida o no autorizada." }, { status: 403 }), tenant: null as never, user };
+  if (!tenant) return { response: apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 }), tenant: null as never, user };
   return { response: null, tenant, user };
 }
 
-function unexpected(error: unknown) {
-  console.error("[API /production/hyperframes/connection] Unexpected error:", { message: getErrorMessage(error) });
-  return NextResponse.json({ error: "No se pudo gestionar la conexión de HyperFrames Cloud." }, { status: 500 });
+function unexpected(requestId: string) {
+  return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo gestionar la conexión de HyperFrames Cloud.", requestId, retryable: true, status: 500 });
 }

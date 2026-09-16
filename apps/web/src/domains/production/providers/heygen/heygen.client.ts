@@ -1,5 +1,10 @@
 import { getHeygenApiKey } from "../../../../lib/server/env";
 import {
+  OutboundResponseTooLargeError,
+  readJsonResponseWithLimit,
+  readResponseTextWithLimit,
+} from "../../../../lib/server/outbound-http";
+import {
   HEYGEN_API_BASE_URL,
   HEYGEN_DEFAULT_PAGE_SIZE,
   HEYGEN_REQUEST_TIMEOUT_MS,
@@ -10,6 +15,7 @@ import {
   type HeygenGenerateSpeechRequest,
   type HeygenPage,
   type HeygenVideoDetails,
+  type HeygenVideoCatalogItem,
 } from "./heygen.types";
 import {
   heygenApiErrorPayloadSchema,
@@ -18,6 +24,9 @@ import {
   heygenVideoDetailsProviderResponseSchema,
   toRecord,
 } from "./heygen.validators";
+
+const HEYGEN_JSON_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
+const HEYGEN_ERROR_RESPONSE_MAX_BYTES = 32 * 1024;
 
 export class HeygenApiError extends Error {
   readonly providerCode?: string;
@@ -262,6 +271,50 @@ export class HeygenClient {
     };
   }
 
+  async listVideos(params: { token?: string } = {}): Promise<HeygenPage<HeygenVideoCatalogItem>> {
+    const raw = await this.requestJson({
+      method: "GET",
+      path: withQuery("/v3/videos", {
+        limit: HEYGEN_DEFAULT_PAGE_SIZE,
+        token: params.token,
+      }),
+    });
+    const root = toRecord(raw) || {};
+    const rows = Array.isArray(root.data) ? root.data : [];
+    return {
+      data: rows.flatMap((row) => {
+        const item = toRecord(row);
+        const videoId = readString(item?.video_id) || readString(item?.id);
+        if (!item || !videoId) return [];
+        return [{
+          createdAt: readNumber(item.created_at) ?? readString(item.created_at),
+          status: readString(item.status) || "unknown",
+          title: readString(item.title) || readString(item.name),
+          videoId,
+        } satisfies HeygenVideoCatalogItem];
+      }),
+      hasMore: root.has_more === true,
+      nextToken: readString(root.next_token),
+      raw: root,
+    };
+  }
+
+  async listAllVideos(): Promise<HeygenPage<HeygenVideoCatalogItem>> {
+    const data: HeygenVideoCatalogItem[] = [];
+    let token: string | undefined;
+    let raw: Record<string, unknown> = {};
+    for (let page = 0; page < 20; page += 1) {
+      const response = await this.listVideos({ token });
+      data.push(...response.data);
+      raw = response.raw;
+      if (!response.hasMore || !response.nextToken) {
+        return { data, hasMore: false, nextToken: null, raw };
+      }
+      token = response.nextToken;
+    }
+    return { data, hasMore: true, nextToken: token || null, raw };
+  }
+
   private async collectPages(
     loader: (token?: string) => Promise<unknown>,
   ): Promise<HeygenPage> {
@@ -311,7 +364,7 @@ export class HeygenClient {
         throw await this.buildApiError(response);
       }
 
-      return response.json() as Promise<unknown>;
+      return readJsonResponseWithLimit(response, HEYGEN_JSON_RESPONSE_MAX_BYTES);
     } catch (error) {
       if (error instanceof HeygenApiError) {
         throw error;
@@ -342,7 +395,15 @@ export class HeygenClient {
     const retryAfterSeconds = parseRetryAfter(
       response.headers.get("Retry-After"),
     );
-    const rawBody = await response.text();
+    let rawBody = "";
+    try {
+      rawBody = await readResponseTextWithLimit(
+        response,
+        HEYGEN_ERROR_RESPONSE_MAX_BYTES,
+      );
+    } catch (error) {
+      if (!(error instanceof OutboundResponseTooLargeError)) throw error;
+    }
     const parsedBody = parseErrorPayload(rawBody);
 
     return new HeygenApiError({

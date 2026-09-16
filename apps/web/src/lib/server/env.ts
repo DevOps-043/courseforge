@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { z } from "zod";
 
 const serverEnvSchema = z
@@ -11,6 +12,7 @@ const serverEnvSchema = z
     SOFLIA_API_URL: z.string().min(1).optional(),
     SOFLIA_API_KEY: z.string().min(1).optional(),
     COURSEFORGE_JWT_SECRET: z.string().min(1).optional(),
+    BACKGROUND_FUNCTION_SECRET: z.string().min(32).optional(),
     OPENAI_API_KEY: z.string().min(1).optional(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     GOOGLE_API_KEY: z.string().min(1).optional(),
@@ -39,6 +41,7 @@ function buildEnvObject(): Record<string, string | undefined> {
     SOFLIA_API_URL: process.env.SOFLIA_API_URL,
     SOFLIA_API_KEY: process.env.SOFLIA_API_KEY,
     COURSEFORGE_JWT_SECRET: process.env.COURSEFORGE_JWT_SECRET,
+    BACKGROUND_FUNCTION_SECRET: process.env.BACKGROUND_FUNCTION_SECRET,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
     GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
@@ -71,12 +74,10 @@ export function getOptionalServerEnvValue<Key extends keyof ServerEnv>(key: Key)
 
 export function getSupabaseServiceRoleKey() {
   const env = getParsedServerEnv();
-  const key = env.SUPABASE_SERVICE_ROLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!key) {
-    throw new Error(
-      "Missing environment variable: SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    );
+    throw new Error("Missing environment variable: SUPABASE_SERVICE_ROLE_KEY");
   }
 
   return key;
@@ -131,6 +132,34 @@ export function getCourseforgeJwtSecret() {
   }
 
   return env.COURSEFORGE_JWT_SECRET;
+}
+
+export function getBackgroundFunctionSecret() {
+  const env = getParsedServerEnv();
+  return resolveBackgroundFunctionSecret({
+    configuredSecret: env.BACKGROUND_FUNCTION_SECRET,
+    isProduction: env.NETLIFY === "true" || env.NODE_ENV === "production",
+    jwtSecret: env.COURSEFORGE_JWT_SECRET,
+  });
+}
+
+export function resolveBackgroundFunctionSecret(input: {
+  configuredSecret?: string;
+  isProduction: boolean;
+  jwtSecret?: string;
+}) {
+  if (input.configuredSecret) return input.configuredSecret;
+
+  if (!input.isProduction && input.jwtSecret) {
+    return crypto
+      .createHmac("sha256", input.jwtSecret)
+      .update("courseforge:background-function:v1")
+      .digest("hex");
+  }
+
+  throw new Error(
+    "Configuracion incompleta: falta BACKGROUND_FUNCTION_SECRET",
+  );
 }
 
 export function getGeminiApiKey() {

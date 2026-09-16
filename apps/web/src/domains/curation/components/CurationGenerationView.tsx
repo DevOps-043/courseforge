@@ -35,7 +35,7 @@ export function CurationGenerationView({
           <div className="p-2 rounded-lg bg-gray-50 dark:bg-[var(--engine-primary)] border border-gray-200 dark:border-[var(--engine-accent)]/20 text-[var(--engine-accent)]">
             <BookOpen size={24} />
           </div>
-          Paso 4: Curaduria de Fuentes (Fase 2)
+          Paso 4: Curaduria de Fuentes
         </h2>
       </div>
 

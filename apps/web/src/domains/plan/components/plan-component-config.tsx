@@ -8,14 +8,6 @@ import {
   Video as VideoIcon,
 } from "lucide-react";
 
-export const DEFAULT_PROMPT_PREVIEW = `Genera un plan instruccional detallado para cada lección del temario proporcionado.
-Para cada lección, debes estructurar el contenido en 4 componentes obligatorios:
-1. DIALOGUE: Guion conversacional o explicativo.
-2. READING: Material de lectura complementario.
-3. QUIZ: Pregunta de evaluación.
-4. VIDEO: Sugerencia visual o script.
-...`;
-
 export const getComponentBadge = (type: string) => {
   const normalizedType = type.toUpperCase();
 

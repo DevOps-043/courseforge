@@ -1,15 +1,22 @@
 import { Handler } from "@netlify/functions";
+import { generationFailureMessage } from "../../src/lib/pipeline-generation-policy";
+import { signBackgroundPayload } from "../../src/lib/server/background-payload-signature";
 import {
-  createGeminiClient,
   createServiceRoleClient,
   getGeminiApiKeySource,
-  resolveModelSetting,
+  resolveConfiguredModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
-import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
+import { buildLocalBackgroundHandlerUrl } from "../../src/lib/server/background-request-environment";
+import {
+  methodNotAllowedResponse,
+  parseVerifiedBackgroundBody,
+  unauthorizedBackgroundResponse,
+} from "./shared/http";
 import {
   findOrCreateMaterialLesson,
   type MaterialLessonRecord,
+  type MaterialsModelRuntimeConfig,
 } from "./shared/materials-generation-helpers";
 import {
   generateLessonMaterials,
@@ -17,13 +24,12 @@ import {
   loadMaterialsGenerationContext,
   markMaterialsValidating,
   PROCESS_NEXT_DELAY_MS,
-  resetGeneratingLessons,
-  setLessonState,
   START_JITTER_MS,
   touchMaterialsRecord,
   triggerNextLesson,
   wait,
 } from "./shared/materials-generation-runtime";
+import { isSupportedMaterialsModel } from "../../src/shared/ai/materials-model-provider";
 import { getCloudStorageService } from "../../src/domains/production/cloud-storage/cloud-storage.service";
 import {
   isCloudStorageProvider,
@@ -31,6 +37,7 @@ import {
 } from "../../src/domains/production/cloud-storage/types";
 
 interface RequestBody {
+  version?: number;
   artifactId?: string;
   materialsId: string;
   lessonId?: string;
@@ -42,6 +49,8 @@ interface RequestBody {
 }
 
 interface MaterialsLookupRecord {
+  version: number;
+  state: string;
   artifact_id: string;
   cloud_storage_provider?: CloudStorageProvider | null;
   created_by?: string | null;
@@ -51,6 +60,42 @@ interface MaterialsLookupRecord {
 
 function buildExecutionId(materialsId: string) {
   return `${materialsId.substring(0, 8)}-${Date.now().toString(36)}`;
+}
+
+async function triggerNextLessonWithLocalFallback(
+  materialsId: string,
+  artifactId: string,
+  logPrefix: string,
+  version: number,
+) {
+  return triggerNextLesson(
+    materialsId,
+    artifactId,
+    logPrefix,
+    async (signedBody) => {
+      const response = await Promise.resolve(handler(
+        {
+          body: signedBody,
+          headers: { "Content-Type": "application/json" },
+          httpMethod: "POST",
+          rawUrl: buildLocalBackgroundHandlerUrl("materials-generation-background"),
+        } as unknown as Parameters<Handler>[0],
+        {} as Parameters<Handler>[1],
+      ));
+
+      if (response && "statusCode" in response && (response.statusCode || 200) >= 400) {
+        let responseMessage = "La ejecucion local de materiales fallo.";
+        try {
+          const responseBody = JSON.parse(response.body || "{}") as { error?: string };
+          responseMessage = responseBody.error || responseMessage;
+        } catch {
+          responseMessage = response.body || responseMessage;
+        }
+        throw new Error(responseMessage);
+      }
+    },
+    version,
+  );
 }
 
 function firstRelationRecord(value: unknown): Record<string, unknown> | null {
@@ -69,7 +114,7 @@ async function loadMaterialsRecord(materialsId: string) {
   const supabase = createServiceRoleClient();
   const { data: materials, error } = await supabase
     .from("materials")
-    .select("id, artifact_id, artifacts!inner(created_by, generation_metadata, organization_id)")
+    .select("id, artifact_id, version, state, artifacts!inner(created_by, generation_metadata, organization_id)")
     .eq("id", materialsId)
     .single();
 
@@ -82,6 +127,8 @@ async function loadMaterialsRecord(materialsId: string) {
   const cloudStorage = metadata?.cloud_storage as Record<string, unknown> | undefined;
   const materialsRecord = {
     id: materials.id,
+    version: materials.version,
+    state: materials.state,
     artifact_id: materials.artifact_id,
     cloud_storage_provider: isCloudStorageProvider(cloudStorage?.provider)
       ? cloudStorage.provider
@@ -179,6 +226,7 @@ async function syncCloudStorageMaterialFolders(params: {
 }
 
 async function processSingleLesson(params: {
+  version: number;
   materialsId: string;
   lessonId: string;
   artifactId: string;
@@ -188,6 +236,7 @@ async function processSingleLesson(params: {
   iterationNumber?: number;
   componentTypes?: string[];
   models: string[];
+  modelRuntimeConfig: MaterialsModelRuntimeConfig;
 }) {
   const {
     materialsId,
@@ -199,23 +248,25 @@ async function processSingleLesson(params: {
     iterationNumber,
     componentTypes,
     models,
+    modelRuntimeConfig,
   } = params;
-  const genAI = createGeminiClient();
   const { supabase, lesson } = await loadSingleLesson(materialsId, lessonId);
   const generationContext = await loadMaterialsGenerationContext(
     supabase,
     artifactId,
   );
 
-  await setLessonState(supabase, lessonId, "GENERATING");
+  if (lesson.state !== "GENERATING" || lesson.iteration_count !== iterationNumber) {
+    return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
+  }
 
   if (componentTypes && componentTypes.length > 0) {
     console.log(`${logPrefix} Partial regen requested: ${componentTypes.join(", ")}`);
   }
 
   const output = await generateLessonMaterials({
+    execution: { materialsId, version: params.version },
     supabase,
-    genAI,
     lesson,
     generationContext,
     fixInstructions,
@@ -224,6 +275,7 @@ async function processSingleLesson(params: {
     componentTypes,
     organizationId,
     models,
+    modelRuntimeConfig,
   });
 
   return {
@@ -233,45 +285,59 @@ async function processSingleLesson(params: {
 }
 
 async function processNextPendingLesson(params: {
+  version: number;
   materialsId: string;
   artifactId: string;
   organizationId?: string | null;
   logPrefix: string;
   models: string[];
+  modelRuntimeConfig: MaterialsModelRuntimeConfig;
 }) {
-  const { materialsId, artifactId, organizationId, logPrefix, models } = params;
+  const {
+    materialsId,
+    artifactId,
+    organizationId,
+    logPrefix,
+    models,
+    modelRuntimeConfig,
+  } = params;
   const supabase = createServiceRoleClient();
-  const genAI = createGeminiClient();
 
   await wait(Math.random() * START_JITTER_MS);
 
-  const { data: pendingLessons } = await supabase
-    .from("material_lessons")
-    .select("*")
-    .eq("materials_id", materialsId)
-    .eq("state", "PENDING")
-    .order("created_at", { ascending: true })
-    .limit(1);
+  const { data: claimedLesson, error: pendingError } = await supabase.rpc("claim_material_generation", {
+    p_materials_id: materialsId, p_version: params.version,
+  });
+  if (pendingError) throw pendingError;
 
-  if (!pendingLessons || pendingLessons.length === 0) {
-    const { data: stuckLessons } = await supabase
+  if (!claimedLesson) {
+    const { data: stuckLessons, error: activeError } = await supabase
       .from("material_lessons")
       .select("id")
       .eq("materials_id", materialsId)
       .eq("state", "GENERATING");
+    if (activeError) throw activeError;
 
     if (stuckLessons && stuckLessons.length > 0) {
-      console.log(`${logPrefix} Resetting ${stuckLessons.length} stuck lessons`);
-      await resetGeneratingLessons(supabase, materialsId);
-      await triggerNextLesson(materialsId, artifactId, logPrefix);
       return {
         statusCode: 200,
-        body: JSON.stringify({ success: true, action: "reset-stuck" }),
+        body: JSON.stringify({ success: true, action: "already-running" }),
       };
     }
 
     console.log(`${logPrefix} All lessons done. Setting VALIDATING.`);
-    await markMaterialsValidating(supabase, materialsId);
+    const complete = await markMaterialsValidating(supabase, materialsId, params.version);
+    if (complete) {
+      const { handler: validate } = await import("./validate-materials-background");
+      const response = await validate({
+        httpMethod: "POST", body: JSON.stringify(signBackgroundPayload({ materialsId, artifactId, version: params.version })),
+        headers: { "Content-Type": "application/json" },
+        rawUrl: buildLocalBackgroundHandlerUrl("validate-materials-background"), rawQuery: "",
+        path: "/.netlify/functions/validate-materials-background", multiValueHeaders: {},
+        queryStringParameters: null, multiValueQueryStringParameters: null, isBase64Encoded: false,
+      } as Parameters<Handler>[0], {} as Parameters<Handler>[1], () => {});
+      if (response && response.statusCode >= 400) throw new Error("Falló la validación de materiales.");
+    }
 
     return {
       statusCode: 200,
@@ -279,29 +345,40 @@ async function processNextPendingLesson(params: {
     };
   }
 
-  const lesson = pendingLessons[0] as MaterialLessonRecord;
+  const lesson = claimedLesson as MaterialLessonRecord;
   console.log(`${logPrefix} Processing: ${lesson.lesson_title}`);
 
-  await setLessonState(supabase, lesson.id, "GENERATING");
+  const nextIteration = lesson.iteration_count!;
   await touchMaterialsRecord(supabase, materialsId);
 
-  const generationContext = await loadMaterialsGenerationContext(
-    supabase,
-    artifactId,
-  );
-  await generateLessonMaterials({
-    supabase,
-    genAI,
-    lesson,
-    generationContext,
-    organizationId,
-    logPrefix,
-    models,
-  });
+  try {
+    const generationContext = await loadMaterialsGenerationContext(
+      supabase,
+      artifactId,
+    );
+    await generateLessonMaterials({
+      execution: { materialsId, version: params.version },
+      supabase,
+      lesson,
+      generationContext,
+      organizationId,
+      logPrefix,
+      models,
+      modelRuntimeConfig,
+    });
+  } catch (error) {
+    const message = getErrorMessage(error);
+    console.error(`${logPrefix} Unexpected lesson failure:`, error);
+    const { error: saveError } = await supabase.rpc("commit_material_generation", {
+      p_materials_id: materialsId, p_version: params.version, p_lesson_id: lesson.id,
+      p_iteration: nextIteration, p_rows: [], p_success: false, p_error: message,
+    });
+    if (saveError) throw saveError;
+  }
 
   console.log(`${logPrefix} Waiting ${PROCESS_NEXT_DELAY_MS}ms before next...`);
   await wait(PROCESS_NEXT_DELAY_MS);
-  await triggerNextLesson(materialsId, artifactId, logPrefix);
+  await triggerNextLessonWithLocalFallback(materialsId, artifactId, logPrefix, params.version);
 
   return {
     statusCode: 200,
@@ -314,10 +391,16 @@ export const handler: Handler = async (event) => {
     return methodNotAllowedResponse();
   }
 
+  let body: RequestBody;
+  try {
+    body = await parseVerifiedBackgroundBody<RequestBody>(event);
+  } catch {
+    return unauthorizedBackgroundResponse();
+  }
+
   let logPrefix = "[Mat unknown]";
 
   try {
-    const body = parseJsonBody<RequestBody>(event);
     const {
       artifactId,
       materialsId,
@@ -339,23 +422,47 @@ export const handler: Handler = async (event) => {
     console.log(`${logPrefix} Mode: ${mode}, materialsId: ${materialsId}`);
 
     const { materials } = await loadMaterialsRecord(materialsId);
+    if (artifactId && artifactId !== materials.artifact_id) throw new Error("Materials/artifact mismatch");
+    if (body.version !== materials.version ||
+      ((mode === "init" || mode === "process-next") && materials.state !== "PHASE3_GENERATING")) {
+      return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
+    }
     const targetArtifactId = artifactId || materials.artifact_id;
     const targetOrganizationId = materials.organization_id;
 
     // Resolver modelo desde DB una sola vez por invocación
     const supabaseForSettings = createServiceRoleClient();
-    const modelConfig = await resolveModelSetting(supabaseForSettings, "MATERIALS", {
-      model: "gemini-2.5-flash",
-      fallbackModel: "gemini-2.0-flash",
-      temperature: 0.7,
-      thinkingLevel: "medium",
-    });
-    const models = [modelConfig.model, modelConfig.fallbackModel].filter(Boolean);
-    console.log(`${logPrefix} Gemini API key source: ${getGeminiApiKeySource()}`);
+    const modelConfig = await resolveConfiguredModelSetting(
+      supabaseForSettings,
+      "MATERIALS",
+      targetOrganizationId,
+    );
+    const models = Array.from(
+      new Set([modelConfig.model, modelConfig.fallbackModel].filter(Boolean)),
+    );
+    const unsupportedModel = models.find(
+      (model) => !isSupportedMaterialsModel(model),
+    );
+    if (unsupportedModel) {
+      throw new Error(
+        `UNSUPPORTED_MATERIALS_MODEL: ${unsupportedModel} no pertenece a un proveedor implementado para Materiales.`,
+      );
+    }
+    if (models.some((model) => model.startsWith("gemini-"))) {
+      console.log(`${logPrefix} Gemini API key source: ${getGeminiApiKeySource()}`);
+    }
     console.log(`${logPrefix} Models: ${models.join(", ")}`);
+    const modelRuntimeConfig: MaterialsModelRuntimeConfig = {
+      temperature: modelConfig.temperature,
+      thinkingLevel: modelConfig.thinkingLevel,
+    };
+    console.log(
+      `${logPrefix} Model runtime: temperature=${modelRuntimeConfig.temperature}, thinking=${modelRuntimeConfig.thinkingLevel}`,
+    );
 
     if ((mode === "single-lesson" || mode === "single-component") && lessonId) {
-      return processSingleLesson({
+      return await processSingleLesson({
+        version: materials.version,
         materialsId,
         lessonId,
         fixInstructions,
@@ -365,6 +472,7 @@ export const handler: Handler = async (event) => {
         logPrefix,
         componentTypes: mode === "single-component" ? componentTypes : undefined,
         models,
+        modelRuntimeConfig,
       });
     }
 
@@ -384,7 +492,7 @@ export const handler: Handler = async (event) => {
         userId: materials.created_by,
       });
 
-      await triggerNextLesson(materialsId, targetArtifactId, logPrefix);
+      await triggerNextLessonWithLocalFallback(materialsId, targetArtifactId, logPrefix, materials.version);
       return {
         statusCode: 200,
         body: JSON.stringify({
@@ -395,18 +503,32 @@ export const handler: Handler = async (event) => {
     }
 
     if (mode === "process-next") {
-      return processNextPendingLesson({
+      return await processNextPendingLesson({
+        version: materials.version,
         materialsId,
         artifactId: targetArtifactId,
         organizationId: targetOrganizationId,
         logPrefix,
         models,
+        modelRuntimeConfig,
       });
     }
 
     throw new Error(`Unknown mode: ${mode}`);
   } catch (error) {
     console.error(`${logPrefix} Error:`, error);
+    if (body.materialsId && body.version !== undefined) {
+      const supabase = createServiceRoleClient();
+      if (body.lessonId) {
+        await supabase.rpc("commit_material_generation", {
+          p_materials_id: body.materialsId, p_version: body.version, p_lesson_id: body.lessonId,
+          p_iteration: body.iterationNumber, p_rows: [], p_success: false, p_error: generationFailureMessage(error),
+        });
+      }
+      await supabase.from("materials").update({ state: "PHASE3_NEEDS_FIX",
+        updated_at: new Date().toISOString(), qa_decision: { decision: "REJECTED", notes: generationFailureMessage(error), reviewed_by: "system", reviewed_at: new Date().toISOString() } })
+        .eq("id", body.materialsId).eq("version", body.version).in("state", ["PHASE3_GENERATING", "PHASE3_VALIDATING"]);
+    }
     return {
       statusCode: 500,
       body: JSON.stringify({

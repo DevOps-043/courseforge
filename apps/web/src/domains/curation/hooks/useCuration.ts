@@ -3,24 +3,22 @@ import { Curation, CurationRow } from "../types/curation.types";
 import {
   getCurationSnapshotAction,
   startCurationAction,
-  updateCurationRowAction,
-  deleteCurationRowAction,
   clearSystemGeneratedCurationRowsAction,
-  addManualCurationUrlAction,
-  registerManualCurationPdfAction,
-  validateCurationRowAction,
-  initializeManualCurationAction,
   clearInvalidCurationRowsAction,
 } from "../actions/curation.actions";
 import { toast } from "sonner";
-import { CURATION_RUNNING_STATES, CURATION_STATES } from "@/lib/pipeline-constants";
+import {
+  CURATION_RUNNING_STATES,
+  CURATION_STATES,
+} from "@/lib/pipeline-constants";
 import { usePolling } from "@/shared/hooks/usePolling";
 import { isSystemGeneratedCurationRow } from "../lib/curation-row-rules";
-import { uploadWithSignedUrl } from "@/lib/storage-upload";
 
-interface ManualSourceLesson {
+export interface CurationLessonRequirement {
   lessonId: string;
   lessonTitle: string;
+  requiredSources: number;
+  videoTargetSeconds: number;
 }
 
 function isUnauthorizedError(error: unknown) {
@@ -32,6 +30,10 @@ function isUnauthorizedError(error: unknown) {
 export function useCuration(artifactId: string) {
   const [curation, setCuration] = useState<Curation | null>(null);
   const [rows, setRows] = useState<CurationRow[]>([]);
+  const [lessonRequirements, setLessonRequirements] = useState<
+    CurationLessonRequirement[]
+  >([]);
+  const [configuredPrompt, setConfiguredPrompt] = useState("");
   const [loading, setLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [snapshotAuthUnavailable, setSnapshotAuthUnavailable] = useState(false);
@@ -60,6 +62,8 @@ export function useCuration(artifactId: string) {
       hasShownAuthToast.current = false;
       const curData = result.curation || null;
       setCuration(curData);
+      setLessonRequirements(result.lessonRequirements || []);
+      setConfiguredPrompt(result.prompt?.content || "");
 
       if (curData) {
         setRows(result.rows || []);
@@ -91,15 +95,31 @@ export function useCuration(artifactId: string) {
 
   usePolling(
     fetchCurationData,
-    Boolean(curation?.id && (isGenerating || isValidating) && !snapshotAuthUnavailable),
+    Boolean(
+      curation?.id &&
+      (isGenerating || isValidating) &&
+      !snapshotAuthUnavailable,
+    ),
     {
       intervalMs: 3000,
     },
   );
 
-  usePolling(fetchCurationData, !isGenerating && rows.length === 0 && !snapshotAuthUnavailable, {
-    intervalMs: 5000,
-  });
+  usePolling(
+    fetchCurationData,
+    !isGenerating &&
+      rows.length === 0 &&
+      curation?.state !== CURATION_STATES.READY_FOR_QA &&
+      !snapshotAuthUnavailable,
+    { intervalMs: 5000 },
+  );
+
+  usePolling(
+    fetchCurationData,
+    curation?.state === CURATION_STATES.READY_FOR_QA &&
+      !snapshotAuthUnavailable,
+    { intervalMs: 5000 },
+  );
 
   useEffect(() => {
     fetchCurationData();
@@ -109,6 +129,7 @@ export function useCuration(artifactId: string) {
     attemptNumber: number = 1,
     gaps: string[] = [],
     resume: boolean = false,
+    promptOverride?: string,
   ) => {
     setIsGenerating(true);
     const result = await startCurationAction(
@@ -116,6 +137,7 @@ export function useCuration(artifactId: string) {
       attemptNumber,
       gaps,
       resume,
+      promptOverride,
     );
 
     if (result.success) {
@@ -131,33 +153,10 @@ export function useCuration(artifactId: string) {
     }
   };
 
-  const updateRow = async (rowId: string, updates: Partial<CurationRow>) => {
-    setRows((current) =>
-      current.map((r) => (r.id === rowId ? { ...r, ...updates } : r)),
-    );
-
-    const result = await updateCurationRowAction(rowId, updates);
-
-    if (!result.success) {
-      toast.error("Error al actualizar fila");
-      fetchCurationData();
-    }
-  };
-
-  const deleteRow = async (rowId: string) => {
-    setRows((current) => current.filter((r) => r.id !== rowId));
-
-    const result = await deleteCurationRowAction(rowId);
-    if (!result.success) {
-      toast.error("Error al eliminar fila");
-      fetchCurationData();
-    } else {
-      toast.success("Fuente eliminada");
-    }
-  };
-
   const clearSystemGeneratedRows = async () => {
-    setRows((current) => current.filter((row) => !isSystemGeneratedCurationRow(row)));
+    setRows((current) =>
+      current.filter((row) => !isSystemGeneratedCurationRow(row)),
+    );
 
     const result = await clearSystemGeneratedCurationRowsAction(artifactId);
     if (!result.success) {
@@ -182,113 +181,17 @@ export function useCuration(artifactId: string) {
     return true;
   };
 
-  const addManualUrl = async (lesson: ManualSourceLesson, url: string) => {
-    const result = await addManualCurationUrlAction(artifactId, lesson, url);
-    if (!result.success) {
-      toast.error(result.error || "No se pudo agregar la URL");
-      return false;
-    }
-    toast.success(
-      result.validation?.status === "valid"
-        ? "URL agregada y validada"
-        : "URL agregada; requiere revision",
-    );
-    await fetchCurationData();
-    return true;
-  };
-
-  const addManualPdf = async (lesson: ManualSourceLesson, file: File) => {
-    const hasPdfExtension = file.name.toLowerCase().endsWith(".pdf");
-    const hasSupportedPdfMimeType =
-      file.type === "application/pdf" ||
-      file.type === "application/x-pdf" ||
-      file.type === "";
-    if (!hasPdfExtension || !hasSupportedPdfMimeType) {
-      toast.error("Selecciona un archivo PDF valido");
-      return false;
-    }
-    if (file.size > 25 * 1024 * 1024) {
-      toast.error("El PDF no puede superar 25 MB");
-      return false;
-    }
-    try {
-      const safeName = file.name
-        .normalize("NFKD")
-        .replace(/[^\w.-]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-      const upload = await uploadWithSignedUrl(
-        "curation-sources",
-        `curation-sources/${artifactId}/${crypto.randomUUID()}-${safeName}`,
-        file,
-        {
-          artifactId,
-          purpose: "curation-source-pdf",
-          contentType: "application/pdf",
-          fileSizeBytes: file.size,
-          upsert: false,
-          deliveryMode: "server-only",
-        },
-      );
-      const result = await registerManualCurationPdfAction(artifactId, lesson, {
-        storagePath: upload.path,
-        fileName: file.name,
-        mimeType: "application/pdf",
-        fileSizeBytes: file.size,
-      });
-      if (!result.success) {
-        toast.error(result.error || "No se pudo registrar el PDF");
-        return false;
-      }
-      toast.success(
-        result.validation?.status === "valid"
-          ? "PDF agregado y validado"
-          : "PDF agregado; revisa su estado",
-      );
-      await fetchCurationData();
-      return true;
-    } catch (error) {
-      console.error("[Curation] Manual PDF upload failed:", error);
-      toast.error(error instanceof Error ? error.message : "No se pudo subir el PDF");
-      return false;
-    }
-  };
-
-  const validateRow = async (rowId: string) => {
-    const result = await validateCurationRowAction(rowId);
-    if (!result.success) {
-      toast.error(result.error || "No se pudo revalidar la fuente");
-      return false;
-    }
-    toast.success("Fuente revalidada");
-    await fetchCurationData();
-    return true;
-  };
-
-  const initializeManualCuration = async () => {
-    const result = await initializeManualCurationAction(artifactId);
-    if (!result.success) {
-      toast.error(result.error || "No se pudo iniciar la curaduria manual");
-      return false;
-    }
-    await fetchCurationData();
-    return true;
-  };
-
   return {
     curation,
     rows,
+    lessonRequirements,
+    configuredPrompt,
     loading,
     isGenerating,
     isValidating,
     startCuration,
-    updateRow,
-    deleteRow,
     clearSystemGeneratedRows,
     clearInvalidRows,
-    addManualUrl,
-    addManualPdf,
-    validateRow,
-    initializeManualCuration,
     refresh: fetchCurationData,
   };
 }

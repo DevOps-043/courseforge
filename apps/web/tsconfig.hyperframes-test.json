@@ -15,5 +15,8 @@
     "src/domains/production/composition-editor/**/*.ts",
     "src/app/api/production/hyperframes/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "src/app/api/production/hyperframes/renders/route.ts"
+  ]
 }

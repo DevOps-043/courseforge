@@ -1,26 +1,26 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import { undoStoredCompositionAgentProposal, CompositionAgentProposalStoreError } from "@/domains/production/composition-editor/composition-agent-proposal-store.service";
 import { authorizeCompositionAgentRequest, compositionAgentStoreErrorResponse } from "../../_route-support";
 import { COMPOSITION_VERSION_FALLBACK_HEADER, resolveCompositionDocumentPrecondition } from "@/domains/production/composition-editor/composition-document-version";
+import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 interface RouteContext { params: Promise<{ draftId: string; proposalId: string }>; }
 
 export async function POST(request: Request, context: RouteContext) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.agent_proposals", { correlationId: requestId });
   try {
-    const authorization = await authorizeCompositionAgentRequest();
-    if (authorization instanceof NextResponse) return authorization;
+    const authorization = await authorizeCompositionAgentRequest(requestId);
+    if (authorization.response) return authorization.response;
     const routeParams = await context.params;
     const precondition = resolveCompositionDocumentPrecondition({
       fallbackHeader: request.headers.get(COMPOSITION_VERSION_FALLBACK_HEADER),
       ifMatchHeader: request.headers.get("if-match"),
     });
     if (!precondition.ok) {
-      return NextResponse.json({ error: "Falta una versión aplicada válida y consistente para la propuesta." }, {
-        status: 428,
-        headers: { "Cache-Control": "private, no-store" },
-      });
+      return apiErrorResponse({ code: API_ERROR_CODE.conflict, headers: { "Cache-Control": "private, no-store" }, message: "Falta una versión aplicada válida y consistente para la propuesta.", requestId, retryable: true, status: 428 });
     }
     const data = await undoStoredCompositionAgentProposal({
       draftId: z.string().uuid().parse(routeParams.draftId),
@@ -31,13 +31,11 @@ export async function POST(request: Request, context: RouteContext) {
       supabase: authorization.admin,
       userId: authorization.userId,
     });
-    return NextResponse.json({ success: true, data }, {
-      headers: { "Cache-Control": "private, no-store", ETag: `"${data.documentHash}"` },
-    });
+    return apiSuccessResponse({ data }, { headers: { "Cache-Control": "private, no-store", ETag: `"${data.documentHash}"` }, requestId });
   } catch (error) {
-    if (error instanceof z.ZodError) return NextResponse.json({ error: "Identificador de propuesta inválido." }, { status: 400 });
-    if (error instanceof CompositionAgentProposalStoreError) return compositionAgentStoreErrorResponse(error);
-    console.error("[CompositionAgentUndo] Failed", { message: getErrorMessage(error) });
-    return NextResponse.json({ error: "No se pudo deshacer la propuesta." }, { status: 500 });
+    if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de propuesta inválido.", requestId, status: 400 });
+    if (error instanceof CompositionAgentProposalStoreError) return compositionAgentStoreErrorResponse(error, requestId);
+    logger.error("production.hyperframes.agent_proposal_undo_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo deshacer la propuesta.", requestId, retryable: true, status: 500 });
   }
 }

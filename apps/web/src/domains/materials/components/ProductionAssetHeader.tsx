@@ -2,6 +2,14 @@
 
 import { MonitorPlay, Video } from "lucide-react";
 import type { ProductionStatus } from "../types/materials.types";
+import type {
+  AvatarVideo,
+  BackgroundMusic,
+  BRollClip,
+  ManualVoiceClip,
+  VoiceAudio,
+  VoiceClip,
+} from "../validators/assets.validators";
 import {
   DodIndicator,
   getProductionComponentLabel,
@@ -21,11 +29,12 @@ interface ProductionAssetHeaderProps {
   bRollPrompts: string;
   screencastUrl: string;
   finalVideoUrl: string;
-  voiceAudio?: any;
-  voiceClips?: any[];
-  backgroundMusic?: any;
-  bRollClips?: any[];
-  avatarVideo?: any;
+  voiceAudio?: VoiceAudio | null;
+  manualVoiceClips?: ManualVoiceClip[];
+  voiceClips?: VoiceClip[];
+  backgroundMusic?: BackgroundMusic | null;
+  bRollClips?: BRollClip[];
+  avatarVideo?: AvatarVideo | null;
 }
 
 export function ProductionAssetHeader({
@@ -41,6 +50,7 @@ export function ProductionAssetHeader({
   screencastUrl,
   finalVideoUrl,
   voiceAudio,
+  manualVoiceClips,
   voiceClips,
   backgroundMusic,
   bRollClips,
@@ -96,6 +106,7 @@ export function ProductionAssetHeader({
               label="Voz"
               completed={
                 Boolean(voiceAudio) ||
+                Boolean(manualVoiceClips?.length) ||
                 Boolean(voiceClips?.length) ||
                 Boolean(avatarVideo?.has_audio)
               }

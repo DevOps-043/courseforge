@@ -1,9 +1,8 @@
 import { Handler } from "@netlify/functions";
 import { generateObject } from "ai";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { z } from "zod";
-import { INSTRUCTIONAL_PLAN_SYSTEM_PROMPT } from "../../src/config/prompts/instructional-plan";
 import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
+import { GLOBAL_VIDEO_DURATION_PROMPTS } from "../../src/shared/config/prompts/global-video-duration.prompts";
 import {
   INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE,
   INSTRUCTIONAL_PLAN_SYSTEM_PROMPT_CODE,
@@ -14,75 +13,52 @@ import {
   createServiceRoleClient,
   getSupabaseServiceKey,
   getSupabaseUrl,
-  hasSupabaseServiceRoleKey,
   resolveAiModel,
   resolveModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
-import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
-
-const ComponentSchema = z.object({
-  type: z
-    .enum([
-      "DIALOGUE",
-      "READING",
-      "QUIZ",
-      "VIDEO_THEORETICAL",
-      "VIDEO_DEMO",
-      "VIDEO_GUIDE",
-      "EXERCISE",
-      "DEMO_GUIDE",
-    ])
-    .describe(
-      "El tipo exacto de componente. CRITICO: Usa 'VIDEO_THEORETICAL' para conceptos abstractos, 'VIDEO_DEMO' para mostrar ejemplos reales, y 'VIDEO_GUIDE' para tutoriales paso a paso.",
-    ),
-  summary: z
-    .string()
-    .describe(
-      "Descripcion detallada del componente (2-3 oraciones). Debe justificar por que se eligio este formato especifico.",
-    ),
-});
-
-const LessonPlanSchema = z.object({
-  lesson_id: z.string(),
-  lesson_title: z.string(),
-  lesson_order: z.number(),
-  module_id: z.string(),
-  module_title: z.string(),
-  module_index: z.number(),
-  oa_text: z.string().describe("Objetivo de Aprendizaje especifico"),
-  oa_bloom_verb: z.string().optional(),
-  measurable_criteria: z.string().optional(),
-  course_type_detected: z.string().optional(),
-  components: z.array(ComponentSchema),
-  alignment_notes: z.string().optional(),
-});
-
-const GeneratedPlanSchema = z.object({
-  lesson_plans: z.array(LessonPlanSchema),
-  blockers: z
-    .array(z.record(z.string(), z.unknown()))
-    .optional()
-    .default([]),
-});
+import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from "./shared/http";
+import {
+  resolveArtifactVideoDurationPolicy,
+  type VideoDurationPolicy,
+} from "../../src/domains/video-duration/video-duration-policy";
+import { applyVideoDurationPolicyToPlan } from "../../src/domains/video-duration/video-duration-plan";
+import {
+  canIteratePlan,
+  getPlanIterationCount,
+  getNextPlanIteration,
+  getPreviousPlanIteration,
+  PLAN_MAX_ITERATIONS,
+} from "../../src/domains/plan/lib/plan-iteration";
+import {
+  GeneratedInstructionalPlanSchema,
+  type GeneratedInstructionalPlanBlocker,
+  type GeneratedInstructionalPlanLesson,
+} from "../../src/domains/plan/lib/instructional-plan-generation.schema";
+import { buildInstructionalPlanContextPrompt } from "../../src/domains/plan/lib/instructional-plan-prompt";
 
 type BackgroundSupabaseClient = SupabaseClient;
-type GeneratedLessonPlan = z.infer<typeof LessonPlanSchema>;
+type GeneratedLessonPlan = GeneratedInstructionalPlanLesson;
+type GeneratedBlocker = GeneratedInstructionalPlanBlocker;
 
 interface RequestBody {
   artifactId?: string;
   customPrompt?: string;
+  iterationInstructions?: string;
+  iterationNumber?: number;
+  organizationId?: string | null;
   useCustomPrompt?: boolean;
-  userToken?: string;
 }
 
 interface ArtifactRecord {
+  generation_metadata?: unknown;
   idea_central: string;
   nombres?: string[] | null;
   organization_id?: string | null;
 }
 
 interface SyllabusLessonRecord {
+  estimated_minutes?: number | null;
   id: string;
   objective_specific?: string | null;
   title: string;
@@ -98,21 +74,8 @@ interface SyllabusRecord {
   modules?: unknown;
 }
 
-function createBackgroundSupabaseClient(userToken: string) {
-  const supabaseUrl = getSupabaseUrl();
-  const supabaseKey = getSupabaseServiceKey();
-
-  if (hasSupabaseServiceRoleKey()) {
-    console.log("[Background Job] Using Service Role Key (Safe from expiry)");
-    return createClient(supabaseUrl, supabaseKey);
-  }
-
-  console.log("[Background Job] Warn: Using User Token (Risk of JWT expiry)");
-  return createClient(supabaseUrl, supabaseKey, {
-    global: {
-      headers: { Authorization: `Bearer ${userToken}` },
-    },
-  });
+function createBackgroundSupabaseClient() {
+  return createClient(getSupabaseUrl(), getSupabaseServiceKey());
 }
 
 function normalizeSyllabusModules(rawModules: unknown): SyllabusModuleRecord[] {
@@ -128,58 +91,107 @@ function normalizeSyllabusModules(rawModules: unknown): SyllabusModuleRecord[] {
   return modules;
 }
 
-function buildContextPromptTemplate(params: {
-  configuredPrompt: string;
-  customPrompt?: string;
-  useCustomPrompt?: boolean;
-}) {
-  const { configuredPrompt, customPrompt, useCustomPrompt } = params;
-
-  if (useCustomPrompt && customPrompt && customPrompt.trim().length > 0) {
-    return customPrompt;
-  }
-
-  return configuredPrompt || instructionalPlanContextPromptDefault;
-}
-
 function renderLessonsText(lessons: SyllabusLessonRecord[]) {
   return lessons
     .map(
       (lesson, index) =>
-        `${index + 1}. ID: ${lesson.id}\n   Leccion: ${lesson.title}\n   OA Original: ${lesson.objective_specific || "N/A"}`,
+        `${index + 1}. ID: ${lesson.id}\n   Leccion: ${lesson.title}\n   OA Original: ${lesson.objective_specific || "N/A"}\n   Tiempo total estimado de aprendizaje: ${lesson.estimated_minutes || "N/A"} minutos`,
     )
     .join("\n\n");
 }
 
-async function upsertInstructionalPlanRecord(
+async function prepareInstructionalPlanRecord(
   supabase: BackgroundSupabaseClient,
   artifactId: string,
+  reservedIteration?: number,
 ) {
-  const { data: existingPlan } = await supabase
+  const { data: existingPlan, error: lookupError } = await supabase
     .from("instructional_plans")
-    .select("id")
+    .select("id, iteration_count, lesson_plans")
     .eq("artifact_id", artifactId)
     .maybeSingle();
 
+  if (lookupError) {
+    throw lookupError;
+  }
+
+  const currentIteration = getPlanIterationCount(
+    existingPlan?.iteration_count,
+    Array.isArray(existingPlan?.lesson_plans) &&
+      existingPlan.lesson_plans.length > 0,
+  );
+  const nextIteration =
+    reservedIteration === undefined
+      ? getNextPlanIteration(currentIteration)
+      : reservedIteration;
+
+  if (
+    !Number.isInteger(nextIteration) ||
+    nextIteration < 1 ||
+    nextIteration > PLAN_MAX_ITERATIONS
+  ) {
+    throw new Error("Numero de iteracion del plan invalido.");
+  }
+
+  if (reservedIteration === undefined && !canIteratePlan(currentIteration)) {
+    throw new Error(
+      `El plan instruccional alcanzo el limite de ${PLAN_MAX_ITERATIONS} iteraciones.`,
+    );
+  }
+
   if (existingPlan) {
-    await supabase
+    let reservationQuery = supabase
       .from("instructional_plans")
       .update({
-        lesson_plans: [],
         validation: null,
+        last_error: null,
         state: "STEP_PROCESSING",
+        iteration_count: nextIteration,
         updated_at: new Date().toISOString(),
       })
       .eq("id", existingPlan.id);
-    return;
+
+    if (reservedIteration === undefined) {
+      reservationQuery = reservationQuery.eq(
+        "iteration_count",
+        existingPlan.iteration_count || 0,
+      );
+    } else {
+      reservationQuery = reservationQuery.eq(
+        "iteration_count",
+        reservedIteration,
+      );
+    }
+
+    const { data: preparedPlan, error: reservationError } =
+      await reservationQuery.select("id").maybeSingle();
+
+    if (reservationError) {
+      throw reservationError;
+    }
+    if (!preparedPlan) {
+      throw new Error("Otra iteracion del plan fue iniciada al mismo tiempo.");
+    }
+    return nextIteration;
   }
 
-  await supabase.from("instructional_plans").insert({
-    artifact_id: artifactId,
-    lesson_plans: [],
-    validation: null,
-    state: "STEP_PROCESSING",
-  });
+  const { error: insertError } = await supabase
+    .from("instructional_plans")
+    .insert({
+      artifact_id: artifactId,
+      lesson_plans: [],
+      blockers: [],
+      validation: null,
+      last_error: null,
+      state: "STEP_PROCESSING",
+      iteration_count: nextIteration,
+    });
+
+  if (insertError) {
+    throw insertError;
+  }
+
+  return nextIteration;
 }
 
 async function generateModulePlans(params: {
@@ -190,9 +202,18 @@ async function generateModulePlans(params: {
   modelName: string;
   systemPromptTemplate: string;
   temperature: number;
+  videoDurationPolicy: VideoDurationPolicy;
 }) {
-  const { artifact, contextPromptTemplate, module, moduleIndex, modelName, systemPromptTemplate, temperature } =
-    params;
+  const {
+    artifact,
+    contextPromptTemplate,
+    module,
+    moduleIndex,
+    modelName,
+    systemPromptTemplate,
+    temperature,
+    videoDurationPolicy,
+  } = params;
   const lessons = module.lessons || [];
   const lessonsText = renderLessonsText(lessons);
   const promptVariables = {
@@ -202,22 +223,46 @@ async function generateModulePlans(params: {
     lessonCount: lessons.length,
     lessonsText,
   };
-  const finalSystemPrompt = renderPromptTemplate(systemPromptTemplate, promptVariables);
-  const finalContextPrompt = renderPromptTemplate(contextPromptTemplate, promptVariables);
+  const finalSystemPrompt = renderPromptTemplate(
+    systemPromptTemplate,
+    promptVariables,
+  );
+  const finalContextPrompt = renderPromptTemplate(
+    contextPromptTemplate,
+    promptVariables,
+  );
 
   const result = await generateObject({
     model: resolveAiModel(modelName),
-    schema: GeneratedPlanSchema,
+    schema: GeneratedInstructionalPlanSchema,
     prompt: `${finalSystemPrompt}\n\nMODULO ACTUAL: ${module.title}\n${finalContextPrompt}`,
     temperature,
   });
 
-  return result.object.lesson_plans.map((lessonPlan) => ({
-    ...lessonPlan,
-    module_id: module.id || `mod-${moduleIndex}`,
-    module_title: module.title,
-    module_index: moduleIndex,
-  })) as GeneratedLessonPlan[];
+  const moduleLessonPlans = result.object.lesson_plans.map((lessonPlan, lessonIndex) => {
+    const syllabusLesson = lessons[lessonIndex];
+    return {
+      ...lessonPlan,
+      // IDs are pipeline keys, not generative content. Preserve the syllabus
+      // identity even if the model emits the literal string "undefined".
+      lesson_id:
+        syllabusLesson?.id ||
+        `lesson-${moduleIndex + 1}-${lessonIndex + 1}`,
+      lesson_title: syllabusLesson?.title || lessonPlan.lesson_title,
+      module_id: module.id || `mod-${moduleIndex}`,
+      module_title: module.title,
+      module_index: moduleIndex,
+    };
+  }) as GeneratedLessonPlan[];
+  const lessonPlans = applyVideoDurationPolicyToPlan(
+    moduleLessonPlans,
+    videoDurationPolicy,
+  ) as GeneratedLessonPlan[];
+
+  return {
+    blockers: result.object.blockers as GeneratedBlocker[],
+    lessonPlans,
+  };
 }
 
 export const handler: Handler = async (event) => {
@@ -226,13 +271,20 @@ export const handler: Handler = async (event) => {
   }
 
   let artifactId: string | undefined;
+  let activeIteration: number | undefined;
   let supabase: BackgroundSupabaseClient | undefined;
+  let body: RequestBody;
+  try {
+    body = await parseVerifiedBackgroundBody(event);
+  } catch {
+    return unauthorizedBackgroundResponse();
+  }
 
   try {
-    const body = parseJsonBody<RequestBody>(event);
     artifactId = body.artifactId;
+    activeIteration = body.iterationNumber;
 
-    if (!artifactId || !body.userToken) {
+    if (!artifactId) {
       return { statusCode: 400, body: "Missing required fields" };
     }
 
@@ -240,20 +292,26 @@ export const handler: Handler = async (event) => {
       `[Background Job] Starting Instructional Plan generation for artifacts/${artifactId}`,
     );
 
-    supabase = createBackgroundSupabaseClient(body.userToken);
+    supabase = createBackgroundSupabaseClient();
 
-    const [{ data: rawArtifact, error: artifactError }, { data: rawSyllabus, error: syllabusError }] =
-      await Promise.all([
-        supabase.from("artifacts").select("*").eq("id", artifactId).single(),
-        supabase
-          .from("syllabus")
-          .select("modules")
-          .eq("artifact_id", artifactId)
-          .single(),
-      ]);
+    const [
+      { data: rawArtifact, error: artifactError },
+      { data: rawSyllabus, error: syllabusError },
+    ] = await Promise.all([
+      supabase.from("artifacts").select("*").eq("id", artifactId).single(),
+      supabase
+        .from("syllabus")
+        .select("modules")
+        .eq("artifact_id", artifactId)
+        .single(),
+    ]);
 
     if (artifactError || !rawArtifact) {
       throw new Error(`Artifact not found: ${artifactError?.message}`);
+    }
+
+    if (rawArtifact.organization_id !== (body.organizationId ?? null)) {
+      return { statusCode: 404, body: "Artifact not found" };
     }
 
     if (syllabusError) {
@@ -266,46 +324,66 @@ export const handler: Handler = async (event) => {
     }
 
     const artifact = rawArtifact as ArtifactRecord;
+    const videoDurationPolicy = resolveArtifactVideoDurationPolicy(
+      artifact.generation_metadata,
+    );
     const syllabusModules = normalizeSyllabusModules(syllabusRecord.modules);
 
     const promptOrganizationId = artifact.organization_id || null;
-    const [systemPromptTemplate, contextPromptTemplateFromDb] = await Promise.all([
-      resolvePromptWithFallback(
-        supabase,
-        INSTRUCTIONAL_PLAN_SYSTEM_PROMPT_CODE,
-        INSTRUCTIONAL_PLAN_SYSTEM_PROMPT,
-        promptOrganizationId,
-      ),
-      resolvePromptWithFallback(
-        supabase,
-        INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE,
-        instructionalPlanContextPromptDefault,
-        promptOrganizationId,
-      ),
-    ]);
+    const [systemPromptTemplate, contextPromptTemplateFromDb] =
+      await Promise.all([
+        resolvePromptWithFallback(
+          supabase,
+          INSTRUCTIONAL_PLAN_SYSTEM_PROMPT_CODE,
+          GLOBAL_VIDEO_DURATION_PROMPTS.INSTRUCTIONAL_PLAN_SYSTEM,
+          promptOrganizationId,
+        ),
+        resolvePromptWithFallback(
+          supabase,
+          INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE,
+          instructionalPlanContextPromptDefault,
+          promptOrganizationId,
+        ),
+      ]);
 
-    const contextPromptTemplate = buildContextPromptTemplate({
-      configuredPrompt: contextPromptTemplateFromDb,
+    const contextPromptTemplate = buildInstructionalPlanContextPrompt({
+      configuredPrompt: contextPromptTemplateFromDb || instructionalPlanContextPromptDefault,
       customPrompt: body.customPrompt,
+      iterationInstructions: body.iterationInstructions,
       useCustomPrompt: body.useCustomPrompt,
     });
 
-    await upsertInstructionalPlanRecord(supabase, artifactId);
+    const iterationNumber = await prepareInstructionalPlanRecord(
+      supabase,
+      artifactId,
+      body.iterationNumber,
+    );
+    activeIteration = iterationNumber;
 
-    const modelConfig = await resolveModelSetting(createServiceRoleClient(), "INSTRUCTIONAL_PLAN", {
-      model: "gemini-2.5-flash",
-      fallbackModel: "gemini-2.0-flash",
-      temperature: 0.7,
-      thinkingLevel: "medium",
-    }, promptOrganizationId);
+    const modelConfig = await resolveModelSetting(
+      createServiceRoleClient(),
+      "INSTRUCTIONAL_PLAN",
+      {
+        model: "gemini-3.5-flash",
+        fallbackModel: "gemini-2.5-flash",
+        temperature: 0.7,
+        thinkingLevel: "medium",
+      },
+      promptOrganizationId,
+    );
     const modelName = modelConfig.model;
     console.log(
       `[Background Job] Starting incremental generation with ${modelName}`,
     );
 
     let allGeneratedPlans: GeneratedLessonPlan[] = [];
+    let allBlockers: GeneratedBlocker[] = [];
 
-    for (let moduleIndex = 0; moduleIndex < syllabusModules.length; moduleIndex++) {
+    for (
+      let moduleIndex = 0;
+      moduleIndex < syllabusModules.length;
+      moduleIndex++
+    ) {
       const module = syllabusModules[moduleIndex];
       const lessons = module.lessons || [];
       if (lessons.length === 0) {
@@ -317,7 +395,7 @@ export const handler: Handler = async (event) => {
       );
 
       try {
-        const modulePlans = await generateModulePlans({
+        const moduleResult = await generateModulePlans({
           artifact,
           contextPromptTemplate,
           module,
@@ -325,20 +403,14 @@ export const handler: Handler = async (event) => {
           modelName,
           systemPromptTemplate,
           temperature: modelConfig.temperature,
+          videoDurationPolicy,
         });
 
-        allGeneratedPlans = [...allGeneratedPlans, ...modulePlans];
-
-        await supabase
-          .from("instructional_plans")
-          .update({
-            lesson_plans: allGeneratedPlans,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("artifact_id", artifactId);
+        allGeneratedPlans = [...allGeneratedPlans, ...moduleResult.lessonPlans];
+        allBlockers = [...allBlockers, ...moduleResult.blockers];
 
         console.log(
-          `[Background Job] Module ${moduleIndex + 1} saved. Total lessons so far: ${allGeneratedPlans.length}`,
+          `[Background Job] Module ${moduleIndex + 1} generated. Total lessons so far: ${allGeneratedPlans.length}`,
         );
       } catch (error: unknown) {
         console.error(
@@ -351,13 +423,36 @@ export const handler: Handler = async (event) => {
       }
     }
 
-    await supabase
+    if (allGeneratedPlans.length === 0) {
+      throw new Error("La generacion no produjo ninguna leccion para el plan.");
+    }
+
+    const { data: completedPlan, error: completionError } = await supabase
       .from("instructional_plans")
       .update({
-        state: "STEP_READY_FOR_REVIEW",
+        lesson_plans: allGeneratedPlans,
+        blockers: allBlockers,
+        state:
+          allBlockers.length > 0
+            ? "STEP_WITH_BLOCKERS"
+            : "STEP_READY_FOR_REVIEW",
+        iteration_count: iterationNumber,
+        last_error: null,
         updated_at: new Date().toISOString(),
       })
-      .eq("artifact_id", artifactId);
+      .eq("artifact_id", artifactId)
+      .eq("iteration_count", iterationNumber)
+      .select("id")
+      .maybeSingle();
+
+    if (completionError) {
+      throw completionError;
+    }
+    if (!completedPlan) {
+      throw new Error(
+        "La iteracion fue reemplazada por una solicitud mas reciente.",
+      );
+    }
 
     console.log(
       `[Background Job] Generation finished successfully for ${allGeneratedPlans.length} lessons.`,
@@ -370,10 +465,29 @@ export const handler: Handler = async (event) => {
     console.error("[Background Job] Fatal Error:", error);
 
     if (supabase && artifactId) {
-      await supabase
+      const errorMessage = getErrorMessage(error).slice(0, 500);
+      const failureUpdate = {
+        state: "STEP_FAILED",
+        last_error: {
+          code: "INSTRUCTIONAL_PLAN_GENERATION_FAILED",
+          message: errorMessage,
+          occurred_at: new Date().toISOString(),
+        },
+        updated_at: new Date().toISOString(),
+        ...(activeIteration === undefined
+          ? {}
+          : { iteration_count: getPreviousPlanIteration(activeIteration) }),
+      };
+      let failureQuery = supabase
         .from("instructional_plans")
-        .update({ state: "STEP_FAILED", updated_at: new Date().toISOString() })
+        .update(failureUpdate)
         .eq("artifact_id", artifactId);
+
+      if (activeIteration !== undefined) {
+        failureQuery = failureQuery.eq("iteration_count", activeIteration);
+      }
+
+      await failureQuery;
     }
 
     return {

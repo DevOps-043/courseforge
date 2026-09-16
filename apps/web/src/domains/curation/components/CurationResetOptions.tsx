@@ -52,7 +52,8 @@ export function CurationResetOptions({
                 Reiniciar busqueda automatica
               </div>
               <div className="text-xs leading-relaxed text-gray-500 dark:text-[var(--engine-muted)]">
-                Repite la busqueda con OpenAI y conserva todas las fuentes manuales.
+                Repite desde cero la busqueda, validacion y reposicion
+                automatica.
               </div>
             </div>
           </div>

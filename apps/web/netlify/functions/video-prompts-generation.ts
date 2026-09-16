@@ -7,7 +7,8 @@ import { getErrorMessage } from "./shared/errors";
 import {
   jsonResponse,
   methodNotAllowedResponse,
-  parseJsonBody,
+  parseVerifiedBackgroundBody,
+  unauthorizedBackgroundResponse,
 } from "./shared/http";
 import { syncBrollPromptsToMaterialComponent } from "../../src/domains/production/assets/production-asset-sync.service";
 import {
@@ -31,7 +32,7 @@ import { buildCourseDeckSpecFromComponent } from "../../src/domains/production/s
 import { CLIP_GENERATION_PROMPT_CODE } from "../../src/shared/config/prompts/materials-generation.prompts.modular";
 import { resolveSinglePrompt } from "../../src/shared/config/prompts/prompt-resolver.service";
 
-const BROLL_PROMPT_MODEL = "gemini-2.0-flash";
+const BROLL_PROMPT_MODEL = "gemini-3.5-flash";
 
 interface VideoPromptsRequestBody {
   componentId?: string;
@@ -72,7 +73,12 @@ export const handler: Handler = async (event) => {
   let productionJobCompleted = false;
 
   try {
-    requestBody = parseJsonBody<VideoPromptsRequestBody>(event);
+    requestBody = await parseVerifiedBackgroundBody<VideoPromptsRequestBody>(event);
+  } catch {
+    return unauthorizedBackgroundResponse();
+  }
+
+  try {
     activeProductionJobId = requestBody.productionJobId || null;
     const { componentId, productionJobId, storyboard } = requestBody;
 
@@ -91,6 +97,7 @@ export const handler: Handler = async (event) => {
     const inputSnapshot = buildBrollPromptJobInputSnapshot({
       componentId,
       storyboard,
+      videoDurationContract: context.videoDurationContract,
     });
     const productionJob = productionJobId
       ? { id: productionJobId }
@@ -126,7 +133,10 @@ export const handler: Handler = async (event) => {
       context.organizationId,
     );
 
-    const inputContext = JSON.stringify(storyboard, null, 2);
+    const inputContext = JSON.stringify({
+      duration_contract: context.videoDurationContract,
+      storyboard,
+    }, null, 2);
     const fullPrompt = `${systemPrompt}\n\nSTORYBOARD INPUT:\n${inputContext}`;
 
     const response = await genAI.models.generateContent({
@@ -146,6 +156,14 @@ export const handler: Handler = async (event) => {
     }
 
     const result = parseBrollPromptResponse(JSON.parse(jsonMatch[0]));
+    if (
+      context.videoDurationContract &&
+      result.prompts.length < context.videoDurationContract.minimumBrollTakes
+    ) {
+      throw new Error(
+        `La generación produjo ${result.prompts.length} prompts B-roll; el contrato requiere al menos ${context.videoDurationContract.minimumBrollTakes}.`,
+      );
+    }
     const promptsText = formatBrollPromptsForAssets(result.prompts);
     const slideDeckSpec = buildCourseDeckSpecFromComponent({
       artifactId: context.artifactId,
@@ -153,6 +171,7 @@ export const handler: Handler = async (event) => {
         content: normalizeStoryboardForSlides(storyboard),
         id: componentId,
         type: context.componentType,
+        durationContract: context.videoDurationContract || undefined,
       },
       input: {
         locale: "es",

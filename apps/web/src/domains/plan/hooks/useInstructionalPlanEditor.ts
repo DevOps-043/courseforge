@@ -9,6 +9,10 @@ import type {
   PlanLessonItem,
 } from "../components/plan-view.types";
 import { getPlanLessonStableId } from "../components/plan-view.types";
+import {
+  buildVideoDurationContractFromText,
+  isVideoComponentType,
+} from "@/domains/video-duration/video-duration-policy";
 
 function cloneLesson(lesson: PlanLessonItem): PlanLessonItem {
   return typeof structuredClone === "function"
@@ -76,9 +80,13 @@ export function useInstructionalPlanEditor({
           return currentLesson;
         }
 
+        const durationContract = field === "duration" && isVideoComponentType(component.type)
+          ? buildVideoDurationContractFromText(value, component.duration_contract, component.type)
+          : null;
         components[componentIndex] = {
           ...component,
           [field]: value,
+          ...(durationContract ? { duration_contract: durationContract } : {}),
         };
 
         return {

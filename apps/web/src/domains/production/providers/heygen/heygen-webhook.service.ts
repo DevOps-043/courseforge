@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { encrypt } from "@/lib/server/crypto";
+import { readJsonResponseWithLimit } from "@/lib/server/outbound-http";
 
 const HEYGEN_API_BASE_URL = "https://api.heygen.com";
 const WEBHOOK_FUNCTION_NAME = "heygen-hyperframes-webhook";
+const MAX_HEYGEN_WEBHOOK_JSON_BYTES = 256 * 1024;
 
 interface HeygenWebhookEndpointResponse {
   endpoint_id: string;
@@ -100,7 +102,9 @@ async function createEndpoint(apiKey: string, callbackUrl: string): Promise<Heyg
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) throw new Error(`HeyGen no pudo registrar el webhook (${response.status}).`);
-  const payload = await response.json() as { data?: Partial<HeygenWebhookEndpointResponse> };
+  const payload = await readJsonResponseWithLimit<{
+    data?: Partial<HeygenWebhookEndpointResponse>;
+  }>(response, MAX_HEYGEN_WEBHOOK_JSON_BYTES);
   if (!payload.data?.endpoint_id || !payload.data.secret) {
     throw new Error("HeyGen no devolvió el secreto del webhook registrado.");
   }

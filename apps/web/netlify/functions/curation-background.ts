@@ -1,5 +1,6 @@
 
 import { Handler } from '@netlify/functions';
+import { generationFailureMessage } from '../../src/lib/pipeline-generation-policy';
 import { processUnifiedCuration } from './unified-curation-logic';
 import {
   createServiceRoleClient,
@@ -8,19 +9,26 @@ import {
   getSupabaseUrl,
 } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
-import { methodNotAllowedResponse, parseJsonBody } from './shared/http';
+import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from './shared/http';
 
 const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') return methodNotAllowedResponse();
 
   let curationId: string | undefined;
+  let payload: {
+    artifactId?: string;
+    curationId?: string;
+    customPrompt?: string;
+    resume?: boolean;
+    attemptNumber?: number;
+  };
   try {
-    const payload = parseJsonBody<{
-      artifactId?: string;
-      curationId?: string;
-      customPrompt?: string;
-      resume?: boolean;
-    }>(event);
+    payload = await parseVerifiedBackgroundBody(event);
+  } catch {
+    return unauthorizedBackgroundResponse();
+  }
+
+  try {
     const { artifactId, customPrompt, resume } = payload;
     curationId = payload.curationId;
     if (!artifactId || !curationId) throw new Error('Missing artifactId or curationId');
@@ -33,17 +41,11 @@ const handler: Handler = async (event) => {
     }
 
     const supabase = createServiceRoleClient();
-
-    if (!resume) {
-      const { error: clearError } = await supabase
-        .from('curation_rows')
-        .delete()
-        .eq('curation_id', curationId)
-        .eq('origin', 'automatic');
-      if (clearError) throw new Error(clearError.message);
-      console.log(`[Curation V2] Cleared automatic rows for curation: ${curationId}`);
-    } else {
-      console.log(`[Curation Background] RESUME requested. Keeping existing rows for curation: ${curationId}`);
+    const { data: current, error: lookupError } = await supabase.from('curation')
+      .select('id, state, attempt_number').eq('id', curationId).eq('artifact_id', artifactId).maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!current || current.state !== 'PHASE2_GENERATING' || current.attempt_number !== payload.attemptNumber) {
+      return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
     }
 
     // Call shared logic
@@ -54,7 +56,8 @@ const handler: Handler = async (event) => {
       supabaseUrl,
       supabaseKey,
       openAiApiKey,
-      resume
+      resume,
+      attemptNumber: current.attempt_number,
     });
 
     return { statusCode: 200, body: JSON.stringify({ success: true, processed }) };
@@ -69,13 +72,14 @@ const handler: Handler = async (event) => {
             state: 'PHASE2_BLOCKED',
             qa_decision: {
               decision: 'BLOCKED',
-              notes: `La busqueda automatica fallo: ${getErrorMessage(error)}`,
+              notes: generationFailureMessage(error),
               reviewed_by: 'system',
               reviewed_at: new Date().toISOString(),
             },
             updated_at: new Date().toISOString(),
           })
-          .eq('id', curationId);
+          .eq('id', curationId).eq('state', 'PHASE2_GENERATING')
+          .eq('attempt_number', payload.attemptNumber ?? -1);
       } catch (stateError) {
         console.error('[Curation Background] Failed to persist blocked state:', stateError);
       }

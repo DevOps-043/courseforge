@@ -1,5 +1,7 @@
-import { NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import {
+    canReviewContent,
     getAuthenticatedUser,
     getAuthorizedArtifactAdmin,
     getAuthorizedMaterialComponentAdmin,
@@ -18,24 +20,28 @@ import {
     HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES,
 } from '@/domains/production/hyperframes/hyperframes.types';
 import { HYPERFRAMES_PRIVATE_SOURCE_BUCKET } from '@/domains/production/media-storage.config';
+import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract';
+import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response';
+import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger';
 
 const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets', HYPERFRAMES_PRIVATE_SOURCE_BUCKET, 'curation-sources']);
 const BUNDLE_AGENT_REFERENCE_MAX_BYTES = 75 * 1024 * 1024;
 const CURATION_SOURCE_PDF_MAX_BYTES = 25 * 1024 * 1024;
 const GENERAL_UPLOAD_MAX_BYTES = 500 * 1024 * 1024;
+const ASSEMBLY_BRANDING_MAX_BYTES = 100 * 1024 * 1024;
 
-type UploadPurpose = 'production-asset' | 'thumbnail' | 'production-video' | 'bundle-agent-reference' | 'curation-source-pdf';
-
-interface SignedUploadUrlRequestBody {
-    bucket?: string;
-    artifactId?: string;
-    componentId?: string;
-    filePath?: string;
-    purpose?: UploadPurpose;
-    contentType?: string;
-    fileSizeBytes?: number;
-    upsert?: boolean;
-}
+const MAX_SIGNED_UPLOAD_REQUEST_BYTES = 16 * 1024;
+const signedUploadUrlSchema = z.object({
+    artifactId: z.string().uuid().optional(),
+    bucket: z.string().trim().min(1).max(100),
+    componentId: z.string().uuid().optional(),
+    contentType: z.string().trim().min(1).max(200).optional(),
+    filePath: z.string().trim().min(1).max(2_000).optional(),
+    fileSizeBytes: z.number().int().nonnegative().max(1024 * 1024 * 1024).optional(),
+    purpose: z.enum(['production-asset', 'thumbnail', 'production-video', 'bundle-agent-reference', 'curation-source-pdf', 'assembly-branding']).optional(),
+    assetKind: z.enum(['INTRO', 'OUTRO']).optional(),
+    upsert: z.boolean().optional(),
+}).strict();
 
 function hasUnsafePathSegment(filePath: string) {
     return (
@@ -100,7 +106,24 @@ async function resolveActiveUploadOrganizationId() {
 }
 
 export async function POST(request: Request) {
+    const requestId = resolveCorrelationId(request.headers.get('x-request-id'));
+    const logger = createOperationalLogger('storage.signed_upload_url', { correlationId: requestId });
+    const invalid = (message: string) => apiErrorResponse({
+        code: API_ERROR_CODE.invalidRequest,
+        message,
+        requestId,
+        status: 400,
+    });
     try {
+        const parsedRequest = await parseJsonRequest(request, signedUploadUrlSchema, MAX_SIGNED_UPLOAD_REQUEST_BYTES);
+        if (!parsedRequest.success) {
+            return apiErrorResponse({
+                code: parsedRequest.reason === 'too_large' ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+                message: parsedRequest.reason === 'too_large' ? 'La solicitud excede el tamaño permitido.' : 'Solicitud de subida inválida.',
+                requestId,
+                status: parsedRequest.reason === 'too_large' ? 413 : 400,
+            });
+        }
         const {
             bucket,
             artifactId,
@@ -110,21 +133,19 @@ export async function POST(request: Request) {
             contentType,
             fileSizeBytes,
             upsert,
-        } = (await request.json()) as SignedUploadUrlRequestBody;
-
-        if (!bucket || !filePath) {
-            return NextResponse.json(
-                { error: 'Faltan parametros: bucket y filePath son requeridos' },
-                { status: 400 },
-            );
-        }
+            assetKind,
+        } = parsedRequest.data;
 
         if (!ALLOWED_BUCKETS.has(bucket)) {
-            return NextResponse.json({ error: 'Bucket no permitido' }, { status: 400 });
+            return invalid('Bucket no permitido.');
         }
 
-        if (hasUnsafePathSegment(filePath)) {
-            return NextResponse.json({ error: 'Ruta de archivo invalida' }, { status: 400 });
+        if (!filePath && purpose !== 'assembly-branding') {
+            return invalid('Ruta de archivo requerida.');
+        }
+
+        if (filePath && hasUnsafePathSegment(filePath)) {
+            return invalid('Ruta de archivo inválida.');
         }
 
         const uploadLimit = bucket === 'production-assets'
@@ -133,16 +154,13 @@ export async function POST(request: Request) {
             ? HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES
             : GENERAL_UPLOAD_MAX_BYTES;
         if (typeof fileSizeBytes === 'number' && fileSizeBytes > uploadLimit) {
-            return NextResponse.json(
-                { error: 'El archivo supera el tamano maximo permitido' },
-                { status: 400 },
-            );
+            return apiErrorResponse({ code: API_ERROR_CODE.payloadTooLarge, message: 'El archivo supera el tamaño máximo permitido.', requestId, status: 413 });
         }
 
         if (
             (bucket === 'production-assets' || bucket === HYPERFRAMES_PRIVATE_SOURCE_BUCKET)
             && purpose === 'production-asset'
-            && isHyperframesProductionMediaPath(filePath, contentType)
+            && isHyperframesProductionMediaPath(filePath!, contentType)
         ) {
             const mediaValidation = validateHyperframesMediaAsset({
                 deliveryMode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
@@ -151,119 +169,109 @@ export async function POST(request: Request) {
                 mimeType: contentType,
             });
             if (!mediaValidation.valid) {
-                return NextResponse.json(
-                    { error: mediaValidation.errors.join(' ') },
-                    { status: 400 },
-                );
+                return invalid(mediaValidation.errors.join(' '));
             }
         }
 
         const supabase = await createClient();
         const authenticatedUser = await getAuthenticatedUser(supabase);
         if (!authenticatedUser) {
-            return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+            return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'No autorizado.', requestId, status: 401 });
         }
 
         const activeOrgId = await resolveActiveUploadOrganizationId();
 
-        let authorizedFilePath = filePath;
+        let authorizedFilePath = filePath || '';
 
-        if (purpose === 'bundle-agent-reference') {
+        if (purpose === 'assembly-branding') {
+            const tenant = await resolveActiveTenantContext();
+            if (!tenant || tenant.organizationId !== activeOrgId) {
+                return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'No se encontró una organización activa válida.', requestId, status: 403 });
+            }
+            if (!(await canReviewContent(authenticatedUser.userId, tenant))) {
+                return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: 'No tienes permisos para configurar identidad de ensamble.', requestId, status: 403 });
+            }
+            if (bucket !== 'production-assets' || !assetKind) {
+                return invalid('La identidad de ensamble requiere bucket y tipo válidos.');
+            }
+            if (!new Set(['video/mp4', 'video/webm']).has(contentType || '')) {
+                return invalid('La identidad de ensamble debe ser un video MP4 o WebM.');
+            }
+            if (typeof fileSizeBytes !== 'number' || fileSizeBytes <= 0 || fileSizeBytes > ASSEMBLY_BRANDING_MAX_BYTES) {
+                return apiErrorResponse({ code: API_ERROR_CODE.payloadTooLarge, message: 'El video debe pesar entre 1 byte y 100 MB.', requestId, status: 413 });
+            }
+            const extension = contentType === 'video/webm' ? 'webm' : 'mp4';
+            authorizedFilePath = `assembly-branding/${tenant.organizationId}/${assetKind.toLowerCase()}/${randomUUID()}.${extension}`;
+        } else if (purpose === 'bundle-agent-reference') {
             if (bucket !== 'production-assets') {
-                return NextResponse.json(
-                    { error: 'Las referencias visuales del Bundle Agent deben subirse a production-assets' },
-                    { status: 400 },
-                );
+                return invalid('Las referencias visuales del Bundle Agent deben subirse a production-assets.');
             }
 
             if (!activeOrgId) {
-                return NextResponse.json(
-                    { error: 'No se encontro organizacion activa para subir la referencia visual' },
-                    { status: 400 },
-                );
+                return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'No se encontró una organización activa para subir la referencia visual.', requestId, status: 403 });
             }
 
             if (!isBundleAgentReferenceContentType(contentType)) {
-                return NextResponse.json(
-                    { error: 'La referencia visual debe ser una imagen o video valido' },
-                    { status: 400 },
-                );
+                return invalid('La referencia visual debe ser una imagen o video válido.');
             }
 
             if (typeof fileSizeBytes !== 'number' || fileSizeBytes <= 0 || fileSizeBytes > BUNDLE_AGENT_REFERENCE_MAX_BYTES) {
-                return NextResponse.json(
-                    { error: 'La referencia visual debe pesar entre 1 byte y 75 MB' },
-                    { status: 400 },
-                );
+                return apiErrorResponse({ code: API_ERROR_CODE.payloadTooLarge, message: 'La referencia visual debe pesar entre 1 byte y 75 MB.', requestId, status: 413 });
             }
 
-            const safeRelativePath = filePath
+            const safeRelativePath = authorizedFilePath
                 .replace(/^organizations\/[^/]+\/bundle-agent-references\//, '')
                 .replace(/^bundle-agent-references\//, '');
             authorizedFilePath = `organizations/${activeOrgId}/bundle-agent-references/${safeRelativePath}`;
         } else if (purpose === 'curation-source-pdf') {
             if (bucket !== 'curation-sources') {
-                return NextResponse.json(
-                    { error: 'Las fuentes PDF deben subirse al bucket privado curation-sources' },
-                    { status: 400 },
-                );
+                return invalid('Las fuentes PDF deben subirse al bucket privado curation-sources.');
             }
             if (!artifactId) {
-                return NextResponse.json({ error: 'artifactId es requerido para subir una fuente PDF' }, { status: 400 });
+                return invalid('artifactId es requerido para subir una fuente PDF.');
             }
             const authorizedArtifact = await getAuthorizedArtifactAdmin(artifactId);
             if (!authorizedArtifact) {
-                return NextResponse.json({ error: 'Artefacto no encontrado para esta empresa' }, { status: 404 });
+                return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: 'Artefacto no encontrado para esta empresa.', requestId, status: 404 });
             }
             if (!activeOrgId || authorizedArtifact.artifact.organization_id !== activeOrgId) {
-                return NextResponse.json({ error: 'El artefacto no pertenece a la organizacion activa' }, { status: 403 });
+                return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'El artefacto no pertenece a la organización activa.', requestId, status: 403 });
             }
-            if (contentType !== 'application/pdf' || !filePath.toLowerCase().endsWith('.pdf')) {
-                return NextResponse.json({ error: 'La fuente debe ser un archivo PDF valido' }, { status: 400 });
+            if (contentType !== 'application/pdf' || !authorizedFilePath.toLowerCase().endsWith('.pdf')) {
+                return invalid('La fuente debe ser un archivo PDF válido.');
             }
             if (typeof fileSizeBytes !== 'number' || fileSizeBytes <= 0 || fileSizeBytes > CURATION_SOURCE_PDF_MAX_BYTES) {
-                return NextResponse.json({ error: 'El PDF debe pesar entre 1 byte y 25 MB' }, { status: 400 });
+                return apiErrorResponse({ code: API_ERROR_CODE.payloadTooLarge, message: 'El PDF debe pesar entre 1 byte y 25 MB.', requestId, status: 413 });
             }
-            const safeRelativePath = filePath
+            const safeRelativePath = authorizedFilePath
                 .replace(/^organizations\/[^/]+\/curation-sources\/[^/]+\//, '')
                 .replace(/^curation-sources\/[^/]+\//, '');
             authorizedFilePath = `organizations/${activeOrgId}/curation-sources/${artifactId}/${safeRelativePath}`;
         } else if (bucket === 'template-bundles') {
-            return NextResponse.json(
-                { error: 'El bucket template-bundles solo acepta uploads con purpose template-bundle' },
-                { status: 400 },
-            );
+            return invalid('El bucket template-bundles solo acepta cargas con purpose template-bundle.');
         } else if (bucket === 'curation-sources') {
-            return NextResponse.json(
-                { error: 'El bucket curation-sources solo acepta uploads con purpose curation-source-pdf' },
-                { status: 400 },
-            );
+            return invalid('El bucket curation-sources solo acepta cargas con purpose curation-source-pdf.');
         }
 
-        if ((bucket === 'production-assets' || bucket === HYPERFRAMES_PRIVATE_SOURCE_BUCKET) && purpose !== 'bundle-agent-reference') {
+        if (
+            (bucket === 'production-assets' || bucket === HYPERFRAMES_PRIVATE_SOURCE_BUCKET)
+            && purpose !== 'bundle-agent-reference'
+            && purpose !== 'assembly-branding'
+        ) {
             if (!componentId) {
-                return NextResponse.json(
-                    { error: 'componentId es requerido para subir activos de produccion' },
-                    { status: 400 },
-                );
+                return invalid('componentId es requerido para subir activos de producción.');
             }
 
             const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
             if (!authorizedComponent) {
-                return NextResponse.json(
-                    { error: 'Componente no encontrado para esta empresa' },
-                    { status: 404 },
-                );
+                return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: 'Componente no encontrado para esta empresa.', requestId, status: 404 });
             }
 
             const belongsToComponent = bucket === HYPERFRAMES_PRIVATE_SOURCE_BUCKET
-                ? isPrivateRenderSourcePath(filePath, componentId)
-                : filePath.includes(componentId);
+                ? isPrivateRenderSourcePath(authorizedFilePath, componentId)
+                : authorizedFilePath.includes(componentId);
             if (!belongsToComponent) {
-                return NextResponse.json(
-                    { error: 'La ruta del activo no corresponde al componente autorizado' },
-                    { status: 400 },
-                );
+                return invalid('La ruta del activo no corresponde al componente autorizado.');
             }
         }
 
@@ -275,25 +283,24 @@ export async function POST(request: Request) {
         const { data, error } = await admin.storage
             .from(bucket)
             .createSignedUploadUrl(authorizedFilePath, {
-                upsert: purpose === 'curation-source-pdf' ? false : upsert ?? true,
+                upsert: purpose === 'curation-source-pdf' || purpose === 'assembly-branding'
+                    ? false
+                    : upsert ?? true,
             });
 
         if (error || !data) {
-            console.error('[API /storage/signed-upload-url] Error:', error);
-            return NextResponse.json(
-                { error: error?.message || 'No se pudo generar la URL de subida' },
-                { status: 500 },
-            );
+            logger.error('storage.signed_upload_url.create_failed', error, { bucket });
+            return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo generar la URL de subida.', requestId, retryable: true, status: 500 });
         }
 
-        return NextResponse.json({
+        return apiSuccessResponse({
             signedUrl: data.signedUrl,
             token: data.token,
             path: data.path,
-        });
+        }, { requestId });
     } catch (error: unknown) {
-        console.error('[API /storage/signed-upload-url] Unexpected error:', error);
-        return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
+        logger.error('storage.signed_upload_url.failed', error);
+        return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo preparar la subida.', requestId, retryable: true, status: 500 });
     }
 }
 

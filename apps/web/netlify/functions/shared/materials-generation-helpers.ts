@@ -1,5 +1,7 @@
 import type { GoogleGenAI } from "@google/genai";
+import type OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import {
   resolvePrompts,
   assemblePrompt,
@@ -17,8 +19,23 @@ import type {
 } from "../../../src/domains/materials/types/materials.types";
 import { getErrorMessage } from "./errors";
 import { MATERIALS_RETRY_BACKOFF_BASE_MS } from "./timing";
+import {
+  buildVideoDurationContract,
+  isVideoComponentType,
+  type VideoDurationPolicy,
+  videoDurationContractSchema,
+} from "../../../src/domains/video-duration/video-duration-policy";
+import {
+  buildVideoGenerationGuardrails,
+} from "../../../src/domains/materials/validators/material-video.validators";
+import { requestGeminiJson, requestOpenAiJson, type MaterialsModelRuntimeConfig } from "./materials-model-client";
+import { VIDEO_GENERATION_LIMITS } from "../../../src/domains/materials/generation/video-generation.contracts";
+export type { MaterialsModelRuntimeConfig } from "./materials-model-client";
+import { getMaterialsModelProvider } from "../../../src/shared/ai/materials-model-provider";
+import { createGeminiClient, createOpenAiClient } from "./bootstrap";
 
 interface LessonPlanComponentRecord {
+  duration_contract?: unknown;
   type: ComponentType;
   summary?: string | null;
 }
@@ -35,6 +52,7 @@ export interface LessonPlanRecord {
 }
 
 export interface MaterialLessonRecord {
+  state?: string;
   id: string;
   lesson_id: string;
   lesson_title: string;
@@ -60,28 +78,56 @@ export interface CurationRowRecord {
   } | null;
 }
 
-const DEFAULT_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-];
-
 const DEFAULT_QUIZ_SPEC: QuizSpec = {
   min_questions: 3,
   max_questions: 5,
   types: ["MULTIPLE_CHOICE", "TRUE_FALSE"],
 };
 
+function normalizeLessonReference(value: string | null | undefined) {
+  const normalized = value?.trim().replace(/-G\d+$/i, "");
+  if (
+    !normalized ||
+    normalized.toLowerCase() === "undefined" ||
+    normalized.toLowerCase() === "null"
+  ) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function normalizeLessonTitle(value: string | null | undefined) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+export function buildMaterialLessonId(
+  lessonId: string | null | undefined,
+  index: number,
+) {
+  const canonicalId = normalizeLessonReference(lessonId) || `lesson-${index}`;
+  return `${canonicalId}-G${index}`;
+}
+
 function wait(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function getGeminiBillingOrPermissionError(message: string) {
+function getProviderBillingOrPermissionError(
+  provider: "gemini" | "openai",
+  message: string,
+) {
   const normalizedMessage = message.toLowerCase();
 
-  if (
+  if (provider === "gemini" && (
     normalizedMessage.includes("lightning dunning decision is deny") ||
     normalizedMessage.includes("dunning decision is deny")
-  ) {
+  )) {
     return "Gemini rechazo la solicitud porque el proyecto de Google Cloud asociado a la API key esta bloqueado por billing/dunning. Revisa facturacion/estado del proyecto en Google Cloud o configura una API key de un proyecto activo y reinicia el servidor.";
   }
 
@@ -90,7 +136,18 @@ function getGeminiBillingOrPermissionError(message: string) {
     normalizedMessage.includes('"code":403') ||
     normalizedMessage.includes("status code 403")
   ) {
-    return "Gemini rechazo la solicitud con 403 PERMISSION_DENIED. Verifica que la API key tenga acceso a Gemini API/Generative Language API, que el proyecto este activo y que el modelo configurado este disponible para ese proyecto.";
+    return provider === "gemini"
+      ? "Gemini rechazo la solicitud con 403 PERMISSION_DENIED. Verifica que la API key tenga acceso a Gemini API/Generative Language API, que el proyecto este activo y que el modelo configurado este disponible para ese proyecto."
+      : "OpenAI rechazo la solicitud por permisos. Verifica OPENAI_API_KEY y que el proyecto tenga acceso al modelo configurado.";
+  }
+
+  if (
+    provider === "openai" &&
+    (normalizedMessage.includes("insufficient_quota") ||
+      normalizedMessage.includes("billing") ||
+      normalizedMessage.includes("quota"))
+  ) {
+    return "OpenAI rechazo la solicitud por cuota o facturacion. Revisa los creditos y limites del proyecto asociado a OPENAI_API_KEY.";
   }
 
   return null;
@@ -100,10 +157,13 @@ export function matchesLesson(
   candidate: Pick<CurationRowRecord, "lesson_id" | "lesson_title">,
   lesson: Pick<MaterialLessonRecord, "lesson_id" | "lesson_title">,
 ) {
-  return (
-    candidate.lesson_id === lesson.lesson_id ||
-    candidate.lesson_title === lesson.lesson_title
-  );
+  const candidateId = normalizeLessonReference(candidate.lesson_id);
+  const lessonId = normalizeLessonReference(lesson.lesson_id);
+  const candidateTitle = normalizeLessonTitle(candidate.lesson_title);
+  const lessonTitle = normalizeLessonTitle(lesson.lesson_title);
+
+  if (candidateId && lessonId) return candidateId === lessonId;
+  return Boolean(candidateTitle) && candidateTitle === lessonTitle;
 }
 
 export function findLessonSources(
@@ -128,9 +188,16 @@ export function buildMaterialsGenerationInput(params: {
   lessonSources: CurationRowRecord[];
   iterationNumber: number;
   fixInstructions?: string;
+  videoDurationPolicy: VideoDurationPolicy;
 }) {
-  const { lesson, planDetails, lessonSources, iterationNumber, fixInstructions } =
-    params;
+  const {
+    lesson,
+    planDetails,
+    lessonSources,
+    iterationNumber,
+    fixInstructions,
+    videoDurationPolicy,
+  } = params;
   const componentTypes = lesson.expected_components || [];
 
   const input: MaterialsGenerationInput = {
@@ -146,6 +213,7 @@ export function buildMaterialsGenerationInput(params: {
           planDetails?.components?.find(
             (component) => component.type === componentType,
           )?.summary || "",
+        ...resolveComponentDurationContract(planDetails, componentType, videoDurationPolicy),
       })),
       quiz_spec: lesson.quiz_spec || planDetails?.quiz_spec || DEFAULT_QUIZ_SPEC,
       requires_demo_guide:
@@ -166,55 +234,177 @@ export function buildMaterialsGenerationInput(params: {
 }
 
 export async function generateWithRetry(
-  genAI: GoogleGenAI,
   input: MaterialsGenerationInput,
   logPrefix: string,
+  models: string[],
+  modelRuntimeConfig: MaterialsModelRuntimeConfig,
   supabase?: SupabaseClient,
   componentTypes?: string[],
   organizationId?: string | null,
-  models?: string[],
+  deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.lessonTimeoutMs,
 ) {
-  const modelsToTry = models && models.length > 0 ? models : DEFAULT_MODELS;
-  let lastError = "All retries exhausted";
+  const modelsToTry = Array.from(new Set(models.filter(Boolean)));
+  if (modelsToTry.length === 0) {
+    return {
+      success: false as const,
+      error: "MODEL_SETTING_NOT_CONFIGURED: Materiales no tiene modelos configurados.",
+    };
+  }
+
+  const attemptErrors: string[] = [];
+  const unavailableModels = new Set<string>();
+  let geminiClient: GoogleGenAI | undefined;
+  let openAiClient: OpenAI | undefined;
 
   for (let retry = 0; retry < 2; retry++) {
     for (const model of modelsToTry) {
+      if (Date.now() >= deadlineMs) return { success: false as const, error: "MATERIALS_TIME_BUDGET_EXHAUSTED: Se agotó el tiempo de generación de la lección." };
+      if (unavailableModels.has(model)) {
+        continue;
+      }
+
       try {
         console.log(`${logPrefix} Try ${retry + 1}, Model: ${model}`);
-        const content = await generateMaterialsWithGemini(
-          genAI,
-          model,
-          input,
-          logPrefix,
-          supabase,
-          componentTypes,
-          organizationId,
-        );
+        const provider = getMaterialsModelProvider(model);
+        if (!provider) {
+          throw new Error(
+            `UNSUPPORTED_MATERIALS_MODEL: ${model} no pertenece a un proveedor implementado.`,
+          );
+        }
+
+        const content = provider === "gemini"
+          ? await generateMaterialsWithGemini(
+              (geminiClient ||= createGeminiClient()),
+              model,
+              input,
+              logPrefix,
+              supabase,
+              componentTypes,
+              organizationId,
+              modelRuntimeConfig,
+              deadlineMs,
+            )
+          : await generateMaterialsWithOpenAI(
+              (openAiClient ||= createOpenAiClient()),
+              model,
+              input,
+              logPrefix,
+              supabase,
+              componentTypes,
+              organizationId,
+              modelRuntimeConfig,
+              deadlineMs,
+            );
         return { success: true as const, content };
       } catch (error) {
         const message = getErrorMessage(error, "");
-        lastError = message || lastError;
+        attemptErrors.push(
+          `${model} (intento ${retry + 1}): ${message || "error desconocido"}`,
+        );
         console.warn(`${logPrefix} ${model} failed: ${message}`);
 
-        const permissionError = getGeminiBillingOrPermissionError(message);
+        const provider = getMaterialsModelProvider(model);
+        const permissionError = provider
+          ? getProviderBillingOrPermissionError(provider, message)
+          : null;
         if (permissionError) {
-          return { success: false as const, error: permissionError };
+          attemptErrors.push(`${model}: ${permissionError}`);
+          unavailableModels.add(model);
+          continue;
+        }
+
+        const normalizedMessage = message.toLowerCase();
+        if (
+          normalizedMessage.includes('"code":404') ||
+          normalizedMessage.includes("status code 404") ||
+          normalizedMessage.includes('"status":"not_found"') ||
+          normalizedMessage.includes("is not found for api version")
+        ) {
+          unavailableModels.add(model);
+          continue;
         }
 
         if (message.includes("429") || message.includes("rate limit")) {
-          await wait(MATERIALS_RETRY_BACKOFF_BASE_MS * (retry + 1));
-          break;
+          await wait(Math.max(0, Math.min(MATERIALS_RETRY_BACKOFF_BASE_MS * (retry + 1), deadlineMs - Date.now())));
+          continue;
         }
       }
     }
+
+    if (unavailableModels.size === modelsToTry.length) {
+      break;
+    }
   }
 
-  return { success: false as const, error: lastError };
+  return {
+    success: false as const,
+    error: `Fallaron los modelos configurados para Materiales. ${attemptErrors.join(" | ")}`,
+  };
 }
 
 export async function generateMaterialsWithGemini(
   genAI: GoogleGenAI,
   model: string,
+  input: MaterialsGenerationInput,
+  logPrefix: string,
+  supabase?: SupabaseClient,
+  componentTypes?: string[],
+  organizationId?: string | null,
+  modelRuntimeConfig: MaterialsModelRuntimeConfig = {
+    temperature: 0.7,
+    thinkingLevel: "medium",
+  },
+  deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.requestTimeoutMs,
+) {
+  const prompt = await buildMaterialsPrompt(
+    input,
+    logPrefix,
+    supabase,
+    componentTypes,
+    organizationId,
+  );
+
+  console.log(`${logPrefix} Calling ${model} through Gemini`);
+
+  const response = await requestGeminiJson(genAI, model, prompt, modelRuntimeConfig, remainingRequestTime(deadlineMs));
+  return parseAndValidateMaterialsOutput(input, response.content);
+}
+
+export async function generateMaterialsWithOpenAI(
+  client: OpenAI,
+  model: string,
+  input: MaterialsGenerationInput,
+  logPrefix: string,
+  supabase?: SupabaseClient,
+  componentTypes?: string[],
+  organizationId?: string | null,
+  modelRuntimeConfig: MaterialsModelRuntimeConfig = {
+    temperature: 0.7,
+    thinkingLevel: "medium",
+  },
+  deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.requestTimeoutMs,
+) {
+  const prompt = await buildMaterialsPrompt(
+    input,
+    logPrefix,
+    supabase,
+    componentTypes,
+    organizationId,
+  );
+
+  console.log(`${logPrefix} Calling ${model} through OpenAI`);
+
+  const response = await requestOpenAiJson(client, model, prompt, modelRuntimeConfig, remainingRequestTime(deadlineMs));
+  return parseAndValidateMaterialsOutput(input, response.content);
+}
+
+function remainingRequestTime(deadlineMs: number) {
+  const remainingMs = deadlineMs - Date.now();
+  if (remainingMs <= 0) throw new Error("MATERIALS_TIME_BUDGET_EXHAUSTED: Se agotó el tiempo de generación de la lección.");
+  return Math.min(remainingMs, VIDEO_GENERATION_LIMITS.requestTimeoutMs);
+}
+
+async function buildMaterialsPrompt(
   input: MaterialsGenerationInput,
   logPrefix: string,
   supabase?: SupabaseClient,
@@ -240,6 +430,11 @@ export async function generateMaterialsWithGemini(
       effectiveComponentTypes,
       organizationId,
     );
+    console.log(
+      `${logPrefix} Prompt sources: ${Object.entries(resolved.promptSources)
+        .map(([code, source]) => `${code}=${source}@${resolved.promptVersions[code] || "unknown"}`)
+        .join(", ")}`,
+    );
     basePrompt = assemblePrompt(resolved, effectiveComponentTypes);
     console.log(`${logPrefix} Using modular prompts for: ${effectiveComponentTypes.join(", ")}`);
   } else {
@@ -254,31 +449,62 @@ export async function generateMaterialsWithGemini(
       {
         systemPrompt: DEFAULT_PROMPTS[SYSTEM_PROMPT_CODE] ?? "",
         componentPrompts,
+        promptSources: Object.fromEntries(
+          [SYSTEM_PROMPT_CODE, ...effectiveComponentTypes.map(
+            (componentType) => COMPONENT_PROMPT_CODES[componentType],
+          ).filter(Boolean)].map((code) => [code, "default"]),
+        ),
+        promptVersions: Object.fromEntries(
+          [SYSTEM_PROMPT_CODE, ...effectiveComponentTypes.map(
+            (componentType) => COMPONENT_PROMPT_CODES[componentType],
+          ).filter(Boolean)].map((code) => [code, "code"]),
+        ),
       },
       effectiveComponentTypes,
     );
     console.log(`${logPrefix} Using hardcoded modular prompts for: ${effectiveComponentTypes.join(", ")}`);
   }
 
-  const prompt =
+  return (
     basePrompt +
-    `\n\n## DATOS DE ENTRADA\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\nResponde SOLO con JSON valido.`;
+    `\n\n${buildVideoGenerationGuardrails(input.lesson.components)}` +
+    `\n\n## DATOS DE ENTRADA\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\nResponde SOLO con JSON valido.`
+  );
+}
 
-  console.log(`${logPrefix} Calling ${model}`);
-
-  const response = await genAI.models.generateContent({
-    model,
-    contents: prompt,
-    config: { temperature: 0.7, maxOutputTokens: 16000 },
-  });
-
-  const responseText = response.text || "";
-  const match = responseText.match(/\{[\s\S]*\}/);
-  if (!match) {
-    throw new Error("No JSON in response");
+function parseAndValidateMaterialsOutput(
+  input: MaterialsGenerationInput,
+  response: unknown,
+) {
+  const generated = z.object({
+    components: z.record(z.string(), z.record(z.string(), z.unknown())),
+    source_refs_used: z.array(z.string()),
+  }).parse(response);
+  const requested = input.lesson.components.map((component) => component.type);
+  if (requested.some((type) => !generated.components[type])
+      || Object.keys(generated.components).some((type) => !requested.includes(type as ComponentType))) {
+    throw new Error("MATERIALS_COMPONENT_MISMATCH: La respuesta debe incluir exactamente los componentes solicitados.");
   }
+  const sources = new Set(input.sources.map((source) => source.id));
+  if (generated.source_refs_used.some((ref) => !sources.has(ref))) {
+    throw new Error("UNKNOWN_SOURCE_REFS: La respuesta usa fuentes ajenas a la lección.");
+  }
+  return generated as unknown as MaterialsGenerationOutput;
+}
 
-  return JSON.parse(match[0]) as MaterialsGenerationOutput;
+function resolveComponentDurationContract(
+  planDetails: LessonPlanRecord | null | undefined,
+  componentType: string,
+  fallbackPolicy: VideoDurationPolicy,
+) {
+  if (!isVideoComponentType(componentType)) return {};
+  const component = planDetails?.components?.find((candidate) => candidate.type === componentType);
+  const parsed = videoDurationContractSchema.safeParse(component?.duration_contract);
+  return {
+    duration_contract: parsed.success
+      ? parsed.data
+      : buildVideoDurationContract(fallbackPolicy, componentType),
+  };
 }
 
 export async function findOrCreateMaterialLesson(
@@ -288,17 +514,55 @@ export async function findOrCreateMaterialLesson(
   index: number,
   logPrefix: string,
 ) {
-  const lessonId = `${lessonPlan.lesson_id || `L${index}`}-G${index}`;
+  const lessonId = buildMaterialLessonId(lessonPlan.lesson_id, index);
 
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("material_lessons")
     .select("*")
     .eq("materials_id", materialsId)
     .eq("lesson_id", lessonId)
     .maybeSingle();
 
+  if (existingError) {
+    throw existingError;
+  }
+
   if (existing) {
     return existing;
+  }
+
+  // Repair rows created by the former `${undefined}-Gx` fallback instead of
+  // duplicating every lesson when a stopped generation is restarted.
+  const { data: legacyRows, error: legacyError } = await supabase
+    .from("material_lessons")
+    .select("*")
+    .eq("materials_id", materialsId)
+    .eq("lesson_title", lessonPlan.lesson_title)
+    .limit(1);
+
+  if (legacyError) {
+    throw legacyError;
+  }
+
+  const legacy = legacyRows?.[0] as MaterialLessonRecord | undefined;
+  if (legacy && /^(?:undefined|null)-G\d+$/i.test(legacy.lesson_id)) {
+    const { data: repaired, error: repairError } = await supabase
+      .from("material_lessons")
+      .update({
+        lesson_id: lessonId,
+        module_id: normalizeLessonReference(lessonPlan.module_id) || `mod-${index}`,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", legacy.id)
+      .select()
+      .single();
+
+    if (repairError) {
+      throw repairError;
+    }
+
+    console.log(`${logPrefix} Repaired legacy lesson id: ${legacy.lesson_id} -> ${lessonId}`);
+    return repaired;
   }
 
   const { data: created, error } = await supabase
@@ -307,7 +571,7 @@ export async function findOrCreateMaterialLesson(
       materials_id: materialsId,
       lesson_id: lessonId,
       lesson_title: lessonPlan.lesson_title,
-      module_id: lessonPlan.module_id || `mod-${index}`,
+      module_id: normalizeLessonReference(lessonPlan.module_id) || `mod-${index}`,
       module_title: lessonPlan.module_title,
       oa_text: lessonPlan.oa_text,
       expected_components: (lessonPlan.components || []).map(
@@ -335,64 +599,4 @@ export async function findOrCreateMaterialLesson(
 
   console.log(`${logPrefix} Created: ${lessonId}`);
   return created;
-}
-
-export async function saveGeneratedComponents(
-  supabase: SupabaseClient,
-  lessonId: string,
-  content: MaterialsGenerationOutput,
-  iteration: number,
-  logPrefix: string,
-  onlyTypes?: string[],
-) {
-  const components = content.components || {};
-  const refs = content.source_refs_used || [];
-  const componentTypesToReplace =
-    onlyTypes && onlyTypes.length > 0 ? onlyTypes : Object.keys(components);
-
-  if (!onlyTypes || componentTypesToReplace.length > 0) {
-    let deleteQuery = supabase
-      .from("material_components")
-      .delete()
-      .eq("material_lesson_id", lessonId);
-
-    if (onlyTypes && onlyTypes.length > 0) {
-      deleteQuery = deleteQuery.in("type", componentTypesToReplace);
-    }
-
-    const { error: deleteError } = await deleteQuery;
-    if (deleteError) {
-      throw deleteError;
-    }
-
-    console.log(
-      `${logPrefix} Replaced existing component(s): ${
-        onlyTypes ? componentTypesToReplace.join(", ") : "all"
-      }`,
-    );
-  }
-
-  for (const [type, data] of Object.entries(components)) {
-    if (!data) {
-      continue;
-    }
-
-    const { error: insertError } = await supabase.from("material_components").insert({
-      material_lesson_id: lessonId,
-      type,
-      content: data,
-      source_refs: refs,
-      validation_status: "PENDING",
-      validation_errors: [],
-      iteration_number: iteration,
-    });
-
-    if (insertError) {
-      throw insertError;
-    }
-  }
-
-  console.log(
-    `${logPrefix} Saved ${Object.keys(components).length} component(s)${onlyTypes ? " (partial)" : ""}`,
-  );
 }

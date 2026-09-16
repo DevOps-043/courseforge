@@ -3,7 +3,10 @@ import type {
   CourseSlideSpec,
 } from "../specs/course-deck.schema";
 import { isInstructionalChart } from "../charts/chart-eligibility.service";
-import { isLikelyNarrationLeak } from "../content/slide-visible-content.service";
+import {
+  containsProductionMetadataLeak,
+  isLikelyNarrationLeak,
+} from "../content/slide-visible-content.service";
 import {
   copyBudgetForSlideType,
   hasUnexpectedVisibleLanguage,
@@ -25,11 +28,13 @@ export interface CourseDeckQaReport {
     chartContracts: boolean;
     htmlSafety: boolean;
     narrationLeakage: boolean;
+    productionMetadataLeakage: boolean;
     renderContract: boolean;
     slideOrder: boolean;
     textDensity: boolean;
     visibleLanguage: boolean;
     visualAssets: boolean;
+    visualDiversity: boolean;
   };
   findings: CourseDeckQaFinding[];
   generatedAt: string;
@@ -99,6 +104,56 @@ function validateSlideOrder(
       code: "non_contiguous_slide_order",
       message: "El deck debe tener ordenes de slide consecutivos desde 1.",
       severity: "error",
+    });
+  }
+}
+
+function validateVisualDiversity(
+  deckSpec: CourseDeckSpec,
+  findings: CourseDeckQaFinding[],
+) {
+  const flexibleSlides = deckSpec.slides.filter((slide) => (
+    slide.renderHints?.layout
+    && !["center", "closing", "data"].includes(slide.renderHints.layout)
+  ));
+  let repeatedLayoutCount = 1;
+  for (let index = 1; index < flexibleSlides.length; index += 1) {
+    const current = flexibleSlides[index];
+    const previous = flexibleSlides[index - 1];
+    repeatedLayoutCount = current?.renderHints?.layout === previous?.renderHints?.layout
+      ? repeatedLayoutCount + 1
+      : 1;
+    if (repeatedLayoutCount === 3 && current) {
+      pushFinding(findings, {
+        code: "repeated_slide_layout",
+        message: "Tres diapositivas de contenido consecutivas reutilizan la misma estructura visual.",
+        severity: "warning",
+        slideId: current.id,
+      });
+    }
+  }
+
+  const uniqueLayouts = new Set(flexibleSlides.map((slide) => slide.renderHints?.layout));
+  if (flexibleSlides.length >= 4 && uniqueLayouts.size < 2) {
+    pushFinding(findings, {
+      code: "low_layout_diversity",
+      message: "El deck utiliza una sola estructura para todas sus diapositivas de contenido.",
+      severity: "warning",
+    });
+  }
+}
+
+function validateVisibleProductionMetadata(
+  deckSpec: CourseDeckSpec,
+  findings: CourseDeckQaFinding[],
+) {
+  for (const slide of deckSpec.slides) {
+    if (!containsProductionMetadataLeak(visibleTextForSlide(slide))) continue;
+    pushFinding(findings, {
+      code: "visible_production_metadata",
+      message: "La slide expone instrucciones o metadatos internos de producción.",
+      severity: "error",
+      slideId: slide.id,
     });
   }
 }
@@ -450,6 +505,9 @@ function buildChecks(findings: CourseDeckQaFinding[]) {
     narrationLeakage: !findings.some((finding) =>
       finding.severity === "error" && finding.code === "visible_avatar_narration",
     ),
+    productionMetadataLeakage: !findings.some((finding) =>
+      finding.severity === "error" && finding.code === "visible_production_metadata",
+    ),
     renderContract: !findings.some((finding) =>
       finding.severity === "error" &&
       ["missing_viewport_contract", "slide_render_mismatch"].includes(finding.code),
@@ -479,6 +537,9 @@ function buildChecks(findings: CourseDeckQaFinding[]) {
         "visual_asset_render_mismatch",
       ].includes(finding.code),
     ),
+    visualDiversity: !findings.some((finding) =>
+      ["low_layout_diversity", "repeated_slide_layout"].includes(finding.code),
+    ),
   };
 }
 
@@ -501,12 +562,14 @@ export function validateCourseDeckQuality(params: {
   const findings: CourseDeckQaFinding[] = [];
 
   validateSlideOrder(params.deckSpec, findings);
+  validateVisualDiversity(params.deckSpec, findings);
   validateTextDensity(params.deckSpec, findings);
   validateContentUniquenessAndCoverage(params.deckSpec, findings);
   validateVisibleLanguage(params.deckSpec, findings);
   validateChartContracts(params.deckSpec, params.html, findings);
   validateVisualAssetContracts(params.deckSpec, params.html, findings);
   validateNarrationLeakage(params.deckSpec, findings);
+  validateVisibleProductionMetadata(params.deckSpec, findings);
   validateHtmlSafety(params.html, findings);
   validateRenderContract(params.deckSpec, params.html, findings);
 

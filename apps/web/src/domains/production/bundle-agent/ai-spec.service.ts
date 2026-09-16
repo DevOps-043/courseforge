@@ -1,5 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
 import { getOptionalGeminiApiKey, getOptionalOpenAIApiKey } from "@/lib/server/env";
+import {
+  fetchWithDeadline,
+  readJsonResponseWithLimit,
+  readResponseTextWithLimit,
+} from "@/lib/server/outbound-http";
 import { getPipelineModelSettings, type PipelineModelSettings } from "@/lib/server/model-settings";
 import {
   bundleAgentMessageMetadataSchema,
@@ -11,6 +16,10 @@ import { buildSpecFromConversation, normalizeBundleAgentSpecForRendering } from 
 import { sanitizeErrorMessage } from "./redaction.service";
 import { normalizeGeneratedBundleSpec } from "./ai-spec-normalizer.service";
 import { getBundleModelProvider, resolveGeminiBundleModel, resolveOpenAIBundleModel } from "./provider-model.service";
+
+const AI_SPEC_TIMEOUT_MS = 60_000;
+const AI_SPEC_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
+const AI_ERROR_RESPONSE_MAX_BYTES = 32 * 1024;
 
 interface MessageForSpec {
   role: string;
@@ -525,7 +534,7 @@ async function generateSpecWithOpenAI(input: {
   title?: string | null;
   messages: MessageForSpec[];
 }): Promise<AiSpecGenerationResult> {
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetchWithDeadline("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${input.apiKey}`,
@@ -541,14 +550,14 @@ async function generateSpecWithOpenAI(input: {
         },
       },
     }),
-  });
+  }, AI_SPEC_TIMEOUT_MS);
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
+    const errorText = await readResponseTextWithLimit(response, AI_ERROR_RESPONSE_MAX_BYTES).catch(() => "");
     throw new Error(`OpenAI spec generation failed: HTTP ${response.status} ${errorText.slice(0, 500)}`);
   }
 
-  const payload = (await response.json()) as OpenAIResponsesPayload;
+  const payload = await readJsonResponseWithLimit<OpenAIResponsesPayload>(response, AI_SPEC_RESPONSE_MAX_BYTES);
   const parsed = JSON.parse(extractJsonObject(getOpenAIOutputText(payload)));
   const deterministicSpec = buildSpecFromConversation({
     title: input.title,
@@ -583,6 +592,7 @@ async function generateSpecWithGemini(input: {
     model,
     contents: buildGeminiContents(input) as any,
     config: {
+      abortSignal: AbortSignal.timeout(AI_SPEC_TIMEOUT_MS),
       temperature: Math.min(0.7, Math.max(0.1, input.settings.temperature || 0.4)),
       responseMimeType: "application/json",
     },

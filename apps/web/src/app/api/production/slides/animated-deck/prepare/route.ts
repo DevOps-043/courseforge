@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
 import {
   getAuthenticatedUser,
@@ -14,6 +14,13 @@ import {
   rewriteAnimatedDeckRemoteAssetUrls,
   type AnimatedDeckRemoteAsset,
 } from "@/domains/production/validation/animated-deck-preprocessor.service";
+import {
+  assertSafeExternalMediaUrl,
+  readResponseWithLimit,
+} from "@/domains/production/external-media-import-policy";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -23,6 +30,7 @@ const MAX_REMOTE_ASSETS = 24;
 const MAX_REMOTE_ASSET_BYTES = 8 * 1024 * 1024;
 const MAX_REMOTE_ASSETS_TOTAL_BYTES = 48 * 1024 * 1024;
 const REMOTE_ASSET_TIMEOUT_MS = 15_000;
+const MAX_PREPARE_ANIMATED_DECK_REQUEST_BYTES = 8 * 1024;
 const MINIMAL_PLACEHOLDER_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 
@@ -30,10 +38,10 @@ type AuthorizedMaterialComponent = NonNullable<
   Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>
 >;
 
-interface PrepareAnimatedDeckRequestBody {
-  componentId?: string;
-  htmlContentPath?: string;
-}
+const requestSchema = z.object({
+  componentId: z.string().uuid(),
+  htmlContentPath: z.string().trim().min(1).max(2_048).optional(),
+}).strict();
 
 function deckStoragePrefix(componentId: string) {
   return `slides/${componentId}/animated-deck`;
@@ -145,6 +153,7 @@ async function uploadAnimatedDeckAsset(params: {
 async function importAnimatedDeckRemoteAssets(params: {
   admin: AuthorizedMaterialComponent["admin"];
   componentId: string;
+  logger: ReturnType<typeof createOperationalLogger>;
   urls: string[];
 }): Promise<{ assets: AnimatedDeckRemoteAsset[]; urlMap: Record<string, string> }> {
   if (params.urls.length > MAX_REMOTE_ASSETS) {
@@ -158,17 +167,6 @@ async function importAnimatedDeckRemoteAssets(params: {
 
   for (const [index, sourceUrl] of params.urls.entries()) {
     const normalizedUrl = normalizeSourceAssetUrl(sourceUrl);
-    let url: URL;
-    try {
-      url = new URL(normalizedUrl);
-    } catch {
-      throw new Error(`URL remota invalida en deck animado: ${sourceUrl}`);
-    }
-
-    if (url.protocol !== "https:") {
-      throw new Error(`Solo se permiten assets remotos HTTPS en deck animado: ${sourceUrl}`);
-    }
-
     let buffer: Buffer;
     let extension = "png";
     let uploadContentType = "image/png";
@@ -176,8 +174,9 @@ async function importAnimatedDeckRemoteAssets(params: {
     let fallbackReason: string | undefined;
 
     try {
+      const url = await assertSafeExternalMediaUrl(normalizedUrl);
       const response = await fetch(url, {
-        redirect: "follow",
+        redirect: "error",
         signal: AbortSignal.timeout(REMOTE_ASSET_TIMEOUT_MS),
       });
 
@@ -191,16 +190,7 @@ async function importAnimatedDeckRemoteAssets(params: {
         throw new Error(`tipo no permitido: ${contentType || "desconocido"}`);
       }
 
-      const contentLengthHeader = response.headers.get("content-length");
-      const expectedBytes = contentLengthHeader ? Number.parseInt(contentLengthHeader, 10) : 0;
-      if (expectedBytes > MAX_REMOTE_ASSET_BYTES) {
-        throw new Error("supera limite individual");
-      }
-
-      buffer = Buffer.from(await response.arrayBuffer());
-      if (buffer.byteLength > MAX_REMOTE_ASSET_BYTES) {
-        throw new Error("supera limite individual");
-      }
+      buffer = await readResponseWithLimit(response, MAX_REMOTE_ASSET_BYTES);
 
       extension = resolvedExtension;
       uploadContentType = contentType.split(";")[0].trim() || `image/${extension}`;
@@ -208,9 +198,11 @@ async function importAnimatedDeckRemoteAssets(params: {
       fallbackReason = error instanceof Error ? error.message : "descarga fallida";
       status = "placeholder";
       buffer = await buildMissingImagePlaceholder(sourceUrl, fallbackReason);
-      console.warn(
-        `[animated-deck/prepare] Reemplazando asset remoto por placeholder: ${sourceUrl} (${fallbackReason})`,
-      );
+      params.logger.warn("production.slides.animated_deck.remote_asset_replaced", {
+        assetIndex: index,
+        componentId: params.componentId,
+        reason: fallbackReason,
+      });
     }
 
     totalBytes += buffer.byteLength;
@@ -241,12 +233,11 @@ function buildFailedAnimatedDeck(params: {
   error: unknown;
   sourceHtmlPath: string;
 }): NonNullable<NonNullable<MaterialAssets["slides"]>["animated_deck"]> {
-  const message = params.error instanceof Error
-    ? params.error.message
-    : "No se pudo preparar el deck animado.";
+  const message = getSafeAnimatedDeckFailureMessage(params.error);
 
   return {
     animated_slide_count: 0,
+    appearance: params.currentAssets.slides?.appearance || "light",
     cleanup_report: {},
     css: "",
     error_message: message,
@@ -266,38 +257,62 @@ function buildFailedAnimatedDeck(params: {
   };
 }
 
-export async function POST(request: Request) {
-  const body = (await request.json()) as PrepareAnimatedDeckRequestBody;
-  const componentId = body.componentId;
+function getSafeAnimatedDeckFailureMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  return isUserCorrectableAnimatedDeckFailure(message)
+    ? message
+    : "No se pudo preparar el deck animado.";
+}
 
-  if (!componentId) {
-    return NextResponse.json({ error: "componentId es requerido" }, { status: 400 });
+function isUserCorrectableAnimatedDeckFailure(message: string) {
+  const userCorrectable = [
+    /^El deck referencia demasiados assets remotos/,
+    /^Los assets remotos del deck exceden el limite total permitido/,
+    /^La URL externa /,
+    /^Solo se permiten assets remotos HTTPS/,
+  ];
+  return userCorrectable.some((pattern) => pattern.test(message));
+}
+
+export async function POST(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.slides.animated_deck", { correlationId: requestId });
+  const parsed = await parseJsonRequest(request, requestSchema, MAX_PREPARE_ANIMATED_DECK_REQUEST_BYTES);
+  if (!parsed.success) {
+    return apiErrorResponse({
+      code: parsed.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+      message: parsed.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "La solicitud para preparar el deck animado no es válida.",
+      requestId,
+      status: parsed.reason === "too_large" ? 413 : 400,
+    });
   }
+  try {
+  const body = parsed.data;
+  const componentId = body.componentId;
 
   const supabase = await createClient();
   const authenticatedUser = await getAuthenticatedUser(supabase);
   if (!authenticatedUser) {
-    return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+    return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
   }
 
   const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
   if (!authorizedComponent) {
-    return NextResponse.json(
-      { error: "Componente no encontrado para esta empresa" },
-      { status: 404 },
-    );
+    return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado para esta empresa.", requestId, status: 404 });
   }
 
   const currentAssets = (authorizedComponent.component.assets || {}) as MaterialAssets;
   const rawHtmlPath = body.htmlContentPath || currentAssets.slides?.html_content_path;
   if (!rawHtmlPath) {
-    return NextResponse.json(
-      { error: "No hay HTML de slides para preparar como deck animado" },
-      { status: 400 },
-    );
+    return apiErrorResponse({ code: API_ERROR_CODE.conflict, message: "No hay HTML de slides para preparar como deck animado.", requestId, status: 409 });
   }
 
-  const normalizedHtmlPath = normalizeProductionAssetStoragePath(rawHtmlPath);
+  let normalizedHtmlPath: string;
+  try {
+    normalizedHtmlPath = normalizeProductionAssetStoragePath(rawHtmlPath);
+  } catch {
+    return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "La ruta del HTML de slides no es válida.", requestId, status: 400 });
+  }
   const sourceHtmlPath = `${BUCKET}/${normalizedHtmlPath}`;
 
   try {
@@ -314,6 +329,7 @@ export async function POST(request: Request) {
     const importedAssets = await importAnimatedDeckRemoteAssets({
       admin: authorizedComponent.admin,
       componentId,
+      logger,
       urls: remoteUrls,
     });
     const htmlWithImportedAssets = rewriteAnimatedDeckRemoteAssetUrls(
@@ -340,6 +356,7 @@ export async function POST(request: Request) {
 
     const animatedDeck: NonNullable<NonNullable<MaterialAssets["slides"]>["animated_deck"]> = {
       animated_slide_count: prepared.animatedSlideCount,
+      appearance: prepared.deck.appearance,
       cleanup_report: { ...prepared.cleanup },
       css: prepared.css,
       deck_json_path: `${BUCKET}/${deckJsonPath}`,
@@ -356,39 +373,37 @@ export async function POST(request: Request) {
       validation_report: { ...prepared.validation },
       width: prepared.deck.width,
     };
-    const updatedAssets: MaterialAssets = {
-      ...currentAssets,
+    const assetsPatch: Partial<MaterialAssets> = {
       final_video_assembly_stale: true,
       slides: {
         ...(currentAssets.slides || {}),
+        appearance: prepared.deck.appearance,
         animated_deck: animatedDeck,
         html_content_path: sourceHtmlPath,
       },
       updated_at: new Date().toISOString(),
     };
 
-    const { error: updateError } = await authorizedComponent.admin
-      .from("material_components")
-      .update({ assets: updatedAssets })
-      .eq("id", componentId);
+    const { data: updatedAssets, error: updateError } = await authorizedComponent.admin.rpc(
+      "patch_material_component_assets",
+      { p_component_id: componentId, p_assets_patch: assetsPatch },
+    );
 
     if (updateError) {
       throw new Error(`No se pudo actualizar el componente: ${updateError.message}`);
     }
 
-    return NextResponse.json({
-      success: true,
+    return apiSuccessResponse({
       animatedDeck,
       assets: updatedAssets,
-    });
+    }, { requestId });
   } catch (error: unknown) {
     const failedDeck = buildFailedAnimatedDeck({
       currentAssets,
       error,
       sourceHtmlPath,
     });
-    const failedAssets: MaterialAssets = {
-      ...currentAssets,
+    const failedAssetsPatch: Partial<MaterialAssets> = {
       slides: {
         ...(currentAssets.slides || {}),
         animated_deck: failedDeck,
@@ -397,19 +412,26 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    await authorizedComponent.admin
-      .from("material_components")
-      .update({ assets: failedAssets })
-      .eq("id", componentId);
-
-    console.error("[animated-deck/prepare] Unexpected error:", error);
-    return NextResponse.json(
-      {
-        animatedDeck: failedDeck,
-        error: failedDeck.error_message,
-        success: false,
-      },
-      { status: 400 },
+    await authorizedComponent.admin.rpc(
+      "patch_material_component_assets",
+      { p_component_id: componentId, p_assets_patch: failedAssetsPatch },
     );
+
+    logger.error("production.slides.animated_deck_prepare_failed", error, { componentId });
+    const userCorrectable = isUserCorrectableAnimatedDeckFailure(
+      error instanceof Error ? error.message : "",
+    );
+    return apiErrorResponse({
+      code: userCorrectable ? API_ERROR_CODE.invalidRequest : API_ERROR_CODE.internalError,
+      extensions: { animatedDeck: failedDeck },
+      message: failedDeck.error_message || "No se pudo preparar el deck animado.",
+      requestId,
+      retryable: !userCorrectable,
+      status: userCorrectable ? 400 : 500,
+    });
+  }
+  } catch (error) {
+    logger.error("production.slides.animated_deck_boundary_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar el deck animado.", requestId, retryable: true, status: 500 });
   }
 }

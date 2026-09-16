@@ -1,6 +1,7 @@
 "use server";
 
-import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { callBackgroundFunctionJson, dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
+import { generationFailureMessage } from "@/lib/pipeline-generation-policy";
 import {
   getAuthorizedArtifactAdmin,
   getServiceRoleClient,
@@ -19,6 +20,7 @@ interface LessonMaterialsRelation {
 }
 
 interface MaterialLessonAdminRow {
+  state: string;
   id: string;
   iteration_count: number;
   lesson_title: string;
@@ -74,6 +76,7 @@ export async function getAuthorizedMaterialLessonAdmin(lessonId: string) {
         lesson_title,
         iteration_count,
         max_iterations,
+        state,
         materials!inner (
           artifact_id
         )
@@ -117,6 +120,23 @@ export async function callMaterialsNetlifyFunction<
   fallbackError: string,
   localHandlerLoader?: () => Promise<Record<string, unknown>>,
 ) {
+  if (functionName === "materials-generation-background") {
+    await dispatchBackgroundFunctionJson(functionName, payload, {
+      fallbackError, localHandlerLoader,
+      onFailure: async (error) => {
+        const admin = getServiceRoleClient();
+        if (payload.lessonId) {
+          await admin.rpc("commit_material_generation", {
+            p_materials_id: payload.materialsId, p_version: payload.version, p_lesson_id: payload.lessonId,
+            p_iteration: payload.iterationNumber, p_rows: [], p_success: false, p_error: generationFailureMessage(error),
+          });
+        }
+        await admin.from("materials").update({ state: "PHASE3_NEEDS_FIX", updated_at: new Date().toISOString() })
+          .eq("id", payload.materialsId).eq("version", payload.version).eq("state", "PHASE3_GENERATING");
+      },
+    });
+    return {} as TData;
+  }
   return callBackgroundFunctionJson<TData>(functionName, payload, {
     fallbackError,
     localHandlerLoader,

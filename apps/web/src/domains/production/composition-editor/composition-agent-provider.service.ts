@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { readJsonResponseWithLimit } from "@/lib/server/outbound-http";
 import { isVideoStudioReasoningModel } from "../hyperframes/video-studio-model-options";
 import {
   getCompositionAgentProviderJsonSchema,
@@ -6,6 +7,7 @@ import {
 } from "./composition-agent-model-output.types";
 
 const DEFAULT_PROVIDER_TIMEOUT_MS = 30_000;
+const PROVIDER_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 
 export class CompositionAgentProviderError extends Error {
   constructor(
@@ -100,7 +102,10 @@ async function requestOpenAiProposal(params: { apiKey: string; model: string; pr
     signal: AbortSignal.timeout(providerTimeout(params.timeoutMs)),
   });
   if (!response.ok) throw new CompositionAgentProviderError("OpenAI rechazó la solicitud.", "PROVIDER_REQUEST_FAILED", "openai", response.status);
-  const payload = await response.json() as { output_text?: unknown; output?: Array<{ content?: Array<{ text?: unknown; type?: unknown }> }> };
+  const payload = await readJsonResponseWithLimit<{
+    output_text?: unknown;
+    output?: Array<{ content?: Array<{ text?: unknown; type?: unknown }> }>;
+  }>(response, PROVIDER_RESPONSE_MAX_BYTES);
   if (typeof payload.output_text === "string") return payload.output_text;
   const text = payload.output?.flatMap((item) => item.content || []).find((item) => item.type === "output_text" && typeof item.text === "string")?.text;
   if (typeof text !== "string") throw new CompositionAgentProviderError("OpenAI no devolvió contenido.", "PROVIDER_INVALID_OUTPUT", "openai");

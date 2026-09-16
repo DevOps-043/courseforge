@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import DOMPurify, { type Config } from 'dompurify';
 import {
   MaterialComponent,
   DialogueContent,
@@ -20,6 +22,24 @@ import {
   ListOrdered,
   Target,
 } from 'lucide-react';
+
+const MATERIAL_HTML_SANITIZE_CONFIG: Config = {
+  ALLOWED_ATTR: ['class', 'href', 'rel', 'title'],
+  ALLOWED_TAGS: [
+    'a', 'blockquote', 'br', 'code', 'div', 'em', 'h2', 'h3', 'h4',
+    'hr', 'li', 'ol', 'p', 'pre', 'span', 'strong', 'table', 'tbody',
+    'td', 'th', 'thead', 'tr', 'ul',
+  ],
+  ALLOW_DATA_ATTR: false,
+  FORBID_TAGS: ['button', 'embed', 'form', 'iframe', 'input', 'math', 'object', 'script', 'style', 'svg'],
+};
+
+function useSanitizedMaterialHtml(html: string | undefined) {
+  return useMemo(
+    () => html ? String(DOMPurify.sanitize(html, MATERIAL_HTML_SANITIZE_CONFIG)) : '',
+    [html],
+  );
+}
 
 export function renderComponentContent(component: MaterialComponent) {
   switch (component.type) {
@@ -306,6 +326,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ReadingViewer({ content }: { content: ReadingContent }) {
+  const safeBodyHtml = useSanitizedMaterialHtml(content.body_html);
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -319,14 +340,14 @@ function ReadingViewer({ content }: { content: ReadingContent }) {
         )}
       </div>
 
-      {content.body_html && (
+      {safeBodyHtml && (
         <div
           className="prose prose-sm md:prose-base dark:prose-invert max-w-none text-gray-700 dark:text-gray-300
           prose-headings:text-gray-900 dark:prose-headings:text-white
           prose-strong:text-gray-900 dark:prose-strong:text-white
           prose-a:text-[var(--engine-accent)] hover:prose-a:text-[var(--engine-accent)]/80
           prose-code:bg-gray-100 dark:prose-code:bg-white/10 prose-code:px-1 prose-code:rounded prose-code:text-[var(--engine-info)] dark:prose-code:text-[#58A6FF]"
-          dangerouslySetInnerHTML={{ __html: content.body_html }}
+          dangerouslySetInnerHTML={{ __html: safeBodyHtml }}
         />
       )}
 
@@ -495,14 +516,15 @@ function DemoGuideViewer({ content }: { content: DemoGuideContent }) {
 }
 
 function ExerciseViewer({ content }: { content: ExerciseContent }) {
+  const safeBodyHtml = useSanitizedMaterialHtml(content.body_html);
   return (
     <div className="space-y-6">
       {content.title && <h4 className="font-bold text-xl text-gray-900 dark:text-white border-b border-gray-100 dark:border-white/5 pb-4">{content.title}</h4>}
 
-      {content.body_html && (
+      {safeBodyHtml && (
         <div
           className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300"
-          dangerouslySetInnerHTML={{ __html: content.body_html }}
+          dangerouslySetInnerHTML={{ __html: safeBodyHtml }}
         />
       )}
 

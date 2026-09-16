@@ -96,7 +96,7 @@ export function getProductionRequirements(componentType: string) {
     needsScreencast:
       componentType === "DEMO_GUIDE" || componentType === "VIDEO_GUIDE",
     needsVideo: componentType.includes("VIDEO"),
-    needsFinalVideo: false,
+    needsFinalVideo: true,
   };
 }
 

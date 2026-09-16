@@ -3,6 +3,7 @@ import test from "node:test";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import { buildCompositionAutoOrganizePatch } from "../composition-auto-organize.service";
 import { COMPOSITION_DOCUMENT_FORMAT, compositionEditorDocumentSchema, LEGACY_COMPOSITION_DOCUMENT_FORMAT } from "../composition-document.types";
+import { summarizeCompositionTimelineBoundaryIssues } from "../../hyperframes/hyperframes-request-validation";
 import {
   applyCompositionEditorPatches,
   CompositionEditorPatchError,
@@ -49,6 +50,42 @@ test("edita la lÃ­nea de tiempo sin alterar la referencia del asset", () => {
   assert.equal(result.durationSeconds, 4);
   assert.equal(result.timingSource, "USER_EDITED");
   assert.deepEqual(result.source, video.source);
+});
+
+test("mueve en conjunto un avatar de escena y su voz asociada", () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [
+      {
+        checksum: "1".repeat(64), durationSeconds: 8, fileSizeBytes: 42, hasAudio: true,
+        mimeType: "video/mp4", productionAssetId: "11111111-1111-4111-8111-111111111121",
+        publicUrl: null, sceneClipId: "scene-avatar-1", sceneOrder: 1,
+        storageBucket: "production-assets", storagePath: "production-assets/avatar-scene-1.mp4", timelineRole: "AVATAR",
+      },
+      {
+        checksum: "2".repeat(64), durationSeconds: 8, fileSizeBytes: 42,
+        mimeType: "audio/mpeg", productionAssetId: "22222222-2222-4222-8222-222222222232",
+        publicUrl: null, sceneClipId: "scene-avatar-1", sceneOrder: 1,
+        storageBucket: "production-assets", storagePath: "production-assets/voice-scene-1.mp3", timelineRole: "VOICE",
+      },
+    ],
+    plan: { accentColor: "#38BDF8", durationSeconds: 20, subtitle: "Prueba", title: "Avatar vinculado" },
+  });
+  document.canvas.durationSeconds = 20;
+  const avatar = document.clips.find((clip) => clip.trackId === "avatar")!;
+  const voice = document.clips.find((clip) => clip.trackId === "voice" && clip.sceneId === "scene-avatar-1")!;
+
+  const movedFromAvatar = applyCompositionEditorPatches(document, [{
+    clipId: avatar.id, startSeconds: 4, type: "clip.move",
+  }]);
+  assert.equal(movedFromAvatar.clips.find((clip) => clip.id === avatar.id)?.startSeconds, 4);
+  assert.equal(movedFromAvatar.clips.find((clip) => clip.id === voice.id)?.startSeconds, 4);
+
+  const movedFromVoice = applyCompositionEditorPatches(movedFromAvatar, [{
+    clipId: voice.id, startSeconds: 7, type: "clip.move",
+  }]);
+  assert.equal(movedFromVoice.clips.find((clip) => clip.id === avatar.id)?.startSeconds, 7);
+  assert.equal(movedFromVoice.clips.find((clip) => clip.id === voice.id)?.startSeconds, 7);
 });
 
 test("aplica un recorte visual no destructivo y conserva timing, layout y fuente", () => {
@@ -770,6 +807,54 @@ test("actualiza documentos V1 a V2 sin perder su estado existente", () => {
   assert.equal(updated.format, COMPOSITION_DOCUMENT_FORMAT);
   assert.equal(updated.motion.schemaVersion, 2);
   assert.equal(updated.clips.find((candidate) => candidate.id === clip.id)?.hidden, true);
+});
+
+test("acepta el límite del canvas cuando la suma decimal solo excede por precisión IEEE-754", () => {
+  const document = baseDocument();
+  const slide = document.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  document.clips = [slide];
+  document.canvas.durationSeconds = 3.131;
+  slide.startSeconds = 1.566;
+  slide.durationSeconds = 1.565;
+
+  assert.equal(slide.startSeconds + slide.durationSeconds > document.canvas.durationSeconds, true);
+  assert.doesNotThrow(() => compositionEditorDocumentSchema.parse(document));
+  assert.doesNotThrow(() => applyCompositionEditorPatches(document, [{
+    clipId: "canvas",
+    durationSeconds: 3.131,
+    type: "composition.canvas-duration",
+  }]));
+});
+
+test("mantiene el rechazo para un clip que realmente rebasa el canvas", () => {
+  const document = baseDocument();
+  const slide = document.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  document.clips = [slide];
+  document.canvas.durationSeconds = 3.131;
+  slide.startSeconds = 1.566;
+  slide.durationSeconds = 1.567;
+
+  const parsed = compositionEditorDocumentSchema.safeParse(document);
+  assert.equal(parsed.success, false);
+  if (!parsed.success) {
+    const diagnostics = summarizeCompositionTimelineBoundaryIssues(parsed.error);
+    assert.equal(diagnostics.length, 1);
+    const diagnostic = diagnostics[0]!;
+    const { overflowSeconds, ...boundary } = diagnostic;
+    assert.deepEqual(boundary, {
+      canvasDurationSeconds: 3.131,
+      clipEndSeconds: 3.133,
+      clipId: slide.id,
+      clipStartSeconds: 1.566,
+      durationSeconds: 1.567,
+    });
+    assert.ok(Math.abs(overflowSeconds - 0.002) < 0.000001);
+  }
+  assert.throws(() => applyCompositionEditorPatches(document, [{
+    clipId: "canvas",
+    durationSeconds: 3.131,
+    type: "composition.canvas-duration",
+  }]), CompositionEditorPatchError);
 });
 
 test("añade motion sin modificar layout ni timing y lo elimina en cascada con el clip", () => {

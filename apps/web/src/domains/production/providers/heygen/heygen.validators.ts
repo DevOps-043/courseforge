@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sceneVisualPlanSchema } from "../../composition-editor/composition-narrative.types";
 
 const heygenBackgroundSchema = z
   .object({
@@ -87,6 +88,8 @@ export const heygenAvatarClipStatusSchema = z.enum([
 
 export const heygenAvatarClipSchema = z
   .object({
+    visual_plan: sceneVisualPlanSchema.optional(),
+    asset_name: z.string().trim().min(1).max(120).optional(),
     avatar_preset_id: z.string().uuid().optional(),
     background: heygenBackgroundSchema.optional(),
     duration: z.number().positive().optional(),
@@ -96,6 +99,7 @@ export const heygenAvatarClipSchema = z
     has_audio: z.boolean().optional(),
     id: z.string().trim().min(1),
     deleted: z.boolean().optional(),
+    expected_media_mode: z.enum(["avatar", "voice_only", "none"]).optional(),
     generation_revision: z.number().int().min(0).optional(),
     job_id: z.string().uuid().optional(),
     order: z.number().int().min(1),
@@ -141,7 +145,7 @@ export const heygenGenerateClipsRequestSchema = z
     clips: z.array(heygenAvatarClipSchema),
     componentId: z.string().uuid(),
     engine: z.enum(["avatar_iv", "avatar_v"]).default("avatar_iv"),
-    generationTarget: z.enum(["avatar", "voice_only"]).default("avatar"),
+    generationTarget: z.enum(["avatar", "voice_only"]),
     folderId: z.string().trim().min(1).max(255).optional(),
     locale: z.string().trim().min(2).max(35).optional(),
     motionPrompt: z.string().trim().min(1).max(1000).optional(),
@@ -149,6 +153,7 @@ export const heygenGenerateClipsRequestSchema = z
     pitch: z.number().min(-50).max(50).default(0),
     referenceLookId: z.string().trim().min(1).max(255).optional(),
     removeBackground: z.boolean().default(false),
+    requestOrigin: z.enum(["admin_heygen_studio", "production_automation"]).optional(),
     resolution: z.enum(["720p", "1080p", "4k"]).default("1080p"),
     speed: z.number().min(0.5).max(1.5).default(1),
     volume: z.number().min(0).max(1).default(1),

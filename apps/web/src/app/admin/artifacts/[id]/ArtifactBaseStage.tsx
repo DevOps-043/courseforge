@@ -67,6 +67,11 @@ export function ArtifactBaseStage({
 }: ArtifactBaseStageProps) {
   return (
     <>
+      {validation.results.filter((result) => result.code === "GENERATION_FAILED").map((result) => (
+        <div key={result.code} role="alert" className="rounded-lg border border-red-300 bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">
+          {result.message}
+        </div>
+      ))}
       <div className="flex items-center gap-4">
         {["content", "validation"].map((tab) => (
           <button

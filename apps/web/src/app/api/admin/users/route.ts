@@ -1,32 +1,54 @@
-import { NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { z } from 'zod';
 import { createClient } from '@/utils/supabase/server';
 import { getSofliaInboxEnv, getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 import { getAuthenticatedUser } from '@/lib/server/artifact-action-auth';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
+import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract';
+import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response';
+import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger';
+
+const MAX_ADMIN_USER_REQUEST_BYTES = 16 * 1024;
+const adminUserRequestSchema = z.object({
+  email: z.string().email().max(320),
+  firstName: z.string().trim().max(100).optional(),
+  id: z.string().uuid(),
+  isEdit: z.boolean().optional(),
+  lastNameFather: z.string().trim().max(100).optional(),
+  lastNameMother: z.string().trim().max(100).optional(),
+  role: z.enum(['ADMIN', 'ARQUITECTO', 'CONSTRUCTOR']),
+  username: z.string().trim().max(60).regex(/^[a-zA-Z0-9._-]*$/).optional(),
+}).strict();
 
 export async function POST(req: Request) {
+  const requestId = resolveCorrelationId(req.headers.get('x-request-id'));
+  const logger = createOperationalLogger('admin.users', { correlationId: requestId });
   try {
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'No autorizado.', requestId, status: 401 });
     }
 
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
-      return NextResponse.json({ error: 'Empresa no valida o no autorizada.' }, { status: 403 });
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'Empresa no válida o no autorizada.', requestId, status: 403 });
     }
 
     if (tenant.platformRole !== 'ADMIN' && tenant.platformRole !== 'SUPERADMIN') {
-        return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 });
+        return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: 'Se requiere acceso de administrador.', requestId, status: 403 });
     }
 
-    const body = await req.json();
-    const { id, firstName, lastNameFather, lastNameMother, email, role, username } = body;
-    if (!id) {
-      return NextResponse.json({ error: 'User id is required.' }, { status: 400 });
+    const parsedRequest = await parseJsonRequest(req, adminUserRequestSchema, MAX_ADMIN_USER_REQUEST_BYTES);
+    if (!parsedRequest.success) {
+      return apiErrorResponse({
+        code: parsedRequest.reason === 'too_large' ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+        message: parsedRequest.reason === 'too_large' ? 'La solicitud excede el tamaño permitido.' : 'Datos de usuario inválidos.',
+        requestId,
+        status: parsedRequest.reason === 'too_large' ? 413 : 400,
+      });
     }
+    const { id, firstName, lastNameFather, lastNameMother, email, role, username } = parsedRequest.data;
 
     const sofliaEnv = getSofliaInboxEnv();
     const sofliaAdmin = createAdminClient(sofliaEnv.url, sofliaEnv.key);
@@ -39,10 +61,8 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (membershipError || !membership) {
-      return NextResponse.json(
-        { error: 'El usuario no pertenece a la empresa activa.' },
-        { status: 403 },
-      );
+      if (membershipError) logger.error('admin.users.membership_lookup_failed', membershipError, { userId: id });
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'El usuario no pertenece a la empresa activa.', requestId, status: 403 });
     }
 
     // Use Service Role only after tenant membership has been verified.
@@ -66,8 +86,8 @@ export async function POST(req: Request) {
       .single();
 
     if (error) {
-      console.error('Error upserting profile:', error);
-      return NextResponse.json({ error: 'Failed to update user profile' }, { status: 500 });
+      logger.error('admin.users.profile_update_failed', error, { userId: id });
+      return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo actualizar el perfil del usuario.', requestId, retryable: true, status: 500 });
     }
 
     const { error: roleError } = await cfAdmin
@@ -84,14 +104,14 @@ export async function POST(req: Request) {
       );
 
     if (roleError) {
-      console.error('Error upserting organization user role:', roleError);
-      return NextResponse.json({ error: 'Failed to update organization role' }, { status: 500 });
+      logger.error('admin.users.role_update_failed', roleError, { userId: id });
+      return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo actualizar el rol del usuario.', requestId, retryable: true, status: 500 });
     }
 
-    return NextResponse.json({ success: true, user: { ...profile, platform_role: role } });
+    return apiSuccessResponse({ user: { ...profile, platform_role: role } }, { requestId });
 
-  } catch (error) {
-    console.error('API Error /api/admin/users:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  } catch (error: unknown) {
+    logger.error('admin.users.failed', error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo actualizar el usuario.', requestId, retryable: true, status: 500 });
   }
 }

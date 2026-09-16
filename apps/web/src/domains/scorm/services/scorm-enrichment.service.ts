@@ -53,7 +53,7 @@ export class ScormEnrichmentService {
 
     try {
       const result = await this.genAI.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.5-flash',
         contents: prompt
       });
       

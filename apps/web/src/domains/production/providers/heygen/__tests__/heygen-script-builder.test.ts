@@ -2,21 +2,165 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 import {
+  assertSceneGenerationContract,
   buildHeygenCreateClipPayload,
   getReusableSceneVoiceAsset,
   HeygenScenesService,
+  mergeAuthoredSceneClip,
+  mergeSceneClipsForConcurrentGeneration,
   reconcileVoiceClips,
+  selectRecoverableHistoricalSceneJobs,
+  selectRecoverableHistoricalSceneJobsForClips,
   selectPromotableAvatarVoices,
+  summarizeSceneMediaReadiness,
 } from "../heygen-scenes.service";
 import { resetGeneratedSceneAssets } from "../heygen-scene-assets";
+import { buildSceneGenerateAllPlan } from "../heygen-scene-generation-policy";
+import { estimateHeygenSceneGenerationQuote } from "../heygen-cost.service";
 import {
   estimateHeygenAvatarGenerationBudget,
   readHeygenAvailableBalance,
 } from "../heygen-billing";
 import { PRODUCTION_JOB_STATUSES } from "../../../types/production.types";
 import { buildHeygenScriptFromComponent } from "../heygen-script-builder";
+import {
+  buildHeygenSceneAssetNames,
+  buildCorrelatedHeygenVideoTitle,
+  readHeygenJobIdFromVideoTitle,
+  resolveHeygenJobFileStem,
+} from "../heygen-asset-naming";
+import { evaluateProductionItemReadiness } from "../../../automation/production-automation-readiness.service";
 
 describe("HeyGen script builder", () => {
+  it("uses an authored scene name for the HeyGen title and returned files", () => {
+    const names = buildHeygenSceneAssetNames({
+      clip: { asset_name: "Lección 6 – Cierre ejecutivo", id: "scene-4", order: 4 },
+      context: { lessonTitle: "Título de respaldo" },
+    });
+
+    assert.equal(names.videoTitle, "Lección 6 – Cierre ejecutivo · Avatar");
+    assert.equal(names.videoFileStem, "leccion-6-cierre-ejecutivo-avatar");
+    assert.equal(names.audioFileStem, "leccion-6-cierre-ejecutivo-voz");
+    assert.equal(resolveHeygenJobFileStem({ video_file_stem: names.videoFileStem }, "video"), names.videoFileStem);
+  });
+
+  it("falls back to a lesson and scene name when the author leaves it blank", () => {
+    const names = buildHeygenSceneAssetNames({
+      clip: { id: "scene-2", order: 2 },
+      context: { lessonTitle: "Propuesta de valor" },
+    });
+
+    assert.equal(names.displayName, "Propuesta de valor · Escena 02");
+    assert.equal(names.videoTitle, "Propuesta de valor · Escena 02 · Avatar");
+  });
+
+  it("does not let a stale worker collapse completed scene media to its last clip", () => {
+    const current = [1, 2, 3, 4].map((order) => ({
+      asset_name: order === 1 ? "Nombre actualizado" : undefined,
+      duration: 10 + order,
+      id: `scene-${order}`,
+      job_id: `00000000-0000-4000-8000-00000000000${order}`,
+      order,
+      public_url: `https://cdn.example.com/avatar-${order}.mp4`,
+      script_text: `Escena ${order}`,
+      status: "COMPLETED" as const,
+      storage_path: `production-assets/avatar-${order}.mp4`,
+    }));
+    const staleWorker = current.map((clip, index) => ({
+      ...clip,
+      asset_name: undefined,
+      duration: index === 3 ? clip.duration : undefined,
+      public_url: index === 3 ? clip.public_url : undefined,
+      status: index === 3 ? "COMPLETED" as const : "WAITING_PROVIDER" as const,
+      storage_path: index === 3 ? clip.storage_path : undefined,
+    }));
+
+    const merged = mergeSceneClipsForConcurrentGeneration(current, staleWorker);
+
+    assert.equal(merged.filter((clip) => clip.status === "COMPLETED").length, 4);
+    assert.deepEqual(merged.map((clip) => clip.public_url), current.map((clip) => clip.public_url));
+    assert.equal(merged[0]?.asset_name, "Nombre actualizado");
+  });
+
+  it("embeds a durable job correlation without exceeding HeyGen's title limit", () => {
+    const jobId = "7adc8b88-d144-432a-9046-2528e1c54bfd";
+    const title = buildCorrelatedHeygenVideoTitle("Una lección con un título muy largo ".repeat(8), jobId);
+
+    assert.ok(title.length <= 120);
+    assert.equal(readHeygenJobIdFromVideoTitle(title), jobId);
+    assert.equal(readHeygenJobIdFromVideoTitle("Avatar 1"), null);
+  });
+
+  it("prefers provider progress from the newest generation revision", () => {
+    const merged = mergeSceneClipsForConcurrentGeneration(
+      [{
+        generation_revision: 2,
+        id: "scene-1",
+        job_id: "job-new",
+        order: 1,
+        script_text: "Guion vigente",
+        status: "WAITING_PROVIDER",
+      }],
+      [{
+        generation_revision: 1,
+        id: "scene-1",
+        job_id: "job-old",
+        order: 1,
+        public_url: "https://cdn.example.com/old.mp4",
+        script_text: "Guion anterior",
+        status: "COMPLETED",
+        storage_path: "production-assets/old.mp4",
+      }],
+    );
+
+    assert.equal(merged[0]?.generation_revision, 2);
+    assert.equal(merged[0]?.job_id, "job-new");
+    assert.equal(merged[0]?.status, "WAITING_PROVIDER");
+    assert.equal(merged[0]?.public_url, undefined);
+  });
+
+  it("recovers the newest usable historical job without retrying a credit failure", () => {
+    const common = {
+      artifact_id: "artifact-1",
+      material_component_id: "component-1",
+      organization_id: "organization-1",
+    };
+    const selected = selectRecoverableHistoricalSceneJobs([
+      {
+        ...common,
+        id: "job-credit-failure",
+        input_snapshot: { clip_id: "scene-1" },
+        provider_job_id: null,
+        status: PRODUCTION_JOB_STATUSES.FAILED,
+      },
+      {
+        ...common,
+        id: "job-scene-1-completed",
+        input_snapshot: { clip_id: "scene-1" },
+        provider_job_id: "heygen-video-1",
+        status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+      },
+      {
+        ...common,
+        id: "job-scene-2-current",
+        input_snapshot: { clip_id: "scene-2" },
+        provider_job_id: "heygen-video-2-current",
+        status: PRODUCTION_JOB_STATUSES.WAITING_PROVIDER,
+      },
+      {
+        ...common,
+        id: "job-scene-2-old",
+        input_snapshot: { clip_id: "scene-2" },
+        provider_job_id: "heygen-video-2-old",
+        status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+      },
+    ]);
+
+    assert.equal(selected.get("scene-1")?.id, "job-scene-1-completed");
+    assert.equal(selected.get("scene-2")?.id, "job-scene-2-current");
+    assert.equal(selected.size, 2);
+  });
+
   it("builds a talking-head script from video script sections", () => {
     const script = buildHeygenScriptFromComponent({
       componentContent: {
@@ -82,6 +226,227 @@ describe("HeyGen script builder", () => {
 });
 
 describe("HeyGen scene clip builder", () => {
+  it("preserves completed generated media when the author saves a stale scene form", () => {
+    const merged = mergeAuthoredSceneClip(
+      {
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion vigente",
+        public_url: "https://cdn.example.com/avatar-1.mp4",
+        storage_path: "production-assets/avatar-1.mp4",
+        job_id: "job-1",
+        status: "COMPLETED",
+      },
+      {
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion vigente",
+        status: "DRAFT",
+      },
+    );
+
+    assert.equal(merged.status, "COMPLETED");
+    assert.equal(merged.job_id, "job-1");
+    assert.equal(merged.storage_path, "production-assets/avatar-1.mp4");
+  });
+
+  it("marks generated media stale when an authored scene changes its script", () => {
+    const merged = mergeAuthoredSceneClip(
+      {
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion anterior",
+        status: "COMPLETED",
+        voice_status: "COMPLETED",
+      },
+      {
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion nuevo",
+        status: "DRAFT",
+      },
+    );
+
+    assert.equal(merged.status, "STALE");
+    assert.equal(merged.voice_status, "STALE");
+    assert.equal(merged.generation_revision, 1);
+  });
+
+  it("preserves the explicit media contract when an older form omits it", () => {
+    const merged = mergeAuthoredSceneClip(
+      {
+        expected_media_mode: "voice_only",
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion vigente",
+        status: "DRAFT",
+      },
+      {
+        id: "scene-1",
+        order: 1,
+        script_text: "Guion vigente",
+        status: "DRAFT",
+      },
+    );
+
+    assert.equal(merged.expected_media_mode, "voice_only");
+  });
+
+  it("measures completeness from each scene media contract", () => {
+    const summary = summarizeSceneMediaReadiness(
+      [
+        {
+          expected_media_mode: "avatar",
+          has_audio: false,
+          id: "scene-avatar",
+          order: 1,
+          public_url: "https://cdn.example.com/avatar.mp4",
+          script_text: "Avatar",
+          status: "COMPLETED",
+          storage_path: "production-assets/avatar.mp4",
+        },
+        {
+          expected_media_mode: "voice_only",
+          id: "scene-voice",
+          order: 2,
+          script_text: "Voz",
+          status: "DRAFT",
+        },
+        {
+          id: "scene-unconfigured",
+          order: 3,
+          script_text: "Pendiente",
+          status: "DRAFT",
+        },
+        {
+          expected_media_mode: "none",
+          id: "scene-none",
+          order: 4,
+          script_text: "Sin medio",
+          status: "DRAFT",
+        },
+      ],
+      [
+        {
+          clip_id: "scene-avatar",
+          id: "voice-avatar",
+          order: 1,
+          public_url: "https://cdn.example.com/avatar.mp3",
+          script_hash: "hash-avatar",
+          status: "COMPLETED",
+          storage_path: "production-assets/avatar.mp3",
+        },
+        {
+          clip_id: "scene-voice",
+          id: "voice-only",
+          order: 2,
+          public_url: "https://cdn.example.com/voice.mp3",
+          script_hash: "hash-voice",
+          status: "COMPLETED",
+          storage_path: "production-assets/voice.mp3",
+        },
+      ],
+    );
+
+    assert.deepEqual(summary, {
+      expectedAvatarSceneCount: 1,
+      expectedVoiceOnlySceneCount: 1,
+      incompleteExpectedMediaCount: 0,
+      pendingExpectedMediaCount: 0,
+      readySceneCount: 3,
+      unconfiguredSceneCount: 1,
+      unresolvedSceneCount: 1,
+    });
+  });
+
+  it("does not call an avatar complete when its required separate voice is missing", () => {
+    const summary = summarizeSceneMediaReadiness([
+      {
+        expected_media_mode: "avatar",
+        has_audio: false,
+        id: "scene-1",
+        order: 1,
+        public_url: "https://cdn.example.com/avatar.mp4",
+        script_text: "Avatar",
+        status: "COMPLETED",
+        storage_path: "production-assets/avatar.mp4",
+      },
+    ], []);
+
+    assert.equal(summary.readySceneCount, 0);
+    assert.equal(summary.incompleteExpectedMediaCount, 1);
+  });
+
+  it("does not attach a historical video to a reused scene id with a different script", () => {
+    const currentScript = "Guion vigente";
+    const historicalScript = "Guion anterior";
+    const selected = selectRecoverableHistoricalSceneJobsForClips(
+      [{ id: "scene-1", order: 1, script_text: currentScript, status: "DRAFT" }],
+      [{
+        artifact_id: "artifact-1",
+        id: "job-old",
+        input_snapshot: {
+          clip_id: "scene-1",
+          script_hash: createHash("sha256").update(historicalScript).digest("hex"),
+        },
+        material_component_id: "component-1",
+        organization_id: "organization-1",
+        provider_job_id: "heygen-video-old",
+        status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+      }],
+    );
+
+    assert.equal(selected.size, 0);
+  });
+
+  it("remaps a historical job when its script hash uniquely moved to another scene id", () => {
+    const script = "Guion que conserva identidad";
+    const job = {
+      artifact_id: "artifact-1",
+      id: "job-moved",
+      input_snapshot: {
+        clip_id: "scene-9",
+        script_hash: createHash("sha256").update(script).digest("hex"),
+      },
+      material_component_id: "component-1",
+      organization_id: "organization-1",
+      provider_job_id: "heygen-video-moved",
+      status: PRODUCTION_JOB_STATUSES.SUCCEEDED,
+    };
+    const selected = selectRecoverableHistoricalSceneJobsForClips(
+      [
+        { id: "scene-1", order: 1, script_text: "Otro guion", status: "DRAFT" },
+        { id: "scene-2", order: 2, script_text: script, status: "DRAFT" },
+      ],
+      [job],
+    );
+
+    assert.equal(selected.get("scene-2")?.id, "job-moved");
+  });
+
+  it("keeps a failed voice job eligible only for non-generating historical recovery", () => {
+    const clips = [{
+      id: "scene-1",
+      order: 1,
+      script_text: "Narración vigente",
+      status: "DRAFT" as const,
+    }];
+    const jobs = [{
+      artifact_id: "artifact-1",
+      id: "voice-job-1",
+      input_snapshot: {
+        clip_id: "scene-1",
+        script_hash: createHash("sha256").update("Narración vigente").digest("hex"),
+      },
+      job_type: "HEYGEN_VOICEOVER",
+      status: "FAILED",
+    }];
+
+    const selected = selectRecoverableHistoricalSceneJobsForClips(clips, jobs);
+
+    assert.equal(selected.get("scene-1")?.id, "voice-job-1");
+  });
+
   it("uses the separated voice URL as the timing source for every avatar clip", () => {
     const payload = buildHeygenCreateClipPayload({
       audioUrl: "https://files.heygen.ai/voice-scene-1.mp3",
@@ -204,6 +569,32 @@ describe("HeyGen scene clip builder", () => {
         ["scene-1", "storyboard", false],
         ["scene-2", "storyboard", true],
         ["manual-split", "manual", false],
+      ],
+    );
+  });
+
+  it("repairs duplicate scene orders without losing the authored manual position", () => {
+    const service = new HeygenScenesService({} as any, {} as any);
+    const clips = service.buildSceneClips({
+      componentContent: {
+        storyboard: [
+          { narration_text: "Escena uno.", take_number: 1 },
+          { narration_text: "Escena dos.", take_number: 2 },
+        ],
+      },
+      existingClips: [
+        { id: "scene-1", order: 1, origin: "storyboard", script_text: "Escena uno.", status: "DRAFT" },
+        { id: "manual-between", order: 2, origin: "manual", script_text: "Escena intermedia.", status: "DRAFT" },
+        { id: "scene-2", order: 2, origin: "storyboard", script_text: "Escena dos.", status: "DRAFT" },
+      ],
+    });
+
+    assert.deepEqual(
+      clips.map((clip) => [clip.id, clip.order]),
+      [
+        ["scene-1", 1],
+        ["manual-between", 2],
+        ["scene-2", 3],
       ],
     );
   });
@@ -357,5 +748,96 @@ describe("HeyGen avatar billing preflight", () => {
     assert.equal(budget.estimatedDurationSeconds, 60);
     assert.ok(budget.estimatedCost > 4);
     assert.equal(budget.available, 1);
+  });
+});
+
+describe("HeyGen scene generation contract", () => {
+  const clips = [
+    { expected_media_mode: "avatar" as const, id: "avatar-scene", order: 1, script_text: "Avatar", status: "DRAFT" as const },
+    { expected_media_mode: "voice_only" as const, id: "voice-scene", order: 2, script_text: "Voz", status: "DRAFT" as const },
+    { expected_media_mode: "none" as const, id: "silent-scene", order: 3, script_text: "", status: "DRAFT" as const },
+  ];
+
+  it("allows voice generation for avatar and voice-only scenes", () => {
+    assert.deepEqual(
+      assertSceneGenerationContract({
+        clipIds: ["avatar-scene", "voice-scene"],
+        clips,
+        generationTarget: "voice_only",
+      }).map((clip) => clip.id),
+      ["avatar-scene", "voice-scene"],
+    );
+  });
+
+  it("blocks avatar generation for voice-only or silent scenes", () => {
+    assert.throws(
+      () => assertSceneGenerationContract({
+        clipIds: ["voice-scene", "silent-scene"],
+        clips,
+        generationTarget: "avatar",
+      }),
+      /no está configurada para avatar/,
+    );
+  });
+
+  it("splits a mixed generate-all request without charging avatar for voice-only scenes", () => {
+    assert.deepEqual(buildSceneGenerateAllPlan(clips), {
+      avatarClipIds: ["avatar-scene"],
+      voiceOnlyClipIds: ["voice-scene"],
+    });
+  });
+
+  it("limits generate-all to the checked mixed scenes", () => {
+    assert.deepEqual(buildSceneGenerateAllPlan(clips, ["voice-scene", "silent-scene"]), {
+      avatarClipIds: [],
+      voiceOnlyClipIds: ["voice-scene"],
+    });
+  });
+
+  it("quotes mixed scenes using the same split that generate-all submits", () => {
+    const minuteScript = Array.from({ length: 145 }, () => "palabra").join(" ");
+    const quote = estimateHeygenSceneGenerationQuote({
+      avatarType: "digital_twin",
+      clips: [
+        { expected_media_mode: "avatar" as const, id: "avatar", script_text: minuteScript },
+        { expected_media_mode: "voice_only" as const, id: "voice", script_text: minuteScript },
+        { expected_media_mode: "none" as const, id: "silent", script_text: "" },
+      ],
+      engine: "avatar_iv",
+      selectedClipIds: ["avatar", "voice", "silent"],
+    });
+
+    assert.deepEqual(quote.plan, { avatarClipIds: ["avatar"], voiceOnlyClipIds: ["voice"] });
+    assert.equal(quote.avatar.totalUsd, 4.04);
+    assert.equal(quote.voiceOnly.totalUsd, 0.04);
+    assert.equal(quote.total.totalUsd, 4.08);
+    assert.deepEqual(quote.ignoredClipIds, ["silent"]);
+  });
+
+  it("blocks a billable scene without a script before it can be queued", () => {
+    assert.throws(
+      () => assertSceneGenerationContract({
+        clipIds: ["empty-avatar"],
+        clips: [{ expected_media_mode: "avatar", id: "empty-avatar", order: 4, script_text: "   ", status: "DRAFT" }],
+        generationTarget: "avatar",
+      }),
+      /no contiene texto/,
+    );
+  });
+
+  it("measures readiness from each persisted media mode", () => {
+    const readiness = evaluateProductionItemReadiness({
+      assets: {
+        avatar_generation_mode: "scene_clips",
+        avatar_clips: [
+          { expected_media_mode: "voice_only", id: "voice-scene", order: 1, script_hash: "hash-1", script_text: "Voz", status: "DRAFT" },
+          { expected_media_mode: "none", id: "silent-scene", order: 2, script_text: "", status: "DRAFT" },
+        ],
+        voice_clips: [{ clip_id: "voice-scene", id: "voice-1", order: 1, public_url: "https://cdn.example.com/voice.mp3", script_hash: "hash-1", status: "COMPLETED" }],
+      },
+      requirements: [{ kind: "AVATAR_AND_VOICE", reason: "Narración" }],
+    });
+
+    assert.equal(readiness.complete, true);
   });
 });

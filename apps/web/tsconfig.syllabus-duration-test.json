@@ -1,0 +1,37 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "baseUrl": ".",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".tmp/syllabus-duration-tests",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": [
+    "src/domains/syllabus/lib/lesson-duration-estimator.ts",
+    "src/domains/syllabus/lib/syllabus-iteration.ts",
+    "src/domains/syllabus/lib/syllabus-model-provider.ts",
+    "src/domains/syllabus/lib/syllabus-generation.ts",
+    "src/domains/syllabus/lib/syllabus-document-extractor.ts",
+    "src/domains/syllabus/syllabus-source-documents.ts",
+    "src/domains/syllabus/syllabus-generation-request.schema.ts",
+    "src/domains/syllabus/syllabus-management-request.schema.ts",
+    "src/domains/syllabus/lib/__tests__/lesson-duration-estimator.test.ts",
+    "src/domains/syllabus/lib/__tests__/syllabus-iteration.test.ts",
+    "src/domains/syllabus/lib/__tests__/syllabus-model-provider.test.ts",
+    "src/domains/syllabus/lib/__tests__/syllabus-generation-request.schema.test.ts",
+    "src/domains/syllabus/lib/__tests__/syllabus-document-extractor.test.ts",
+    "src/domains/plan/lib/plan-iteration.ts",
+    "src/domains/plan/lib/instructional-plan-generation.schema.ts",
+    "src/domains/plan/lib/instructional-plan-prompt.ts",
+    "src/domains/plan/lib/instructional-plan-validation-context.ts",
+    "src/domains/plan/lib/__tests__/plan-iteration.test.ts",
+    "src/domains/plan/lib/__tests__/instructional-plan-generation.schema.test.ts",
+    "src/shared/ai/text-model-provider.ts",
+    "src/domains/syllabus/types/syllabus.types.ts",
+    "src/domains/video-duration/video-duration-policy.ts"
+  ]
+}

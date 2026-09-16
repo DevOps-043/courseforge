@@ -1,12 +1,5 @@
-import { NextResponse } from "next/server";
+import { resolveAuthorizedRenderContext } from "../../_render-route-support";
 import { z } from "zod";
-import { getErrorDetails, getErrorMessage } from "@/lib/errors";
-import {
-  canReviewContent,
-  getAuthenticatedUser,
-  getServiceRoleClient,
-} from "@/lib/server/artifact-action-auth";
-import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import {
   HyperframesCloudApiError,
 } from "@/domains/production/hyperframes/hyperframes-cloud.client";
@@ -19,7 +12,9 @@ import {
   HyperframesRenderPollingService,
 } from "@/domains/production/hyperframes/hyperframes-render-polling.service";
 import { HyperframesRenderRecoveryService } from "@/domains/production/hyperframes/hyperframes-render-recovery.service";
-import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 interface RouteContext {
   params: Promise<{ requestId: string }>;
@@ -28,43 +23,30 @@ interface RouteContext {
 const requestIdSchema = z.string().uuid();
 
 /** Returns tenant-scoped durable state without exposing the service-role key. */
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.render.poll", { correlationId: requestId });
   try {
-    const { requestId: rawRequestId } = await context.params;
-    const requestId = requestIdSchema.parse(rawRequestId);
-    const authorized = await resolveAuthorizedRenderContext();
+    const { requestId: rawRenderRequestId } = await context.params;
+    const renderRequestId = requestIdSchema.parse(rawRenderRequestId);
+    const authorized = await resolveAuthorizedRenderContext(requestId);
     if (authorized.response) return authorized.response;
 
     const service = new HyperframesRenderRecoveryService(authorized.admin);
     const result = await service.findById({
       organizationId: authorized.organizationId,
-      requestId,
+      requestId: renderRequestId,
     });
     if (!result) {
-      return NextResponse.json(
-        { error: "Render HyperFrames no encontrado para esta empresa." },
-        { status: 404 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Render HyperFrames no encontrado para esta empresa.", requestId, status: 404 });
     }
-    return NextResponse.json(
-      { success: true, data: result },
-      { headers: { "Cache-Control": "private, no-store" } },
-    );
+    return apiSuccessResponse({ data: result }, { headers: { "Cache-Control": "private, no-store" }, requestId });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Identificador de render inválido." },
-        { status: 400 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de render inválido.", requestId, status: 400 });
     }
-    console.error("[API /production/hyperframes/renders/:requestId/poll GET] Unexpected error:", {
-      ...getErrorDetails(error),
-      message: getErrorMessage(error),
-    });
-    return NextResponse.json(
-      { error: "Error interno al consultar el estado durable del render." },
-      { status: 500 },
-    );
+    logger.error("production.hyperframes.render.recovery_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno al consultar el estado durable del render.", requestId, retryable: true, status: 500 });
   }
 }
 
@@ -72,11 +54,13 @@ export async function GET(_request: Request, context: RouteContext) {
  * Optional user-triggered reconciliation nudge. Webhooks and scheduled Edge
  * workers own durable tracking even when no browser is open.
  */
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.hyperframes.render.poll", { correlationId: requestId });
   try {
-    const { requestId: rawRequestId } = await context.params;
-    const requestId = requestIdSchema.parse(rawRequestId);
-    const authorized = await resolveAuthorizedRenderContext();
+    const { requestId: rawRenderRequestId } = await context.params;
+    const renderRequestId = requestIdSchema.parse(rawRenderRequestId);
+    const authorized = await resolveAuthorizedRenderContext(requestId);
     if (authorized.response) return authorized.response;
     const hyperframesAuth = await getHyperframesClientForOrganization({
       allowGlobalFallback: false,
@@ -89,78 +73,34 @@ export async function POST(_request: Request, context: RouteContext) {
     );
     const result = await service.poll({
       organizationId: authorized.organizationId,
-      requestId,
+      requestId: renderRequestId,
     });
 
-    return NextResponse.json({ success: true, data: result });
+    return apiSuccessResponse({ data: result }, { requestId });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Identificador de render inválido." },
-        { status: 400 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de render inválido.", requestId, status: 400 });
     }
     if (error instanceof HyperframesRenderPollingError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return apiErrorResponse({ code: mapStatusToErrorCode(error.status), message: error.message, requestId, status: error.status });
     }
     if (error instanceof HyperframesCredentialResolverError) {
-      return NextResponse.json(
-        { error: error.message, code: error.code },
-        { status: error.status },
-      );
+      return apiErrorResponse({ code: mapStatusToErrorCode(error.status), details: { providerCode: error.code }, message: error.message, requestId, status: error.status });
     }
     if (error instanceof HyperframesCloudApiError) {
-      return NextResponse.json(
-        { error: "No se pudo consultar el render en la nube." },
-        { status: error.status === 429 ? 429 : 502 },
-      );
+      const status = error.status === 429 ? 429 : 502;
+      return apiErrorResponse({ code: status === 429 ? API_ERROR_CODE.rateLimited : API_ERROR_CODE.providerError, message: "No se pudo consultar el render en la nube.", requestId, retryable: true, status });
     }
 
-    console.error("[API /production/hyperframes/renders/:requestId/poll] Unexpected error:", {
-      ...getErrorDetails(error),
-      message: getErrorMessage(error),
-    });
-    return NextResponse.json(
-      { error: "Error interno al consultar el render de video." },
-      { status: 500 },
-    );
+    logger.error("production.hyperframes.render.poll_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno al consultar el render de video.", requestId, retryable: true, status: 500 });
   }
 }
 
-async function resolveAuthorizedRenderContext() {
-  const supabase = await createClient();
-  const authenticatedUser = await getAuthenticatedUser(supabase);
-  if (!authenticatedUser) {
-    return {
-      admin: null as never,
-      organizationId: null as never,
-      response: NextResponse.json({ error: "No autorizado." }, { status: 401 }),
-    };
-  }
-  if (!(await canReviewContent(authenticatedUser.userId))) {
-    return {
-      admin: null as never,
-      organizationId: null as never,
-      response: NextResponse.json(
-        { error: "No tienes permisos para consultar renders de HyperFrames." },
-        { status: 403 },
-      ),
-    };
-  }
-  const tenant = await resolveActiveTenantContext();
-  if (!tenant) {
-    return {
-      admin: null as never,
-      organizationId: null as never,
-      response: NextResponse.json(
-        { error: "Empresa no válida o no autorizada." },
-        { status: 403 },
-      ),
-    };
-  }
-  return {
-    admin: getServiceRoleClient(),
-    organizationId: tenant.organizationId,
-    response: null,
-  };
+function mapStatusToErrorCode(status: number) {
+  if (status === 400 || status === 422) return API_ERROR_CODE.invalidRequest;
+  if (status === 403) return API_ERROR_CODE.roleForbidden;
+  if (status === 404) return API_ERROR_CODE.resourceNotFound;
+  if (status === 409) return API_ERROR_CODE.conflict;
+  return API_ERROR_CODE.internalError;
 }

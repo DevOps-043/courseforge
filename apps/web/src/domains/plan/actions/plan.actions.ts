@@ -6,31 +6,140 @@ import { callBackgroundFunctionJson } from "@/lib/server/background-function-cli
 import { createClient } from "@/utils/supabase/server";
 import {
   canReviewContent,
-  getAccessToken,
   getAuthenticatedUser,
   getAuthorizedArtifactAdmin,
 } from "@/lib/server/artifact-action-auth";
+import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
+import {
+  resolveArtifactVideoDurationPolicy,
+  videoDurationPolicySchema,
+  type VideoDurationPolicy,
+} from "@/domains/video-duration/video-duration-policy";
+import { applyVideoDurationPolicyToPlan } from "@/domains/video-duration/video-duration-plan";
+import {
+  canIteratePlan,
+  getPlanIterationCount,
+  getNextPlanIteration,
+  getPreviousPlanIteration,
+  PLAN_MAX_ITERATIONS,
+} from "@/domains/plan/lib/plan-iteration";
+import { resolvePromptWithMetadata } from "@/shared/config/prompts/prompt-resolver.service";
+import {
+  INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE,
+  instructionalPlanContextPromptDefault,
+} from "@/shared/config/prompts/pipeline.prompts";
 
 export async function generateInstructionalPlanAction(
   artifactId: string,
   customPrompt?: string,
   useCustomPrompt: boolean = false,
+  iterationInstructions?: string,
 ) {
+  if (useCustomPrompt && (!customPrompt?.trim() || customPrompt.length > 40_000)) {
+    return {
+      success: false,
+      error: "El prompt personalizado debe contener entre 1 y 40,000 caracteres.",
+    };
+  }
+
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
   if (!authUser) return { success: false, error: "Unauthorized" };
 
-  const accessToken = await getAccessToken(supabase);
-  if (!accessToken) return { success: false, error: "Unauthorized" };
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  if (!authorized) {
+    return { success: false, error: "Artifact not found or inaccessible" };
+  }
+
+  const { admin } = authorized;
+  let reservedIteration: number | undefined;
 
   try {
+    const { data: currentPlan, error: lookupError } = await admin
+      .from("instructional_plans")
+      .select("id, iteration_count, lesson_plans")
+      .eq("artifact_id", artifactId)
+      .maybeSingle();
+
+    if (lookupError) {
+      throw lookupError;
+    }
+
+    const currentIteration = getPlanIterationCount(
+      currentPlan?.iteration_count,
+      Array.isArray(currentPlan?.lesson_plans) &&
+        currentPlan.lesson_plans.length > 0,
+    );
+
+    if (!canIteratePlan(currentIteration)) {
+      return {
+        success: false,
+        error: `El plan instruccional alcanzo el limite de ${PLAN_MAX_ITERATIONS} iteraciones.`,
+      };
+    }
+
+    reservedIteration = getNextPlanIteration(currentIteration);
+
+    if (currentPlan) {
+      const { data: reservedPlan, error: reservationError } = await admin
+        .from("instructional_plans")
+        .update({
+          iteration_count: reservedIteration,
+          state: "STEP_PROCESSING",
+          validation: null,
+          last_error: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", currentPlan.id)
+        .eq("iteration_count", currentPlan.iteration_count || 0)
+        .select("id")
+        .maybeSingle();
+
+      if (reservationError) {
+        throw reservationError;
+      }
+
+      if (!reservedPlan) {
+        return {
+          success: false,
+          error:
+            "Otra iteracion del plan fue iniciada al mismo tiempo. Actualiza la pagina antes de reintentar.",
+        };
+      }
+    } else {
+      const { error: reservationError } = await admin
+        .from("instructional_plans")
+        .insert({
+          artifact_id: artifactId,
+          lesson_plans: [],
+          blockers: [],
+          validation: null,
+          state: "STEP_PROCESSING",
+          iteration_count: reservedIteration,
+          last_error: null,
+        });
+
+      if (reservationError) {
+        if (reservationError.code === "23505") {
+          return {
+            success: false,
+            error:
+              "Otra iteracion del plan fue iniciada al mismo tiempo. Actualiza la pagina antes de reintentar.",
+          };
+        }
+        throw reservationError;
+      }
+    }
+
     await callBackgroundFunctionJson(
       "instructional-plan-background",
       {
         artifactId,
-        userToken: accessToken,
+        organizationId: authorized.artifact.organization_id,
         customPrompt,
         useCustomPrompt,
+        iterationInstructions,
+        iterationNumber: reservedIteration,
       },
       {
         fallbackError: "Error al iniciar la generacion del plan",
@@ -42,6 +151,23 @@ export async function generateInstructionalPlanAction(
     return { success: true };
   } catch (error: unknown) {
     console.error("[PlanActions] Generation trigger error:", error);
+    if (reservedIteration !== undefined) {
+      const errorMessage = getErrorMessage(error).slice(0, 500);
+      await admin
+        .from("instructional_plans")
+        .update({
+          state: "STEP_FAILED",
+          iteration_count: getPreviousPlanIteration(reservedIteration),
+          last_error: {
+            code: "INSTRUCTIONAL_PLAN_DISPATCH_FAILED",
+            message: errorMessage,
+            occurred_at: new Date().toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("artifact_id", artifactId)
+        .eq("iteration_count", reservedIteration);
+    }
     return { success: false, error: getErrorMessage(error) };
   }
 }
@@ -51,27 +177,17 @@ export async function validateInstructionalPlanAction(artifactId: string) {
   const authUser = await getAuthenticatedUser(supabase);
   if (!authUser) return { success: false, error: "Unauthorized" };
 
-  const accessToken = await getAccessToken(supabase);
-  if (!accessToken) return { success: false, error: "Unauthorized" };
-
   const authorized = await getAuthorizedArtifactAdmin(artifactId);
   if (!authorized) {
     return { success: false, error: "Artifact not found or inaccessible" };
   }
 
-  const { admin } = authorized;
-
   try {
-    await admin
-      .from("instructional_plans")
-      .update({ validation: null })
-      .eq("artifact_id", artifactId);
-
     await callBackgroundFunctionJson(
       "validate-plan-background",
       {
         artifactId,
-        userToken: accessToken,
+        organizationId: authorized.artifact.organization_id,
       },
       {
         fallbackError: "Error al validar el plan instruccional",
@@ -161,6 +277,114 @@ export async function updateInstructionalPlanContentAction(
   return { success: true };
 }
 
+export async function updateInstructionalPlanVideoDurationPolicyAction(
+  artifactId: string,
+  policyInput: VideoDurationPolicy,
+) {
+  const parsedPolicy = videoDurationPolicySchema.safeParse(policyInput);
+  if (!parsedPolicy.success) {
+    return {
+      success: false,
+      error: parsedPolicy.error.issues[0]?.message || "Duración inválida",
+    };
+  }
+
+  const supabase = await createClient();
+  const authUser = await getAuthenticatedUser(supabase);
+  if (!authUser) return { success: false, error: "Unauthorized" };
+
+  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  if (!authorized) {
+    return { success: false, error: "Artifact not found or inaccessible" };
+  }
+
+  const { admin } = authorized;
+  const [
+    { data: artifact, error: artifactError },
+    { data: plan, error: planError },
+  ] = await Promise.all([
+    admin
+      .from("artifacts")
+      .select("generation_metadata")
+      .eq("id", artifactId)
+      .single(),
+    admin
+      .from("instructional_plans")
+      .select("lesson_plans")
+      .eq("artifact_id", artifactId)
+      .maybeSingle(),
+  ]);
+
+  if (artifactError || !artifact) {
+    return {
+      success: false,
+      error: artifactError?.message || "Artifact not found",
+    };
+  }
+  if (planError) {
+    return { success: false, error: planError.message };
+  }
+
+  const previousMetadata = (artifact.generation_metadata || {}) as Record<
+    string,
+    unknown
+  >;
+  const originalInput = isRecord(previousMetadata.original_input)
+    ? previousMetadata.original_input
+    : {};
+  const nextMetadata = {
+    ...previousMetadata,
+    original_input: {
+      ...originalInput,
+      videoDurationPolicy: parsedPolicy.data,
+    },
+    video_duration_policy: parsedPolicy.data,
+  };
+  const previousLessonPlans = Array.isArray(plan?.lesson_plans)
+    ? (plan.lesson_plans as PlanLessonItem[])
+    : [];
+  const nextLessonPlans = applyVideoDurationPolicyToPlan(
+    previousLessonPlans,
+    parsedPolicy.data,
+  );
+
+  const { error: metadataUpdateError } = await admin
+    .from("artifacts")
+    .update({ generation_metadata: nextMetadata })
+    .eq("id", artifactId);
+  if (metadataUpdateError) {
+    return { success: false, error: metadataUpdateError.message };
+  }
+
+  if (plan) {
+    const { error: planUpdateError } = await admin
+      .from("instructional_plans")
+      .update({
+        lesson_plans: nextLessonPlans,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("artifact_id", artifactId);
+    if (planUpdateError) {
+      await admin
+        .from("artifacts")
+        .update({ generation_metadata: previousMetadata })
+        .eq("id", artifactId);
+      return { success: false, error: planUpdateError.message };
+    }
+  }
+
+  await markDownstreamDirtyAction(artifactId, 3, "Duración objetivo del plan");
+  return {
+    success: true,
+    lessonPlans: nextLessonPlans,
+    videoDurationPolicy: parsedPolicy.data,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export async function deleteInstructionalPlanAction(artifactId: string) {
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
@@ -196,16 +420,45 @@ export async function getInstructionalPlanSnapshotAction(artifactId: string) {
   }
 
   const { admin } = authorized;
-  const { data, error } = await admin
-    .from("instructional_plans")
-    .select("*")
-    .eq("artifact_id", artifactId)
-    .maybeSingle();
+  const [{ data, error }, { data: artifact, error: artifactError }] =
+    await Promise.all([
+      admin
+        .from("instructional_plans")
+        .select("*")
+        .eq("artifact_id", artifactId)
+        .maybeSingle(),
+      admin
+        .from("artifacts")
+        .select("generation_metadata")
+        .eq("id", artifactId)
+        .single(),
+    ]);
 
   if (error) {
     console.error("[PlanActions] Snapshot error:", error);
     return { success: false, error: error.message };
   }
+  if (artifactError) {
+    console.error(
+      "[PlanActions] Artifact duration snapshot error:",
+      artifactError,
+    );
+    return { success: false, error: artifactError.message };
+  }
 
-  return { success: true, plan: data };
+  const generationPrompt = await resolvePromptWithMetadata(
+    admin,
+    INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE,
+    instructionalPlanContextPromptDefault,
+    authorized.artifact.organization_id,
+  );
+
+  return {
+    success: true,
+    generationPrompt,
+    plan: data,
+    videoDurationPolicy: resolveArtifactVideoDurationPolicy(
+      artifact?.generation_metadata,
+    ),
+  };
 }

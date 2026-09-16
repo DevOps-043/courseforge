@@ -167,6 +167,7 @@ function toSlideGenerationCandidate(params: {
     artifactId,
     componentId: params.row.id,
     componentType,
+    courseTitle,
     hasPreparedSpec: Boolean(slidesAssets?.prepared_spec),
     label: `${courseTitle} / ${lessonTitle} / ${componentType.replace(/_/g, " ")}`,
     lessonTitle,

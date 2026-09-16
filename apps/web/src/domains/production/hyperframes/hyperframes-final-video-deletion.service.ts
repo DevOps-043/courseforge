@@ -110,10 +110,12 @@ export class HyperframesFinalVideoDeletionService {
       (component.assets || {}) as Record<string, unknown>,
       video,
     );
-    const { error: componentUpdateError } = await this.supabase
-      .from("material_components")
-      .update({ assets: nextAssets })
-      .eq("id", componentId);
+    const currentAssets = (component.assets || {}) as Record<string, unknown>;
+    const assetsPatch = buildTopLevelAssetsPatch(currentAssets, nextAssets);
+    const { error: componentUpdateError } = await this.supabase.rpc(
+      "patch_material_component_assets",
+      { p_component_id: componentId, p_assets_patch: assetsPatch },
+    );
     if (componentUpdateError) throw componentUpdateError;
 
     const objectPath = resolveFinalVideoObjectPath({
@@ -184,6 +186,22 @@ export class HyperframesFinalVideoDeletionService {
       );
     }
   }
+}
+
+function buildTopLevelAssetsPatch(
+  currentAssets: Record<string, unknown>,
+  nextAssets: Record<string, unknown>,
+) {
+  const patch: Record<string, unknown> = {};
+  const keys = new Set([...Object.keys(currentAssets), ...Object.keys(nextAssets)]);
+  for (const key of keys) {
+    if (!(key in nextAssets)) {
+      patch[key] = null;
+    } else if (JSON.stringify(currentAssets[key]) !== JSON.stringify(nextAssets[key])) {
+      patch[key] = nextAssets[key] ?? null;
+    }
+  }
+  return patch;
 }
 
 export function removeHyperframesFinalVideoProjection(

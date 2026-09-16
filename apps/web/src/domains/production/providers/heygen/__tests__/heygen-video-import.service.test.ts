@@ -4,7 +4,10 @@ import {
   assertSafeHeygenVideoUrl,
   normalizeVideoContentType,
 } from "../heygen-video-import.service";
-import { assertSafeHeygenAudioUrl } from "../heygen-audio-import.service";
+import {
+  assertSafeHeygenAudioUrl,
+  parseHeygenSpeechCheckpoint,
+} from "../heygen-audio-import.service";
 
 describe("HeyGen video import safety", () => {
   it("allows HTTPS URLs from HeyGen-owned hosts", () => {
@@ -56,6 +59,24 @@ describe("HeyGen video import safety", () => {
 });
 
 describe("HeyGen separated voice import safety", () => {
+  it("restores only valid fields from a generated-speech checkpoint", () => {
+    assert.deepEqual(parseHeygenSpeechCheckpoint({
+      speech_checkpoint: {
+        audio_url: "https://resource.heygen.ai/voice.mp3",
+        duration_seconds: 4.25,
+        provider_request_id: "request-1",
+        word_timestamps: [{ end: 0.5, start: 0.1, word: "Hola" }, { invalid: true }],
+      },
+    }), {
+      audioUrl: "https://resource.heygen.ai/voice.mp3",
+      durationSeconds: 4.25,
+      raw: { recovered_from_checkpoint: true },
+      requestId: "request-1",
+      wordTimestamps: [{ end: 0.5, start: 0.1, word: "Hola" }],
+    });
+    assert.equal(parseHeygenSpeechCheckpoint({ speech_checkpoint: {} }), null);
+  });
+
   it("allows only HTTPS audio from explicitly trusted HeyGen hosts", () => {
     assert.doesNotThrow(() =>
       assertSafeHeygenAudioUrl("https://resource2.heygen.ai/text_to_speech/voice.wav"),

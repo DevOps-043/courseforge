@@ -31,6 +31,11 @@ import {
   validateAndPersistCurationSource,
   type PersistedCurationSource,
 } from "../../../../netlify/functions/shared/curation-v2/sources";
+import { resolvePromptWithMetadata } from "@/shared/config/prompts/prompt-resolver.service";
+import {
+  CURATION_PROMPT_CODE,
+  curationPromptDefault,
+} from "@/shared/config/prompts/pipeline.prompts";
 
 interface ManualSourceLessonInput {
   lessonId: string;
@@ -73,10 +78,7 @@ async function resolveManualSourceLesson(
   };
 }
 
-function getUrlSourceTitle(
-  normalizedUrl: string,
-  detectedTitle?: string,
-) {
+function getUrlSourceTitle(normalizedUrl: string, detectedTitle?: string) {
   if (detectedTitle) return detectedTitle;
   try {
     return new URL(normalizedUrl).hostname;
@@ -137,13 +139,75 @@ function validationColumns(
 
 export async function getCurationSnapshotAction(artifactId: string) {
   try {
-    const { admin } = await getArtifactAdminContext(artifactId);
-    const snapshot = await fetchCurationSnapshot(admin, artifactId);
+    const { admin, artifact } = await getArtifactAdminContext(artifactId);
+    const [snapshot, { data: plan, error: planError }, prompt] =
+      await Promise.all([
+        fetchCurationSnapshot(admin, artifactId),
+        admin
+          .from("instructional_plans")
+          .select("lesson_plans")
+          .eq("artifact_id", artifactId)
+          .maybeSingle(),
+        resolvePromptWithMetadata(
+          admin,
+          CURATION_PROMPT_CODE,
+          curationPromptDefault,
+          artifact.organization_id,
+        ),
+      ]);
+    if (planError) throw new Error(planError.message);
+
+    const lessons = buildLessonsToProcess(plan?.lesson_plans);
+    const lessonRequirements = lessons.map((lesson) => ({
+      lessonId: lesson.lesson_id,
+      lessonTitle: lesson.lesson_title,
+      requiredSources: lesson.required_sources,
+      videoTargetSeconds: lesson.video_target_seconds,
+    }));
+    let reconciledCuration = snapshot.curation;
+    const automaticWebRows = snapshot.rows.filter(
+      (row) =>
+        (!row.origin || row.origin === "automatic") &&
+        row.source_kind !== "pdf",
+    );
+
+    if (
+      reconciledCuration?.state === "PHASE2_READY_FOR_QA" &&
+      lessons.length > 0 &&
+      getMissingLessonCoverage(lessons, automaticWebRows).length === 0
+    ) {
+      const legacyCuration = reconciledCuration;
+      const approvedAt = new Date().toISOString();
+      const qaDecision = {
+        decision: "APPROVED" as const,
+        notes:
+          "Curaduria autonoma reconciliada: todas las lecciones tienen la cobertura web requerida.",
+        reviewed_by: "gpt:auto",
+        reviewed_at: approvedAt,
+      };
+      const { error: reconcileError } = await admin
+        .from("curation")
+        .update({
+          state: "PHASE2_APPROVED",
+          qa_decision: qaDecision,
+          updated_at: approvedAt,
+        })
+        .eq("id", legacyCuration.id);
+      if (reconcileError) throw new Error(reconcileError.message);
+      reconciledCuration = {
+        ...legacyCuration,
+        state: "PHASE2_APPROVED",
+        qa_decision: qaDecision,
+        updated_at: approvedAt,
+      };
+    }
 
     return {
       success: true,
-      curation: snapshot.curation,
+      curation: reconciledCuration,
       rows: snapshot.rows,
+      lessonRequirements,
+      prompt,
     };
   } catch (error) {
     const message = getErrorMessage(error, "Error al obtener curaduria");
@@ -159,6 +223,7 @@ export async function startCurationAction(
   attemptNumber: number = 1,
   gaps: string[] = [],
   resume: boolean = false,
+  promptOverride?: string,
 ) {
   try {
     const { admin, accessToken } = await getArtifactAdminContext(artifactId, {
@@ -184,23 +249,27 @@ export async function startCurationAction(
       throw new Error("No components found in the plan");
     }
 
-    const curationId = await ensureGeneratingCurationRecord(
+    const generation = await ensureGeneratingCurationRecord(
       admin,
       artifactId,
       attemptNumber,
     );
+    const curationId = generation.id;
 
     try {
       await triggerCurationGeneration({
         accessToken: accessToken!,
         artifactId,
-        attemptNumber,
+        attemptNumber: generation.attemptNumber,
         components,
         courseName: artifact.course_id || "Untitled Course",
         curationId,
         gaps,
         ideaCentral: artifact.idea_central,
         resume,
+        customPrompt: promptOverride?.trim() || undefined,
+        onFailure: async () => { await markCurationBlocked(admin, curationId,
+          "No se pudo ejecutar la búsqueda. Revisa la configuración del servidor y reanuda.", generation.attemptNumber); },
       });
     } catch (error) {
       const triggerError = getErrorMessage(error);
@@ -208,6 +277,7 @@ export async function startCurationAction(
         admin,
         curationId,
         `No se pudo iniciar el background de curaduria. Detalle: ${triggerError}`,
+        generation.attemptNumber,
       );
       throw error;
     }
@@ -279,7 +349,10 @@ export async function updateCurationRowAction(
 export async function deleteCurationRowAction(rowId: string) {
   try {
     const { admin, artifactId } = await getCurationRowAdminContext(rowId);
-    const { error } = await admin.from("curation_rows").delete().eq("id", rowId);
+    const { error } = await admin
+      .from("curation_rows")
+      .delete()
+      .eq("id", rowId);
 
     if (error) {
       console.error("[CurationActions] Error deleting curation row:", error);
@@ -299,7 +372,9 @@ export async function deleteCurationRowAction(rowId: string) {
   }
 }
 
-export async function clearSystemGeneratedCurationRowsAction(artifactId: string) {
+export async function clearSystemGeneratedCurationRowsAction(
+  artifactId: string,
+) {
   try {
     const { admin } = await getArtifactAdminContext(artifactId);
     const { data: curation, error } = await admin
@@ -322,10 +397,7 @@ export async function clearSystemGeneratedCurationRowsAction(artifactId: string)
     );
     return { success: true };
   } catch (error) {
-    const message = getErrorMessage(
-      error,
-      "Error limpiando fuentes generadas",
-    );
+    const message = getErrorMessage(error, "Error limpiando fuentes generadas");
     console.error("[CurationActions] Error clearing generated rows:", message);
     return { success: false, error: message };
   }
@@ -408,6 +480,7 @@ export async function addManualCurationUrlAction(
       .from("curation_rows")
       .select("source_ref")
       .eq("curation_id", curationId)
+      .eq("lesson_id", canonicalLesson.lessonId)
       .eq("source_kind", "url");
     if (existingError) throw new Error(existingError.message);
 
@@ -422,7 +495,7 @@ export async function addManualCurationUrlAction(
       existingNormalizedUrls: normalizedExisting,
     });
     if (validation.report.checks.duplicate) {
-      throw new Error("La fuente ya esta registrada en esta curaduria.");
+      throw new Error("La fuente ya esta registrada para esta leccion.");
     }
     const { error } = await admin.from("curation_rows").insert({
       curation_id: curationId,
@@ -467,7 +540,9 @@ export async function registerManualCurationPdfAction(
     fileSizeBytes: number;
   },
 ) {
-  let storageAdmin: Awaited<ReturnType<typeof getArtifactAdminContext>>["admin"] | null = null;
+  let storageAdmin:
+    | Awaited<ReturnType<typeof getArtifactAdminContext>>["admin"]
+    | null = null;
   let shouldRemoveUnregisteredUpload = false;
   try {
     const { admin, authUser, artifact } =
@@ -485,7 +560,10 @@ export async function registerManualCurationPdfAction(
       throw new Error("El PDF debe pesar entre 1 byte y 25 MB.");
     }
     const expectedPathPrefix = `organizations/${artifact.organization_id}/curation-sources/${artifactId}/`;
-    if (!artifact.organization_id || !file.storagePath.startsWith(expectedPathPrefix)) {
+    if (
+      !artifact.organization_id ||
+      !file.storagePath.startsWith(expectedPathPrefix)
+    ) {
       throw new Error("La ruta del PDF no pertenece a este curso.");
     }
     const { data: existingSource, error: existingSourceError } = await admin
@@ -503,7 +581,9 @@ export async function registerManualCurationPdfAction(
       .from("curation-sources")
       .download(file.storagePath);
     if (downloadError || !blob) {
-      throw new Error(downloadError?.message || "No se pudo leer el PDF subido.");
+      throw new Error(
+        downloadError?.message || "No se pudo leer el PDF subido.",
+      );
     }
     const validation = await validatePdfBuffer(
       new Uint8Array(await blob.arrayBuffer()),
@@ -546,7 +626,10 @@ export async function registerManualCurationPdfAction(
         .from("curation-sources")
         .remove([file.storagePath]);
       if (cleanupError) {
-        console.error("[CurationActions] Failed to remove unregistered PDF:", cleanupError.message);
+        console.error(
+          "[CurationActions] Failed to remove unregistered PDF:",
+          cleanupError.message,
+        );
       }
     }
     return {
@@ -566,7 +649,8 @@ export async function validateCurationRowAction(rowId: string) {
       )
       .eq("id", rowId)
       .single();
-    if (error || !row) throw new Error(error?.message || "Fuente no encontrada.");
+    if (error || !row)
+      throw new Error(error?.message || "Fuente no encontrada.");
     const validation = await validateAndPersistCurationSource(
       admin,
       row as PersistedCurationSource,
@@ -596,24 +680,28 @@ export async function updateCurationStatusAction(
     });
     const { finalStatus, decision } = mapCurationStatus(status);
     if (finalStatus === "PHASE2_APPROVED") {
-      const [{ data: plan, error: planError }, { data: curation, error: curationError }] =
-        await Promise.all([
-          admin
-            .from("instructional_plans")
-            .select("lesson_plans")
-            .eq("artifact_id", artifactId)
-            .single(),
-          admin
-            .from("curation")
-            .select("id")
-            .eq("artifact_id", artifactId)
-            .single(),
-        ]);
+      const [
+        { data: plan, error: planError },
+        { data: curation, error: curationError },
+      ] = await Promise.all([
+        admin
+          .from("instructional_plans")
+          .select("lesson_plans")
+          .eq("artifact_id", artifactId)
+          .single(),
+        admin
+          .from("curation")
+          .select("id")
+          .eq("artifact_id", artifactId)
+          .single(),
+      ]);
       if (planError) throw new Error(planError.message);
       if (curationError) throw new Error(curationError.message);
       const { data: rows, error: rowsError } = await admin
         .from("curation_rows")
-        .select("id, lesson_id, lesson_title, apta, validation_report")
+        .select(
+          "id, lesson_id, lesson_title, apta, validation_report, source_ref, source_kind, content_sha256, storage_path",
+        )
         .eq("curation_id", curation.id);
       if (rowsError) throw new Error(rowsError.message);
       const lessons = buildLessonsToProcess(plan.lesson_plans);
@@ -633,7 +721,7 @@ export async function updateCurationStatusAction(
       if (missing.length > 0) {
         return {
           success: false,
-          error: `No se puede aprobar: ${missing.length} leccion(es) no tienen una fuente valida.`,
+          error: `No se puede aprobar: ${missing.length} leccion(es) no cumplen la cantidad de fuentes requerida segun su duracion de video.`,
           missingLessons: missing,
         };
       }

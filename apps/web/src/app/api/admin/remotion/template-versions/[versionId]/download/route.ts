@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { resolveBundleStorageLocation } from "@/domains/production/templates/template-version.service";
-import { sanitizeErrorMessage } from "@/domains/production/bundle-agent/redaction.service";
 import { createClient } from "@/utils/supabase/server";
+import { bundleAgentConversationIdSchema, bundleAgentRouteErrorResponse } from "@/domains/production/bundle-agent/route-contract";
+import { resolveCorrelationId } from "@/lib/server/operational-logger";
 
 interface RouteContext {
   params: Promise<{
@@ -16,9 +17,10 @@ function fileNameFromVersion(version: { original_file_name?: string | null; stor
   return name.endsWith(".zip") ? name : `${name}.zip`;
 }
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   try {
-    const { versionId } = await context.params;
+    const versionId = bundleAgentConversationIdSchema.parse((await context.params).versionId);
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);
     if (!user) {
@@ -57,16 +59,16 @@ export async function GET(_request: Request, context: RouteContext) {
       throw downloadError || new Error("No se pudo descargar el bundle desde storage.");
     }
 
-    return new NextResponse(Buffer.from(await data.arrayBuffer()), {
+    return new NextResponse(data, {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${fileNameFromVersion(version)}"`,
         "Cache-Control": "no-store",
         "X-Content-Type-Options": "nosniff",
+        "x-request-id": requestId,
       },
     });
   } catch (error) {
-    const message = sanitizeErrorMessage(error);
-    return NextResponse.json({ success: false, error: message }, { status: message.includes("No autorizado") ? 401 : 404 });
+    return bundleAgentRouteErrorResponse({ component: "admin.bundle-agent.template-download", error, requestId });
   }
 }

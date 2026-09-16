@@ -1,5 +1,3 @@
-import { createClient } from "@/utils/supabase/client";
-import { SYLLABUS_STATES } from "@/lib/pipeline-constants";
 import {
   Esp02Route,
   Esp02StepState,
@@ -9,13 +7,11 @@ import {
   SyllabusValidationReport,
   TemarioEsp02,
 } from "../types/syllabus.types";
-import {
-  ValidationResult,
-  runAllValidations,
-} from "../validators/syllabus.validators";
+import { runAllValidations } from "../validators/syllabus.validators";
+import { fillMissingLessonDurationEstimates } from "../lib/lesson-duration-estimator";
+import type { SyllabusSourceDocument } from "../syllabus-source-documents";
 
 class SyllabusService {
-  private supabase = createClient();
   private emptyValidation: SyllabusValidationReport = {
     automatic_pass: false,
     checks: [],
@@ -32,13 +28,7 @@ class SyllabusService {
   }
 
   private sanitizeModules(modules: SyllabusModule[]): SyllabusModule[] {
-    return modules.map((module) => ({
-      ...module,
-      lessons: module.lessons.map((lesson) => ({
-        ...lesson,
-        estimated_minutes: lesson.estimated_minutes || 30,
-      })),
-    }));
+    return fillMissingLessonDurationEstimates(modules);
   }
 
   private sanitizeMetadata(
@@ -57,24 +47,22 @@ class SyllabusService {
 
   /**
    * Inicia la generacion del temario.
-   * Llama a la API Route. Si es local, guarda el resultado directamente.
-   * Si es async (Netlify), el background job se encargara de guardar.
+   * La API del servidor valida acceso, reserva la iteración y guarda el resultado.
    */
   async startGeneration(params: {
     artifactId: string;
     route: Esp02Route;
     objetivos: string[];
     ideaCentral: string;
-    accessToken?: string;
+    iterationInstructions?: string;
+    promptOverride?: string;
+    sourceDocuments?: SyllabusSourceDocument[];
   }): Promise<
     TemarioEsp02 | { status: string; message: string; data?: TemarioEsp02 }
   > {
     console.log(
       `[SyllabusService] Iniciando generacion para ${params.artifactId} via ruta ${params.route}`,
     );
-
-    // 1. Actualizar estado a GENERATING (optimista)
-    await this.updateStatus(params.artifactId, SYLLABUS_STATES.GENERATING);
 
     try {
       const response = await fetch("/api/syllabus", {
@@ -85,70 +73,78 @@ class SyllabusService {
           route: params.route,
           objetivos: params.objetivos,
           ideaCentral: params.ideaCentral,
-          accessToken: params.accessToken,
+          iterationInstructions: params.iterationInstructions,
+          promptOverride: params.promptOverride,
+          sourceDocuments: params.sourceDocuments,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Error al iniciar la generacion en el servidor");
+        const errorPayload = await response.json().catch(() => null) as {
+          error?: string;
+        } | null;
+        throw new Error(
+          errorPayload?.error || "Error al iniciar la generacion en el servidor",
+        );
       }
 
       const result = (await response.json()) as unknown;
 
-      // Si la API devuelve contenido generado inmediatamente (modo local/sincrono)
       if (this.hasModules(result)) {
-        console.log(
-          "[SyllabusService] Generacion sincrona completada. Guardando...",
-        );
-
         const temario = this.sanitizeSyllabus(result as TemarioEsp02);
-
-        // Ejecutar validaciones locales antes de guardar
-        const validation = runAllValidations(temario.modules);
-
-        await this.saveSyllabus(
-          params.artifactId,
-          temario,
-          params.route,
-          validation,
-        );
-
-        // Usar el estado soportado por el pipeline actual
-        await this.updateStatus(params.artifactId, SYLLABUS_STATES.READY_FOR_QA);
-
-        return {
-          status: "completed",
-          message: "Temario generado y guardado",
-          data: temario,
-        };
+        return temario;
       }
 
-      // Si es asincrono (processing), el estado ya esta en GENERATING.
       return result as { status: string; message: string; data?: TemarioEsp02 };
     } catch (error) {
-      console.error("[SyllabusService] Error:", error);
-      await this.updateStatus(params.artifactId, SYLLABUS_STATES.DRAFT);
-      throw error;
+      throw normalizeSyllabusError(
+        error,
+        "No se pudo iniciar la generación del temario.",
+      );
     }
+  }
+
+  async getGenerationPrompt(artifactId: string): Promise<{
+    content: string;
+    source: "organization" | "global" | "default";
+    version: string;
+  }> {
+    const response = await fetch(
+      `/api/syllabus/prompt?artifactId=${encodeURIComponent(artifactId)}`,
+      { cache: "no-store" },
+    );
+    const payload = await parseSyllabusApiPayload<{
+      prompt?: {
+        content: string;
+        source: "organization" | "global" | "default";
+        version: string;
+      };
+    }>(response);
+    if (!response.ok || !payload?.prompt) {
+      throw new Error(
+        getSyllabusApiError(payload, "No se pudo cargar el prompt configurado."),
+      );
+    }
+    return payload.prompt;
   }
 
   /**
    * Obtiene el temario y metadatos de la base de datos.
    */
   async getSyllabus(artifactId: string): Promise<SyllabusRow | null> {
-    const { data, error } = await this.supabase
-      .from("syllabus")
-      .select("*")
-      .eq("artifact_id", artifactId)
-      .single();
-
-    if (error) {
-      if (error.code === "PGRST116") return null;
-      console.error("[SyllabusService] Error fetching syllabus:", error);
-      throw error;
+    const response = await fetch(
+      `/api/syllabus?artifactId=${encodeURIComponent(artifactId)}`,
+      { cache: "no-store" },
+    );
+    const payload = await parseSyllabusApiPayload<{
+      syllabus?: SyllabusRow | null;
+    }>(response);
+    if (!response.ok) {
+      throw new Error(
+        getSyllabusApiError(payload, "No se pudo consultar el temario."),
+      );
     }
-
-    return this.sanitizeSyllabus(data as SyllabusRow);
+    return payload?.syllabus ? this.sanitizeSyllabus(payload.syllabus) : null;
   }
 
   /**
@@ -168,55 +164,18 @@ class SyllabusService {
   }
 
   /**
-   * Guarda o actualiza el temario en la base de datos.
-   */
-  async saveSyllabus(
-    artifactId: string,
-    temario: TemarioEsp02,
-    route: Esp02Route = "B_NO_SOURCE",
-    validation: ValidationResult | SyllabusValidationReport = this.emptyValidation,
-  ): Promise<void> {
-    const current = await this.getSyllabus(artifactId);
-    const nextIteration = (current?.iteration_count || 0) + 1;
-
-    const payload = {
-      artifact_id: artifactId,
-      route,
-      modules: temario.modules,
-      source_summary: temario.source_summary || temario.generation_metadata || null,
-      validation,
-      updated_at: new Date().toISOString(),
-      iteration_count: nextIteration,
-    };
-
-    const { error } = await this.supabase
-      .from("syllabus")
-      .upsert(payload, { onConflict: "artifact_id" });
-
-    if (error) {
-      console.error("[SyllabusService] Error saving syllabus:", error);
-      throw error;
-    }
-  }
-
-  /**
    * Borra el contenido actual del temario y resetea a DRAFT.
    */
   async deleteSyllabusContent(artifactId: string): Promise<void> {
-    const { error } = await this.supabase
-      .from("syllabus")
-      .update({
-        modules: [],
-        validation: { checks: [], automatic_pass: false },
-        state: SYLLABUS_STATES.DRAFT,
-        qa: { status: "PENDING" },
-        updated_at: new Date().toISOString(),
-      })
-      .eq("artifact_id", artifactId);
-
-    if (error) {
-      console.error("[SyllabusService] Error deleting content:", error);
-      throw error;
+    const response = await fetch(
+      `/api/syllabus?artifactId=${encodeURIComponent(artifactId)}`,
+      { method: "DELETE" },
+    );
+    const payload = await parseSyllabusApiPayload(response);
+    if (!response.ok) {
+      throw new Error(
+        getSyllabusApiError(payload, "No se pudo reiniciar el temario."),
+      );
     }
   }
 
@@ -228,44 +187,20 @@ class SyllabusService {
     newState: Esp02StepState,
     notes?: string,
   ): Promise<void> {
-    const payload: {
-      state: Esp02StepState;
-      updated_at: string;
-      qa?: {
-        status: "PENDING" | "APPROVED" | "REJECTED";
-        notes?: string;
-        reviewed_at?: string;
-      };
-    } = {
-      state: newState,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (notes !== undefined) {
-      payload.qa = {
-        status:
-          newState === SYLLABUS_STATES.APPROVED
-            ? "APPROVED"
-            : newState === SYLLABUS_STATES.REJECTED
-              ? "REJECTED"
-              : "PENDING",
+    const response = await fetch("/api/syllabus", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "status",
+        artifactId,
+        state: newState,
         notes,
-        reviewed_at: new Date().toISOString(),
-      };
-    }
-
-    const { error } = await this.supabase
-      .from("syllabus")
-      .update(payload)
-      .eq("artifact_id", artifactId);
-
-    if (error || (await this.getSyllabus(artifactId)) === null) {
-      await this.supabase.from("syllabus").upsert(
-        {
-          artifact_id: artifactId,
-          state: newState,
-        },
-        { onConflict: "artifact_id" },
+      }),
+    });
+    const payload = await parseSyllabusApiPayload(response);
+    if (!response.ok) {
+      throw new Error(
+        getSyllabusApiError(payload, "No se pudo actualizar el estado del temario."),
       );
     }
   }
@@ -277,17 +212,16 @@ class SyllabusService {
     artifactId: string,
     modules: SyllabusModule[],
   ): Promise<void> {
-    const { error } = await this.supabase
-      .from("syllabus")
-      .update({
-        modules,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("artifact_id", artifactId);
-
-    if (error) {
-      console.error("[SyllabusService] Error updating modules:", error);
-      throw error;
+    const response = await fetch("/api/syllabus", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "modules", artifactId, modules }),
+    });
+    const payload = await parseSyllabusApiPayload(response);
+    if (!response.ok) {
+      throw new Error(
+        getSyllabusApiError(payload, "No se pudieron actualizar los módulos."),
+      );
     }
   }
 
@@ -303,3 +237,26 @@ class SyllabusService {
 }
 
 export const syllabusService = new SyllabusService();
+
+interface SyllabusApiErrorPayload {
+  error?: string;
+  message?: string;
+}
+
+async function parseSyllabusApiPayload<T extends object = Record<string, never>>(
+  response: Response,
+) {
+  return await response.json().catch(() => null) as (T & SyllabusApiErrorPayload) | null;
+}
+
+function getSyllabusApiError(
+  payload: SyllabusApiErrorPayload | null,
+  fallback: string,
+) {
+  return payload?.message || payload?.error || fallback;
+}
+
+function normalizeSyllabusError(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error;
+  return new Error(fallback);
+}

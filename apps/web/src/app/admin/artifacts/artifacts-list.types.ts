@@ -9,6 +9,8 @@ export interface Artifact {
   created_by: string;
   syllabus_state?: string;
   plan_state?: string;
+  curation_state?: string;
+  materials_state?: string;
   profiles?: {
     username: string | null;
     email: string | null;

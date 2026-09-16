@@ -152,13 +152,22 @@ function createRuntimeSmokeScenario(animatedDeck: Parameters<typeof createInitia
   const hiddenDocument = applyCompositionEditorPatches(geometryDocument, hideOperations, "USER");
   const showOperations: CompositionEditorPatchOperation[] = [{ clipId: clip.id, hidden: false, type: "clip.visibility" }];
   const shownDocument = applyCompositionEditorPatches(hiddenDocument, showOperations, "USER");
+  const motionOperations: CompositionEditorPatchOperation[] = [{
+    animationId: "motion-runtime-smoke",
+    clipId: clip.id,
+    durationSeconds: 0.8,
+    presetId: "FADE_IN",
+    type: "animation.add-preset",
+  }];
+  const motionDocument = applyCompositionEditorPatches(shownDocument, motionOperations, "USER");
   return {
     document,
     documentHash: hashCompositionDocument(document),
     geometryPatch: requireVisualPatch(geometryDocument, geometryOperations),
     hfId: clip.hfId,
     hidePatch: requireVisualPatch(hiddenDocument, hideOperations),
-    operationTypes: [...geometryOperations, ...hideOperations, ...showOperations].map((operation) => operation.type),
+    motionPatch: requireVisualPatch(motionDocument, motionOperations),
+    operationTypes: [...geometryOperations, ...hideOperations, ...showOperations, ...motionOperations].map((operation) => operation.type),
     showPatch: requireVisualPatch(shownDocument, showOperations),
   };
 }
@@ -177,6 +186,7 @@ function renderRuntimeSmokeHarness(params: {
   geometryPatch: CompositionPreviewVisualPatch;
   hfId: string;
   hidePatch: CompositionPreviewVisualPatch;
+  motionPatch: CompositionPreviewVisualPatch;
   showPatch: CompositionPreviewVisualPatch;
 }) {
   return `<script>
@@ -263,6 +273,13 @@ function renderRuntimeSmokeHarness(params: {
         const showResult = await dispatchPatch(${JSON.stringify(params.showPatch)});
         assert(showResult.applied === true && target.dataset.runtimeVisibility === "shown", "visibility show diverged");
         assert(target.style.visibility === "visible" && approximately(lastTime, 2.5), "show patch lost frame state");
+        const motionResult = await dispatchPatch(${JSON.stringify(params.motionPatch)});
+        assert(motionResult.applied === true && motionResult.code === "APPLIED", "motion patch was not applied");
+        await seekTo(0);
+        const motionTarget = document.getElementById(hfId + "-motion");
+        assert(motionTarget instanceof HTMLElement, "motion target was not found");
+        assert(Number.parseFloat(motionTarget.style.opacity || "1") < 0.1, "live entry animation did not update the frame");
+        await seekTo(2.5);
         const finalHideResult = await dispatchPatch(${JSON.stringify(params.hidePatch)});
         assert(finalHideResult.applied === true && target.dataset.runtimeVisibility === "hidden", "final visibility state diverged");
         document.documentElement.dataset.runtimePatchSmoke = "passed";

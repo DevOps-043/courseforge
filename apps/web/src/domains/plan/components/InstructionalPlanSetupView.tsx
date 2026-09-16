@@ -1,27 +1,40 @@
 "use client";
 
-import { BookOpen, CheckCircle2, Play, Settings2 } from "lucide-react";
-import { DEFAULT_PROMPT_PREVIEW } from "./plan-component-config";
+import { BookOpen, Play, RotateCcw, Settings2 } from "lucide-react";
 
 interface InstructionalPlanSetupViewProps {
+  configuredPrompt: string;
   customPrompt: string;
   isGenerating: boolean;
   lessonCount?: number;
   onGenerate: () => Promise<void> | void;
+  promptSource: "organization" | "global" | "default" | null;
+  promptVersion: string | null;
   setCustomPrompt: (value: string) => void;
   setUseCustomPrompt: (value: boolean) => void;
   useCustomPrompt: boolean;
 }
 
 export function InstructionalPlanSetupView({
+  configuredPrompt,
   customPrompt,
   isGenerating,
   lessonCount,
   onGenerate,
+  promptSource,
+  promptVersion,
   setCustomPrompt,
   setUseCustomPrompt,
   useCustomPrompt,
 }: InstructionalPlanSetupViewProps) {
+  const promptWasModified = customPrompt.trim() !== configuredPrompt.trim();
+  const promptSourceLabel = promptSource === "organization"
+    ? "Configuración de la empresa"
+    : promptSource === "global"
+      ? "Configuración global"
+      : "Prompt predeterminado";
+  const canGenerate = !isGenerating && (!useCustomPrompt || Boolean(customPrompt.trim()));
+
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
       <div className="space-y-2">
@@ -53,6 +66,7 @@ export function InstructionalPlanSetupView({
               Prompt personalizado
             </span>
             <button
+              type="button"
               onClick={() => setUseCustomPrompt(!useCustomPrompt)}
               className={`w-10 h-5 rounded-full relative border transition-all duration-300 focus:outline-none ${
                 useCustomPrompt
@@ -71,65 +85,71 @@ export function InstructionalPlanSetupView({
           </div>
         </div>
 
-        {useCustomPrompt ? (
-          <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-3">
-            <div className="flex justify-between items-center">
-              <label className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                Instrucciones del Sistema para la IA
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                Prompt configurado para generar el plan
               </label>
-              <span className="text-[10px] text-[var(--engine-accent)] bg-[var(--engine-accent)]/10 px-2 py-0.5 rounded border border-[var(--engine-accent)]/20">
-                Modo Edición
+              <span className="rounded border border-[var(--engine-accent)]/20 bg-[var(--engine-accent)]/10 px-2 py-0.5 text-[10px] font-semibold text-[var(--engine-accent)]">
+                {useCustomPrompt
+                  ? promptWasModified
+                    ? "Modificado para esta generación"
+                    : "Modo edición"
+                  : promptSourceLabel}
               </span>
             </div>
-            <textarea
-              value={customPrompt}
-              onChange={(event) => setCustomPrompt(event.target.value)}
-              className="w-full h-48 bg-gray-50 dark:bg-[var(--engine-canvas)] border border-[var(--engine-accent)]/30 rounded-xl p-4 text-sm text-gray-900 dark:text-gray-300 font-mono leading-relaxed focus:outline-none focus:border-[var(--engine-accent)] transition-colors resize-none shadow-inner placeholder:text-gray-400 dark:placeholder:text-gray-600"
-              placeholder={DEFAULT_PROMPT_PREVIEW}
-            />
-            <p className="text-xs text-gray-500 dark:text-gray-500">
-              <span className="text-[var(--engine-accent)]">*</span> Asegúrate de solicitar
-              una respuesta en formato JSON estrictamente válido.
-            </p>
+
+            {useCustomPrompt && promptWasModified ? (
+              <button
+                type="button"
+                onClick={() => setCustomPrompt(configuredPrompt)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-[var(--engine-accent)] hover:underline"
+              >
+                <RotateCcw size={13} />
+                Restaurar configurado
+              </button>
+            ) : null}
           </div>
-        ) : (
-          <div className="bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-xl p-6 flex flex-col gap-4 hover:border-[var(--engine-accent)]/20 transition-colors relative overflow-hidden">
-            <div className="flex items-center gap-3 relative z-10">
-              <CheckCircle2 size={18} className="text-[var(--engine-accent)]" />
-              <h4 className="text-[var(--engine-accent)] font-bold text-sm">
-                Configuración Optimizada
-              </h4>
-            </div>
-            <p className="text-gray-600 dark:text-[var(--engine-text-muted)] text-sm leading-relaxed relative z-10">
-              Prompt optimizado para generar lecciones detalladas alineadas con
-              el temario aprobado. Incluye la definición de objetivos de
-              aprendizaje, criterios de éxito medibles y 4 componentes
-              obligatorios por lección: Diálogo, Lectura, Quiz y Video.
-            </p>
-            <div className="flex flex-wrap gap-2 relative z-10 mt-2">
-              {[
-                "Estructura JSON",
-                "Validación Pedagógica",
-                "Componentes Modulares",
-              ].map((tag) => (
-                <span
-                  key={tag}
-                  className="text-[10px] bg-white dark:bg-[var(--engine-surface-solid)] text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded font-bold uppercase tracking-wider"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
+
+          <textarea
+            value={customPrompt}
+            onChange={(event) => setCustomPrompt(event.target.value)}
+            readOnly={!useCustomPrompt}
+            maxLength={40_000}
+            className={`h-64 w-full rounded-xl border p-4 font-mono text-sm leading-relaxed shadow-inner outline-none transition-colors resize-y ${
+              useCustomPrompt
+                ? "border-[var(--engine-accent)]/30 bg-gray-50 text-gray-900 focus:border-[var(--engine-accent)] dark:bg-[var(--engine-canvas)] dark:text-gray-300"
+                : "cursor-default border-gray-200 bg-gray-50 text-gray-600 dark:border-[var(--engine-muted)]/10 dark:bg-[var(--engine-canvas)] dark:text-gray-400"
+            }`}
+            aria-label="Prompt configurado para generar el plan instruccional"
+          />
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-500">
+            <span>
+              {useCustomPrompt
+                ? "La modificación se aplicará solo a esta generación."
+                : "Activa Prompt personalizado para editar este contenido."}
+            </span>
+            <span>
+              {customPrompt.length.toLocaleString("es-MX")} / 40,000 caracteres
+              {promptVersion ? ` · versión ${promptVersion}` : ""}
+            </span>
           </div>
-        )}
+          <p className="text-xs text-gray-500 dark:text-gray-500">
+            Variables disponibles: {"${courseName}"}, {"${ideaCentral}"}, {"${currentModule}"}, {"${lessonCount}"} y {"${lessonsText}"}. Las reglas técnicas del sistema y el contrato JSON se aplican por separado.
+          </p>
+        </div>
       </div>
 
       <button
         onClick={onGenerate}
-        disabled={isGenerating}
+        disabled={!canGenerate}
         className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all relative overflow-hidden ${
-          isGenerating
-            ? "bg-[var(--engine-accent)]/20 text-[var(--engine-accent)] cursor-wait border border-[var(--engine-accent)]/20"
+          !canGenerate
+            ? `bg-[var(--engine-accent)]/20 text-[var(--engine-accent)] border border-[var(--engine-accent)]/20 ${
+                isGenerating ? "cursor-wait" : "cursor-not-allowed"
+              }`
             : "bg-[var(--engine-accent)] hover:bg-[var(--engine-accent-hover)] text-[var(--engine-primary)] shadow-lg shadow-[var(--engine-accent)]/25 hover:shadow-[var(--engine-accent)]/40 hover:-translate-y-0.5"
         }`}
       >

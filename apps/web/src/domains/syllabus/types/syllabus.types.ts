@@ -1,7 +1,6 @@
+import type { SyllabusSourceDocument } from "../syllabus-source-documents";
 
 export type Esp02Route = "A_WITH_SOURCE" | "B_NO_SOURCE";
-
-export type SyllabusInputMode = "GENERATE" | "IMPORT";
 
 export type Esp02StepState =
   | "STEP_DRAFT"
@@ -31,6 +30,8 @@ export interface SourceFile {
   file_id: string;
   filename: string;
   mime: string;
+  character_count?: number;
+  size_bytes?: number;
 }
 
 export interface ValidationCheck {
@@ -48,6 +49,7 @@ export interface SyllabusValidationReport {
 
 export interface SyllabusGenerationMetadata {
   files?: SourceFile[];
+  source_documents?: SyllabusSourceDocument[];
   notes?: string;
   utilizable?: boolean;
   search_queries?: string[];
@@ -64,6 +66,9 @@ export interface SyllabusGenerationMetadata {
   generated_at?: string;
   validation_attempts?: number;
   final_validation_errors?: string[];
+  prompt_override_applied?: boolean;
+  prompt_source?: "organization" | "global" | "default" | "override";
+  prompt_version?: string;
   error?: string;
 }
 
@@ -88,6 +93,7 @@ export interface TemarioEsp02 {
   // Propiedades de seguimiento de iteración
   upstream_dirty?: boolean;
   upstream_dirty_source?: string;
+  iteration_count?: number;
 }
 
 export interface SyllabusRow extends TemarioEsp02 {

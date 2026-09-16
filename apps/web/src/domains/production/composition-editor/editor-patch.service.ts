@@ -1,6 +1,7 @@
 import {
   COMPOSITION_DOCUMENT_FORMAT,
   compositionEditorDocumentSchema,
+  exceedsCompositionTimelineBoundary,
   type CompositionEditorDocument,
 } from "./composition-document.types";
 import type { CompositionEditorPatchOperation } from "./editor-patch.types";
@@ -19,6 +20,8 @@ import {
   scaleCompositionCropInsets,
 } from "./composition-visual-crop.service";
 import { compositionClipHasConfigurableAudio } from "./composition-clip-audio.service";
+import { compositionClipExclusionKey } from "./composition-source-selection";
+import { resolveLinkedAvatarAudioClip } from "./composition-avatar-audio-link.service";
 
 export class CompositionEditorPatchError extends Error {
   constructor(message: string) {
@@ -65,7 +68,12 @@ function removeClipOrThrow(document: CompositionEditorDocument, clipId: string) 
   if (document.clips.length === 1) {
     throw new CompositionEditorPatchError("La composición debe conservar al menos un clip.");
   }
+  const removed = document.clips.find((candidate) => candidate.id === clipId)!;
+  const exclusionKey = compositionClipExclusionKey(removed);
   document.clips = document.clips.filter((candidate) => candidate.id !== clipId);
+  if (!document.clips.some((clip) => compositionClipExclusionKey(clip) === exclusionKey)) {
+    document.excludedSources = [...new Set([...(document.excludedSources || []), exclusionKey])];
+  }
   document.motion.animations = document.motion.animations.filter(
     (animation) => animation.target.clipId !== clipId,
   );
@@ -100,6 +108,9 @@ export function ensureCanvasDurationForClipPatches(
     } else if (operation.type === "clip.move") {
       const timing = timings.get(operation.clipId);
       if (timing) timing.startSeconds = operation.startSeconds;
+      const linkedClip = resolveLinkedAvatarAudioClip(document, operation.clipId);
+      const linkedTiming = linkedClip ? timings.get(linkedClip.id) : null;
+      if (linkedTiming) linkedTiming.startSeconds = operation.startSeconds;
     } else if (operation.type === "clip.duration") {
       const timing = timings.get(operation.clipId);
       if (timing) timing.durationSeconds = operation.durationSeconds;
@@ -250,7 +261,10 @@ export function applyCompositionEditorPatches(
       if (operation.clipId !== "canvas") {
         throw new CompositionEditorPatchError("La operación de duración debe dirigirse al canvas.");
       }
-      if (next.clips.some((clip) => clip.startSeconds + clip.durationSeconds > operation.durationSeconds)) {
+      if (next.clips.some((clip) => exceedsCompositionTimelineBoundary(
+        clip.startSeconds + clip.durationSeconds,
+        operation.durationSeconds,
+      ))) {
         throw new CompositionEditorPatchError("Reduce primero los clips que terminan después de la nueva duración.");
       }
       next.canvas.durationSeconds = operation.durationSeconds;
@@ -281,6 +295,11 @@ export function applyCompositionEditorPatches(
         throw new CompositionEditorPatchError("El clip no puede terminar después del final del video.");
       }
       next.clips.push(operation.clip);
+      if (next.excludedSources) {
+        const key = compositionClipExclusionKey(operation.clip);
+        next.excludedSources = next.excludedSources.filter((excluded) => excluded !== key
+          && !(operation.clip.source.type === "DECK_SLIDE" && excluded === `deck:${operation.clip.source.slideIndex}`));
+      }
       continue;
     }
 
@@ -519,9 +538,22 @@ export function applyCompositionEditorPatches(
       if (currentTrack.locked || destinationTrack.locked) {
         throw new CompositionEditorPatchError("No puedes mover un clip desde o hacia un track bloqueado.");
       }
+      const linkedClip = resolveLinkedAvatarAudioClip(next, clip.id);
+      const linkedTrack = linkedClip
+        ? next.tracks.find((track) => track.id === linkedClip.trackId)
+        : null;
+      if (linkedClip && (!linkedTrack || linkedTrack.locked)) {
+        throw new CompositionEditorPatchError("No puedes mover un avatar mientras su voz asociada está en un track bloqueado.");
+      }
       clip.startSeconds = operation.startSeconds;
       clip.trackId = destinationTrack.id;
       clip.timingSource = "USER_EDITED";
+      if (linkedClip) {
+        // Keep each medium on its own semantic track. The link owns timing,
+        // not track assignment, so narration remains independently mixable.
+        linkedClip.startSeconds = operation.startSeconds;
+        linkedClip.timingSource = "USER_EDITED";
+      }
     }
 
     if (operation.type === "clip.duration") {

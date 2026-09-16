@@ -13,17 +13,17 @@ interface PublishSuccessModalProps {
 export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     isOpen,
     onClose,
-    title = "Curso publicado",
-    message = "El curso se depositó en el buzón de SofLIA Learning y será procesado en breve.",
+    title = "Publicación programada",
+    message = "El envío quedó guardado de forma segura y continuará en segundo plano. Si SofLIA no está disponible, se reintentará automáticamente.",
     buttonText = "Cerrar"
 }) => (
     <EngineDialog
         isOpen={isOpen}
         onClose={onClose}
         size="compact"
-        eyebrow="Publicación completada"
+        eyebrow="Publicación en curso"
         title={title}
-        description="El envío fue confirmado por SofLIA Engine."
+        description="Courseforge conservará y reconciliará el envío hasta confirmarlo."
         icon={<CheckCircle2 />}
         footer={(
             <button
@@ -37,7 +37,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
     >
         <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.07] p-4 text-sm leading-6 text-[var(--engine-text)]">
             <p>{message}</p>
-            <p className="mt-2 font-[var(--font-system-label)] text-[0.58rem] font-semibold uppercase tracking-[0.1em] text-emerald-500">Listo para procesamiento</p>
+            <p className="mt-2 font-[var(--font-system-label)] text-[0.58rem] font-semibold uppercase tracking-[0.1em] text-emerald-500">Sincronización pendiente</p>
         </div>
     </EngineDialog>
 );

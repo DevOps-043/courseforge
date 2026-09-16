@@ -29,3 +29,50 @@ test("derives one editable scene per slide and includes overlapping assets", () 
   assert.deepEqual(scenes[0].roles, ["DECK", "VOICE"]);
   assert.equal(scenes[1].startSeconds, 5);
 });
+
+test("uses narrative scenes, exposes script cues and reports visual correspondence", () => {
+  const narrative = structuredClone(document);
+  narrative.clips[0]!.sceneId = "narrative-1";
+  narrative.clips[2]!.sceneId = "narrative-1";
+  narrative.clips[0]!.source = { ...narrative.clips[0]!.source, slideKey: "a".repeat(64) } as typeof narrative.clips[0]["source"];
+  narrative.narrativeScenes = [{
+    id: "narrative-1", order: 1, label: "Idea principal", scriptText: "Explica el concepto principal.",
+    scriptHash: "b".repeat(64), needsReview: false,
+    wordTimestamps: [{ word: "Explica", start: 0.2, end: 0.7 }],
+    visualPlan: { deckRevision: "c".repeat(64), scriptHash: "b".repeat(64), slides: [{ key: "a".repeat(64), label: "Slide 1", weight: 1 }] },
+  }];
+  const scenes = deriveCompositionScenes(narrative);
+  assert.equal(scenes.length, 1);
+  assert.equal(scenes[0]?.scriptText, "Explica el concepto principal.");
+  assert.deepEqual(scenes[0]?.wordCues, [{ word: "Explica", start: 0.2, end: 0.7 }]);
+  assert.equal(scenes[0]?.visualsMatch, true);
+  if (narrative.clips[0]!.source.type === "DECK_SLIDE") narrative.clips[0]!.source.slideKey = "d".repeat(64);
+  assert.equal(deriveCompositionScenes(narrative)[0]?.visualsMatch, false);
+});
+
+test("plans progressive narrative intervals before voice or avatar clips exist", () => {
+  const narrative = structuredClone(document);
+  narrative.clips = narrative.clips.filter((clip) => clip.trackId === "deck");
+  narrative.narrativeScenes = [
+    {
+      id: "narrative-1", order: 1, label: "Primera escena", scriptText: "Una palabra",
+      scriptHash: "a".repeat(64), needsReview: true,
+    },
+    {
+      id: "narrative-2", order: 2, label: "Segunda escena", scriptText: "Dos palabras ocupan más tiempo",
+      scriptHash: "b".repeat(64), needsReview: true,
+    },
+  ];
+
+  const scenes = deriveCompositionScenes(narrative);
+
+  assert.equal(scenes[0]?.startSeconds, 0);
+  assert.ok((scenes[0]?.durationSeconds || 0) > 0);
+  assert.ok((scenes[1]?.startSeconds || 0) > scenes[0]!.startSeconds);
+  assert.ok((scenes[1]?.durationSeconds || 0) > 0);
+  assert.equal(
+    Math.round(((scenes[1]?.startSeconds || 0) + (scenes[1]?.durationSeconds || 0)) * 1000) / 1000,
+    narrative.canvas.durationSeconds,
+  );
+  assert.equal(scenes[0]?.primaryHfId, "slide-1");
+});

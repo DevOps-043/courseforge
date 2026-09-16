@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isGenerationStale } from "@/lib/pipeline-generation-policy";
+import { recoverExpiredMaterialLessons } from "../services/materials-generation-recovery";
 import type {
   Esp05StepState,
-  LessonMaterialState,
   QADecision,
 } from "../types/materials.types";
 
@@ -81,17 +82,24 @@ export async function fetchMaterialsSnapshot(
   if (!materials?.id) {
     return { materials: null, lessons: [], error: null };
   }
+  if (materials.state === "PHASE3_GENERATING" && isGenerationStale(materials.updated_at)) {
+    const { data: recovered, error } = await admin.rpc("reset_material_generation", {
+      p_materials_id: materials.id, p_version: materials.version, p_stale_before: materials.updated_at,
+    });
+    if (error) return { materials: null, lessons: [], error };
+    if (recovered) { materials.state = "PHASE3_NEEDS_FIX"; materials.version += 1; }
+  }
 
   const { data: lessons, error: lessonsError } = await admin
     .from("material_lessons")
     .select(MATERIAL_LESSONS_SNAPSHOT_SELECT)
     .eq("materials_id", materials.id)
-    .order("module_id", { ascending: true })
-    .order("lesson_id", { ascending: true });
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   return {
     materials,
-    lessons: lessons || [],
+    lessons: lessonsError ? [] : await recoverExpiredMaterialLessons(admin, materials.id, lessons || []),
     error: lessonsError,
   };
 }
@@ -104,6 +112,24 @@ export async function fetchLessonComponentsSnapshot(
     .from("material_components")
     .select(MATERIAL_COMPONENTS_SNAPSHOT_SELECT)
     .eq("material_lesson_id", lessonId)
+    .order("iteration_number", { ascending: false });
+}
+
+export async function fetchArtifactComponentsSnapshot(
+  admin: SupabaseClient,
+  artifactId: string,
+) {
+  return admin
+    .from("material_components")
+    .select(`
+      ${MATERIAL_COMPONENTS_SNAPSHOT_SELECT},
+      material_lessons!inner (
+        materials!inner (
+          artifact_id
+        )
+      )
+    `)
+    .eq("material_lessons.materials.artifact_id", artifactId)
     .order("iteration_number", { ascending: false });
 }
 
@@ -123,26 +149,15 @@ export async function fetchArtifactMaterialsRecord(
   };
 }
 
-export async function upsertGenerationMaterialsRecord(
+export async function startGenerationMaterialsRecord(
   admin: SupabaseClient,
   artifactId: string,
   existing: MaterialsRecord | null,
 ) {
-  return admin
-    .from("materials")
-    .upsert(
-      {
-        artifact_id: artifactId,
-        state: "PHASE3_GENERATING" as Esp05StepState,
-        prompt_version: "prompt05",
-        version: existing?.version ? existing.version + 1 : 1,
-        qa_decision: null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "artifact_id" },
-    )
-    .select("id")
-    .single();
+  const { data, error } = await admin.rpc("start_material_generation", {
+    p_artifact_id: artifactId, p_expected_version: existing?.version ?? null,
+  });
+  return { data: data as { id: string; version: number } | null, error };
 }
 
 export async function updateMaterialsState(
@@ -189,28 +204,14 @@ export async function fetchResettableMaterialsRecord(
 ) {
   const { data, error } = await admin
     .from("materials")
-    .select("id, state")
+    .select("id, state, version")
     .eq("artifact_id", artifactId)
     .maybeSingle();
 
   return {
-    data: (data || null) as Pick<MaterialsRecord, "id" | "state"> | null,
+    data: (data || null) as Pick<MaterialsRecord, "id" | "state" | "version"> | null,
     error,
   };
-}
-
-export async function resetGeneratingLessons(
-  admin: SupabaseClient,
-  materialsId: string,
-) {
-  return admin
-    .from("material_lessons")
-    .update({
-      state: "PENDING" as LessonMaterialState,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("materials_id", materialsId)
-    .eq("state", "GENERATING");
 }
 
 export function getLessonNotReadyError(

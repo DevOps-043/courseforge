@@ -2,9 +2,23 @@ import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { decrypt } from "@/lib/server/crypto";
 import { validateOAuthState } from "@/lib/server/oauth-state";
 import { oauthPopupResponse } from "@/lib/server/oauth-popup-response";
+import {
+  fetchIdempotentWithRetry,
+  fetchWithDeadline,
+  readJsonResponseWithLimit,
+} from "@/lib/server/outbound-http";
 import { upsertCloudStorageCredentials } from "@/domains/production/cloud-storage/credentials.repository";
+import {
+  parseAccessTokenPayload,
+  parseGoogleAccountProfile,
+} from "@/domains/production/providers/provider-json-contracts";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+
+const OAUTH_RESPONSE_MAX_BYTES = 64 * 1024;
 
 export async function GET(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("auth.google.callback", { correlationId: requestId });
   const requestUrl = new URL(request.url);
   const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
 
@@ -18,16 +32,17 @@ export async function GET(request: Request) {
     });
 
     if (error || !code || !state?.userId || !state?.organizationId || !state?.organizationSlug) {
-      console.error("[Google OAuth Callback Error] Params missing or state invalid:", { error });
+      logger.warn("google_oauth.invalid_callback", { providerError: error || undefined });
       return oauthPopupResponse({
         provider: "google_drive",
         status: "error",
-        message: error || "oauth_failed",
+        message: "google_oauth_failed",
+        requestId,
       });
     }
 
     const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${baseUrl}/api/auth/google/callback`;
-    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    const tokenResponse = await fetchWithDeadline("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -40,28 +55,29 @@ export async function GET(request: Request) {
     });
 
     if (!tokenResponse.ok) {
-      const errData = await tokenResponse.json();
-      throw new Error(errData.error_description || "Error al obtener tokens de Google");
+      throw new Error(`Google rechazo el intercambio OAuth (HTTP ${tokenResponse.status}).`);
     }
 
-    const tokenData = await tokenResponse.json();
-    const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
-    const userinfoResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    const tokenData = parseAccessTokenPayload(
+      await readJsonResponseWithLimit(tokenResponse, OAUTH_RESPONSE_MAX_BYTES),
+      "Google",
+      true,
+    );
+    const expiresAt = new Date(Date.now() + tokenData.expiresIn * 1000).toISOString();
+    const userinfoResponse = await fetchIdempotentWithRetry("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${tokenData.accessToken}` },
     });
 
     if (!userinfoResponse.ok) {
       throw new Error("No se pudo obtener el email del usuario de Google");
     }
 
-    const googleUser = await userinfoResponse.json();
-    const accountEmail = googleUser.email;
-    if (!accountEmail) {
-      throw new Error("No se devolvio ningun email desde Google");
-    }
+    const { email: accountEmail } = parseGoogleAccountProfile(
+      await readJsonResponseWithLimit(userinfoResponse, OAUTH_RESPONSE_MAX_BYTES),
+    );
 
     const adminClient = getServiceRoleClient();
-    let refreshToken = tokenData.refresh_token as string | undefined;
+    let refreshToken = tokenData.refreshToken;
     if (!refreshToken) {
       const { data: existing } = await adminClient
         .from("user_cloud_storage_credentials")
@@ -82,7 +98,7 @@ export async function GET(request: Request) {
     }
 
     await upsertCloudStorageCredentials({
-      accessToken: tokenData.access_token,
+      accessToken: tokenData.accessToken,
       accountEmail,
       expiresAt,
       organizationId: state.organizationId,
@@ -96,13 +112,15 @@ export async function GET(request: Request) {
       provider: "google_drive",
       status: "success",
       redirectPath: `/${state.organizationSlug}/admin/integrations?google_connected=true`,
+      requestId,
     });
-  } catch (err: any) {
-    console.error("[Google OAuth Callback Error]:", err);
+  } catch (error: unknown) {
+    logger.error("google_oauth.callback_failed", error);
     return oauthPopupResponse({
       provider: "google_drive",
       status: "error",
-      message: err?.message || "oauth_failed",
+      message: "google_oauth_failed",
+      requestId,
     });
   }
 }

@@ -49,10 +49,10 @@ test("compiles HyperFrames media as provider variables instead of ZIP paths", as
     target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
   });
 
-  assert.match(html, new RegExp(`data-hf-src="${variableName}"`));
+  assert.match(html, new RegExp(`data-var-src="${variableName}"`));
   assert.match(
     html,
-    new RegExp(`<html lang="es" data-composition-variables='\\[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;${variableName}&quot;,&quot;label&quot;:&quot;Courseforge remote asset&quot;,&quot;type&quot;:&quot;string&quot;}\\]'`),
+    new RegExp(`<html lang="es" data-composition-variables='\\[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;${variableName}&quot;,&quot;label&quot;:&quot;SofLIA - Engine remote asset&quot;,&quot;type&quot;:&quot;string&quot;}\\]'`),
   );
   assert.doesNotMatch(html, /src="https:\/\/project\.supabase\.co\/avatar\.mp4"/);
 });
@@ -164,7 +164,8 @@ test("signs preview assets in bounded parallel batches", async () => {
 test("compiles the native document into a seekable preview with stable visual ids", async () => {
   const document = createInitialCompositionDocument({
     animatedDeck: {
-      css: ".slide { color: white; }", fonts: [], height: 1080, width: 1920,
+      appearance: "dark",
+      css: '.deck-scope[data-appearance="dark"] { --bg: #0F1419; } .slide { color: white; }', fonts: [], height: 1080, width: 1920,
       slides: [{ animationCount: 1, classes: "slide", html: '<h1>Uno</h1><img src="https://cdn.test/deck.png" />', index: 0, label: "Uno" }],
     },
     assets: [],
@@ -199,7 +200,8 @@ test("compiles the native document into a seekable preview with stable visual id
   assert.match(html, /--preview-user-scale/);
   assert.match(html, /composition-viewport/);
   assert.match(html, /fitCompositionToViewport/);
-  assert.match(html, /class="deck-scope"/);
+  assert.match(html, /class="deck-scope" data-appearance="dark"/);
+  assert.match(html, /\.deck-scope\[data-appearance="dark"\] \{ --bg: #0F1419; \}/);
   assert.match(html, /class="deck-shell"/);
   assert.match(html, /class="deck-stage"/);
   assert.match(html, /<section class="slide">/);
@@ -210,6 +212,55 @@ test("compiles the native document into a seekable preview with stable visual id
   assert.match(html, /"--deck-t": clip\.duration/);
   for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
     assert.doesNotThrow(() => new Script(match[1]));
+  }
+});
+
+test("repairs appearance selectors in persisted legacy composition documents", async () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: {
+      appearance: "light",
+      css: '.deck-scope :root[data-appearance="light"] { --bg: #F3F7F8; --blue-deep: #0A2540; }',
+      fonts: [],
+      height: 1080,
+      slides: [{ animationCount: 0, classes: "slide", html: "<h1>Legado</h1>", index: 0, label: "Legado" }],
+      width: 1920,
+    },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Deck legado" },
+  });
+  const html = await compileCompositionPreview({ assetUrls: new Map(), document });
+
+  assert.match(html, /class="deck-scope" data-appearance="light"/);
+  assert.match(html, /\.deck-scope\[data-appearance="light"\] \{ --bg: #F3F7F8;/);
+  assert.doesNotMatch(html, /\.deck-scope\s+:root/);
+});
+
+test("scales an inset deck with contain semantics instead of clipping its authored canvas", async () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: {
+      css: ".slide { background: white; }",
+      fonts: [],
+      height: 1080,
+      slides: [{ animationCount: 0, classes: "slide", html: "<h1>Escalada</h1>", index: 0, label: "Escalada" }],
+      width: 1920,
+    },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Deck inset" },
+  });
+  const slide = document.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  slide.layout = { ...slide.layout, height: 540, width: 864, x: 960, y: 270 };
+
+  const previewHtml = await compileCompositionPreview({ assetUrls: new Map(), document });
+  const renderHtml = await compileCompositionPreview({
+    assetUrls: new Map(),
+    document,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+
+  const expectedDeckFrame = 'style="position:absolute;width:1920px;height:1080px;left:0px;top:27px;transform:scale(0.45);transform-origin:top left;overflow:hidden;"';
+  for (const html of [previewHtml, renderHtml]) {
+    assert.ok(html.includes(expectedDeckFrame));
+    assert.doesNotMatch(html, /\.deck-content \.deck-scope,/);
   }
 });
 
@@ -737,6 +788,115 @@ test("compiles assembly branding with the same remote variable contract", async 
     document,
     target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
   });
-  assert.match(html, /data-hf-src="cf_asset_branding"/);
+  assert.match(html, /data-var-src="cf_asset_branding"/);
   assert.doesNotMatch(html, /src="https:\/\//);
+});
+
+test("resolves a linked READY sound effect into a private preview URL", async () => {
+  const soundEffectId = "00000000-0000-4000-8000-000000000083";
+  const document = createInitialCompositionDocument({
+    animatedDeck: { css: "", fonts: [], height: 1080, width: 1920, slides: [{ animationCount: 0, classes: "slide", html: "<h1>SFX</h1>", index: 0, label: "SFX" }] },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 4, subtitle: "Prueba", title: "SFX preview" },
+  });
+  document.tracks = [{ hidden: false, id: "sfx", kind: "AUDIO", label: "Efectos", locked: false, muted: false, order: 35, semanticRole: "SFX", volume: 0.7 }];
+  document.clips = [{
+    durationSeconds: 1,
+    hidden: false,
+    hfId: "sfx-preview",
+    id: "sfx-preview",
+    kind: "AUDIO",
+    label: "Whoosh",
+    layout: { height: 1, opacity: 1, rotation: 0, width: 1, x: 0, y: 0, zIndex: 0 },
+    source: { soundEffectAssetId: soundEffectId, type: "SOUND_EFFECT_ASSET" },
+    sourceDurationSeconds: 1,
+    sourceOffsetSeconds: 0,
+    startSeconds: 0.5,
+    timingSource: "USER_EDITED",
+    trackId: "sfx",
+    volume: 0.7,
+  }];
+
+  const query = (result: { data: unknown; error: unknown }) => {
+    const builder = {
+      eq: () => builder,
+      in: () => builder,
+      maybeSingle: () => Promise.resolve(result),
+      select: () => builder,
+      then: (resolve: (value: typeof result) => unknown) => Promise.resolve(resolve(result)),
+    };
+    return builder;
+  };
+  let soundEffectQueryCount = 0;
+  const supabase = {
+    from: (table: string) => {
+      if (table === "video_composition_draft_sound_effect_assets") {
+        return query({ data: [{ sound_effect_asset_id: soundEffectId }], error: null });
+      }
+      if (table === "sound_effect_assets") {
+        soundEffectQueryCount += 1;
+        return soundEffectQueryCount === 1
+          ? query({ data: [{ id: soundEffectId }], error: null })
+          : query({ data: [{ checksum_sha256: "8".repeat(64), id: soundEffectId, storage_bucket: "sound-effect-assets", storage_path: `organizations/test/${soundEffectId}.wav` }], error: null });
+      }
+      throw new Error(`Unexpected table ${table}`);
+    },
+    storage: {
+      from: (bucket: string) => ({
+        createSignedUrl: async (path: string, ttl: number) => ({
+          data: { signedUrl: `https://storage.test/${bucket}/${path}?ttl=${ttl}` },
+          error: null,
+        }),
+      }),
+    },
+  };
+
+  const urls = await resolveCompositionPreviewAssetUrls({
+    document,
+    draftId: "f7d8853b-49cb-4a46-acd9-2c21696686c3",
+    organizationId: "550e8400-e29b-41d4-a716-446655440000",
+    supabase: supabase as never,
+  });
+
+  assert.match(urls.get(soundEffectId) || "", /^https:\/\/storage\.test\/sound-effect-assets\//);
+  assert.equal(soundEffectQueryCount, 2);
+});
+
+test("compiles a transition sound effect with the complete HyperFrames audio contract", async () => {
+  const soundEffectId = "00000000-0000-4000-8000-000000000084";
+  const document = createInitialCompositionDocument({
+    animatedDeck: { css: "", fonts: [], height: 1080, width: 1920, slides: [{ animationCount: 0, classes: "slide", html: "<h1>SFX</h1>", index: 0, label: "SFX" }] },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 4, subtitle: "Prueba", title: "SFX render" },
+  });
+  document.tracks.push({ hidden: false, id: "sfx", kind: "AUDIO", label: "Efectos", locked: false, muted: false, order: 35, semanticRole: "SFX", volume: 0.7 });
+  document.clips.push({
+    durationSeconds: 0.8,
+    hidden: false,
+    hfId: "sfx-render",
+    id: "sfx-render",
+    kind: "AUDIO",
+    label: "Whoosh",
+    layout: { height: 1, opacity: 1, rotation: 0, width: 1, x: 0, y: 0, zIndex: 0 },
+    source: { soundEffectAssetId: soundEffectId, type: "SOUND_EFFECT_ASSET" },
+    sourceDurationSeconds: 1,
+    sourceOffsetSeconds: 0.1,
+    startSeconds: 1.2,
+    timingSource: "USER_EDITED",
+    trackId: "sfx",
+    volume: 0.65,
+  });
+
+  const html = await compileCompositionPreview({
+    assetUrls: new Map(),
+    assetVariableNames: new Map([[soundEffectId, "cf_asset_sfx"]]),
+    document,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+
+  assert.match(html, /<audio id="sfx-render" class="composition-audio clip"/);
+  assert.match(html, /data-var-src="cf_asset_sfx"/);
+  assert.match(html, /data-media-start="0.1"/);
+  assert.match(html, /data-volume="0.45499999999999996"/);
+  assert.match(html, /data-start="1.2" data-duration="0.8" data-track-index="/);
 });

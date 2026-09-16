@@ -11,6 +11,8 @@ import {
 } from "./hyperframes-polling.service";
 
 type HyperframesRenderRequestRow = {
+  import_status: string;
+  cancelled_at: string | null;
   archive_size_bytes: number;
   composition_revision_id: string;
   id: string;
@@ -41,7 +43,7 @@ export class HyperframesRenderPollingError extends Error {
 }
 
 export interface HyperframesPollResult {
-  action: "WAIT" | "IMPORT_QUEUED" | "FAIL";
+  action: "WAIT" | "IMPORT_QUEUED" | "FAIL" | "CANCELLED" | "COMPLETED";
   providerStatus: string;
   requestId: string;
 }
@@ -61,6 +63,11 @@ export class HyperframesRenderPollingService {
     requestId: string;
   }): Promise<HyperframesPollResult> {
     const request = await this.getRequest(params);
+    if (request.cancelled_at) return { action: "CANCELLED", providerStatus: request.provider_status, requestId: request.id };
+    if (request.import_status === "COMPLETED") return { action: "COMPLETED", providerStatus: request.provider_status, requestId: request.id };
+    if (request.provider_status === "FAILED" || request.import_status === "FAILED") return { action: "FAIL", providerStatus: request.provider_status, requestId: request.id };
+    // Do not requeue imports or reset their backoff when the editor is reloaded.
+    if (request.import_status && request.import_status !== "NONE") return { action: "IMPORT_QUEUED", providerStatus: request.provider_status, requestId: request.id };
     const job = await this.getJob({
       jobId: request.production_job_id,
       organizationId: params.organizationId,
@@ -160,7 +167,7 @@ export class HyperframesRenderPollingService {
   private async getRequest(params: { organizationId: string; requestId: string }) {
     const { data, error } = await this.supabase
       .from("hyperframes_render_requests")
-      .select("id, production_job_id, composition_revision_id, archive_size_bytes, provider_render_id, provider_status, poll_attempts, updated_at")
+      .select("id, production_job_id, composition_revision_id, archive_size_bytes, provider_render_id, provider_status, import_status, cancelled_at, poll_attempts, updated_at")
       .eq("id", params.requestId)
       .eq("organization_id", params.organizationId)
       .maybeSingle();

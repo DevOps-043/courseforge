@@ -10,6 +10,8 @@ interface ArtifactStateRelation {
 interface ArtifactRow extends Artifact {
   syllabus?: ArtifactStateRelation[] | ArtifactStateRelation | null;
   instructional_plans?: ArtifactStateRelation[] | ArtifactStateRelation | null;
+  curation?: ArtifactStateRelation[] | ArtifactStateRelation | null;
+  materials?: ArtifactStateRelation[] | ArtifactStateRelation | null;
 }
 
 interface ProfileRow {
@@ -19,13 +21,16 @@ interface ProfileRow {
 }
 
 interface MaterialComponentRow {
+  id?: string | null;
   type?: string | null;
+  iteration_number?: number | null;
   assets?: {
     final_video_url?: string | null;
   } | null;
 }
 
 interface MaterialLessonRow {
+  id?: string | null;
   material_components?: MaterialComponentRow[] | null;
 }
 
@@ -43,7 +48,9 @@ const ARTIFACTS_LIST_SELECT = `
   created_by,
   production_complete,
   syllabus(state),
-  instructional_plans(state)
+  instructional_plans(state),
+  curation(state),
+  materials(state)
 `;
 
 function getSingleStateRelation(
@@ -62,8 +69,20 @@ function buildProductionStatusMap(materials: MaterialsRow[] = []) {
     }
 
     material.material_lessons?.forEach((lesson) => {
+      const latestByType = new Map<string, MaterialComponentRow>();
       lesson.material_components?.forEach((component) => {
-        if (component.type?.includes("VIDEO")) {
+        if (!component.type) return;
+        const current = latestByType.get(component.type);
+        if (
+          !current ||
+          (component.iteration_number || 0) > (current.iteration_number || 0)
+        ) {
+          latestByType.set(component.type, component);
+        }
+      });
+
+      latestByType.forEach((component) => {
+        if (component.type?.includes("VIDEO") || component.type === "DEMO_GUIDE") {
           statusMap[artifactId].total += 1;
           if (component.assets?.final_video_url) {
             statusMap[artifactId].completed += 1;
@@ -86,6 +105,8 @@ function mergeArtifactsWithProfiles(
     const instructionalPlan = getSingleStateRelation(
       artifact.instructional_plans,
     );
+    const curation = getSingleStateRelation(artifact.curation);
+    const materials = getSingleStateRelation(artifact.materials);
     const productionStatus = productionStatusMap[artifact.id] || {
       total: 0,
       completed: 0,
@@ -95,10 +116,13 @@ function mergeArtifactsWithProfiles(
       ...artifact,
       syllabus_state: syllabus?.state || undefined,
       plan_state: instructionalPlan?.state || undefined,
+      curation_state: curation?.state || undefined,
+      materials_state: materials?.state || undefined,
       production_status: productionStatus,
       production_complete:
-        productionStatus.total > 0 &&
-        productionStatus.completed === productionStatus.total,
+        artifact.production_complete ||
+        (productionStatus.total > 0 &&
+          productionStatus.completed === productionStatus.total),
       profiles: profiles.find((profile) => profile.id === artifact.created_by) || null,
     };
   });
@@ -157,7 +181,9 @@ export async function loadArtifactsPageData(options?: {
         artifact_id,
         material_lessons (
           material_components (
+            id,
             type,
+            iteration_number,
             assets
           )
         )

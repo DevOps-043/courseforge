@@ -1,6 +1,4 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -18,6 +16,9 @@ import {
 } from "@/domains/production/providers/heygen/heygen-credential-resolver.service";
 import { heygenJobStatusResponseSchema } from "@/domains/production/providers/heygen/heygen.validators";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE, type ApiErrorCode } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 interface RouteContext {
   params: Promise<{ jobId: string }>;
@@ -26,6 +27,8 @@ interface RouteContext {
 const jobIdSchema = z.string().uuid();
 
 export async function GET(request: Request, context: RouteContext) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.heygen.job", { correlationId: requestId });
   try {
     const { jobId: rawJobId } = await context.params;
     const jobId = jobIdSchema.parse(rawJobId);
@@ -33,23 +36,17 @@ export async function GET(request: Request, context: RouteContext) {
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
-      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
 
     const canReview = await canReviewContent(authenticatedUser.userId);
     if (!canReview) {
-      return NextResponse.json(
-        { error: "No tienes permisos para consultar jobs de HeyGen." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para consultar jobs de HeyGen.", requestId, status: 403 });
     }
 
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
-      return NextResponse.json(
-        { error: "Empresa no valida o no autorizada." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no valida o no autorizada.", requestId, status: 403 });
     }
 
     const admin = getServiceRoleClient();
@@ -69,50 +66,37 @@ export async function GET(request: Request, context: RouteContext) {
       organizationId: tenant.organizationId,
     });
 
-    return NextResponse.json({
-      success: true,
+    return apiSuccessResponse({
       data: heygenJobStatusResponseSchema.parse(statusResult),
-    });
+    }, { requestId });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Job ID invalido para consultar HeyGen." },
-        { status: 400 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Job ID invalido para consultar HeyGen.", requestId, status: 400 });
     }
 
     if (error instanceof HeygenVideoServiceError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: error.status },
-      );
+      return apiErrorResponse({ code: mapServiceStatus(error.status), message: error.message, requestId, retryable: error.status === 429 || error.status >= 500, status: error.status });
     }
 
     if (error instanceof HeygenApiError) {
-      return NextResponse.json(
-        { error: "No se pudo consultar el estado del video en HeyGen." },
-        {
-          headers: buildRetryAfterHeaders(error.retryAfterSeconds),
-          status: error.status === 429 ? 429 : 502,
-        },
-      );
+      const rateLimited = error.status === 429;
+      return apiErrorResponse({
+        code: rateLimited ? API_ERROR_CODE.rateLimited : API_ERROR_CODE.providerError,
+        details: { providerCode: error.providerCode || null },
+        headers: buildRetryAfterHeaders(error.retryAfterSeconds),
+        message: rateLimited ? "HeyGen alcanzó temporalmente su límite de solicitudes." : "No se pudo consultar el estado del video en HeyGen.",
+        requestId,
+        retryable: rateLimited || error.status >= 500,
+        status: rateLimited ? 429 : 502,
+      });
     }
 
     if (error instanceof HeygenCredentialResolverError) {
-      return NextResponse.json(
-        { error: error.message, code: error.code },
-        { status: error.status },
-      );
+      return apiErrorResponse({ code: error.status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest, details: { providerCode: error.code }, message: error.message, requestId, status: error.status });
     }
 
-    console.error("[API /production/heygen/jobs/:jobId] Unexpected error:", {
-      message: getErrorMessage(error),
-    });
-
-    return NextResponse.json(
-      { error: "Error interno del servidor al consultar job HeyGen." },
-      { status: 500 },
-    );
+    logger.error("production.heygen.job.read_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno del servidor al consultar job HeyGen.", requestId, retryable: true, status: 500 });
   }
 }
 
@@ -120,4 +104,13 @@ function buildRetryAfterHeaders(retryAfterSeconds?: number) {
   return retryAfterSeconds
     ? { "Retry-After": String(retryAfterSeconds) }
     : undefined;
+}
+
+function mapServiceStatus(status: number): ApiErrorCode {
+  if (status === 403) return API_ERROR_CODE.tenantForbidden;
+  if (status === 404) return API_ERROR_CODE.resourceNotFound;
+  if (status === 409) return API_ERROR_CODE.conflict;
+  if (status === 429) return API_ERROR_CODE.rateLimited;
+  if (status >= 500) return API_ERROR_CODE.internalError;
+  return API_ERROR_CODE.invalidRequest;
 }

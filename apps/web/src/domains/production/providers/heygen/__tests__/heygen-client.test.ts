@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HeygenApiError, HeygenClient } from "../heygen.client";
 import { buildResolutionRejectionHint } from "../heygen-request-constraints";
-import { heygenGenerateVoiceoverRequestSchema, heygenJobStatusResponseSchema } from "../heygen.validators";
+import {
+  heygenGenerateClipsRequestSchema,
+  heygenGenerateVoiceoverRequestSchema,
+  heygenJobStatusResponseSchema,
+} from "../heygen.validators";
 import { readApiResponse } from "../../../../../lib/client/api-response";
 import { estimateHeygenCost } from "../heygen-cost.service";
 import { heygenPlatformActionSchema } from "../heygen-platform.validators";
@@ -27,6 +31,34 @@ describe("HeyGen separated track client", () => {
     assert.equal(result.data.length, 3);
     assert.ok(requested.some((url) => url.includes("type=public")));
     assert.ok(requested.some((url) => url.includes("type=private")));
+  });
+
+  it("paginates the remote video catalog used to repair orphaned jobs", async () => {
+    const requested: string[] = [];
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      fetchImpl: async (input) => {
+        const url = String(input);
+        requested.push(url);
+        const secondPage = url.includes("token=next-page");
+        return Response.json({
+          data: [{
+            created_at: secondPage ? 2 : 1,
+            status: "completed",
+            title: secondPage ? "Second" : "First",
+            video_id: secondPage ? "video-2" : "video-1",
+          }],
+          has_more: !secondPage,
+          next_token: secondPage ? null : "next-page",
+        });
+      },
+    });
+
+    const result = await client.listAllVideos();
+
+    assert.deepEqual(result.data.map((video) => video.videoId), ["video-1", "video-2"]);
+    assert.ok(requested[0]?.includes("/v3/videos?"));
+    assert.ok(requested[1]?.includes("token=next-page"));
   });
 
   it("validates audio-only translation and estimates its public rate", () => {
@@ -140,6 +172,22 @@ describe("HeyGen separated track client", () => {
     assert.equal("avatarPresetId" in payload, false);
   });
 
+  it("requires an explicit target for scene generation", () => {
+    const result = heygenGenerateClipsRequestSchema.safeParse({
+      clipIds: ["scene-1"],
+      clips: [{
+        expected_media_mode: "voice_only",
+        id: "scene-1",
+        order: 1,
+        script_text: "Narración",
+        status: "DRAFT",
+      }],
+      componentId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+
+    assert.equal(result.success, false);
+  });
+
   it("retries an idempotent video submission after a transient provider failure", async () => {
     let attempts = 0;
     const idempotencyKeys: string[] = [];
@@ -200,6 +248,34 @@ describe("HeyGen separated track client", () => {
       (error: unknown) => {
         assert.ok(error instanceof HeygenApiError);
         assert.equal(error.status, 408);
+        return true;
+      },
+    );
+  });
+
+  it("rejects provider JSON that exceeds the shared response budget", async () => {
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      fetchImpl: async () => Response.json({
+        data: [{ id: "voice-1", payload: "x".repeat(4 * 1024 * 1024) }],
+      }),
+    });
+
+    await assert.rejects(() => client.listVoices(), /excede el limite/);
+  });
+
+  it("bounds oversized provider errors without exposing their body", async () => {
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      fetchImpl: async () => new Response("secret-".repeat(6_000), { status: 502 }),
+    });
+
+    await assert.rejects(
+      () => client.listVoices(),
+      (error: unknown) => {
+        assert.ok(error instanceof HeygenApiError);
+        assert.equal(error.status, 502);
+        assert.doesNotMatch(error.message, /secret/);
         return true;
       },
     );

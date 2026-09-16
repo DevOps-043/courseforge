@@ -1,5 +1,3 @@
-import { NextResponse } from "next/server";
-import { getErrorMessage } from "@/lib/errors";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -11,29 +9,28 @@ import {
   ProductionProviderCredentialsService,
 } from "@/domains/production/providers/credentials/provider-credentials.service";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
-export async function POST() {
+export async function POST(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.heygen.connection.validate", { correlationId: requestId });
   try {
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);
     if (!user) {
-      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
 
     const canReview = await canReviewContent(user.userId);
     if (!canReview) {
-      return NextResponse.json(
-        { error: "No tienes permisos para validar HeyGen." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para validar HeyGen.", requestId, status: 403 });
     }
 
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
-      return NextResponse.json(
-        { error: "Empresa no valida o no autorizada." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no valida o no autorizada.", requestId, status: 403 });
     }
 
     const service = new ProductionProviderCredentialsService({
@@ -43,21 +40,19 @@ export async function POST() {
       organizationId: tenant.organizationId,
     });
 
-    return NextResponse.json({ success: true, data: status });
+    return apiSuccessResponse({ data: status }, { requestId });
   } catch (error) {
     if (error instanceof ProductionProviderCredentialError) {
-      return NextResponse.json(
-        { error: error.message, code: error.code },
-        { status: error.status },
-      );
+      return apiErrorResponse({
+        code: error.status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest,
+        details: { providerCode: error.code },
+        message: error.message,
+        requestId,
+        status: error.status,
+      });
     }
 
-    console.error("[API /production/heygen/connection/validate] Unexpected error:", {
-      message: getErrorMessage(error),
-    });
-    return NextResponse.json(
-      { error: "No se pudo validar la conexion HeyGen." },
-      { status: 500 },
-    );
+    logger.error("production.heygen.connection.validation_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo validar la conexion HeyGen.", requestId, retryable: true, status: 500 });
   }
 }

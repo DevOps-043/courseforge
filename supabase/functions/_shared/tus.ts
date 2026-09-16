@@ -25,7 +25,7 @@ export async function createTusUpload(input: TusUploadInput): Promise<string> {
     method: "POST",
     signal: AbortSignal.timeout(20_000),
   });
-  if (!response.ok) throw new Error(`Could not create resumable Storage upload (${response.status}).`);
+  if (!response.ok) throw new StorageHttpError(`Storage create upload: HTTP ${response.status}.`, response.status);
   const location = response.headers.get("location");
   if (!location) throw new Error("Storage did not return a resumable upload location.");
   return new URL(location, getStorageOrigin()).toString();
@@ -39,7 +39,7 @@ export async function readTusOffset(uploadUrl: string): Promise<number> {
     signal: AbortSignal.timeout(20_000),
   });
   if (response.status === 404 || response.status === 410) throw new TusUploadExpiredError();
-  if (!response.ok) throw new Error(`Could not inspect resumable Storage upload (${response.status}).`);
+  if (!response.ok) throw new StorageHttpError(`Storage inspect upload: HTTP ${response.status}.`, response.status);
   const offset = Number(response.headers.get("upload-offset"));
   if (!Number.isSafeInteger(offset) || offset < 0) throw new Error("Storage returned an invalid upload offset.");
   return offset;
@@ -53,7 +53,7 @@ export async function appendTusChunk(uploadUrl: string, offset: number, bytes: U
     method: "PATCH",
     signal: AbortSignal.timeout(30_000),
   });
-  if (!response.ok) throw new Error(`Could not append resumable Storage chunk (${response.status}).`);
+  if (!response.ok) throw new StorageHttpError(`Storage upload chunk: HTTP ${response.status}.`, response.status);
   const nextOffset = Number(response.headers.get("upload-offset"));
   if (!Number.isSafeInteger(nextOffset) || nextOffset !== offset + bytes.byteLength) {
     throw new Error("Storage returned an unexpected upload offset.");
@@ -99,6 +99,10 @@ export class TusUploadExpiredError extends Error {
   constructor() {
     super("Resumable Storage upload expired.");
   }
+}
+
+export class StorageHttpError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {

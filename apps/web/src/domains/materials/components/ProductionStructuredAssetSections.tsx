@@ -25,8 +25,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/errors";
 import type {
   VoiceAudio,
+  ManualVoiceClip,
   VoiceClip,
   AvatarClip,
   AvatarGenerationMode,
@@ -43,6 +45,15 @@ import type {
   CloudStorageFile,
   CloudStorageProvider,
 } from "@/domains/production/cloud-storage/types";
+import {
+  isArtlistTrack,
+  isArtlistVideo,
+  type ArtlistSearchResult,
+} from "@/domains/production/providers/artlist.types";
+import {
+  getGoogleSdkWindow,
+  readGooglePickerFileId,
+} from "@/domains/production/providers/google-picker-runtime.types";
 import { ProductionMediaPreview } from "./ProductionMediaPreview";
 import type { SlideTemplateLibraryItem } from "@/domains/production/slides/slide-template-library.actions";
 import { EngineSelect } from "@/components/ui/EngineSelect";
@@ -284,11 +295,13 @@ function buildHtmlPreviewHref(slides: SlidesAsset | null) {
 // ---------------------------------------------------------
 interface VoiceAudioSectionProps {
   voiceAudio: VoiceAudio | null;
+  manualVoiceClips: ManualVoiceClip[];
   voiceClips: VoiceClip[];
   isUploading: boolean;
   fileRef: React.RefObject<HTMLInputElement | null>;
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onClear: () => void;
+  onRemoveManualClip: (clipId: string) => void;
   uploadError: string | null;
   uploadFileName: string | null;
   uploadStatus: "idle" | "validating" | "uploading" | "saving" | "succeeded" | "failed";
@@ -296,7 +309,7 @@ interface VoiceAudioSectionProps {
   // Drive props
   isSearchingDrive: boolean;
   isImportingDrive: boolean;
-  driveSearchResults: any[];
+  driveSearchResults: CloudStorageFile[];
   searchDrive: (query: string) => Promise<void>;
   importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
@@ -304,11 +317,13 @@ interface VoiceAudioSectionProps {
 
 export function VoiceAudioSection({
   voiceAudio,
+  manualVoiceClips,
   voiceClips,
   isUploading,
   fileRef,
   onUpload,
   onClear,
+  onRemoveManualClip,
   uploadError,
   uploadFileName,
   uploadStatus,
@@ -327,66 +342,46 @@ export function VoiceAudioSection({
         <div className="flex items-center gap-2">
           <Mic size={14} className="text-[var(--engine-info)]" />
           <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Audio de Voz (Locución)</span>
-          {(voiceAudio || voiceClips.length > 0) && (
+          {(voiceAudio || manualVoiceClips.length > 0 || voiceClips.length > 0) && (
             <span className="flex items-center gap-0.5 text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded-full">
-              <CheckCircle2 size={10} /> {voiceClips.length > 0 ? `${voiceClips.length} clips` : "Subido"}
+              <CheckCircle2 size={10} /> {`${manualVoiceClips.length + voiceClips.length + (voiceAudio ? 1 : 0)} audio(s)`}
             </span>
           )}
         </div>
 
         <div className="flex items-center gap-1.5">
-          {voiceAudio ? (
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-gray-550 dark:text-gray-400 truncate max-w-[150px] font-medium" title={voiceAudio.file_name || voiceAudio.storage_path.split("/").pop()}>
-                {voiceAudio.file_name || voiceAudio.storage_path.split("/").pop()}
-                {voiceAudio.duration && ` (${voiceAudio.duration}s)`}
-              </span>
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={isUploading}
-                className="px-2 py-1 rounded bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
-              >
-                {isUploading ? <Loader2 size={10} className="animate-spin" /> : "Re-subir"}
-              </button>
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="px-2 py-1 rounded border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 text-[10px] font-bold hover:bg-blue-100 transition-colors"
-              >
-                Drive
-              </button>
-              <button
-                onClick={onClear}
-                className="p-1 text-red-500 hover:text-red-705 hover:bg-red-50 dark:hover:bg-red-500/10 rounded transition-colors cursor-pointer"
-                title="Eliminar audio de voz"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={isUploading}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white dark:bg-[var(--engine-surface-solid)] dark:border-[var(--engine-muted)]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer"
-              >
-                {isUploading ? (
-                  <Loader2 className="animate-spin text-[var(--engine-info)]" size={10} />
-                ) : (
-                  <Upload size={10} />
-                )}
-                <span>Subir MP3</span>
-              </button>
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50/50 hover:bg-blue-100/70 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 text-[10px] font-bold transition-all cursor-pointer"
-              >
-                <HardDrive size={10} />
-                <span>Drive</span>
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={isUploading}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white dark:bg-[var(--engine-surface-solid)] dark:border-[var(--engine-muted)]/20 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer"
+            >
+              {isUploading ? <Loader2 className="animate-spin text-[var(--engine-info)]" size={10} /> : <Upload size={10} />}
+              <span>Añadir audio</span>
+            </button>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50/50 hover:bg-blue-100/70 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 text-[10px] font-bold transition-all cursor-pointer"
+            >
+              <HardDrive size={10} />
+              <span>Drive</span>
+            </button>
+            {voiceAudio ? <button onClick={onClear} className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded" title="Eliminar audio de voz legado"><X size={12} /></button> : null}
+          </div>
         </div>
       </div>
+      {manualVoiceClips.length > 0 ? (
+        <div className="mt-3 space-y-2 border-t border-gray-200 pt-3 dark:border-white/10">
+          {[...manualVoiceClips].sort((left, right) => left.order - right.order).map((clip) => (
+            <div key={clip.id} className="flex items-center gap-2 rounded-lg bg-white p-2 dark:bg-white/5">
+              <div className="min-w-0 flex-1">
+                <ProductionMediaPreview durationSeconds={clip.duration} kind="audio" label={clip.file_name || `Audio ${clip.order}`} src={clip.public_url} />
+              </div>
+              <button type="button" onClick={() => onRemoveManualClip(clip.id)} className="shrink-0 rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10" title="Eliminar este audio"><Trash2 size={12} /></button>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {voiceClips.length > 0 ? (
         <div className="mt-3 space-y-2 border-t border-gray-200 pt-3 dark:border-white/10">
           {[...voiceClips].sort((left, right) => left.order - right.order).map((clip) => (
@@ -449,6 +444,7 @@ export function VoiceAudioSection({
 
       <input
         type="file"
+        multiple
         ref={fileRef}
         onChange={onUpload}
         className="hidden"
@@ -483,7 +479,7 @@ interface BackgroundMusicSectionProps {
   // Artlist props
   isSearchingArtlist: boolean;
   isImportingArtlist: boolean;
-  artlistSearchResults: any[];
+  artlistSearchResults: ArtlistSearchResult[];
   searchArtlist: (query: string, type: "music" | "video") => Promise<void>;
   importArtlistAsset: (id: string, type: "music" | "video") => Promise<boolean>;
   clearArtlistSearchResults: () => void;
@@ -491,7 +487,7 @@ interface BackgroundMusicSectionProps {
   // Drive props
   isSearchingDrive: boolean;
   isImportingDrive: boolean;
-  driveSearchResults: any[];
+  driveSearchResults: CloudStorageFile[];
   searchDrive: (query: string) => Promise<void>;
   importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
@@ -678,7 +674,7 @@ interface SofliaHtmlSlidesSectionProps {
   // Drive props
   isSearchingDrive: boolean;
   isImportingDrive: boolean;
-  driveSearchResults: any[];
+  driveSearchResults: CloudStorageFile[];
   searchDrive: (query: string) => Promise<void>;
   importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
@@ -1051,7 +1047,7 @@ interface BRollClipsSectionProps {
   // Artlist props
   isSearchingArtlist: boolean;
   isImportingArtlist: boolean;
-  artlistSearchResults: any[];
+  artlistSearchResults: ArtlistSearchResult[];
   searchArtlist: (query: string, type: "music" | "video") => Promise<void>;
   importArtlistAsset: (id: string, type: "music" | "video") => Promise<boolean>;
   clearArtlistSearchResults: () => void;
@@ -1060,7 +1056,7 @@ interface BRollClipsSectionProps {
   // Drive props
   isSearchingDrive: boolean;
   isImportingDrive: boolean;
-  driveSearchResults: any[];
+  driveSearchResults: CloudStorageFile[];
   searchDrive: (query: string) => Promise<void>;
   importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
@@ -1225,7 +1221,7 @@ interface AvatarVideoSectionProps {
   // Drive props
   isSearchingDrive: boolean;
   isImportingDrive: boolean;
-  driveSearchResults: any[];
+  driveSearchResults: CloudStorageFile[];
   searchDrive: (query: string) => Promise<void>;
   importDriveAsset: (urlOrId: string, type: "voice" | "music" | "broll" | "avatar" | "slides", accessToken?: string, provider?: CloudStorageProvider) => Promise<boolean>;
   clearDriveSearchResults: () => void;
@@ -1284,9 +1280,11 @@ export function AvatarVideoSection({
     const currentPath = window.location.pathname;
     const adminIndex = currentPath.indexOf("/admin");
     const tenantPrefix = adminIndex > 0 ? currentPath.slice(0, adminIndex) : "";
+    const returnUrl = new URL(window.location.href);
+    returnUrl.searchParams.set("componentId", componentId);
     const query = new URLSearchParams({
       componentId,
-      returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+      returnTo: `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`,
       source: "course",
     });
 
@@ -1350,111 +1348,117 @@ export function AvatarVideoSection({
         ) : null}
       </div>
 
-      {!avatarVideo && (
-        <div className="mt-3 space-y-2 border-t border-gray-100 pt-3 dark:border-[var(--engine-muted)]/10">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <EngineSelect
-              value={selectedAvatarPresetId}
-              onValueChange={onAvatarPresetChange}
-              disabled={isSyncing || isLoadingPresets}
-              options={[
-                { value: "", label: "Avatar predeterminado" },
-                ...avatarPresets.map((preset) => ({
-                  value: preset.id,
-                  label: `${preset.name || preset.id}${preset.is_default ? " · Predeterminado" : ""}`,
-                })),
-              ]}
-            />
-
-            <EngineSelect
-              value={selectedVoicePresetId}
-              onValueChange={onVoicePresetChange}
-              disabled={isSyncing || isLoadingPresets}
-              options={[
-                { value: "", label: "Voz predeterminada" },
-                ...voicePresets.map((preset) => ({
-                  value: preset.id,
-                  label: `${preset.name || preset.id}${preset.is_default ? " · Predeterminada" : ""}`,
-                })),
-              ]}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <EngineSelect
-              value={engine}
-              onValueChange={(value) => onEngineChange(value as "avatar_iv" | "avatar_v")}
-              disabled={isSyncing}
-              options={[
-                { value: "avatar_iv", label: "Avatar IV" },
-                { value: "avatar_v", label: "Avatar V" },
-              ]}
-            />
-
-            <EngineSelect
-              value={resolution}
-              onValueChange={(value) => onResolutionChange(value as "720p" | "1080p" | "4k")}
-              disabled={isSyncing}
-              options={[
-                { value: "720p", label: "720p" },
-                { value: "1080p", label: "1080p" },
-                { value: "4k", label: "4K" },
-              ]}
-            />
-
-            <EngineSelect
-              value={aspectRatio}
-              onValueChange={(value) => onAspectRatioChange(value as "16:9" | "9:16")}
-              disabled={isSyncing}
-              options={[
-                { value: "16:9", label: "16:9 · Horizontal" },
-                { value: "9:16", label: "9:16 · Vertical" },
-              ]}
-            />
-
-            <label className="flex items-center justify-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-bold text-gray-650 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-gray-300">
-              <input
-                type="checkbox"
-                checked={captionEnabled}
-                onChange={(event) => onCaptionEnabledChange(event.target.checked)}
-                disabled={isSyncing}
-                className="accent-rose-500"
+      <div className="mt-3 space-y-2 border-t border-gray-100 pt-3 dark:border-[var(--engine-muted)]/10">
+        {!avatarVideo && (
+          <>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <EngineSelect
+                value={selectedAvatarPresetId}
+                onValueChange={onAvatarPresetChange}
+                disabled={isSyncing || isLoadingPresets}
+                options={[
+                  { value: "", label: "Avatar predeterminado" },
+                  ...avatarPresets.map((preset) => ({
+                    value: preset.id,
+                    label: `${preset.name || preset.id}${preset.is_default ? " · Predeterminado" : ""}`,
+                  })),
+                ]}
               />
-              SRT
-            </label>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={openHeygenModule}
-              disabled={isSyncing || isUploading || isLoadingPresets}
-              className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-[10px] font-bold text-white transition-colors hover:bg-rose-500 disabled:opacity-50"
-            >
-              <ExternalLink size={11} />
-              Abrir modulo de avatares
-            </button>
-            <button
-              type="button"
-              onClick={onRefreshPresets}
-              disabled={isSyncing || isLoadingPresets}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-bold text-gray-650 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-surface-solid)] dark:text-gray-300 dark:hover:bg-white/5"
-            >
-              {isLoadingPresets ? "Cargando..." : "Presets"}
-            </button>
-            {jobId && (
+              <EngineSelect
+                value={selectedVoicePresetId}
+                onValueChange={onVoicePresetChange}
+                disabled={isSyncing || isLoadingPresets}
+                options={[
+                  { value: "", label: "Voz predeterminada" },
+                  ...voicePresets.map((preset) => ({
+                    value: preset.id,
+                    label: `${preset.name || preset.id}${preset.is_default ? " · Predeterminada" : ""}`,
+                  })),
+                ]}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <EngineSelect
+                value={engine}
+                onValueChange={(value) => onEngineChange(value as "avatar_iv" | "avatar_v")}
+                disabled={isSyncing}
+                options={[
+                  { value: "avatar_iv", label: "Avatar IV" },
+                  { value: "avatar_v", label: "Avatar V" },
+                ]}
+              />
+
+              <EngineSelect
+                value={resolution}
+                onValueChange={(value) => onResolutionChange(value as "720p" | "1080p" | "4k")}
+                disabled={isSyncing}
+                options={[
+                  { value: "720p", label: "720p" },
+                  { value: "1080p", label: "1080p" },
+                  { value: "4k", label: "4K" },
+                ]}
+              />
+
+              <EngineSelect
+                value={aspectRatio}
+                onValueChange={(value) => onAspectRatioChange(value as "16:9" | "9:16")}
+                disabled={isSyncing}
+                options={[
+                  { value: "16:9", label: "16:9 · Horizontal" },
+                  { value: "9:16", label: "9:16 · Vertical" },
+                ]}
+              />
+
+              <label className="flex items-center justify-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-[11px] font-bold text-gray-650 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-canvas)] dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={captionEnabled}
+                  onChange={(event) => onCaptionEnabledChange(event.target.checked)}
+                  disabled={isSyncing}
+                  className="accent-rose-500"
+                />
+                SRT
+              </label>
+            </div>
+          </>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={openHeygenModule}
+            disabled={isSyncing || isUploading}
+            className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-[10px] font-bold text-white transition-colors hover:bg-rose-500 disabled:opacity-50"
+          >
+            <ExternalLink size={11} />
+            Abrir módulo de avatares
+          </button>
+          {!avatarVideo && (
+            <>
               <button
                 type="button"
-                onClick={onHeygenStatusCheck}
-                disabled={isSyncing}
-                className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[10px] font-bold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
+                onClick={onRefreshPresets}
+                disabled={isSyncing || isLoadingPresets}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[10px] font-bold text-gray-650 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-[var(--engine-muted)]/20 dark:bg-[var(--engine-surface-solid)] dark:text-gray-300 dark:hover:bg-white/5"
               >
-                Consultar
+                {isLoadingPresets ? "Cargando..." : "Presets"}
               </button>
-            )}
-          </div>
+              {jobId && (
+                <button
+                  type="button"
+                  onClick={onHeygenStatusCheck}
+                  disabled={isSyncing}
+                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-[10px] font-bold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
+                >
+                  Consultar
+                </button>
+              )}
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {isSyncing && (
         <div className="space-y-1 mt-2 pt-2 border-t border-gray-100 dark:border-[var(--engine-muted)]/10">
@@ -1600,7 +1604,7 @@ interface ArtlistSearchModalProps {
   suggestions: string[];
   isSearching: boolean;
   isImporting: boolean;
-  results: any[];
+  results: ArtlistSearchResult[];
   onSearch: (query: string, type: "music" | "video") => Promise<void>;
   onImport: (id: string, type: "music" | "video") => Promise<boolean>;
   onClearResults: () => void;
@@ -1762,7 +1766,7 @@ export function ArtlistSearchModal({
             ) : type === "music" ? (
               // Music List
               <div className="space-y-2">
-                {results.map((track) => (
+                {results.filter(isArtlistTrack).map((track) => (
                   <div
                     key={track.id}
                     className="flex items-center justify-between p-3 rounded-xl border border-gray-100 dark:border-[var(--engine-muted)]/10 bg-gray-50/50 dark:bg-[var(--engine-canvas)]/30 text-xs"
@@ -1798,7 +1802,7 @@ export function ArtlistSearchModal({
             ) : (
               // Video Grid
               <div className="grid grid-cols-2 gap-4">
-                {results.map((video) => (
+                {results.filter(isArtlistVideo).map((video) => (
                   <div
                     key={video.id}
                     className="group flex flex-col rounded-xl border border-gray-105 dark:border-[var(--engine-muted)]/10 bg-gray-50/50 dark:bg-[var(--engine-canvas)]/30 overflow-hidden"
@@ -2079,13 +2083,14 @@ export function GoogleDriveImportModal({
 
   const loadGoogleScripts = (): Promise<void> => {
     return new Promise((resolve, reject) => {
-      if ((window as any).gapi && (window as any).google) {
+      const googleWindow = getGoogleSdkWindow(window);
+      if (googleWindow.gapi && googleWindow.google) {
         resolve();
         return;
       }
 
       const loadGis = () => {
-        if ((window as any).google) {
+        if (googleWindow.google) {
           resolve();
           return;
         }
@@ -2098,7 +2103,7 @@ export function GoogleDriveImportModal({
         document.body.appendChild(gisScript);
       };
 
-      if ((window as any).gapi) {
+      if (googleWindow.gapi) {
         loadGis();
       } else {
         const gapiScript = document.createElement("script");
@@ -2113,8 +2118,13 @@ export function GoogleDriveImportModal({
   };
 
   const initGapi = (): Promise<void> => {
-    return new Promise((resolve) => {
-      (window as any).gapi.load("client:picker", () => {
+    return new Promise((resolve, reject) => {
+      const googleApi = getGoogleSdkWindow(window).gapi;
+      if (!googleApi) {
+        reject(new Error("Google GAPI no esta disponible."));
+        return;
+      }
+      googleApi.load("client:picker", () => {
         resolve();
       });
     });
@@ -2144,10 +2154,15 @@ export function GoogleDriveImportModal({
       };
 
       try {
-        const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+        const googleIdentity = getGoogleSdkWindow(window).google?.accounts.oauth2;
+        if (!googleIdentity) {
+          finishWithError("Google Identity Services no esta disponible.");
+          return;
+        }
+        const tokenClient = googleIdentity.initTokenClient({
           client_id: clientIdStr,
           scope: driveReadonlyScope,
-          callback: (response: any) => {
+          callback: (response) => {
             if (response.error) {
               finishWithError(response.error_description || response.error);
               return;
@@ -2159,7 +2174,7 @@ export function GoogleDriveImportModal({
               finishWithError("No se obtuvo token de acceso de Google.");
             }
           },
-          error_callback: (error: any) => {
+          error_callback: (error) => {
             const errorType = error?.type || error?.message || "popup_failed_to_open";
             finishWithError(`No se pudo abrir o completar el login de Google (${errorType}).`);
           },
@@ -2199,33 +2214,42 @@ export function GoogleDriveImportModal({
       setIsConnecting(false);
 
       // 4. Build and display the Google Picker
-      const view = new (window as any).google.picker.DocsView((window as any).google.picker.ViewId.DOCS);
+      const pickerRuntime = getGoogleSdkWindow(window).google?.picker;
+      if (!pickerRuntime) {
+        throw new Error("Google Picker no esta disponible.");
+      }
+      const view = new pickerRuntime.DocsView(pickerRuntime.ViewId.DOCS);
       
       const allowedMimes = getAllowedDriveMimeTypes();
       view.setMimeTypes(allowedMimes.join(","));
 
       const pickerSize = getPickerSize();
       setIsPickerVisible(true);
-      const picker = new (window as any).google.picker.PickerBuilder()
-        .enableFeature((window as any).google.picker.Feature.NAV_HIDDEN)
+      const picker = new pickerRuntime.PickerBuilder()
+        .enableFeature(pickerRuntime.Feature.NAV_HIDDEN)
         .setDeveloperKey(developerKey)
         .setAppId(getPickerAppId(clientId))
         .setOrigin(window.location.origin)
         .setSize(pickerSize.width, pickerSize.height)
         .setOAuthToken(accessToken)
         .addView(view)
-        .setCallback(async (data: any) => {
-          const action = data[(window as any).google.picker.Response.ACTION];
-          if (action === (window as any).google.picker.Action.CANCEL) {
+        .setCallback(async (data) => {
+          const action = data[pickerRuntime.Response.ACTION];
+          if (action === pickerRuntime.Action.CANCEL) {
             setIsConnecting(false);
             setLocalIsImporting(false);
             setIsPickerVisible(false);
             return;
           }
 
-          if (action === (window as any).google.picker.Action.PICKED) {
-            const doc = data[(window as any).google.picker.Response.DOCUMENTS][0];
-            const fileId = doc[(window as any).google.picker.Document.ID];
+          if (action === pickerRuntime.Action.PICKED) {
+            const fileId = readGooglePickerFileId(data, pickerRuntime);
+            if (!fileId) {
+              toast.error("Google Picker no devolvio un archivo valido.");
+              setIsConnecting(false);
+              setIsPickerVisible(false);
+              return;
+            }
             
             console.log("[GoogleDrivePicker] Picked file ID:", fileId);
             setLocalIsImporting(true);
@@ -2247,12 +2271,17 @@ export function GoogleDriveImportModal({
 
       picker.setVisible(true);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       setIsConnecting(false);
       setLocalIsImporting(false);
       setIsPickerVisible(false);
       console.error("[GoogleDrivePicker] Connection failed:", err);
-      toast.error(err.message || "Error al conectar con Google Drive. Verifica que tu navegador permita ventanas emergentes.");
+      toast.error(
+        getErrorMessage(
+          err,
+          "Error al conectar con Google Drive. Verifica que tu navegador permita ventanas emergentes.",
+        ),
+      );
     }
   };
 

@@ -144,5 +144,5 @@
 
 ## Notas finales
 
-- El endpoint `/api/debug/soflia/route.ts` en CourseEngine prueba la conexión HTTP al import de SofLIA. Después de este cambio, ese debug ya no aplica. Considerar actualizarlo para verificar la conexión al Supabase de SofLIA directamente.
+- El endpoint obsoleto `/api/debug/soflia` fue retirado; cualquier diagnóstico futuro debe ser autenticado, no mutante y no exponer configuración ni respuestas completas del proveedor.
 - Una vez que todo funciona en producción, el endpoint `api/courses/import/route.ts` de SofLIA puede eliminarse (es código obsoleto e inseguro según el plan original).

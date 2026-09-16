@@ -1,43 +1,50 @@
 import { Handler } from "@netlify/functions";
 import {
   createGeminiClient,
+  createOpenAiClient,
   createServiceRoleClient,
   resolveModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
-import { methodNotAllowedResponse, parseJsonBody } from "./shared/http";
 import {
-  COURSE_CONFIG,
-  SYLLABUS_PROMPT,
-} from "../../src/domains/syllabus/config/syllabus.config";
+  methodNotAllowedResponse,
+  parseVerifiedBackgroundBody,
+  unauthorizedBackgroundResponse,
+} from "./shared/http";
+import { SYLLABUS_PROMPT } from "../../src/domains/syllabus/config/syllabus.config";
 import {
   buildSyllabusResearchPrompt,
+  buildSyllabusGenerationPrompt,
   calculateSyllabusEstimatedHours,
-  getSyllabusRouteContext,
   parseSyllabusResponseText,
   SyllabusGenerationContent,
 } from "../../src/domains/syllabus/lib/syllabus-generation";
 import { SyllabusGenerationMetadata } from "../../src/domains/syllabus/types/syllabus.types";
-import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
+import { applyGeneratedLessonDurationEstimates } from "../../src/domains/syllabus/lib/lesson-duration-estimator";
+import { resolveArtifactVideoDurationPolicy } from "../../src/domains/video-duration/video-duration-policy";
+import { validateCourseDuration } from "../../src/domains/syllabus/validators/syllabus.validators";
+import {
+  resolvePromptWithFallback,
+  resolvePromptWithMetadata,
+} from "../../src/shared/config/prompts/prompt-resolver.service";
 import {
   SYLLABUS_PROMPT_CODE,
   SYLLABUS_RESEARCH_PROMPT_CODE,
   renderPromptTemplate,
   syllabusResearchPromptDefault,
 } from "../../src/shared/config/prompts/pipeline.prompts";
-
-interface SyllabusBackgroundRequest {
-  accessToken?: string;
-  artifactId?: string;
-  ideaCentral?: string;
-  objetivos?: string[];
-  route?: string;
-}
-
-interface GroundingMetadata {
-  webSearchQueries?: string[];
-  groundingChunks?: unknown[];
-}
+import {
+  canIterateSyllabus,
+  getNextSyllabusIteration,
+  SYLLABUS_MAX_ITERATIONS,
+} from "../../src/domains/syllabus/lib/syllabus-iteration";
+import {
+  generateSyllabusJson,
+  generateSyllabusResearch,
+  type SyllabusModelClients,
+} from "../../src/domains/syllabus/lib/syllabus-model-provider";
+import { getTextModelProvider } from "../../src/shared/ai/text-model-provider";
+import { syllabusGenerationBackgroundRequestSchema } from "../../src/domains/syllabus/syllabus-generation-request.schema";
 
 function buildCorrectionRules(objectiveCount: number) {
   return `
@@ -47,24 +54,6 @@ function buildCorrectionRules(objectiveCount: number) {
         3. Verbos Bloom: Cada 'objective_specific' de las lecciones DEBE iniciar con un verbo de acción (Bloom) en infinitivo o tercera persona (ej: Analizar, Evalúa, Diseñar).
         4. No Duplicados: No repitas títulos de lecciones ni objetivos.
         `;
-}
-
-function buildSyllabusPrompt(
-  promptTemplate: string,
-  ideaCentral: string,
-  objetivos: string[],
-  route: string | undefined,
-  researchContext: string,
-) {
-  const contextWithResearch = `${getSyllabusRouteContext(route)}\n\n### INVESTIGACIÓN RECIENTE:\n${researchContext}\n\n${buildCorrectionRules(objetivos.length)}`;
-  const objetivosFormatted = objetivos
-    .map((objetivo, index) => `${index + 1}. ${objetivo}`)
-    .join("\n");
-
-  return promptTemplate.replace("{{ideaCentral}}", ideaCentral)
-    .replace("{{objetivos}}", objetivosFormatted)
-    .replace("{{routeContext}}", contextWithResearch)
-    .replace(/{{.*?}}/g, "");
 }
 
 function appendValidationFeedback(prompt: string, validationErrors: string[]) {
@@ -98,6 +87,11 @@ function validateGeneratedContent(
     }
   });
 
+  const durationCheck = validateCourseDuration(content.modules);
+  if (!durationCheck.pass) {
+    validationErrors.push(`Error de duración: ${durationCheck.message}.`);
+  }
+
   return validationErrors;
 }
 
@@ -106,49 +100,129 @@ export const handler: Handler = async (event) => {
     return methodNotAllowedResponse();
   }
 
-  let body: SyllabusBackgroundRequest;
+  let verifiedBody: unknown;
   try {
-    body = parseJsonBody<SyllabusBackgroundRequest>(event);
+    verifiedBody = await parseVerifiedBackgroundBody<unknown>(event);
   } catch {
-    return { statusCode: 400, body: "Bad Request: Invalid JSON" };
+    return unauthorizedBackgroundResponse();
   }
 
-  const { artifactId, objetivos, ideaCentral, route } = body;
-
-  if (!artifactId || !Array.isArray(objetivos) || !ideaCentral) {
-    return { statusCode: 400, body: "Missing required fields" };
+  const parsedBody = syllabusGenerationBackgroundRequestSchema.safeParse(verifiedBody);
+  if (!parsedBody.success) {
+    return { statusCode: 400, body: "Invalid syllabus generation payload" };
   }
+
+  const {
+    artifactId,
+    objetivos,
+    ideaCentral,
+    route,
+    iterationInstructions,
+    iterationNumber,
+    promptOverride,
+    sourceDocuments = [],
+  } = parsedBody.data;
 
   console.log(
     `[Syllabus Background] Iniciando generación para artifact: ${artifactId}`,
   );
 
   const supabase = createServiceRoleClient();
-  const genAI = createGeminiClient();
-
   try {
+    const { data: currentSyllabus, error: syllabusLookupError } = await supabase
+      .from("syllabus")
+      .select("iteration_count")
+      .eq("artifact_id", artifactId)
+      .maybeSingle();
+
+    if (syllabusLookupError) {
+      throw syllabusLookupError;
+    }
+
+    if (
+      iterationNumber === undefined &&
+      !canIterateSyllabus(currentSyllabus?.iteration_count)
+    ) {
+      await supabase
+        .from("syllabus")
+        .update({ state: "STEP_READY_FOR_QA", updated_at: new Date().toISOString() })
+        .eq("artifact_id", artifactId);
+
+      return {
+        statusCode: 409,
+        body: JSON.stringify({
+          error: `El temario alcanzo el limite de ${SYLLABUS_MAX_ITERATIONS} iteraciones.`,
+        }),
+      };
+    }
+
+    const nextIteration = iterationNumber === undefined
+      ? getNextSyllabusIteration(currentSyllabus?.iteration_count)
+      : iterationNumber;
+
+    if (
+      !Number.isInteger(nextIteration) ||
+      nextIteration < 1 ||
+      nextIteration > SYLLABUS_MAX_ITERATIONS
+    ) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Numero de iteracion invalido." }),
+      };
+    }
+
+    if (iterationNumber === undefined) {
+      const { error: reservationError } = await supabase
+        .from("syllabus")
+        .update({
+          iteration_count: nextIteration,
+          state: "STEP_GENERATING",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("artifact_id", artifactId)
+        .eq("iteration_count", currentSyllabus?.iteration_count || 0);
+
+      if (reservationError) {
+        throw reservationError;
+      }
+    }
+
     const { data: artifactScope } = await supabase
       .from("artifacts")
-      .select("organization_id")
+      .select("generation_metadata, organization_id")
       .eq("id", artifactId)
       .maybeSingle();
 
     const modelConfig = await resolveModelSetting(supabase, "SYLLABUS", {
-      model: "gemini-2.5-flash",
-      fallbackModel: "gemini-2.0-flash",
+      model: "gemini-3.5-flash",
+      fallbackModel: "gemini-2.5-flash",
       temperature: 0.7,
       thinkingLevel: "medium",
     }, artifactScope?.organization_id || null);
     console.log(`[Syllabus Background] Model config: ${modelConfig.model} / ${modelConfig.fallbackModel}`);
 
+    const configuredModels = Array.from(
+      new Set([modelConfig.model, modelConfig.fallbackModel].filter(Boolean)),
+    );
+    const clients: SyllabusModelClients = {};
+    if (configuredModels.some((model) => getTextModelProvider(model) === "gemini")) {
+      clients.gemini = createGeminiClient();
+    }
+    if (configuredModels.some((model) => getTextModelProvider(model) === "openai")) {
+      clients.openai = createOpenAiClient();
+    }
+
     const promptOrganizationId = artifactScope?.organization_id || null;
+    const videoDurationPolicy = resolveArtifactVideoDurationPolicy(
+      artifactScope?.generation_metadata,
+    );
     const syllabusResearchPromptTemplate = await resolvePromptWithFallback(
       supabase,
       SYLLABUS_RESEARCH_PROMPT_CODE,
       syllabusResearchPromptDefault,
       promptOrganizationId,
     );
-    const syllabusPromptTemplate = await resolvePromptWithFallback(
+    const resolvedSyllabusPrompt = await resolvePromptWithMetadata(
       supabase,
       SYLLABUS_PROMPT_CODE,
       SYLLABUS_PROMPT,
@@ -160,24 +234,18 @@ export const handler: Handler = async (event) => {
     let searchQueries: string[] = [];
 
     try {
-      const searchResult = await genAI.models.generateContent({
+      const searchResult = await generateSyllabusResearch({
+        clients,
         model: searchModelName,
-        contents: renderPromptTemplate(syllabusResearchPromptTemplate, {
+        prompt: renderPromptTemplate(syllabusResearchPromptTemplate, {
           ideaCentral,
           objetivos: objetivos.map((objetivo, index) => `${index + 1}. ${objetivo}`).join("\n"),
         }) || buildSyllabusResearchPrompt(ideaCentral, objetivos),
-        config: {
-          tools: [{ googleSearch: {} }],
-          temperature: 0.7,
-        },
+        temperature: 0.7,
       });
 
-      researchContext = searchResult.text || "";
-      const grounding =
-        (searchResult.candidates?.[0]?.groundingMetadata as GroundingMetadata | undefined) ||
-        null;
-
-      searchQueries = grounding?.webSearchQueries || [];
+      researchContext = searchResult.text;
+      searchQueries = searchResult.searchQueries;
 
       console.log("[Syllabus Background] Investigación completada.");
       console.log(
@@ -185,7 +253,7 @@ export const handler: Handler = async (event) => {
         searchQueries,
       );
       console.log(
-        `[Syllabus Background] URLs de grounding: ${grounding?.groundingChunks?.length || 0}`,
+        `[Syllabus Background] Proveedor de research: ${getTextModelProvider(searchModelName)}`,
       );
     } catch (researchError) {
       const message = getErrorMessage(researchError, "Error desconocido");
@@ -198,34 +266,49 @@ export const handler: Handler = async (event) => {
     }
 
     const mainModelName = modelConfig.model;
-    const basePrompt = buildSyllabusPrompt(
-      syllabusPromptTemplate,
+    const basePrompt = buildSyllabusGenerationPrompt({
+      promptTemplate: promptOverride?.trim() || resolvedSyllabusPrompt.content,
       ideaCentral,
       objetivos,
       route,
       researchContext,
-    );
+      sourceDocuments,
+      additionalContext: buildCorrectionRules(objetivos.length),
+    }) + (iterationInstructions?.trim()
+      ? `\n\nRETROALIMENTACION PARA ESTA ITERACION:\n${iterationInstructions.trim()}\nRegenera el temario completo aplicando esta retroalimentacion.`
+      : "");
 
     let attempts = 0;
     const maxAttempts = 3;
     let content: SyllabusGenerationContent | null = null;
     let validationErrors: string[] = [];
+    const attemptErrors: string[] = [];
+    const generationModels = configuredModels.length > 0
+      ? configuredModels
+      : [mainModelName];
+    let architectModelName = mainModelName;
 
     while (attempts < maxAttempts) {
       attempts += 1;
-      console.log(`[Syllabus Background] Intento de generación #${attempts}...`);
+      const attemptModel = generationModels[(attempts - 1) % generationModels.length];
+      console.log(
+        `[Syllabus Background] Intento de generación #${attempts} con ${attemptModel}...`,
+      );
 
       try {
-        const result = await genAI.models.generateContent({
-          model: mainModelName,
-          contents: appendValidationFeedback(basePrompt, validationErrors),
-          config: {
-            temperature: modelConfig.temperature,
-            responseMimeType: "application/json",
-          },
+        const responseText = await generateSyllabusJson({
+          clients,
+          model: attemptModel,
+          prompt: appendValidationFeedback(basePrompt, validationErrors),
+          temperature: modelConfig.temperature,
         });
 
-        content = parseSyllabusResponseText(result.text || "");
+        content = parseSyllabusResponseText(responseText);
+        architectModelName = attemptModel;
+        content.modules = applyGeneratedLessonDurationEstimates(
+          content.modules,
+          videoDurationPolicy,
+        );
         validationErrors = validateGeneratedContent(content, objetivos.length);
 
         if (!validationErrors.length) {
@@ -242,24 +325,25 @@ export const handler: Handler = async (event) => {
       } catch (generationError) {
         const message = getErrorMessage(generationError, "Error desconocido");
         console.error(
-          `[Syllabus Background] Error parseando/generando en intento ${attempts}:`,
+          `[Syllabus Background] Error con ${attemptModel} en intento ${attempts}:`,
           message,
         );
+        attemptErrors.push(`${attemptModel} (intento ${attempts}): ${message}`);
         validationErrors = [
-          "El formato JSON generado no era válido o hubo un error de red.",
+          `El intento con ${attemptModel} fallo: ${message}`,
         ];
       }
     }
 
     if (!content) {
       throw new Error(
-        "No se pudo generar un JSON válido después de varios intentos.",
+        `No se pudo generar un JSON válido después de varios intentos. ${attemptErrors.join(" | ")}`,
       );
     }
 
     content.total_estimated_hours = calculateSyllabusEstimatedHours(
       content.modules,
-      COURSE_CONFIG.avgLessonMinutes,
+      videoDurationPolicy,
     );
 
     const metadata: SyllabusGenerationMetadata = {
@@ -267,11 +351,26 @@ export const handler: Handler = async (event) => {
       search_queries: searchQueries,
       models: {
         search: searchModelName,
-        architect: mainModelName,
+        architect: architectModelName,
       },
       generated_at: new Date().toISOString(),
       validation_attempts: attempts,
       final_validation_errors: validationErrors,
+      files: sourceDocuments.map((document) => ({
+        character_count: document.characterCount,
+        file_id: document.fileId,
+        filename: document.filename,
+        mime: document.mimeType,
+        size_bytes: document.sizeBytes,
+      })),
+      source_documents: sourceDocuments,
+      prompt_override_applied: Boolean(promptOverride?.trim()),
+      prompt_source: promptOverride?.trim()
+        ? "override"
+        : resolvedSyllabusPrompt.source,
+      prompt_version: promptOverride?.trim()
+        ? "ad-hoc"
+        : resolvedSyllabusPrompt.version,
     };
 
     content.generation_metadata = metadata;
@@ -279,10 +378,11 @@ export const handler: Handler = async (event) => {
     const { error: syllabusError } = await supabase.from("syllabus").upsert(
       {
         artifact_id: artifactId,
+        route,
         modules: content.modules,
         source_summary: metadata,
         state: "STEP_REVIEW",
-        iteration_count: 1,
+        iteration_count: nextIteration,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "artifact_id" },

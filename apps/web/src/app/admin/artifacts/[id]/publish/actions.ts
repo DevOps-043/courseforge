@@ -226,7 +226,7 @@ export async function getPublicationData(
 
     const { data: request } = await admin
         .from('publication_requests')
-        .select('id, category, level, instructor_email, slug, price, thumbnail_url, lesson_videos, selected_lessons, upstream_dirty, upstream_dirty_source, status')
+        .select('id, category, level, instructor_email, slug, price, thumbnail_url, lesson_videos, selected_lessons, upstream_dirty, upstream_dirty_source, status, publish_step, publish_last_error')
         .eq('artifact_id', artifactId)
         .maybeSingle();
 

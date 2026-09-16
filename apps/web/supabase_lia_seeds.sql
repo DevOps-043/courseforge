@@ -12,8 +12,8 @@ INSERT INTO model_settings (setting_type, model_name, fallback_model, temperatur
 VALUES 
 (
   'LIA_REASONING', 
-  'gemini-2.0-pro-exp', 
-  'gemini-2.0-flash-exp', 
+  'gemini-3.5-flash',
+  'gemini-2.5-flash',
   0.7, 
   'medium', 
   true
@@ -21,7 +21,7 @@ VALUES
 (
   'LIA_COMPUTER_USE', 
   'computer-use-preview', 
-  'gemini-2.0-flash-exp', 
+  'gemini-2.5-flash',
   0.4, 
   'low', 
   true

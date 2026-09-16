@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Sparkles, Upload, ArrowRight, BookOpen, Users, Target, Settings, ChevronDown, CheckCircle2, HardDrive } from 'lucide-react';
@@ -10,6 +10,14 @@ import { ScormImportFlow } from './components/ScormImportFlow';
 import { CloudStorageProviderSelector } from './components/CloudStorageProviderSelector';
 import { toast } from 'sonner';
 import type { CloudStorageProvider } from '@/domains/production/cloud-storage/types';
+import {
+    createDefaultVideoDurationPolicy,
+    VideoDurationPolicyFields,
+} from '@/domains/artifacts/components/VideoDurationPolicyFields';
+import {
+    videoDurationPolicySchema,
+    type VideoDurationPolicy,
+} from '@/domains/video-duration/video-duration-policy';
 
 interface ArtifactIdeaFormData {
     courseId: string;
@@ -41,7 +49,11 @@ export default function NewArtifactPage({
     const [mode, setMode] = useState<'ai' | 'import'>('ai');
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const submission = useRef({ pending: false, requestId: '' });
     const [cloudStorageProvider, setCloudStorageProvider] = useState<CloudStorageProvider | null>(null);
+    const [videoDurationPolicy, setVideoDurationPolicy] = useState<VideoDurationPolicy>(
+        createDefaultVideoDurationPolicy,
+    );
     const useGoogleDrive = false;
     const setUseGoogleDrive = (_checked: boolean) => {};
 
@@ -55,34 +67,50 @@ export default function NewArtifactPage({
     });
 
     const router = useRouter();
+    const videoDurationValidation = videoDurationPolicySchema.safeParse(videoDurationPolicy);
+    const isGenerateDisabled = isLoading || !formData.description || !videoDurationValidation.success;
 
     const handleCloudStorageProviderChange = useCallback((provider: CloudStorageProvider | null) => {
         setCloudStorageProvider(provider);
     }, []);
 
     const handleGenerate = async () => {
+        if (submission.current.pending) return;
+        const validation = videoDurationPolicySchema.safeParse(videoDurationPolicy);
+        if (!validation.success) {
+            setIsAdvancedOpen(true);
+            toast.error(validation.error.issues[0]?.message || 'Configuración de duración inválida.');
+            return;
+        }
+
+        submission.current.pending = true;
+        submission.current.requestId ||= crypto.randomUUID();
         setIsLoading(true);
         try {
             const result = await generateArtifactAction({
+                requestId: submission.current.requestId,
                 title: formData.title,
                 description: formData.description,
                 targetAudience: formData.targetAudience,
                 expectedResults: formData.expectedResults,
                 courseId: formData.courseId,
-                cloudStorageProvider
+                cloudStorageProvider,
+                videoDurationPolicy,
             });
 
             if (result.success) {
-                router.push(`${basePath}/artifacts`);
+                router.push(`${basePath}/artifacts/${result.artifactId}`);
             } else {
+                submission.current.pending = false;
                 console.error(result.error);
                 toast.error(`Error generando el artefacto: ${result.error}`);
             }
         } catch (error) {
+            submission.current.pending = false;
             console.error(error);
             toast.error('Ocurrió un error inesperado.');
         } finally {
-            setIsLoading(false);
+            if (!submission.current.pending) setIsLoading(false);
         }
     };
 
@@ -234,6 +262,10 @@ export default function NewArtifactPage({
                                             </div>
 
                                             <CloudStorageProviderSelector onProviderChange={handleCloudStorageProviderChange} />
+                                            <VideoDurationPolicyFields
+                                                onChange={setVideoDurationPolicy}
+                                                value={videoDurationPolicy}
+                                            />
                                             {false ? (
                                                 <div className="flex items-center gap-3 pt-3 border-t border-gray-100 dark:border-white/5">
                                                     <input
@@ -271,17 +303,17 @@ export default function NewArtifactPage({
                                 <div className="pt-4 sticky top-6">
                                     <button
                                         onClick={handleGenerate}
-                                        disabled={isLoading || !formData.description}
+                                        disabled={isGenerateDisabled}
                                         className={`
                                     relative w-full overflow-hidden group px-6 py-4 rounded-2xl font-bold font-sans shadow-2xl flex items-center justify-center gap-3 transition-all duration-300 transform
-                                    ${isLoading || !formData.description
+                                    ${isGenerateDisabled
                                                 ? 'bg-gray-200 text-gray-400 dark:bg-[var(--engine-accent)]/10 dark:text-[var(--engine-accent)]/30 cursor-not-allowed border border-transparent dark:border-[var(--engine-accent)]/10'
                                                 : 'bg-[var(--engine-primary)] text-white hover:bg-[var(--engine-primary)]/90 dark:bg-[var(--engine-accent)] dark:text-[var(--engine-primary)] dark:hover:bg-[var(--engine-accent-hover)] shadow-lg shadow-[var(--engine-primary)]/25 dark:shadow-[var(--engine-accent)]/25 hover:shadow-[var(--engine-primary)]/40 dark:hover:shadow-[var(--engine-accent)]/40 hover:-translate-y-0.5'
                                             }
                                 `}
                                     >
                                         {/* Shimmer Effect for active state */}
-                                        {!isLoading && formData.description && (
+                                        {!isGenerateDisabled && (
                                             <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                         )}
 
@@ -292,7 +324,7 @@ export default function NewArtifactPage({
                                             </>
                                         ) : (
                                             <>
-                                                <Sparkles size={20} className={`${formData.description ? 'group-hover:animate-pulse' : ''}`} />
+                                                <Sparkles size={20} className={`${!isGenerateDisabled ? 'group-hover:animate-pulse' : ''}`} />
                                                 <span className="text-lg">Generar Estructura</span>
                                                 <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                                             </>

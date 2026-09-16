@@ -587,11 +587,11 @@ export function BundleAgentClient({
       specId: latestSpec.id,
     });
     return `${basePath}/preview?${params.toString()}`;
-  }, [latestSpec?.id, pathname, state.conversation?.id]);
+  }, [latestSpec, pathname, state.conversation]);
   const generatedBundleHref = useMemo(() => {
     if (!state.conversation?.id || !latestRun?.id || !latestRun.bundle_storage_path) return null;
     return `/api/admin/remotion/bundle-agent/conversations/${state.conversation.id}/runs/${latestRun.id}/download`;
-  }, [latestRun?.bundle_storage_path, latestRun?.id, state.conversation?.id]);
+  }, [latestRun, state.conversation]);
 
   async function refresh(conversationId = state.conversation?.id) {
     if (!conversationId) return;
@@ -703,7 +703,7 @@ export function BundleAgentClient({
     });
   }
 
-  function useQuickPrompt(prompt: string) {
+  function handleQuickPrompt(prompt: string) {
     setMessage(prompt);
     composerRef.current?.focus();
   }
@@ -837,7 +837,7 @@ export function BundleAgentClient({
                     <button
                       key={prompt}
                       type="button"
-                      onClick={() => useQuickPrompt(prompt)}
+                      onClick={() => handleQuickPrompt(prompt)}
                       className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-left text-sm text-slate-700 transition hover:border-[var(--engine-accent)]/50 hover:bg-[var(--engine-accent)]/5"
                     >
                       {prompt}

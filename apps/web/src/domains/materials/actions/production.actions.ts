@@ -12,6 +12,12 @@ import { callBackgroundFunctionJson } from "@/lib/server/background-function-cli
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import { getVideoProviderAndId } from "@/lib/video-platform";
 import { getProductionApiBaseUrl } from "@/lib/server/production-api-url";
+import {
+  fetchIdempotentWithRetry,
+  fetchWithDeadline,
+  readJsonResponseWithLimit,
+  readResponseTextWithLimit,
+} from "@/lib/server/outbound-http";
 import { DesktopWorkerControlPlane } from "@/lib/server/desktop-worker-control-plane";
 import { RenderBatchService } from "@/domains/production/render-batches/render-batch.service";
 import {
@@ -47,6 +53,20 @@ import type {
   ProductionStatus,
   StoryboardItem,
 } from "../types/materials.types";
+
+const PRODUCTION_API_MUTATION_TIMEOUT_MS = 30_000;
+const PRODUCTION_API_RESPONSE_MAX_BYTES = 1024 * 1024;
+const PRODUCTION_API_ERROR_MAX_BYTES = 32 * 1024;
+
+function fetchProductionApiRead(input: RequestInfo | URL, init: RequestInit = {}) {
+  return fetchIdempotentWithRetry(input, init, {
+    attempts: 3,
+    baseDelayMilliseconds: 200,
+    maxDelayMilliseconds: 1_000,
+    perAttemptTimeoutMilliseconds: 10_000,
+    totalTimeoutMilliseconds: 20_000,
+  });
+}
 
 interface ProductionArtifactRelation {
   course_id?: string | null;
@@ -145,6 +165,7 @@ function resolveProductionStatus(
   const hasRequiredScreencast = !needsScreencast || Boolean(assets.screencast_url);
   const hasRequiredVoice = !needsVoice || Boolean(
     assets.voice_audio?.public_url ||
+    assets.manual_voice_clips?.some((clip) => clip.public_url) ||
     hasCompletedVoiceClips ||
     assets.avatar_video?.public_url || 
     hasCompletedAvatarClips ||
@@ -162,13 +183,13 @@ function resolveProductionStatus(
     hasRequiredAvatar &&
     hasRequiredClips
   ) {
-    return "COMPLETED";
+    return "IN_PROGRESS";
   }
 
   if (
     hasRenderableSlides(assets) ||
     Boolean(assets.screencast_url) ||
-    Boolean(assets.voice_audio?.public_url || hasCompletedVoiceClips || assets.video_url) ||
+    Boolean(assets.voice_audio?.public_url || assets.manual_voice_clips?.some((clip) => clip.public_url) || hasCompletedVoiceClips || assets.video_url) ||
     hasAvatarAsset ||
     Boolean(assets.b_roll_clips?.length || assets.b_roll_prompts)
   ) {
@@ -360,6 +381,41 @@ function sanitizeVoiceClipDurations(
   ) as NonNullable<MaterialAssets["voice_clips"]>[number]);
 }
 
+function buildMaterialAssetsPatch(
+  currentAssetsValue: object,
+  nextAssetsValue: object,
+) {
+  const currentAssets = currentAssetsValue as Record<string, unknown>;
+  const nextAssets = nextAssetsValue as Record<string, unknown>;
+  const patch: Record<string, unknown> = {};
+  const keys = new Set([...Object.keys(currentAssets), ...Object.keys(nextAssets)]);
+  for (const key of keys) {
+    if (!(key in nextAssets)) {
+      patch[key] = null;
+      continue;
+    }
+    if (JSON.stringify(currentAssets[key]) !== JSON.stringify(nextAssets[key])) {
+      patch[key] = nextAssets[key] ?? null;
+    }
+  }
+  return patch;
+}
+
+function sanitizeManualVoiceClipDurations(
+  currentClips: MaterialAssets["manual_voice_clips"],
+  incomingClips: MaterialAssets["manual_voice_clips"] | null | undefined,
+  mergedClips: MaterialAssets["manual_voice_clips"] | null | undefined,
+) {
+  if (!Array.isArray(mergedClips)) return mergedClips;
+  const currentById = new Map((currentClips || []).map((clip) => [clip.id, clip] as const));
+  const incomingById = new Map((incomingClips || []).map((clip) => [clip.id, clip] as const));
+  return mergedClips.map((clip) => sanitizeTimedAssetDuration(
+    currentById.get(clip.id),
+    incomingById.get(clip.id),
+    clip,
+  ) as NonNullable<MaterialAssets["manual_voice_clips"]>[number]);
+}
+
 function sourceSignature(assets: Partial<MaterialAssets>) {
   const broll = (assets.b_roll_clips || []).map((clip) => ({
     id: clip.id,
@@ -380,6 +436,11 @@ function sourceSignature(assets: Partial<MaterialAssets>) {
     scriptHash: clip.script_hash,
     status: clip.status,
   }));
+  const manualVoiceClips = (assets.manual_voice_clips || []).map((clip) => ({
+    id: clip.id,
+    order: clip.order,
+    ref: assetReferenceKey(clip),
+  }));
   const slideImages = (assets.slides?.images || []).map((slide) => ({
     index: slide.slide_index,
     ref: assetReferenceKey(slide),
@@ -387,6 +448,7 @@ function sourceSignature(assets: Partial<MaterialAssets>) {
 
   return JSON.stringify({
     voice: assetReferenceKey(assets.voice_audio),
+    manualVoiceClips,
     voiceClips,
     avatar: assetReferenceKey(assets.avatar_video),
     avatarGenerationMode: assets.avatar_generation_mode || "",
@@ -455,6 +517,7 @@ function collectProductionStoragePaths(assets: Partial<MaterialAssets>) {
   };
 
   add(assets.voice_audio?.storage_path);
+  for (const clip of assets.manual_voice_clips || []) add(clip.storage_path);
   for (const clip of assets.voice_clips || []) add(clip.storage_path);
   add(assets.background_music?.storage_path);
   for (const clip of assets.b_roll_clips || []) add(clip.storage_path);
@@ -532,6 +595,14 @@ function sanitizeMaterialAssetMetadata(params: {
       incomingAssets.voice_audio,
       sanitizedAssets.voice_audio,
     ) as MaterialAssets["voice_audio"];
+  }
+
+  if (hasOwnProperty(incomingAssets, "manual_voice_clips")) {
+    sanitizedAssets.manual_voice_clips = sanitizeManualVoiceClipDurations(
+      currentAssets.manual_voice_clips,
+      incomingAssets.manual_voice_clips,
+      sanitizedAssets.manual_voice_clips,
+    ) as MaterialAssets["manual_voice_clips"];
   }
 
   if (hasOwnProperty(incomingAssets, "voice_clips")) {
@@ -622,6 +693,7 @@ export async function generateVideoPromptsAction(
     const inputSnapshot = buildBrollPromptJobInputSnapshot({
       componentId,
       storyboard,
+      videoDurationContract: context.videoDurationContract,
     });
     const productionJob = await createOrReuseProductionJob(admin, {
       context,
@@ -635,7 +707,7 @@ export async function generateVideoPromptsAction(
       inputSnapshot,
       jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
       provider: PRODUCTION_PROVIDERS.GEMINI,
-      providerModel: "gemini-2.0-flash",
+      providerModel: "gemini-3.5-flash",
     });
 
     if (
@@ -932,10 +1004,13 @@ export async function saveRemotionLayoutOverridesAction(
     delete (nextAssets as any).final_video_layout_stale;
   }
 
-  const { error } = await authorized.admin
-    .from("material_components")
-    .update({ assets: nextAssets })
-    .eq("id", componentId);
+  const { error } = await authorized.admin.rpc(
+    "patch_material_component_assets",
+    {
+      p_component_id: componentId,
+      p_assets_patch: buildMaterialAssetsPatch(currentAssets, nextAssets),
+    },
+  );
 
   if (error) {
     console.error("[ProductionActions] Error saving layout overrides:", error);
@@ -1034,10 +1109,13 @@ export async function saveRemotionTimelineOverridesAction(
     delete (nextAssets as any).final_video_assembly_stale;
   }
 
-  const { error } = await authorized.admin
-    .from("material_components")
-    .update({ assets: nextAssets })
-    .eq("id", componentId);
+  const { error } = await authorized.admin.rpc(
+    "patch_material_component_assets",
+    {
+      p_component_id: componentId,
+      p_assets_patch: buildMaterialAssetsPatch(currentAssets, nextAssets),
+    },
+  );
 
   if (error) {
     console.error("[ProductionActions] Error saving timeline overrides:", error);
@@ -1257,10 +1335,13 @@ export async function assembleRemotionVideoAction(
       updated_at: new Date().toISOString(),
     };
 
-    const { error: updateError } = await supabase
-      .from("material_components")
-      .update({ assets: updatedAssets })
-      .eq("id", componentId);
+    const { error: updateError } = await supabase.rpc(
+      "patch_material_component_assets",
+      {
+        p_component_id: componentId,
+        p_assets_patch: buildMaterialAssetsPatch(currentAssets, updatedAssets),
+      },
+    );
 
     if (updateError) {
       console.error("[ProductionActions] Error setting production_status to IN_PROGRESS:", updateError);
@@ -1294,7 +1375,7 @@ export async function assembleRemotionVideoAction(
       variablesKeys: Object.keys(variables || {}),
     });
 
-    const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/render`, {
+    const response = await fetchWithDeadline(`${productionApiUrl}/api/v1/production/remotion/render`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1304,58 +1385,63 @@ export async function assembleRemotionVideoAction(
         componentId,
         templateId,
         variables
-      })
-    });
+      }),
+    }, PRODUCTION_API_MUTATION_TIMEOUT_MS);
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = await readResponseTextWithLimit(response, PRODUCTION_API_ERROR_MAX_BYTES)
+        .catch(() => "");
       let errorMessage = `HTTP Error ${response.status}`;
       let errorCode: string | undefined;
       try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.error || errorMessage;
-        errorCode = typeof errorJson.code === "string" ? errorJson.code : undefined;
+        const errorJson: unknown = JSON.parse(errorText);
+        if (isRecord(errorJson)) {
+          errorMessage = typeof errorJson.error === "string" ? errorJson.error : errorMessage;
+          errorCode = typeof errorJson.code === "string" ? errorJson.code : undefined;
+        }
       } catch (_) {}
 
       // Revert status to PENDING in case of request error
-      await supabase
-        .from("material_components")
-        .update({
-          assets: {
-            ...currentAssets,
-            production_status: "PENDING",
-            updated_at: new Date().toISOString()
-          }
-        })
-        .eq("id", componentId);
+      await supabase.rpc("patch_material_component_assets", {
+        p_component_id: componentId,
+        p_assets_patch: {
+          production_status: "PENDING",
+          updated_at: new Date().toISOString(),
+        },
+      });
 
       return { success: false, error: errorMessage, code: errorCode };
     }
 
-    const result = await response.json();
+    const result = await readJsonResponseWithLimit<unknown>(
+      response,
+      PRODUCTION_API_RESPONSE_MAX_BYTES,
+    );
+    if (!isRecord(result)) {
+      throw new Error("El API de render devolvio una respuesta invalida.");
+    }
     if (result.status === "FAILED") {
-      await supabase
-        .from("material_components")
-        .update({
-          assets: {
-            ...currentAssets,
-            production_status: "PENDING",
-            updated_at: new Date().toISOString()
-          }
-        })
-        .eq("id", componentId);
+      await supabase.rpc("patch_material_component_assets", {
+        p_component_id: componentId,
+        p_assets_patch: {
+          production_status: "PENDING",
+          updated_at: new Date().toISOString(),
+        },
+      });
 
       return {
         success: false,
-        error: result.message || "El render fue rechazado por el proveedor",
-        code: result.code,
+        error: typeof result.message === "string"
+          ? result.message
+          : "El render fue rechazado por el proveedor",
+        code: typeof result.code === "string" ? result.code : undefined,
       };
     }
 
     return {
       success: true,
-      jobId: result.jobId,
-      status: result.status,
+      jobId: typeof result.jobId === "string" ? result.jobId : undefined,
+      status: typeof result.status === "string" ? result.status : undefined,
       productionStatus: "IN_PROGRESS" as ProductionStatus
     };
 
@@ -1364,16 +1450,13 @@ export async function assembleRemotionVideoAction(
     
     // Revert status to PENDING
     try {
-      await supabase
-        .from("material_components")
-        .update({
-          assets: {
-            ...currentAssets,
-            production_status: "PENDING",
-            updated_at: new Date().toISOString()
-          }
-        })
-        .eq("id", componentId);
+      await supabase.rpc("patch_material_component_assets", {
+        p_component_id: componentId,
+        p_assets_patch: {
+          production_status: "PENDING",
+          updated_at: new Date().toISOString(),
+        },
+      });
     } catch (_) {}
 
     return { success: false, error: getErrorMessage(error) };
@@ -1436,7 +1519,7 @@ export async function getRemotionJobStatusAction(jobId: string) {
     if (!token) return { success: false, error: "No se encontro un token de autenticacion" };
 
     const productionApiUrl = getProductionApiBaseUrl();
-    const response = await fetch(`${productionApiUrl}/api/v1/production/jobs/${jobId}/status`, {
+    const response = await fetchProductionApiRead(`${productionApiUrl}/api/v1/production/jobs/${jobId}/status`, {
       headers: {
         "Authorization": `Bearer ${token}`,
       }
@@ -1446,7 +1529,13 @@ export async function getRemotionJobStatusAction(jobId: string) {
       return { success: false, error: `HTTP Error ${response.status}` };
     }
 
-    const job = await response.json();
+    const job = await readJsonResponseWithLimit<unknown>(
+      response,
+      PRODUCTION_API_RESPONSE_MAX_BYTES,
+    );
+    if (!isRecord(job)) {
+      return { success: false, error: "El API de render devolvio un estado invalido" };
+    }
     return {
       success: true,
       job
@@ -1517,16 +1606,10 @@ export async function cancelRemotionAssemblyJobsAction(artifactId: string, jobId
         .in("id", componentIds);
 
       for (const component of components || []) {
-        await authorized.admin
-          .from("material_components")
-          .update({
-            assets: {
-              ...(component.assets || {}),
-              production_status: "PENDING",
-              updated_at: now,
-            },
-          })
-          .eq("id", component.id);
+        await authorized.admin.rpc("patch_material_component_assets", {
+          p_component_id: component.id,
+          p_assets_patch: { production_status: "PENDING", updated_at: now },
+        });
       }
     }
 
@@ -1600,10 +1683,10 @@ export async function getRenderWorkerStatusAction(artifactId: string) {
 
     const productionApiUrl = getProductionApiBaseUrl();
     const [readinessResponse, workersResponse] = await Promise.all([
-      fetch(`${productionApiUrl}/api/v1/production/remotion/readiness`, {
+      fetchProductionApiRead(`${productionApiUrl}/api/v1/production/remotion/readiness`, {
         headers: { "Authorization": `Bearer ${token}` },
       }),
-      fetch(
+      fetchProductionApiRead(
         `${productionApiUrl}/api/v1/production/remotion/workers?organizationId=${encodeURIComponent(organizationId)}`,
         {
           headers: { "Authorization": `Bearer ${token}` },
@@ -1611,16 +1694,28 @@ export async function getRenderWorkerStatusAction(artifactId: string) {
       ),
     ]);
 
-    const readiness = await readinessResponse.json().catch(() => ({}));
+    const readiness = await readJsonResponseWithLimit<unknown>(
+      readinessResponse,
+      PRODUCTION_API_RESPONSE_MAX_BYTES,
+    ).catch(() => ({}));
     if (!workersResponse.ok) {
       return { success: false, error: `HTTP Error ${workersResponse.status}` };
     }
 
-    const workerPayload = await workersResponse.json();
+    const workerPayload = await readJsonResponseWithLimit<unknown>(
+      workersResponse,
+      PRODUCTION_API_RESPONSE_MAX_BYTES,
+    );
+    if (!isRecord(workerPayload) || !Array.isArray(workerPayload.workers)) {
+      return { success: false, error: "El API de render devolvio workers invalidos" };
+    }
+    const readinessConfig = isRecord(readiness) && isRecord(readiness.config)
+      ? readiness.config
+      : null;
     const renderProvider =
-      typeof readiness?.config?.provider === "string"
-        ? readiness.config.provider
-        : typeof readiness?.provider === "string"
+      typeof readinessConfig?.provider === "string"
+        ? readinessConfig.provider
+        : isRecord(readiness) && typeof readiness.provider === "string"
           ? readiness.provider
           : null;
 
@@ -1629,7 +1724,7 @@ export async function getRenderWorkerStatusAction(artifactId: string) {
       apiUrl: productionApiUrl,
       renderProvider,
       requiresDesktopWorker: renderProvider === "desktop_worker",
-      workers: (workerPayload.workers || []) as RenderWorkerStatusView[],
+      workers: workerPayload.workers.filter(isRecord) as unknown as RenderWorkerStatusView[],
     };
   });
 }
@@ -1647,25 +1742,32 @@ export async function createRenderWorkerLinkCodeAction(artifactId: string) {
     }
 
     const productionApiUrl = getProductionApiBaseUrl();
-    const response = await fetch(`${productionApiUrl}/api/v1/production/remotion/workers/link-codes`, {
+    const response = await fetchWithDeadline(`${productionApiUrl}/api/v1/production/remotion/workers/link-codes`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
       },
       body: JSON.stringify({ organizationId }),
-    });
+    }, PRODUCTION_API_MUTATION_TIMEOUT_MS);
 
     if (!response.ok) {
       return { success: false, error: `HTTP Error ${response.status}` };
     }
 
-    const result = await response.json();
+    const result = await readJsonResponseWithLimit<unknown>(
+      response,
+      PRODUCTION_API_RESPONSE_MAX_BYTES,
+    );
+    if (!isRecord(result) || typeof result.code !== "string") {
+      return { success: false, error: "El API de render devolvio un codigo invalido" };
+    }
+    const linkCode = isRecord(result.linkCode) ? result.linkCode : null;
     return {
       success: true,
       apiUrl: productionApiUrl,
-      code: result.code as string,
-      expiresAt: result.linkCode?.expires_at as string | undefined,
+      code: result.code,
+      expiresAt: typeof linkCode?.expires_at === "string" ? linkCode.expires_at : undefined,
     };
   });
 }
@@ -1720,10 +1822,13 @@ export async function deleteFinalVideoForPublicationAction(componentId: string) 
     cleanedAssets.dod_checklist = buildDodChecklist(cleanedAssets);
     cleanedAssets.updated_at = new Date().toISOString();
 
-    const { error: updateError } = await supabase
-      .from("material_components")
-      .update({ assets: cleanedAssets })
-      .eq("id", componentId);
+    const { error: updateError } = await supabase.rpc(
+      "patch_material_component_assets",
+      {
+        p_component_id: componentId,
+        p_assets_patch: buildMaterialAssetsPatch(currentAssets, cleanedAssets),
+      },
+    );
 
     if (updateError) {
       return { success: false, error: updateError.message };

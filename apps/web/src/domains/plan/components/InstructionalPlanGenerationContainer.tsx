@@ -5,15 +5,13 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { updateArtifactStatusAction } from "@/domains/artifacts/actions/artifact.actions";
 import {
-  deleteInstructionalPlanAction,
   generateInstructionalPlanAction,
   getInstructionalPlanSnapshotAction,
+  updateInstructionalPlanVideoDurationPolicyAction,
   updateInstructionalPlanStatusAction,
   validateInstructionalPlanAction,
 } from "../actions/plan.actions";
-import {
-  dismissUpstreamDirtyAction,
-} from "@/lib/server/pipeline-dirty-actions";
+import { dismissUpstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import {
   PLAN_STATES,
   PLAN_TERMINAL_STATES,
@@ -24,6 +22,14 @@ import { useInstructionalPlanEditor } from "../hooks/useInstructionalPlanEditor"
 import { InstructionalPlanResultsView } from "./InstructionalPlanResultsView";
 import { InstructionalPlanSetupView } from "./InstructionalPlanSetupView";
 import type { InstructionalPlanRecord } from "./plan-view.types";
+import {
+  DEFAULT_VIDEO_DURATION_POLICY,
+  type VideoDurationPolicy,
+} from "@/domains/video-duration/video-duration-policy";
+import {
+  canIteratePlan,
+  PLAN_MAX_ITERATIONS,
+} from "@/domains/plan/lib/plan-iteration";
 
 interface InstructionalPlanGenerationContainerProps {
   artifactId: string;
@@ -43,6 +49,11 @@ export function InstructionalPlanGenerationContainer({
 }: InstructionalPlanGenerationContainerProps) {
   const router = useRouter();
   const [customPrompt, setCustomPrompt] = useState("");
+  const [configuredPrompt, setConfiguredPrompt] = useState("");
+  const [promptSource, setPromptSource] = useState<
+    "organization" | "global" | "default" | null
+  >(null);
+  const [promptVersion, setPromptVersion] = useState<string | null>(null);
   const [existingPlan, setExistingPlan] =
     useState<InstructionalPlanRecord | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -50,9 +61,14 @@ export function InstructionalPlanGenerationContainer({
   const [loadingPlan, setLoadingPlan] = useState(true);
   const [reviewNotes, setReviewNotes] = useState("");
   const [useCustomPrompt, setUseCustomPrompt] = useState(false);
+  const [videoDurationPolicy, setVideoDurationPolicy] =
+    useState<VideoDurationPolicy>({
+      ...DEFAULT_VIDEO_DURATION_POLICY,
+    });
   const canReview = REVIEWER_ROLE_SET.has(profile?.platform_role || "");
   const lastKnownPlanStateRef = useRef<string | null>(null);
   const lastKnownValidationRef = useRef(false);
+  const promptInitializedRef = useRef(false);
   const {
     editedLesson,
     editingLessonId,
@@ -80,7 +96,10 @@ export function InstructionalPlanGenerationContainer({
         const result = await getInstructionalPlanSnapshotAction(artifactId);
 
         if (!result.success) {
-          console.error("[InstructionalPlan] Error fetching plan:", result.error);
+          console.error(
+            "[InstructionalPlan] Error fetching plan:",
+            result.error,
+          );
 
           if (
             result.error === "Artifact not found or inaccessible" ||
@@ -102,6 +121,16 @@ export function InstructionalPlanGenerationContainer({
         }
 
         const plan = (result.plan as InstructionalPlanRecord | null) || null;
+        if (result.generationPrompt && !promptInitializedRef.current) {
+          setConfiguredPrompt(result.generationPrompt.content);
+          setCustomPrompt(result.generationPrompt.content);
+          setPromptSource(result.generationPrompt.source);
+          setPromptVersion(result.generationPrompt.version);
+          promptInitializedRef.current = true;
+        }
+        if (result.videoDurationPolicy) {
+          setVideoDurationPolicy(result.videoDurationPolicy);
+        }
 
         if (!plan) {
           setExistingPlan(null);
@@ -136,7 +165,8 @@ export function InstructionalPlanGenerationContainer({
         if (plan.state === PLAN_STATES.FAILED) {
           setIsGenerating(false);
           toast.error(
-            "La generacion fallo. Por favor, intenta de nuevo o revisa los logs.",
+            plan.last_error?.message ||
+              "La generacion fallo. Por favor, intenta de nuevo o revisa los logs.",
           );
         }
 
@@ -170,6 +200,13 @@ export function InstructionalPlanGenerationContainer({
   });
 
   const handleGenerate = useCallback(async () => {
+    if (existingPlan && !canIteratePlan(existingPlan.iteration_count)) {
+      toast.error(
+        `El plan instruccional alcanzo el limite de ${PLAN_MAX_ITERATIONS} iteraciones.`,
+      );
+      return false;
+    }
+
     setIsGenerating(true);
     lastKnownValidationRef.current = false;
     lastKnownPlanStateRef.current = PLAN_STATES.PROCESSING;
@@ -188,6 +225,7 @@ export function InstructionalPlanGenerationContainer({
         artifactId,
         customPrompt,
         useCustomPrompt,
+        existingPlan ? reviewNotes.trim() || undefined : undefined,
       );
 
       if (!result.success) {
@@ -197,7 +235,8 @@ export function InstructionalPlanGenerationContainer({
             : `Error al generar: ${result.error}`,
         );
         setIsGenerating(false);
-        return;
+        await fetchPlan();
+        return false;
       }
 
       toast.info(
@@ -208,12 +247,23 @@ export function InstructionalPlanGenerationContainer({
         void fetchPlan();
         router.refresh();
       }, PLAN_REFRESH_DELAY_MS);
+      return true;
     } catch (error) {
       console.error("Error calling plan generation action:", error);
       toast.error("Error de conexion. Intenta de nuevo.");
       setIsGenerating(false);
+      await fetchPlan();
+      return false;
     }
-  }, [artifactId, customPrompt, fetchPlan, router, useCustomPrompt]);
+  }, [
+    artifactId,
+    customPrompt,
+    existingPlan,
+    fetchPlan,
+    reviewNotes,
+    router,
+    useCustomPrompt,
+  ]);
 
   const handleValidate = useCallback(async () => {
     setIsValidating(true);
@@ -289,16 +339,12 @@ export function InstructionalPlanGenerationContainer({
     }
 
     try {
-      await deleteInstructionalPlanAction(artifactId);
-      setExistingPlan(null);
-      setIsGenerating(false);
-      setIsValidating(false);
-      setReviewNotes("");
       handleCancelEdit();
+      await handleGenerate();
     } catch (error) {
       console.error(error);
     }
-  }, [artifactId, handleCancelEdit]);
+  }, [handleCancelEdit, handleGenerate]);
 
   const handleDismissUpstreamDirty = useCallback(async () => {
     await dismissUpstreamDirtyAction("instructional_plans", artifactId);
@@ -309,13 +355,47 @@ export function InstructionalPlanGenerationContainer({
   }, [artifactId, router]);
 
   const handleIterateUpstreamDirty = useCallback(async () => {
-    await handleGenerate();
+    const generationStarted = await handleGenerate();
+    if (!generationStarted) return;
+
     await dismissUpstreamDirtyAction("instructional_plans", artifactId);
     setExistingPlan((currentPlan) =>
       currentPlan ? { ...currentPlan, upstream_dirty: false } : currentPlan,
     );
     router.refresh();
   }, [artifactId, handleGenerate, router]);
+
+  const handleVideoDurationPolicySave = useCallback(
+    async (policy: VideoDurationPolicy) => {
+      const result = await updateInstructionalPlanVideoDurationPolicyAction(
+        artifactId,
+        policy,
+      );
+      if (!result.success) {
+        toast.error(result.error || "No se pudo actualizar la duración");
+        return false;
+      }
+
+      if (!result.videoDurationPolicy || !result.lessonPlans) {
+        toast.error("La actualización no devolvió el plan recalculado");
+        return false;
+      }
+      setVideoDurationPolicy(result.videoDurationPolicy);
+      setExistingPlan((currentPlan) =>
+        currentPlan
+          ? { ...currentPlan, lesson_plans: result.lessonPlans }
+          : currentPlan,
+      );
+      toast.success("Duración actualizada para todos los videos del plan");
+      router.refresh();
+      return true;
+    },
+    [artifactId, router],
+  );
+
+  const handleGenerateFromUi = useCallback(async () => {
+    await handleGenerate();
+  }, [handleGenerate]);
 
   if (loadingPlan) {
     return (
@@ -342,7 +422,7 @@ export function InstructionalPlanGenerationContainer({
         onIterateUpstreamDirty={handleIterateUpstreamDirty}
         onLessonFieldChange={handleLessonFieldChange}
         onNext={onNext}
-        onRegenerate={handleGenerate}
+        onRegenerate={handleGenerateFromUi}
         onRegenerateRejected={handleRegenerateRejected}
         onReject={handleReject}
         onReviewNotesChange={setReviewNotes}
@@ -352,16 +432,21 @@ export function InstructionalPlanGenerationContainer({
         onValidate={handleValidate}
         plan={existingPlan}
         reviewNotes={reviewNotes}
+        videoDurationPolicy={videoDurationPolicy}
+        onVideoDurationPolicySave={handleVideoDurationPolicySave}
       />
     );
   }
 
   return (
     <InstructionalPlanSetupView
+      configuredPrompt={configuredPrompt}
       customPrompt={customPrompt}
       isGenerating={isGenerating}
       lessonCount={0}
-      onGenerate={handleGenerate}
+      onGenerate={handleGenerateFromUi}
+      promptSource={promptSource}
+      promptVersion={promptVersion}
       setCustomPrompt={setCustomPrompt}
       setUseCustomPrompt={setUseCustomPrompt}
       useCustomPrompt={useCustomPrompt}

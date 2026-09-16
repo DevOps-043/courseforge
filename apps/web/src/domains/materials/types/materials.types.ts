@@ -1,3 +1,6 @@
+import type { AnimatedDeckAppearance } from "@/domains/production/animated-deck/animated-deck-appearance.service";
+import type { VideoDurationContract } from "@/domains/video-duration/video-duration-policy";
+
 // Estados del Paso 5 (ya definidos en SQL)
 export type Esp05StepState =
     | 'PHASE3_DRAFT'
@@ -130,11 +133,19 @@ export type AvatarClipStatus =
     | 'FAILED'
     | 'STALE';
 
+/** Defines the media contract used to decide whether a scene is complete. */
+export type AvatarClipExpectedMediaMode = 'avatar' | 'voice_only' | 'none';
+
 export interface AvatarClip {
+    visual_plan?: import('../../production/composition-editor/composition-narrative.types').SceneVisualPlan;
     id: string;
     order: number;
+    /** Optional author-facing name used for HeyGen and returned media files. */
+    asset_name?: string;
     /** Increments when generated media is cleared so a retry cannot reuse an old successful job. */
     generation_revision?: number;
+    /** Undefined means a legacy or new scene still needs an explicit editorial decision. */
+    expected_media_mode?: AvatarClipExpectedMediaMode;
     deleted?: boolean;
     origin?: 'storyboard' | 'manual';
     storyboard_take_number?: number;
@@ -197,6 +208,7 @@ export interface MaterialAssets {
     final_video_layout_stale?: boolean;
     video_duration?: number;
     assembly_target_duration_seconds?: number;
+    video_duration_contract?: VideoDurationContract;
     layout_overrides?: Record<string, unknown>[];
     layout_overrides_updated_at?: string;
     timeline_overrides?: Record<string, unknown>[];
@@ -220,7 +232,17 @@ export interface MaterialAssets {
         script_hash?: string;
         word_timestamps?: { word: string; start: number; end: number }[];
         last_uploaded_at?: string;
-    };
+    } | null;
+    manual_voice_clips?: {
+        id: string;
+        order: number;
+        storage_path: string;
+        public_url: string;
+        file_name?: string;
+        duration?: number;
+        provider?: string;
+        last_uploaded_at?: string;
+    }[];
     voice_clips?: VoiceClip[];
     background_music?: {
         storage_path: string;
@@ -228,7 +250,7 @@ export interface MaterialAssets {
         file_name?: string;
         duration?: number;
         volume_multiplier?: number;
-    };
+    } | null;
     b_roll_clips?: {
         id: string;
         storage_path: string;
@@ -267,7 +289,7 @@ export interface MaterialAssets {
         width?: number;
     } | null;
     slides?: {
-        appearance?: 'light' | 'dark';
+        appearance?: AnimatedDeckAppearance;
         open_design_project_id?: string;
         html_content_path?: string;
         html_public_url?: string;
@@ -284,6 +306,7 @@ export interface MaterialAssets {
         spec_content_path?: string;
         animated_deck?: {
             status: 'PENDING' | 'VALIDATING' | 'READY_FOR_PREVIEW' | 'READY_FOR_RENDER' | 'FAILED';
+            appearance?: AnimatedDeckAppearance;
             source: 'manual_upload' | 'open_design_import';
             source_html_path: string;
             deck_json_path?: string;
@@ -328,7 +351,7 @@ export interface MaterialAssets {
             file_name?: string;
             content_type?: string;
         }[];
-    };
+    } | null;
 }
 
 // Lección con materiales
@@ -388,7 +411,11 @@ export interface MaterialsGenerationInput {
         module_id: string;
         module_title: string;
         oa_text: string;
-        components: { type: ComponentType; summary: string }[];
+        components: {
+            type: ComponentType;
+            summary: string;
+            duration_contract?: VideoDurationContract;
+        }[];
         quiz_spec: QuizSpec | null;
         requires_demo_guide: boolean;
     };

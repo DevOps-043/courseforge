@@ -1,7 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createOrReuseProductionJob, failProductionJob } from "../production-jobs.service";
+import {
+  claimPendingProductionJob,
+  createOrReuseProductionJob,
+  failProductionJob,
+  preserveRetryableProviderCheckpoint,
+} from "../production-jobs.service";
+
+test("claims a pending billable job only when the conditional update wins", async () => {
+  const filters: Array<[string, string]> = [];
+  const query = {
+    eq(column: string, value: string) { filters.push([column, value]); return this; },
+    maybeSingle() { return Promise.resolve({ data: { id: "job-1" }, error: null }); },
+    select() { return this; },
+    update() { return this; },
+  };
+  const supabase = { from() { return query; } } as unknown as SupabaseClient;
+
+  assert.equal(await claimPendingProductionJob({ jobId: "job-1", supabase }), true);
+  assert.deepEqual(filters, [["id", "job-1"], ["status", "PENDING"]]);
+});
 
 const context = {
   artifactId: "artifact-1",
@@ -97,6 +116,22 @@ test("keeps the existing failed job when retry was not requested", async () => {
   });
 
   assert.equal(result.status, "FAILED");
+});
+
+test("preserves only the generated speech checkpoint across a retry", () => {
+  assert.deepEqual(preserveRetryableProviderCheckpoint({
+    provider_job_id: "discard-me",
+    speech_checkpoint: {
+      audio_url: "https://resource.heygen.ai/audio.mp3",
+      duration_seconds: 8.4,
+    },
+  }), {
+    speech_checkpoint: {
+      audio_url: "https://resource.heygen.ai/audio.mp3",
+      duration_seconds: 8.4,
+    },
+  });
+  assert.deepEqual(preserveRetryableProviderCheckpoint({ provider_job_id: "discard-me" }), {});
 });
 
 test("persists a structured QA diagnostic when a production job fails", async () => {

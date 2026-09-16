@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { ANIMATED_DECK_APPEARANCES } from "../animated-deck/animated-deck-appearance.service";
 import {
   COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS,
   DEFAULT_COMPOSITION_RENDER_FPS,
 } from "./composition-document.types.constants";
 import { compositionMotionSchema } from "./composition-motion.types";
+import { compositionNarrativeSceneSchema } from "./composition-narrative.types";
 import { resolveCompositionAnimationWindow } from "./composition-motion-scheduling.service";
 import {
   COMPOSITION_LAYER_MAX,
@@ -22,7 +24,7 @@ export const COMPOSITION_DURATION_SOURCES = [
   "slides",
 ] as const;
 export type CompositionDurationSource = typeof COMPOSITION_DURATION_SOURCES[number];
-export const COMPOSITION_TRACK_ROLES = ["DECK", "AVATAR", "VOICE", "MUSIC", "BROLL", "VISUAL", "OVERLAY"] as const;
+export const COMPOSITION_TRACK_ROLES = ["DECK", "AVATAR", "VOICE", "MUSIC", "SFX", "BROLL", "VISUAL", "OVERLAY"] as const;
 export type CompositionTrackRole = typeof COMPOSITION_TRACK_ROLES[number];
 export const COMPOSITION_MEDIA_FIT_MODES = ["CONTAIN", "COVER"] as const;
 export type CompositionMediaFit = typeof COMPOSITION_MEDIA_FIT_MODES[number];
@@ -34,6 +36,20 @@ export const DEFAULT_COMPOSITION_DUCKING_SETTINGS = {
   targetRole: "MUSIC" as const,
   triggerRoles: ["VOICE", "AVATAR"] as const,
 };
+
+/**
+ * Timeline times are persisted at millisecond precision. A much smaller
+ * tolerance absorbs IEEE-754 representation noise without accepting a real
+ * user-visible overrun.
+ */
+export const COMPOSITION_TIMELINE_BOUNDARY_EPSILON_SECONDS = 0.000001;
+
+export function exceedsCompositionTimelineBoundary(
+  endSeconds: number,
+  boundarySeconds: number,
+) {
+  return endSeconds > boundarySeconds + COMPOSITION_TIMELINE_BOUNDARY_EPSILON_SECONDS;
+}
 
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
 const uuidSchema = z.string().uuid();
@@ -118,12 +134,15 @@ export const compositionAudioMixSchema = z.object({
 });
 
 const deckSourceSchema = z.object({
+  slideKey: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   classes: z.string().trim().min(1).max(2_000).default("slide active"),
   html: z.string().min(1).max(100_000),
   slideIndex: z.number().int().min(0).max(1_000),
 }).strict();
 
 const deckStylesSchema = z.object({
+  /** Optional only for composition documents created before deck appearances. */
+  appearance: z.enum(ANIMATED_DECK_APPEARANCES).optional(),
   css: z.string().max(200_000),
   fontUrls: z.array(z.string().url()).max(32),
 }).strict();
@@ -131,6 +150,8 @@ const deckStylesSchema = z.object({
 const productionAssetSourceSchema = z.object({
   /** Result of media probing; absent on documents created before audio detection. */
   hasAudio: z.boolean().optional(),
+  /** A Production asset intentionally reserved for the opening of this video. */
+  placement: z.literal("INTRO").optional(),
   productionAssetId: uuidSchema,
   sourceHeight: z.number().int().positive().max(16_384).optional(),
   sourceWidth: z.number().int().positive().max(16_384).optional(),
@@ -145,7 +166,13 @@ const assemblyBrandAssetSourceSchema = z.object({
   sourceWidth: z.number().int().positive().max(16_384).optional(),
 }).strict();
 
+/** A reusable, organization-scoped library item; its binary never lives in the document. */
+const soundEffectAssetSourceSchema = z.object({
+  soundEffectAssetId: uuidSchema,
+}).strict();
+
 export const compositionClipSchema = z.object({
+  sceneId: z.string().min(1).max(160).optional(),
   crop: compositionVisualCropSchema.optional(),
   durationSeconds: boundedSecondsSchema.positive(),
   hidden: z.boolean().default(false),
@@ -160,6 +187,7 @@ export const compositionClipSchema = z.object({
     assemblyBrandAssetSourceSchema.extend({ type: z.literal("ASSEMBLY_BRAND_ASSET") }),
     deckSourceSchema.extend({ type: z.literal("DECK_SLIDE") }),
     productionAssetSourceSchema.extend({ type: z.literal("PRODUCTION_ASSET") }),
+    soundEffectAssetSourceSchema.extend({ type: z.literal("SOUND_EFFECT_ASSET") }),
   ]),
   sourceDurationSeconds: sourceMediaSecondsSchema.positive().optional(),
   sourceOffsetSeconds: sourceMediaSecondsSchema.optional(),
@@ -188,7 +216,7 @@ export const compositionClipSchema = z.object({
   if (clip.kind === "DECK_SLIDE" && clip.source.type !== "DECK_SLIDE") {
     context.addIssue({ code: "custom", message: "Un clip de deck debe conservar su fuente HTML." });
   }
-  if (clip.kind !== "DECK_SLIDE" && clip.source.type !== "PRODUCTION_ASSET" && clip.source.type !== "ASSEMBLY_BRAND_ASSET") {
+  if (clip.kind !== "DECK_SLIDE" && clip.source.type !== "PRODUCTION_ASSET" && clip.source.type !== "ASSEMBLY_BRAND_ASSET" && clip.source.type !== "SOUND_EFFECT_ASSET") {
     context.addIssue({ code: "custom", message: "Un clip multimedia debe referenciar un asset válido." });
   }
   if (clip.source.type === "ASSEMBLY_BRAND_ASSET" && clip.kind !== "VIDEO") {
@@ -197,6 +225,8 @@ export const compositionClipSchema = z.object({
 });
 
 export const compositionEditorDocumentSchema = z.object({
+  excludedSources: z.array(z.string().min(1).max(200)).max(1000).optional(),
+  narrativeScenes: z.array(compositionNarrativeSceneSchema).max(250).optional(),
   audioMix: compositionAudioMixSchema,
   canvas: z.object({
     durationMode: z.enum(["AUTO", "USER_EDITED"]).optional(),
@@ -222,8 +252,24 @@ export const compositionEditorDocumentSchema = z.object({
   const hfIds = new Set<string>();
   for (const clip of document.clips) {
     if (!trackIds.has(clip.trackId)) context.addIssue({ code: "custom", message: `El clip ${clip.id} no pertenece a un track válido.` });
-    if (clip.startSeconds + clip.durationSeconds > document.canvas.durationSeconds) {
-      context.addIssue({ code: "custom", message: `El clip ${clip.id} excede la duración del canvas.` });
+    if (exceedsCompositionTimelineBoundary(
+      clip.startSeconds + clip.durationSeconds,
+      document.canvas.durationSeconds,
+    )) {
+      const clipEndSeconds = clip.startSeconds + clip.durationSeconds;
+      context.addIssue({
+        code: "custom",
+        message: `El clip ${clip.id} excede la duración del canvas.`,
+        params: {
+          canvasDurationSeconds: document.canvas.durationSeconds,
+          clipEndSeconds,
+          clipId: clip.id,
+          clipStartSeconds: clip.startSeconds,
+          durationSeconds: clip.durationSeconds,
+          issueType: "COMPOSITION_TIMELINE_BOUNDARY",
+          overflowSeconds: clipEndSeconds - document.canvas.durationSeconds,
+        },
+      });
     }
     if (clipIds.has(clip.id)) context.addIssue({ code: "custom", message: `El id de clip ${clip.id} está duplicado.` });
     if (hfIds.has(clip.hfId)) context.addIssue({ code: "custom", message: `El id visual ${clip.hfId} está duplicado.` });
@@ -265,5 +311,6 @@ export type CompositionTrack = z.infer<typeof compositionTrackSchema>;
 export function getCompositionClipMediaAssetId(clip: CompositionClip) {
   if (clip.source.type === "PRODUCTION_ASSET") return clip.source.productionAssetId;
   if (clip.source.type === "ASSEMBLY_BRAND_ASSET") return clip.source.assemblyBrandAssetId;
+  if (clip.source.type === "SOUND_EFFECT_ASSET") return clip.source.soundEffectAssetId;
   return null;
 }

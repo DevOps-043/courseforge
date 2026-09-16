@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   appendMissingProductionAssetClips,
+  buildSceneAssetTimings,
   createInitialCompositionDocument,
   reconcileCompositionDocument,
 } from "../composition-document.factory";
@@ -11,7 +12,8 @@ import {
   resolveCompositionDuration,
 } from "../composition-duration.service";
 import { normalizeCompositionTrackTopology } from "../composition-track-registry";
-import { formatCompositionTimecode, parseCompositionTimecode } from "../composition-timecode";
+import { formatCompositionTimecode, parseCompositionTimecode, stepCompositionFrame } from "../composition-timecode";
+import { applyCompositionEditorPatches } from "../editor-patch.service";
 
 test("preserves deck HTML as editable clips and labels missing timings as estimated", () => {
   const document = createInitialCompositionDocument({
@@ -47,6 +49,13 @@ test("formats and parses editor timecodes without decimal ambiguity", () => {
   assert.equal(parseCompositionTimecode("00:01.050"), 1.05);
   assert.equal(parseCompositionTimecode("1,5"), 1.5);
   assert.equal(parseCompositionTimecode("00:65"), null);
+});
+
+test("steps the playhead by an exact frame or one coarse second", () => {
+  assert.equal(stepCompositionFrame(1, 1, 25, 5), 1.04);
+  assert.equal(stepCompositionFrame(1, -1, 25, 5), 0.96);
+  assert.equal(stepCompositionFrame(1, 1, 25, 5, true), 2);
+  assert.equal(stepCompositionFrame(0, -1, 25, 5), 0);
 });
 
 test("keeps production media as references instead of copying files", () => {
@@ -292,6 +301,220 @@ test("keeps avatar and voice-only scenes interleaved on one shared scene clock",
   ]);
 });
 
+test("keeps distinct scene identities sequential when legacy scene orders collide", () => {
+  const longerVoice = {
+    checksum: "7".repeat(64),
+    durationSeconds: 21.603,
+    fileSizeBytes: 4,
+    label: "Voz generada · Escena 6",
+    mimeType: "audio/mpeg",
+    productionAssetId: "00000000-0000-4000-8000-000000000171",
+    publicUrl: null,
+    sceneClipId: "scene-6",
+    sceneOrder: 6,
+    storageBucket: "production-assets",
+    storagePath: "production-assets/voice-scene-6.mp3",
+    timelineRole: "VOICE" as const,
+    timelineVariant: "CLIP" as const,
+  };
+  const shorterManualVoice = {
+    ...longerVoice,
+    checksum: "8".repeat(64),
+    durationSeconds: 13.322,
+    label: "Voz manual · Escena 6",
+    productionAssetId: "00000000-0000-4000-8000-000000000172",
+    sceneClipId: "manual-scene-6",
+    storagePath: "production-assets/manual-voice-scene-6.mp3",
+  };
+  const deck = {
+    css: "",
+    fonts: [],
+    height: 1080,
+    slides: [{ animationCount: 0, classes: "slide", html: "<h1>Base</h1>", index: 0, label: "Base" }],
+    width: 1920,
+  };
+  const initial = createInitialCompositionDocument({
+    animatedDeck: deck,
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "", title: "Colisión heredada" },
+  });
+
+  const reconciled = reconcileCompositionDocument({
+    animatedDeck: deck,
+    deckDependencyAssetIds: new Set(),
+    document: initial,
+    productionAssets: [longerVoice, shorterManualVoice],
+  });
+  const voices = reconciled.document.clips.filter((clip) => clip.trackId === "voice");
+
+  assert.equal(reconciled.document.canvas.durationSeconds, 34.925);
+  assert.deepEqual(voices.map((clip) => clip.startSeconds), [0, 21.603]);
+  assert.deepEqual(voices.map((clip) => clip.durationSeconds), [21.603, 13.322]);
+  assert.deepEqual(voices.map((clip) => clip.sourceDurationSeconds), [21.603, 13.322]);
+});
+
+test("quantizes scaled scene timings without crossing the canvas boundary", () => {
+  const durations = [0.29855970890481504, 1.218294964014145, 0.05137858539769043];
+  const assets = durations.map((durationSeconds, index) => ({
+    checksum: String(index + 1).repeat(64),
+    durationSeconds,
+    fileSizeBytes: 4,
+    mimeType: "audio/mpeg",
+    productionAssetId: `00000000-0000-4000-8000-0000000005${String(index + 1).padStart(2, "0")}`,
+    publicUrl: null,
+    sceneClipId: `rounding-scene-${index + 1}`,
+    sceneOrder: index + 1,
+    storageBucket: "production-assets",
+    storagePath: `production-assets/rounding-${index + 1}.mp3`,
+    timelineRole: "VOICE" as const,
+    timelineVariant: "CLIP" as const,
+  }));
+  const canvasDurationSeconds = 1.451;
+  const timings = buildSceneAssetTimings(assets, canvasDurationSeconds);
+  const latestEnd = Math.max(...[...timings.values()].map((timing) => timing.startSeconds + timing.durationSeconds));
+
+  assert.ok(latestEnd <= canvasDurationSeconds);
+});
+
+test("expands an automatic canvas and appends newly completed scene voices without overlap", () => {
+  const voiceAsset = (order: number) => ({
+    checksum: String(order).repeat(64),
+    durationSeconds: 4,
+    fileSizeBytes: 4,
+    label: `Voz · Escena ${order}`,
+    mimeType: "audio/mpeg",
+    productionAssetId: `00000000-0000-4000-8000-0000000003${String(order).padStart(2, "0")}`,
+    publicUrl: null,
+    sceneClipId: `scene-${order}`,
+    sceneOrder: order,
+    storageBucket: "production-assets",
+    storagePath: `production-assets/voice-incremental-${order}.mp3`,
+    timelineRole: "VOICE" as const,
+    timelineVariant: "CLIP" as const,
+  });
+  const firstVoice = voiceAsset(1);
+  const secondVoice = voiceAsset(2);
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [firstVoice],
+    plan: { accentColor: "#38BDF8", durationSeconds: 4, subtitle: "Prueba", title: "Incremental" },
+  });
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document,
+    productionAssets: [firstVoice, secondVoice],
+  });
+  const voices = reconciled.document.clips.filter((clip) => clip.trackId === "voice");
+
+  assert.equal(reconciled.changed, true);
+  assert.equal(reconciled.addedProductionAssetCount, 1);
+  assert.equal(reconciled.document.canvas.durationSeconds, 8);
+  assert.equal(reconciled.document.canvas.durationSource, "voice");
+  assert.deepEqual(voices.map((clip) => clip.startSeconds), [0, 4]);
+  assert.deepEqual(voices.map((clip) => clip.durationSeconds), [4, 4]);
+});
+
+test("appends a second manual voice after a user-edited canvas and extends its duration", () => {
+  const voiceAsset = (order: number, durationSeconds: number) => ({
+    checksum: String(order).repeat(64),
+    durationSeconds,
+    fileSizeBytes: 4,
+    label: `Voz manual ${order}`,
+    mimeType: "audio/mpeg",
+    productionAssetId: `00000000-0000-4000-8000-0000000004${String(order).padStart(2, "0")}`,
+    publicUrl: null,
+    storageBucket: "production-assets",
+    storagePath: `production-assets/manual-voice-${order}.mp3`,
+    timelineRole: "VOICE" as const,
+  });
+  const firstVoice = voiceAsset(1, 12);
+  const secondVoice = voiceAsset(2, 18);
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [firstVoice],
+    plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "Prueba", title: "Voces manuales" },
+  });
+  document.canvas.durationMode = "USER_EDITED";
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document,
+    productionAssets: [firstVoice, secondVoice],
+  });
+  const voices = reconciled.document.clips
+    .filter((clip) => clip.trackId === "voice")
+    .sort((left, right) => left.startSeconds - right.startSeconds);
+
+  assert.equal(reconciled.addedProductionAssetCount, 1);
+  assert.equal(reconciled.document.canvas.durationSeconds, 30);
+  assert.equal(reconciled.document.canvas.durationSource, "voice");
+  assert.deepEqual(voices.map((clip) => clip.startSeconds), [0, 12]);
+  assert.deepEqual(voices.map((clip) => clip.durationSeconds), [12, 18]);
+});
+
+test("uses the expanded automatic canvas when distributing newly available media", () => {
+  const initial = createInitialCompositionDocument({
+    animatedDeck: {
+      css: "", fonts: [], height: 1080,
+      slides: [
+        { animationCount: 0, classes: "slide", html: "<h1>Uno</h1>", index: 0, label: "Uno" },
+        { animationCount: 0, classes: "slide", html: "<h1>Dos</h1>", index: 1, label: "Dos" },
+      ],
+      width: 1920,
+    },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 10, subtitle: "", title: "Expansión" },
+  });
+  const voice = {
+    checksum: "a".repeat(64), durationSeconds: 20, fileSizeBytes: 4, mimeType: "audio/mpeg",
+    productionAssetId: "00000000-0000-4000-8000-000000000581", publicUrl: null,
+    storageBucket: "production-assets", storagePath: "production-assets/new-voice.mp3", timelineRole: "VOICE" as const,
+  };
+  const broll = {
+    checksum: "b".repeat(64), durationSeconds: 16, fileSizeBytes: 4, mimeType: "video/mp4",
+    productionAssetId: "00000000-0000-4000-8000-000000000582", publicUrl: null,
+    storageBucket: "production-assets", storagePath: "production-assets/new-broll.mp4", timelineRole: "BROLL" as const,
+  };
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document: initial,
+    productionAssets: [voice, broll],
+  });
+  const voiceClip = reconciled.document.clips.find((clip) => clip.trackId === "voice")!;
+  const brollClip = reconciled.document.clips.find((clip) => clip.trackId === "broll")!;
+
+  assert.equal(reconciled.document.canvas.durationSeconds, 20);
+  assert.equal(voiceClip.durationSeconds, 20);
+  assert.equal(brollClip.durationSeconds, 16);
+});
+
+test("refreshes regenerated audio bounds without producing an invalid clip", () => {
+  const asset = {
+    checksum: "c".repeat(64), durationSeconds: 12, fileSizeBytes: 4, mimeType: "audio/mpeg",
+    productionAssetId: "00000000-0000-4000-8000-000000000583", publicUrl: null,
+    storageBucket: "production-assets", storagePath: "production-assets/regenerated-voice.mp3", timelineRole: "VOICE" as const,
+  };
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [asset],
+    plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "", title: "Regeneración" },
+  });
+  document.canvas.durationMode = "USER_EDITED";
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document,
+    productionAssets: [{ ...asset, checksum: "d".repeat(64), durationSeconds: 7.25 }],
+  });
+  const voice = reconciled.document.clips.find((clip) => clip.trackId === "voice")!;
+
+  assert.equal(reconciled.changed, true);
+  assert.equal(voice.durationSeconds, 7.25);
+  assert.equal(voice.sourceDurationSeconds, 7.25);
+});
+
 test("reconciles newly available avatar media into an existing draft document", () => {
   const document = createInitialCompositionDocument({
     animatedDeck: {
@@ -411,6 +634,98 @@ test("reconciles legacy FPS and explicit source-audio metadata", () => {
   assert.equal(source.type === "PRODUCTION_ASSET" ? source.hasAudio : undefined, false);
 });
 
+test("adds a prepared deck to a draft created before its slides and preserves subsequent manual timing", () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{
+      checksum: "e".repeat(64), durationSeconds: 15, fileSizeBytes: 4, mimeType: "audio/mpeg",
+      productionAssetId: "00000000-0000-4000-8000-000000000080", publicUrl: null,
+      storageBucket: "production-assets", storagePath: "production-assets/voice.mp3", timelineRole: "VOICE",
+    }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 15, subtitle: "Prueba", title: "Sin deck inicial" },
+  });
+  const deck = {
+    css: ".slide { color: white; }", fonts: [], height: 1080,
+    slides: [
+      { animationCount: 0, classes: "slide active", html: "<h1>Uno</h1>", index: 0, label: "Uno" },
+      { animationCount: 0, classes: "slide active", html: "<h1>Dos</h1>", index: 1, label: "Dos" },
+      { animationCount: 0, classes: "slide active", html: "<h1>Tres</h1>", index: 2, label: "Tres" },
+    ],
+    width: 1920,
+  };
+
+  const reconciled = reconcileCompositionDocument({
+    animatedDeck: deck,
+    deckDependencyAssetIds: new Set(),
+    document,
+    productionAssets: [{
+      checksum: "e".repeat(64), durationSeconds: 15, fileSizeBytes: 4, mimeType: "audio/mpeg",
+      productionAssetId: "00000000-0000-4000-8000-000000000080", publicUrl: null,
+      storageBucket: "production-assets", storagePath: "production-assets/voice.mp3", timelineRole: "VOICE",
+    }],
+  });
+  const slides = reconciled.document.clips.filter((clip) => clip.kind === "DECK_SLIDE");
+
+  assert.equal(reconciled.changed, true);
+  assert.equal(reconciled.document.tracks.some((track) => track.id === "deck"), true);
+  assert.equal(reconciled.document.deckStyles?.css, deck.css);
+  assert.deepEqual(slides.map((clip) => clip.source.type === "DECK_SLIDE" ? clip.source.html : null), ["<h1>Uno</h1>", "<h1>Dos</h1>", "<h1>Tres</h1>"]);
+
+  slides[0]!.startSeconds = 1;
+  slides[0]!.durationSeconds = 4;
+  slides[0]!.timingSource = "USER_EDITED";
+  const refreshed = reconcileCompositionDocument({
+    animatedDeck: {
+      ...deck,
+      slides: [{ ...deck.slides[0]!, html: "<h1>Uno actualizado</h1>" }, ...deck.slides.slice(1)],
+    },
+    deckDependencyAssetIds: new Set(),
+    document: reconciled.document,
+    productionAssets: [{
+      checksum: "e".repeat(64), durationSeconds: 15, fileSizeBytes: 4, mimeType: "audio/mpeg",
+      productionAssetId: "00000000-0000-4000-8000-000000000080", publicUrl: null,
+      storageBucket: "production-assets", storagePath: "production-assets/voice.mp3", timelineRole: "VOICE",
+    }],
+  });
+  const refreshedFirstSlide = refreshed.document.clips.find((clip) => clip.id === "deck-slide-0")!;
+  assert.equal(refreshedFirstSlide.startSeconds, 1);
+  assert.equal(refreshedFirstSlide.durationSeconds, 4);
+  assert.equal(refreshedFirstSlide.timingSource, "USER_EDITED");
+  assert.equal(refreshedFirstSlide.source.type === "DECK_SLIDE" && refreshedFirstSlide.source.html, "<h1>Uno actualizado</h1>");
+});
+
+test("reconciles legacy production filenames to the canonical asset label", () => {
+  const productionAssetId = "00000000-0000-4000-8000-000000000096";
+  const legacyLabel = "e1c8e5ea-ae83-42af-8d5d-c393f2c32d99-voice.mp3";
+  const canonicalLabel = "Lección 1.4: Mapeo y Segmentación del Mercado B2B Digital · Escena 01 · Voz";
+  const baseAsset = {
+    checksum: "6".repeat(64), durationSeconds: 8, fileSizeBytes: 4,
+    mimeType: "audio/mpeg", productionAssetId, publicUrl: null,
+    storageBucket: "production-assets", storagePath: `production-assets/${legacyLabel}`,
+    timelineRole: "VOICE" as const,
+  };
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ ...baseAsset, label: legacyLabel }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Legacy" },
+  });
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document,
+    productionAssets: [{ ...baseAsset, label: canonicalLabel }],
+  });
+  const secondPass = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document: reconciled.document,
+    productionAssets: [{ ...baseAsset, label: canonicalLabel }],
+  });
+
+  assert.equal(reconciled.changed, true);
+  assert.equal(reconciled.document.clips[0]?.label, canonicalLabel);
+  assert.equal(secondPass.changed, false);
+});
+
 test("removes only deck-owned raster assets from an existing timeline", () => {
   const deckAssetId = "00000000-0000-4000-8000-000000000006";
   const avatarAssetId = "00000000-0000-4000-8000-000000000007";
@@ -431,4 +746,109 @@ test("removes only deck-owned raster assets from an existing timeline", () => {
   assert.equal(reconciled.removedDeckDependencyCount, 1);
   assert.equal(reconciled.document.clips.some((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === deckAssetId), false);
   assert.equal(reconciled.document.clips.some((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === avatarAssetId && clip.trackId === "avatar"), true);
+});
+
+test("preserves retained clip bounds and removes orphan animations when production assets change", () => {
+  const previousAvatar = {
+    checksum: "a".repeat(64), durationSeconds: 40, fileSizeBytes: 4, mimeType: "video/mp4",
+    productionAssetId: "00000000-0000-4000-8000-000000000071", publicUrl: null,
+    storageBucket: "production-assets", storagePath: "production-assets/avatar-previous.mp4",
+    timelineRole: "AVATAR" as const, timelineVariant: "FULL" as const,
+  };
+  const nextVoice = {
+    checksum: "b".repeat(64), durationSeconds: 10, fileSizeBytes: 4, mimeType: "audio/mpeg",
+    productionAssetId: "00000000-0000-4000-8000-000000000072", publicUrl: null,
+    storageBucket: "production-assets", storagePath: "production-assets/voice-current.mp3",
+    timelineRole: "VOICE" as const, timelineVariant: "FULL" as const,
+  };
+  const initial = createInitialCompositionDocument({
+    animatedDeck: {
+      css: "", fonts: [], height: 1080,
+      slides: Array.from({ length: 5 }, (_, index) => ({
+        animationCount: 0,
+        classes: "slide",
+        html: `<h1>${index + 1}</h1>`,
+        index,
+        label: `Diapositiva ${index + 1}`,
+      })),
+      width: 1920,
+    },
+    assets: [previousAvatar],
+    plan: { accentColor: "#38BDF8", durationSeconds: 40, subtitle: "Prueba", title: "Cambio de fuentes" },
+  });
+  const previousAvatarClip = initial.clips.find((clip) => (
+    clip.source.type === "PRODUCTION_ASSET"
+    && clip.source.productionAssetId === previousAvatar.productionAssetId
+  ))!;
+  const animated = applyCompositionEditorPatches(initial, [{
+    animationId: "motion-previous-avatar",
+    clipId: previousAvatarClip.id,
+    durationSeconds: 0.5,
+    presetId: "FADE_IN",
+    type: "animation.add-preset",
+  }]);
+
+  const reconciled = reconcileCompositionDocument({
+    deckDependencyAssetIds: new Set(),
+    document: animated,
+    productionAssets: [nextVoice],
+  });
+
+  assert.equal(reconciled.document.canvas.durationSeconds, 40);
+  assert.equal(reconciled.document.canvas.durationSource, "voice");
+  assert.equal(reconciled.document.motion.animations.length, 0);
+  assert.equal(reconciled.removedInactiveProductionAssetCount, 1);
+  assert.equal(reconciled.removedOrphanAnimationCount, 1);
+  assert.equal(reconciled.document.clips.some((clip) => clip.id === previousAvatarClip.id), false);
+  assert.equal(reconciled.document.clips.some((clip) => (
+    clip.source.type === "PRODUCTION_ASSET"
+    && clip.source.productionAssetId === nextVoice.productionAssetId
+  )), true);
+});
+
+test("keeps a removed slide excluded when Production sources reconcile", () => {
+  const deck = { css: "", fonts: [], height: 1080, slides: [
+    { animationCount: 0, classes: "slide", html: "<h1>Uno</h1>", index: 0, label: "Uno" },
+    { animationCount: 0, classes: "slide", html: "<h1>Dos</h1>", index: 1, label: "Dos" },
+  ], width: 1920 };
+  const initial = createInitialCompositionDocument({ animatedDeck: deck, assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 10, subtitle: "", title: "Exclusión" } });
+  const removed = applyCompositionEditorPatches(initial, [{ clipId: "deck-slide-1", type: "clip.remove" }]);
+  const reconciled = reconcileCompositionDocument({ animatedDeck: deck, deckDependencyAssetIds: new Set(), document: removed, productionAssets: [] });
+  assert.equal(reconciled.document.clips.some((clip) => clip.id === "deck-slide-1"), false);
+  assert.equal(reconciled.changed, false);
+  assert.equal(removed.excludedSources?.length, 1);
+});
+
+test("preassembles selected slides on measured narrative scene durations", () => {
+  const deck = { css: "", fonts: [], height: 1080, slides: [
+    { animationCount: 0, classes: "slide", html: "<h1>Uno</h1>", index: 0, label: "Uno" },
+    { animationCount: 0, classes: "slide", html: "<h1>Dos</h1>", index: 1, label: "Dos" },
+    { animationCount: 0, classes: "slide", html: "<h1>Tres</h1>", index: 2, label: "Tres" },
+  ], width: 1920 };
+  const base = createInitialCompositionDocument({ animatedDeck: deck, assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "", title: "Preensamble" } });
+  const keys = base.clips.filter((clip) => clip.source.type === "DECK_SLIDE")
+    .map((clip) => clip.source.type === "DECK_SLIDE" ? clip.source.slideKey! : "");
+  const assets = [{ checksum: "1".repeat(64), durationSeconds: 12, fileSizeBytes: 4, hasAudio: true,
+    mimeType: "audio/mpeg", productionAssetId: "00000000-0000-4000-8000-000000000091", publicUrl: null,
+    sceneClipId: "scene-one", sceneOrder: 1, storageBucket: "production-assets", storagePath: "voice.mp3", timelineRole: "VOICE" as const }];
+  const scenes = [{ id: "scene-one", order: 1, label: "Escena uno", scriptText: "Texto", scriptHash: "a".repeat(64), needsReview: false,
+    visualPlan: { deckRevision: "b".repeat(64), scriptHash: "a".repeat(64), slides: [
+      { key: keys[0]!, label: "Uno", weight: 1 }, { key: keys[2]!, label: "Tres", weight: 2 },
+    ] } }];
+  const result = createInitialCompositionDocument({ animatedDeck: deck, assets, narrativeScenes: scenes,
+    plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "", title: "Preensamble" } });
+  const slides = result.clips.filter((clip) => clip.kind === "DECK_SLIDE");
+  assert.deepEqual(slides.map((clip) => clip.label), ["Uno", "Tres"]);
+  assert.deepEqual(slides.map((clip) => clip.durationSeconds), [4, 8]);
+  assert.deepEqual(slides.map((clip) => clip.sceneId), ["scene-one", "scene-one"]);
+
+  const passiveSync = reconcileCompositionDocument({ animatedDeck: deck, deckDependencyAssetIds: new Set(),
+    document: base, narrativeScenes: scenes, productionAssets: assets });
+  assert.deepEqual(passiveSync.document.clips.filter((clip) => clip.kind === "DECK_SLIDE").map((clip) => clip.label), ["Uno", "Dos", "Tres"]);
+
+  const explicitPreassembly = reconcileCompositionDocument({ animatedDeck: deck, deckDependencyAssetIds: new Set(),
+    document: base, narrativeScenes: scenes, productionAssets: assets, replaceNarrativeTiming: true });
+  assert.deepEqual(explicitPreassembly.document.clips.filter((clip) => clip.kind === "DECK_SLIDE").map((clip) => clip.label), ["Uno", "Tres"]);
 });

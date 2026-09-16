@@ -8,6 +8,10 @@ import {
   validateUrlSource,
 } from "../validation";
 
+const PUBLIC_TEST_ADDRESS = "93.184.216.34";
+const publicAddressResolver = async (hostname: string) =>
+  hostname === "127.0.0.1" ? ["127.0.0.1"] : [PUBLIC_TEST_ADDRESS];
+
 async function run() {
   assert.equal(
     normalizeSourceUrl(
@@ -37,6 +41,7 @@ async function run() {
 
   const validHtml = `<html><head><title>Educational guide</title></head><body>${"Useful educational content. ".repeat(30)}</body></html>`;
   const valid = await validateUrlSource("https://example.edu/guide", {
+    addressResolver: publicAddressResolver,
     fetchImpl: async () =>
       new Response(validHtml, {
         status: 200,
@@ -47,6 +52,7 @@ async function run() {
   assert.equal(valid.report.detected_title, "Educational guide");
 
   const short = await validateUrlSource("https://example.edu/short", {
+    addressResolver: publicAddressResolver,
     fetchImpl: async () =>
       new Response("<html><body>Too short</body></html>", {
         status: 200,
@@ -57,6 +63,7 @@ async function run() {
   assert.equal(short.report.checks.minimum_content, false);
 
   const paywall = await validateUrlSource("https://example.edu/paywall", {
+    addressResolver: publicAddressResolver,
     fetchImpl: async () =>
       new Response(
         `<html><body>Subscribe now to continue reading. ${"content ".repeat(100)}</body></html>`,
@@ -65,6 +72,37 @@ async function run() {
   });
   assert.equal(paywall.isValid, false);
   assert.equal(paywall.report.checks.paywall, true);
+
+  let redirectFetches = 0;
+  const privateRedirect = await validateUrlSource("https://example.edu/redirect", {
+    addressResolver: publicAddressResolver,
+    fetchImpl: async () => {
+      redirectFetches += 1;
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://127.0.0.1/internal" },
+      });
+    },
+  });
+  assert.equal(privateRedirect.isValid, false);
+  assert.equal(privateRedirect.report.status, "review_required");
+  assert.match(privateRedirect.report.reason, /red no permitida/i);
+  assert.equal(redirectFetches, 1);
+
+  const oversized = await validateUrlSource("https://example.edu/large", {
+    addressResolver: publicAddressResolver,
+    fetchImpl: async () =>
+      new Response("ignored", {
+        status: 200,
+        headers: {
+          "content-length": String((2 * 1024 * 1024) + 1),
+          "content-type": "text/html",
+        },
+      }),
+  });
+  assert.equal(oversized.isValid, false);
+  assert.equal(oversized.report.status, "review_required");
+  assert.match(oversized.report.reason, /2 MiB/);
 
   const pdfText = "This is educational PDF content. ".repeat(30);
   const validPdf = await validatePdfBuffer(

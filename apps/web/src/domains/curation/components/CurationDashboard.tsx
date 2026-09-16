@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   BookOpen,
   CheckCircle2,
@@ -8,10 +8,6 @@ import {
   ChevronRight,
   ExternalLink,
   FileText,
-  Link2,
-  RefreshCw,
-  Trash2,
-  Upload,
   XCircle,
 } from "lucide-react";
 import type { CurationRow } from "../types/curation.types";
@@ -19,6 +15,8 @@ import type { CurationRow } from "../types/curation.types";
 export interface CurationLessonOption {
   id: string;
   title: string;
+  requiredSources: number;
+  videoTargetSeconds: number;
 }
 
 interface CurationLessonGroup extends CurationLessonOption {
@@ -28,11 +26,6 @@ interface CurationLessonGroup extends CurationLessonOption {
 interface CurationDashboardProps {
   lessons: CurationLessonOption[];
   rows: CurationRow[];
-  onUpdateRow: (id: string, updates: Partial<CurationRow>) => void;
-  onDeleteRow: (id: string) => void;
-  onAddUrl: (lesson: { lessonId: string; lessonTitle: string }, url: string) => Promise<boolean>;
-  onAddPdf: (lesson: { lessonId: string; lessonTitle: string }, file: File) => Promise<boolean>;
-  onRevalidate: (id: string) => Promise<boolean>;
   isGenerating: boolean;
 }
 
@@ -66,7 +59,8 @@ function sourceDedupeKey(row: CurationRow) {
 function preferSourceRow(current: CurationRow, next: CurationRow) {
   if (current.origin !== "manual" && next.origin === "manual") return next;
   if (!current.apta && next.apta) return next;
-  return Date.parse(next.updated_at || "") > Date.parse(current.updated_at || "")
+  return Date.parse(next.updated_at || "") >
+    Date.parse(current.updated_at || "")
     ? next
     : current;
 }
@@ -74,18 +68,12 @@ function preferSourceRow(current: CurationRow, next: CurationRow) {
 export function CurationDashboard({
   lessons,
   rows,
-  onUpdateRow,
-  onDeleteRow,
-  onAddUrl,
-  onAddPdf,
-  onRevalidate,
   isGenerating,
 }: CurationDashboardProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [addingUrl, setAddingUrl] = useState<string | null>(null);
-  const [urlValue, setUrlValue] = useState("");
-  const [busy, setBusy] = useState<string | null>(null);
-  const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [coverageFilter, setCoverageFilter] = useState<
+    "all" | "complete" | "pending"
+  >("all");
 
   const groups = useMemo(() => {
     const lessonMap = new Map<string, CurationLessonGroup>();
@@ -105,12 +93,18 @@ export function CurationDashboard({
     for (const row of rows) {
       const titleKey = normalizeLessonTitle(row.lesson_title);
       const idKey = normalizeLessonTitle(row.lesson_id);
-      const key = titleToKey.get(titleKey) || titleToKey.get(idKey) || titleKey || row.lesson_id;
+      const key =
+        titleToKey.get(titleKey) ||
+        titleToKey.get(idKey) ||
+        titleKey ||
+        row.lesson_id;
 
       if (!lessonMap.has(key)) {
         lessonMap.set(key, {
           id: row.lesson_id,
           title: row.lesson_title || row.lesson_id,
+          requiredSources: 2,
+          videoTargetSeconds: 0,
           sources: [],
         });
       }
@@ -136,66 +130,116 @@ export function CurationDashboard({
   const stats = useMemo(
     () => ({
       lessons: groups.length,
-      valid: groups.flatMap((group) => group.sources).filter((row) => sourceStatus(row) === "valid" && row.apta).length,
-      invalid: groups.flatMap((group) => group.sources).filter((row) => sourceStatus(row) === "invalid").length,
-      manual: groups.flatMap((group) => group.sources).filter((row) => row.origin === "manual").length,
+      completedLessons: groups.filter(
+        (group) => getValidSourcesCount(group) >= group.requiredSources,
+      ).length,
+      coveredRequiredSources: groups.reduce(
+        (total, group) =>
+          total + Math.min(getValidSourcesCount(group), group.requiredSources),
+        0,
+      ),
+      requiredSources: groups.reduce(
+        (total, group) => total + group.requiredSources,
+        0,
+      ),
+      valid: groups
+        .flatMap((group) => group.sources)
+        .filter((row) => sourceStatus(row) === "valid" && row.apta).length,
+      invalid: groups
+        .flatMap((group) => group.sources)
+        .filter((row) => sourceStatus(row) === "invalid").length,
     }),
     [groups],
+  );
+  const visibleGroups = useMemo(
+    () =>
+      groups.filter((group) => {
+        const isComplete = getValidSourcesCount(group) >= group.requiredSources;
+        return (
+          coverageFilter === "all" ||
+          (coverageFilter === "complete" && isComplete) ||
+          (coverageFilter === "pending" && !isComplete)
+        );
+      }),
+    [coverageFilter, groups],
   );
   const visibleRowsCount = groups.reduce(
     (total, group) => total + group.sources.length,
     0,
   );
 
-  const submitUrl = async (lesson: CurationLessonOption) => {
-    if (!urlValue.trim()) return;
-    setBusy(`url:${lesson.id}`);
-    const success = await onAddUrl(
-      { lessonId: lesson.id, lessonTitle: lesson.title },
-      urlValue.trim(),
-    );
-    setBusy(null);
-    if (success) {
-      setAddingUrl(null);
-      setUrlValue("");
-    }
-  };
-
-  const submitPdf = async (lesson: CurationLessonOption, file?: File) => {
-    if (!file) return;
-    setBusy(`pdf:${lesson.id}`);
-    try {
-      await onAddPdf({ lessonId: lesson.id, lessonTitle: lesson.title }, file);
-    } finally {
-      setBusy(null);
-      const input = fileInputs.current[lesson.id];
-      if (input) input.value = "";
-    }
-  };
-
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3 border border-gray-200 bg-white p-4 shadow-sm dark:border-[var(--engine-surface-hover)] dark:bg-[var(--engine-canvas)]">
-        <Stat icon={BookOpen} value={stats.lessons} label="Lecciones" tone="blue" />
-        <Stat icon={CheckCircle2} value={stats.valid} label="Validas" tone="green" />
-        <Stat icon={XCircle} value={stats.invalid} label="Invalidas" tone="red" />
+        <Stat
+          icon={BookOpen}
+          value={`${stats.completedLessons}/${stats.lessons}`}
+          label="Lecciones completas"
+          tone="blue"
+        />
+        <Stat
+          icon={CheckCircle2}
+          value={`${stats.coveredRequiredSources}/${stats.requiredSources}`}
+          label="Cobertura requerida"
+          tone="green"
+        />
+        <Stat
+          icon={CheckCircle2}
+          value={stats.valid}
+          label="Validas"
+          tone="green"
+        />
+        <Stat
+          icon={XCircle}
+          value={stats.invalid}
+          label="Invalidas"
+          tone="red"
+        />
         <span className="ml-auto text-xs text-gray-500 dark:text-[var(--engine-muted)]">
-          {stats.manual} manuales / {visibleRowsCount - stats.manual} automaticas
+          {visibleRowsCount} fuentes encontradas y validadas por GPT
         </span>
+      </div>
+
+      <div
+        className="flex flex-wrap gap-2"
+        aria-label="Filtrar lecciones por cobertura"
+      >
+        {(
+          [
+            ["all", "Todas", stats.lessons],
+            ["pending", "Pendientes", stats.lessons - stats.completedLessons],
+            ["complete", "Completas", stats.completedLessons],
+          ] as const
+        ).map(([value, label, count]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setCoverageFilter(value)}
+            className={`border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              coverageFilter === value
+                ? "border-[var(--engine-info)] bg-[var(--engine-info)]/10 text-[var(--engine-info)]"
+                : "border-gray-200 bg-white text-gray-600 hover:border-gray-400 dark:border-[var(--engine-surface-hover)] dark:bg-[var(--engine-canvas)] dark:text-gray-300"
+            }`}
+          >
+            {label} ({count})
+          </button>
+        ))}
       </div>
 
       {isGenerating && (
         <div className="border border-[var(--engine-accent)]/20 bg-[var(--engine-accent)]/5 p-4 text-sm text-[#008f79] dark:text-[var(--engine-accent)]">
-          OpenAI esta buscando candidatos. Courseforge valida cada resultado antes de guardarlo.
+          El sistema esta buscando candidatos. SofLIA - Engine valida cada
+          resultado antes de guardarlo.
         </div>
       )}
 
       <div className="space-y-3">
-        {groups.map((lesson) => {
+        {visibleGroups.map((lesson) => {
           const isCollapsed = collapsed[lesson.id];
           const validCount = lesson.sources.filter(
             (source) => source.apta && sourceStatus(source) === "valid",
           ).length;
+          const hasRequiredCoverage = validCount >= lesson.requiredSources;
           return (
             <section
               key={lesson.id}
@@ -205,96 +249,51 @@ export function CurationDashboard({
                 <button
                   type="button"
                   onClick={() =>
-                    setCollapsed((current) => ({ ...current, [lesson.id]: !current[lesson.id] }))
+                    setCollapsed((current) => ({
+                      ...current,
+                      [lesson.id]: !current[lesson.id],
+                    }))
                   }
                   className="p-1 text-gray-500 hover:text-gray-900 dark:hover:text-white"
                   title={isCollapsed ? "Mostrar fuentes" : "Ocultar fuentes"}
                 >
-                  {isCollapsed ? <ChevronRight size={18} /> : <ChevronDown size={18} />}
+                  {isCollapsed ? (
+                    <ChevronRight size={18} />
+                  ) : (
+                    <ChevronDown size={18} />
+                  )}
                 </button>
-                <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">
-                  {lesson.title}
-                </h3>
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                    {lesson.title}
+                  </h3>
+                  <p className="mt-0.5 text-[11px] text-gray-500 dark:text-[var(--engine-muted)]">
+                    {lesson.videoTargetSeconds > 0
+                      ? `${formatMinutes(lesson.videoTargetSeconds)} min de video · ${lesson.requiredSources} fuentes requeridas`
+                      : `${lesson.requiredSources} fuentes requeridas`}
+                  </p>
+                </div>
                 <span
                   className={`text-xs font-semibold ${
-                    validCount >= 1 ? "text-[#00a98f]" : "text-amber-600 dark:text-amber-400"
+                    hasRequiredCoverage
+                      ? "text-[#00a98f]"
+                      : "text-amber-600 dark:text-amber-400"
                   }`}
                 >
-                  {validCount} / 2 validas
+                  {validCount} / {lesson.requiredSources} validas
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAddingUrl(addingUrl === lesson.id ? null : lesson.id);
-                    setUrlValue("");
-                  }}
-                  className="p-2 text-[var(--engine-info)] hover:bg-[var(--engine-info)]/10"
-                  title="Agregar URL"
-                >
-                  <Link2 size={17} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fileInputs.current[lesson.id]?.click()}
-                  className="p-2 text-[#00a98f] hover:bg-[var(--engine-accent)]/10"
-                  title="Subir PDF"
-                >
-                  <Upload size={17} />
-                </button>
-                <input
-                  ref={(element) => {
-                    fileInputs.current[lesson.id] = element;
-                  }}
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  className="hidden"
-                  onChange={(event) => submitPdf(lesson, event.target.files?.[0])}
-                />
               </div>
 
               {!isCollapsed && (
                 <div className="border-t border-gray-200 p-4 dark:border-[var(--engine-surface-hover)]">
-                  {addingUrl === lesson.id && (
-                    <div className="mb-3 flex gap-2">
-                      <input
-                        type="url"
-                        value={urlValue}
-                        onChange={(event) => setUrlValue(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") void submitUrl(lesson);
-                        }}
-                        placeholder="https://..."
-                        className="min-w-0 flex-1 border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-[var(--engine-info)] dark:border-[var(--engine-surface-hover)] dark:bg-[var(--engine-surface-solid)] dark:text-white"
-                      />
-                      <button
-                        type="button"
-                        disabled={busy === `url:${lesson.id}`}
-                        onClick={() => void submitUrl(lesson)}
-                        className="bg-[var(--engine-info)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                      >
-                        Agregar
-                      </button>
-                    </div>
-                  )}
-
-                  {busy === `pdf:${lesson.id}` && (
-                    <p className="mb-3 text-xs text-[#00a98f]">Subiendo y validando PDF...</p>
-                  )}
-
                   {lesson.sources.length === 0 ? (
                     <p className="py-4 text-center text-sm text-gray-500">
-                      Esta leccion aun no tiene fuentes. Agrega una URL o PDF propio.
+                      GPT continuara buscando fuentes web para esta leccion.
                     </p>
                   ) : (
                     <div className="space-y-2">
                       {lesson.sources.map((source) => (
-                        <SourceRow
-                          key={source.id}
-                          source={source}
-                          onUpdate={onUpdateRow}
-                          onDelete={onDeleteRow}
-                          onRevalidate={onRevalidate}
-                        />
+                        <SourceRow key={source.id} source={source} />
                       ))}
                     </div>
                   )}
@@ -308,6 +307,11 @@ export function CurationDashboard({
   );
 }
 
+function formatMinutes(seconds: number) {
+  const minutes = seconds / 60;
+  return Number.isInteger(minutes) ? String(minutes) : minutes.toFixed(1);
+}
+
 function Stat({
   icon: Icon,
   value,
@@ -315,7 +319,7 @@ function Stat({
   tone,
 }: {
   icon: typeof BookOpen;
-  value: number;
+  value: number | string;
   label: string;
   tone: "blue" | "green" | "red";
 }) {
@@ -325,7 +329,9 @@ function Stat({
     red: "text-rose-500 bg-rose-500/10",
   };
   return (
-    <span className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs ${colors[tone]}`}>
+    <span
+      className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs ${colors[tone]}`}
+    >
       <Icon size={15} />
       <strong>{value}</strong>
       {label}
@@ -333,18 +339,13 @@ function Stat({
   );
 }
 
-function SourceRow({
-  source,
-  onUpdate,
-  onDelete,
-  onRevalidate,
-}: {
-  source: CurationRow;
-  onUpdate: (id: string, updates: Partial<CurationRow>) => void;
-  onDelete: (id: string) => void;
-  onRevalidate: (id: string) => Promise<boolean>;
-}) {
-  const [busy, setBusy] = useState(false);
+function getValidSourcesCount(lesson: CurationLessonGroup) {
+  return lesson.sources.filter(
+    (source) => source.apta && sourceStatus(source) === "valid",
+  ).length;
+}
+
+function SourceRow({ source }: { source: CurationRow }) {
   const status = sourceStatus(source);
   const statusLabel = {
     pending: "Pendiente",
@@ -369,9 +370,11 @@ function SourceRow({
             {source.source_title || source.file_name || "Fuente sin titulo"}
           </p>
           <span className="bg-gray-200 px-2 py-0.5 text-[10px] font-semibold uppercase text-gray-600 dark:bg-[var(--engine-surface-hover)] dark:text-gray-300">
-            {source.origin === "manual" ? "Manual" : "Automatica"}
+            GPT
           </span>
-          <span className={`px-2 py-0.5 text-[10px] font-semibold ${statusClass}`}>
+          <span
+            className={`px-2 py-0.5 text-[10px] font-semibold ${statusClass}`}
+          >
             {statusLabel}
           </span>
         </div>
@@ -395,37 +398,6 @@ function SourceRow({
           <ExternalLink size={15} />
         </a>
       )}
-      <button
-        type="button"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          await onRevalidate(source.id);
-          setBusy(false);
-        }}
-        className="p-1.5 text-gray-500 hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 dark:hover:bg-[var(--engine-surface-hover)] dark:hover:text-white"
-        title="Revalidar fuente"
-      >
-        <RefreshCw size={15} className={busy ? "animate-spin" : ""} />
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          if (confirm("Eliminar esta fuente?")) onDelete(source.id);
-        }}
-        className="p-1.5 text-rose-500 hover:bg-rose-500/10"
-        title="Eliminar fuente"
-      >
-        <Trash2 size={15} />
-      </button>
-      <button
-        type="button"
-        onClick={() => onUpdate(source.id, { apta: !source.apta })}
-        className={`px-2 py-1 text-xs ${source.apta ? "text-[#00a98f]" : "text-gray-500"}`}
-        title="Cambiar aptitud manual"
-      >
-        {source.apta ? "Apta" : "No apta"}
-      </button>
     </div>
   );
 }

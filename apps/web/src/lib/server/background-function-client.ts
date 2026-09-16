@@ -1,7 +1,13 @@
 "use server";
 
 import { getBackgroundFunctionsBaseUrl } from "@/lib/server/artifact-action-auth";
+import {
+  signBackgroundPayload,
+  type SignedBackgroundPayload,
+} from "@/lib/server/background-payload-signature";
+import { buildLocalBackgroundHandlerUrl } from "@/lib/server/background-request-environment";
 import { isProductionEnvironment } from "@/lib/server/env";
+import { PIPELINE_GENERATION_LIMITS } from "../pipeline-generation-policy";
 
 type BackgroundFunctionPayload = Record<string, unknown>;
 
@@ -28,9 +34,22 @@ type LocalFunctionModule = Record<string, unknown>;
 interface BackgroundFunctionOptions {
   fallbackError: string;
   localHandlerLoader?: () => Promise<LocalFunctionModule>;
+  onFailure?: (error: unknown) => Promise<void>;
 }
 
-const LOCAL_REMOTE_TRIGGER_TIMEOUT_MS = 10_000;
+
+function ensureSignedPayload(
+  payload: BackgroundFunctionPayload,
+): SignedBackgroundPayload {
+  if (
+    typeof payload.payload === "string" &&
+    typeof payload.signature === "string"
+  ) {
+    return payload as SignedBackgroundPayload;
+  }
+
+  return signBackgroundPayload(payload);
+}
 
 function parseJsonOrText<TData>(rawBody: string): TData | { error?: string; message?: string } {
   if (!rawBody) {
@@ -127,9 +146,10 @@ async function tryLocalHandler<TData>(
     return null;
   }
 
+  const signedPayload = ensureSignedPayload(payload);
   const localResponse = await localHandler(
     {
-      body: JSON.stringify(payload),
+      body: JSON.stringify(signedPayload),
       headers: { "Content-Type": "application/json" },
       httpMethod: "POST",
       multiValueHeaders: {},
@@ -137,7 +157,7 @@ async function tryLocalHandler<TData>(
       path: `/.netlify/functions/${functionName}`,
       queryStringParameters: {},
       rawQuery: "",
-      rawUrl: `${getBackgroundFunctionsBaseUrl()}/.netlify/functions/${functionName}`,
+      rawUrl: buildLocalBackgroundHandlerUrl(functionName),
     },
     {},
   );
@@ -156,17 +176,15 @@ async function fetchRemoteFunction(
 ) {
   const url = `${getBackgroundFunctionsBaseUrl()}/.netlify/functions/${functionName}`;
   const controller = new AbortController();
-  const timeout =
-    !isProductionEnvironment() && url.includes("localhost")
-      ? setTimeout(() => controller.abort(), LOCAL_REMOTE_TRIGGER_TIMEOUT_MS)
-      : null;
+  const timeout = setTimeout(() => controller.abort(), functionName.endsWith("-background")
+    ? PIPELINE_GENERATION_LIMITS.dispatchTimeoutMs : PIPELINE_GENERATION_LIMITS.requestTimeoutMs);
 
   try {
     console.log(`[BackgroundFunctionClient] Calling HTTP function: ${url}`);
     return await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(ensureSignedPayload(payload)),
       signal: controller.signal,
     });
   } finally {
@@ -200,8 +218,13 @@ export async function dispatchBackgroundFunctionJson(
   options: BackgroundFunctionOptions,
 ) {
   if (!isProductionEnvironment() && options.localHandlerLoader) {
-    void tryLocalHandler(functionName, payload, options).catch((error) => {
+    void tryLocalHandler(functionName, payload, options).catch(async (error) => {
       console.error(`[BackgroundFunctionClient] Local handler failed: ${functionName}`, error);
+      try {
+        await options.onFailure?.(error);
+      } catch (persistError) {
+        console.error(`[BackgroundFunctionClient] Could not persist failure: ${functionName}`, persistError);
+      }
     });
     return;
   }

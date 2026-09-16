@@ -1,13 +1,15 @@
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getCurrentCompositionDocument } from "./composition-document.service";
+import { getCurrentCompositionDocument, hashCompositionDocument } from "./composition-document.service";
+import { compositionEditorDocumentSchema } from "./composition-document.types";
 import {
   COMPOSITION_COMPILATION_TARGETS,
   compileCompositionPreview,
   readCompositionAnimationRuntime,
 } from "./composition-preview-compiler.service";
 import { validateHyperframesPreflight } from "../hyperframes/hyperframes-preflight.service";
+import { HYPERFRAMES_MEDIA_BINDING_VERSION } from "../hyperframes/hyperframes-render-media.service";
 import {
   buildHyperframesAssetVariableNames,
   buildHyperframesAssetVariableSchema,
@@ -38,7 +40,7 @@ export class CompositionSnapshotError extends Error {
 }
 
 type AssetRow = { checksum: string; file_size_bytes: number; id: string; metadata: Record<string, unknown> | null; mime_type: string; public_url: string | null; storage_bucket: string; storage_path: string };
-type SnapshotAssetRow = AssetRow & { origin: "BRANDING" | "PRODUCTION" };
+type SnapshotAssetRow = AssetRow & { origin: "BRANDING" | "PRODUCTION" | "SOUND_EFFECT" };
 
 export type CompositionSnapshotSummary = {
   createdAt: string;
@@ -46,6 +48,7 @@ export type CompositionSnapshotSummary = {
   documentVersion: number;
   id: string;
   isActive: boolean;
+  isCurrentDocument: boolean;
   projectArchiveSizeBytes: number;
   renderProfile: HyperframesRenderSettings | null;
   renderProfileId: string | null;
@@ -86,6 +89,7 @@ export async function snapshotCompositionDocument(params: {
     .eq("composition_id", params.compositionId)
     .contains("manifest", {
       asset_delivery_mode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+      media_binding_version: HYPERFRAMES_MEDIA_BINDING_VERSION,
       draft_document_hash: current.documentHash,
       render_profile: persistedRenderProfile,
     })
@@ -103,14 +107,17 @@ export async function snapshotCompositionDocument(params: {
 
   const referencedAssetIds = [...new Set(current.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))];
   const referencedBrandingAssetIds = [...new Set(current.document.clips.flatMap((clip) => clip.source.type === "ASSEMBLY_BRAND_ASSET" ? [clip.source.assemblyBrandAssetId] : []))];
-  const [clipAssets, brandingAssets, deckDependencies] = await Promise.all([
+  const referencedSoundEffectAssetIds = [...new Set(current.document.clips.flatMap((clip) => clip.source.type === "SOUND_EFFECT_ASSET" ? [clip.source.soundEffectAssetId] : []))];
+  const [clipAssets, brandingAssets, soundEffectAssets, deckDependencies] = await Promise.all([
     readSnapshotAssets(params, referencedAssetIds),
     readSnapshotBrandingAssets(params, referencedBrandingAssetIds),
+    readSnapshotSoundEffectAssets(params, referencedSoundEffectAssetIds),
     readReferencedDeckDependencies(params, current.document),
   ]);
   const assetRows: Array<[string, SnapshotAssetRow]> = [
     ...clipAssets.map((asset): [string, SnapshotAssetRow] => [asset.id, { ...asset, origin: "PRODUCTION" }]),
     ...brandingAssets.map((asset): [string, SnapshotAssetRow] => [asset.id, { ...asset, origin: "BRANDING" }]),
+    ...soundEffectAssets.map((asset): [string, SnapshotAssetRow] => [asset.id, { ...asset, origin: "SOUND_EFFECT" }]),
     ...deckDependencies.map((asset): [string, SnapshotAssetRow] => [asset.id, { ...asset, origin: "PRODUCTION" }]),
   ];
   const assets = [...new Map<string, SnapshotAssetRow>(assetRows).values()];
@@ -211,6 +218,7 @@ export async function snapshotCompositionDocument(params: {
     generation_mode: "AUTOMATIC",
     manifest: {
       asset_delivery_mode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
+      media_binding_version: HYPERFRAMES_MEDIA_BINDING_VERSION,
       asset_manifest: manifest,
       canvas_duration_seconds: current.document.canvas.durationSeconds,
       draft_document_hash: current.documentHash,
@@ -237,6 +245,7 @@ export async function snapshotCompositionDocument(params: {
   }
   const productionManifest = manifest.filter((asset) => assets.find((row) => row.id === asset.productionAssetId)?.origin === "PRODUCTION");
   const brandingManifest = manifest.filter((asset) => assets.find((row) => row.id === asset.productionAssetId)?.origin === "BRANDING");
+  const soundEffectManifest = manifest.filter((asset) => assets.find((row) => row.id === asset.productionAssetId)?.origin === "SOUND_EFFECT");
   if (productionManifest.length > 0) {
     const { error: linkError } = await params.supabase.from("video_composition_assets").insert(productionManifest.map((asset) => ({
       composition_revision_id: revision.id, file_size_bytes: asset.fileSizeBytes, mime_type: asset.mimeType, organization_id: params.organizationId,
@@ -269,6 +278,19 @@ export async function snapshotCompositionDocument(params: {
       );
     }
   }
+  if (soundEffectManifest.length > 0) {
+    const { error: linkError } = await params.supabase.from("video_composition_sound_effect_assets").insert(soundEffectManifest.map((asset) => ({
+      composition_revision_id: revision.id,
+      file_size_bytes: asset.fileSizeBytes,
+      mime_type: asset.mimeType,
+      organization_id: params.organizationId,
+      sound_effect_asset_id: asset.productionAssetId,
+      source_checksum: asset.checksum,
+      source_storage_bucket: asset.storageBucket,
+      source_storage_path: asset.storagePath,
+    })));
+    if (linkError) throw new CompositionSnapshotError("La revisión se creó, pero no se pudieron vincular sus efectos de sonido.", 500);
+  }
   await setActiveCompositionSnapshot({
     compositionId: params.compositionId,
     organizationId: params.organizationId,
@@ -293,6 +315,21 @@ export async function listCompositionSnapshots(params: {
   if (compositionError) throw compositionError;
   if (!composition) throw new CompositionSnapshotError("La composición no existe.", 404);
 
+  const { data: draft, error: draftError } = await params.supabase
+    .from("video_composition_drafts")
+    .select("id")
+    .eq("composition_id", params.compositionId)
+    .eq("organization_id", params.organizationId)
+    .maybeSingle();
+  if (draftError) throw draftError;
+  const currentDocumentHash = draft
+    ? (await getCurrentCompositionDocument({
+      draftId: String(draft.id),
+      organizationId: params.organizationId,
+      supabase: params.supabase,
+    })).documentHash
+    : null;
+
   const { data, error } = await params.supabase
     .from("video_composition_revisions")
     .select("id, revision_number, project_archive_size_bytes, manifest, created_at")
@@ -308,12 +345,14 @@ export async function listCompositionSnapshots(params: {
     snapshots: (data || []).map((row) => {
       const manifest = asRecord(row.manifest);
       const persistedRenderProfile = readPersistedRenderProfile(manifest);
+      const documentHash = typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "";
       return {
         createdAt: String(row.created_at),
-        documentHash: typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "",
+        documentHash,
         documentVersion: typeof manifest.draft_document_version === "number" ? manifest.draft_document_version : 0,
         id: String(row.id),
         isActive: row.id === composition.active_revision_id,
+        isCurrentDocument: documentHash.length > 0 && documentHash === currentDocumentHash,
         projectArchiveSizeBytes: Number(row.project_archive_size_bytes),
         renderProfile: persistedRenderProfile.settings,
         renderProfileId: persistedRenderProfile.id,
@@ -324,12 +363,16 @@ export async function listCompositionSnapshots(params: {
   };
 }
 
-/** Reactivates a prior immutable snapshot; approval is intentionally revoked. */
+/** Restores the immutable snapshot and its source document into the editable timeline. */
 export async function activateCompositionSnapshot(params: {
   compositionId: string;
+  draftId: string;
+  expectedDocumentHash: string;
   organizationId: string;
   revisionId: string;
+  signal?: AbortSignal;
   supabase: SupabaseClient<any, "public", any>;
+  userId: string;
 }) {
   const { data: revision, error } = await params.supabase
     .from("video_composition_revisions")
@@ -341,21 +384,78 @@ export async function activateCompositionSnapshot(params: {
     .maybeSingle();
   if (error) throw error;
   if (!revision) throw new CompositionSnapshotError("El snapshot no existe o no pertenece a esta composición.", 404);
-  await setActiveCompositionSnapshot(params);
   const manifest = asRecord(revision.manifest);
+  const targetDocumentHash = typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "";
+  const targetDocumentVersion = typeof manifest.draft_document_version === "number" ? manifest.draft_document_version : 0;
+  if (!/^[a-f0-9]{64}$/.test(targetDocumentHash) || !Number.isInteger(targetDocumentVersion) || targetDocumentVersion < 1) {
+    throw new CompositionSnapshotError("Este snapshot no contiene una versión editable del timeline.", 409);
+  }
+  let restoreRequest = params.supabase.rpc("restore_video_composition_snapshot_to_editor", {
+    p_actor_id: params.userId,
+    p_composition_id: params.compositionId,
+    p_draft_id: params.draftId,
+    p_expected_document_hash: params.expectedDocumentHash,
+    p_organization_id: params.organizationId,
+    p_revision_id: params.revisionId,
+  }).retry(false);
+  if (params.signal) restoreRequest = restoreRequest.abortSignal(params.signal);
+  const { data: restoreData, error: restoreError } = await restoreRequest;
+  if (restoreError) {
+    const candidate = restoreError as { code?: unknown; message?: unknown };
+    if (candidate.code === "PGRST202" || /Could not find the function/i.test(String(candidate.message || ""))) {
+      throw new CompositionSnapshotError("La restauración del timeline requiere aplicar la migración más reciente.", 503);
+    }
+    throw restoreError;
+  }
+  const restoreResult = Array.isArray(restoreData) ? restoreData[0] : restoreData;
+  if (!restoreResult || typeof restoreResult.outcome !== "string") {
+    throw new CompositionSnapshotError("El almacenamiento devolvió un resultado de restauración inválido.", 500);
+  }
+  assertSnapshotRestoreOutcome(restoreResult.outcome);
+  const document = compositionEditorDocumentSchema.parse(restoreResult.document);
+  const restoredDocumentHash = String(restoreResult.document_hash || "");
+  if (restoredDocumentHash !== targetDocumentHash || hashCompositionDocument(document) !== restoredDocumentHash) {
+    throw new CompositionSnapshotError("El documento histórico del snapshot no superó la verificación de integridad.", 500);
+  }
   const persistedRenderProfile = readPersistedRenderProfile(manifest);
   return {
     createdAt: String(revision.created_at),
-    documentHash: typeof manifest.draft_document_hash === "string" ? manifest.draft_document_hash : "",
-    documentVersion: typeof manifest.draft_document_version === "number" ? manifest.draft_document_version : 0,
+    document,
+    documentHash: restoredDocumentHash,
+    documentVersion: targetDocumentVersion,
     id: String(revision.id),
     isActive: true,
+    isCurrentDocument: true,
     projectArchiveSizeBytes: Number(revision.project_archive_size_bytes),
     renderProfile: persistedRenderProfile.settings,
     renderProfileId: persistedRenderProfile.id,
     revisionNumber: Number(revision.revision_number),
+    restoredVersion: Number(restoreResult.version),
     status: "READY_FOR_PREVIEW" as const,
   };
+}
+
+function assertSnapshotRestoreOutcome(outcome: string) {
+  if (outcome === "RESTORED" || outcome === "ACTIVATED" || outcome === "ALREADY_RESTORED") return;
+  if (outcome === "CONFLICT") {
+    throw new CompositionSnapshotError("La composición cambió en otra sesión. Recarga el timeline antes de restaurar.", 409);
+  }
+  if (outcome === "BUSY") {
+    throw new CompositionSnapshotError("Ya hay otro cambio guardándose. Espera un momento y vuelve a intentar.", 409);
+  }
+  if (outcome === "NOT_EDITABLE") {
+    throw new CompositionSnapshotError("El borrador ya no está disponible para edición.", 409);
+  }
+  if (outcome === "INVALID_SNAPSHOT") {
+    throw new CompositionSnapshotError("Este snapshot no contiene una versión editable válida.", 409);
+  }
+  if (outcome === "SOURCE_NOT_FOUND") {
+    throw new CompositionSnapshotError("No se encontró el documento histórico asociado al snapshot.", 409);
+  }
+  if (outcome === "SOURCE_ASSET_UNAVAILABLE") {
+    throw new CompositionSnapshotError("Un intro u outro histórico ya no está disponible para restaurar el timeline.", 409);
+  }
+  throw new CompositionSnapshotError("El snapshot no existe o ya no puede restaurarse.", 404);
 }
 
 async function setActiveCompositionSnapshot(params: {
@@ -405,11 +505,32 @@ async function readSnapshotBrandingAssets(params: { draftId: string; organizatio
     .from("organization_assembly_assets")
     .select("id, checksum, file_size_bytes, metadata, mime_type, storage_bucket, storage_path")
     .eq("organization_id", params.organizationId)
-    .eq("status", "APPROVED")
+    .in("status", ["APPROVED", "ARCHIVED"])
     .in("id", ids);
   if (error) throw error;
   if ((data || []).length !== ids.length) throw new CompositionSnapshotError("No se pudo resolver intro u outro para el snapshot.", 409);
   return (data || []).map((asset) => ({ ...asset, public_url: null })) as AssetRow[];
+}
+
+async function readSnapshotSoundEffectAssets(params: { draftId: string; organizationId: string; supabase: SupabaseClient<any, "public", any> }, ids: string[]) {
+  if (ids.length === 0) return [] as AssetRow[];
+  const { data: linked, error: linkError } = await params.supabase
+    .from("video_composition_draft_sound_effect_assets")
+    .select("sound_effect_asset_id")
+    .eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("sound_effect_asset_id", ids);
+  if (linkError) throw linkError;
+  if ((linked || []).length !== ids.length) throw new CompositionSnapshotError("El documento contiene efectos de sonido que no pertenecen al borrador.", 409);
+  const { data, error } = await params.supabase.from("sound_effect_assets")
+    .select("id, checksum_sha256, file_size_bytes, mime_type, storage_bucket, storage_path")
+    .eq("organization_id", params.organizationId).eq("status", "READY").in("id", ids);
+  if (error) throw error;
+  if ((data || []).length !== ids.length) throw new CompositionSnapshotError("No se pudo resolver uno o más efectos de sonido del snapshot.", 409);
+  return (data || []).map((asset) => ({
+    ...asset,
+    checksum: asset.checksum_sha256,
+    metadata: { file_name: asset.storage_path.split("/").pop() || "sound-effect" },
+    public_url: null,
+  })) as AssetRow[];
 }
 
 async function readReferencedDeckDependencies(

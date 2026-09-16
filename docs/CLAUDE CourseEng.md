@@ -273,9 +273,8 @@ Flujo para publicar un artefacto completado a la plataforma Soflia.
 - `POST /api/admin/scorm/upload` - Sube paquete SCORM
 - `POST /api/admin/scorm/process` - Procesa paquete SCORM
 
-### Debug / GPT
+### GPT
 
-- `GET /api/debug/soflia` - Debug integración Soflia
 - `GET /api/gpt/sources` - Fuentes para GPT
 
 ### Netlify Functions (Background)

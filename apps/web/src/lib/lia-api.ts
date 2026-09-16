@@ -7,15 +7,20 @@ import type {
   LiaSettingsRecord,
   ParsedLiaResponse,
 } from "@/lib/lia-types";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+import { fetchWithDeadline, readJsonResponseWithLimit } from "@/lib/server/outbound-http";
+
+const LIA_PROVIDER_TIMEOUT_MS = 60_000;
+const LIA_PROVIDER_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
 
 const DEFAULT_COMPUTER_SETTINGS: LiaSettingsRecord = {
-  model_name: "gemini-2.0-flash-exp",
+  model_name: "gemini-3.5-flash",
   temperature: 0.3,
   setting_type: "COMPUTER",
 };
 
 const DEFAULT_STANDARD_SETTINGS: LiaSettingsRecord = {
-  model_name: "gemini-2.0-flash",
+  model_name: "gemini-3.5-flash",
   temperature: 0.7,
   setting_type: "LIA_MODEL",
 };
@@ -71,9 +76,6 @@ export async function getLiaSettings(
   const { data, error } = await query.single();
 
   if (error || !data) {
-    console.warn(
-      `No ${settingType} settings found for org ${organizationId || "global"}, using defaults.`,
-    );
     return useComputerUse
       ? DEFAULT_COMPUTER_SETTINGS
       : DEFAULT_STANDARD_SETTINGS;
@@ -122,16 +124,10 @@ export function detectHallucination(
   const responseLower = responseText.toLowerCase();
 
   if (navigationTerms.some((term) => responseLower.includes(term))) {
-    console.log(
-      "[HALLUCINATION CHECK] Response is a navigation request - skipping hallucination check",
-    );
     return { isHallucinating: false, searchTerm: null };
   }
 
   if (wizardStepNames.some((step) => responseLower.includes(step))) {
-    console.log(
-      "[HALLUCINATION CHECK] Response mentions wizard step - skipping hallucination check",
-    );
     return { isHallucinating: false, searchTerm: null };
   }
 
@@ -175,9 +171,6 @@ export function detectHallucination(
     const domMapLower = domMap.toLowerCase();
 
     if (domMapLower.includes(claimedItem)) {
-      console.log(
-        `[HALLUCINATION CHECK] "${claimedItem}" found in DOM map - no hallucination`,
-      );
       return { isHallucinating: false, searchTerm: null };
     }
 
@@ -187,18 +180,10 @@ export function detectHallucination(
     const keyTerm = words.length > 0 ? words[words.length - 1] : claimedItem;
 
     if (wizardStepNames.includes(keyTerm)) {
-      console.log(`[HALLUCINATION CHECK] "${keyTerm}" is a wizard step - skipping`);
       continue;
     }
 
-    console.log(
-      `[HALLUCINATION CHECK] Claimed: "${claimedItem}", Key term: "${keyTerm}"`,
-    );
-
     if (!domMapLower.includes(keyTerm)) {
-      console.log(
-        `[HALLUCINATION DETECTED] Model claims "${claimedItem}" (key: "${keyTerm}") but it's not in DOM map`,
-      );
       return { isHallucinating: true, searchTerm: keyTerm };
     }
   }
@@ -249,23 +234,15 @@ function extractJsonBlock(text: string) {
 }
 
 export function parseActionFromResponse(text: string): ParsedLiaResponse | null {
-  console.log("=== PARSING RESPONSE ===");
-  console.log("Raw text length:", text.length);
-  console.log("Raw text preview:", text.substring(0, 300));
-
   let cleanedText = text;
   const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (codeBlockMatch) {
     cleanedText = codeBlockMatch[1];
-    console.log("Found code block, extracted:", cleanedText.substring(0, 200));
   }
 
   const jsonStr = extractJsonBlock(cleanedText);
-  console.log("Extracted JSON:", jsonStr ? jsonStr.substring(0, 300) : "null");
 
   if (!jsonStr) {
-    console.log("No valid JSON found in response");
-    console.log("Full response was:", text);
     return { cleanText: text };
   }
 
@@ -273,31 +250,23 @@ export function parseActionFromResponse(text: string): ParsedLiaResponse | null 
     const parsed = JSON.parse(jsonStr) as LiaActionEnvelope;
     const cleanText =
       typeof parsed.message === "string" ? parsed.message : "Ejecutando...";
-    console.log("Parsed message:", cleanText);
-    console.log("Parsed action:", parsed.action);
-    console.log("Parsed actions:", parsed.actions);
-
     if (
       Array.isArray(parsed.actions) &&
       parsed.actions.length > 0 &&
       parsed.actions.every(isLiaAction)
     ) {
-      console.log("Multiple actions parsed:", parsed.actions.length);
       return { actions: parsed.actions, cleanText };
     }
 
     if (isLiaAction(parsed.action)) {
-      console.log("Single action parsed:", parsed.action.name);
       return { action: parsed.action, cleanText };
     }
 
     if (parsed.action === null || parsed.action === undefined) {
-      console.log("Chat response (no action):", cleanText);
       return { cleanText };
     }
-  } catch (error) {
-    console.error("Error parsing action JSON:", error);
-    console.error("JSON string was:", jsonStr);
+  } catch {
+    // The caller can safely fall back to the original assistant text.
   }
 
   return { cleanText: text };
@@ -308,6 +277,7 @@ export async function callGeminiREST(
   model: string,
   prompt: string,
   config: LiaConfig,
+  correlationId?: string,
 ): Promise<GeminiRestResponse> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const body: {
@@ -327,23 +297,38 @@ export async function callGeminiREST(
     body.tools = config.tools;
   }
 
-  console.log("Lia API - Calling REST API directly...");
+  const logger = createOperationalLogger("lia.gemini", {
+    correlationId: resolveCorrelationId(correlationId),
+    model,
+  });
+  const startedAt = Date.now();
+  logger.info("lia.provider.requested", { promptLength: prompt.length });
 
-  const restResponse = await fetch(url, {
+  const restResponse = await fetchWithDeadline(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-  });
+  }, LIA_PROVIDER_TIMEOUT_MS);
 
   if (!restResponse.ok) {
-    const errorText = await restResponse.text();
-    console.error("Lia API - REST API error:", restResponse.status, errorText);
-    throw new Error(`Gemini API error: ${restResponse.status} - ${errorText}`);
+    logger.error("lia.provider.failed", new Error(`HTTP ${restResponse.status}`), {
+      durationMs: Date.now() - startedAt,
+      status: restResponse.status,
+    });
+    throw new Error(`Gemini API error: HTTP ${restResponse.status}`);
   }
 
-  const data = (await restResponse.json()) as GeminiRestApiResponse;
+  const data = await readJsonResponseWithLimit<GeminiRestApiResponse>(
+    restResponse,
+    LIA_PROVIDER_RESPONSE_MAX_BYTES,
+  );
+  const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  logger.info("lia.provider.completed", {
+    durationMs: Date.now() - startedAt,
+    responseLength: responseText.length,
+  });
   return {
-    text: data.candidates?.[0]?.content?.parts?.[0]?.text || "",
+    text: responseText,
     groundingMetadata: data.candidates?.[0]?.groundingMetadata,
   };
 }

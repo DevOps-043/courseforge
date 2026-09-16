@@ -4,7 +4,12 @@ import {
   collectInternalMaterialAssetReferences,
   extractHyperframesAnimatedDeck,
   inspectHyperframesSourceAsset,
+  isAutomaticTimelineSourceAsset,
+  isHyperframesSourceDurationCurrent,
+  isHyperframesSourceMetadataCurrent,
+  isRecoverableManualVoiceRegistryAsset,
   isSupportedHyperframesSourceMime,
+  shouldExposeProductionRegistryAsset,
 } from "../hyperframes-source-asset.service";
 
 describe("HyperFrames source assets", () => {
@@ -13,6 +18,48 @@ describe("HyperFrames source assets", () => {
     assert.equal(isSupportedHyperframesSourceMime("audio/mpeg"), true);
     assert.equal(isSupportedHyperframesSourceMime("text/html"), false);
     assert.equal(isSupportedHyperframesSourceMime("application/zip"), false);
+  });
+
+  it("recovers manual cloud voices persisted before multi-audio references existed", () => {
+    assert.equal(isRecoverableManualVoiceRegistryAsset({
+      assetType: "SOURCE_MEDIA",
+      metadata: { import_type: "voice", source_provider: "google_drive" },
+    }), true);
+    assert.equal(isRecoverableManualVoiceRegistryAsset({
+      assetType: "SOURCE_MEDIA",
+      metadata: { import_type: "music" },
+    }), false);
+  });
+
+  it("keeps recovered avatar and voice history visible without reviving archived media", () => {
+    assert.equal(shouldExposeProductionRegistryAsset({
+      assetType: "AVATAR_VIDEO_CLIP",
+      hasActiveReference: false,
+      qaStatus: "READY_FOR_QA",
+    }), true);
+    assert.equal(shouldExposeProductionRegistryAsset({
+      assetType: "AVATAR_VIDEO_CLIP",
+      hasActiveReference: false,
+      qaStatus: "ARCHIVED",
+    }), false);
+    assert.equal(shouldExposeProductionRegistryAsset({
+      assetType: "VOICE_AUDIO",
+      hasActiveReference: false,
+      qaStatus: "READY_FOR_QA",
+    }), true);
+    assert.equal(shouldExposeProductionRegistryAsset({
+      assetType: "VOICE_AUDIO",
+      hasActiveReference: false,
+      qaStatus: "ARCHIVED",
+    }), false);
+    assert.equal(isAutomaticTimelineSourceAsset({
+      metadata: { historical_only: true },
+      sourceType: "PRODUCTION_MEDIA",
+    }), false);
+    assert.equal(isAutomaticTimelineSourceAsset({
+      metadata: {},
+      sourceType: "PRODUCTION_MEDIA",
+    }), true);
   });
 
   it("keeps a ready animated deck as HTML rather than slide images", () => {
@@ -32,6 +79,27 @@ describe("HyperFrames source assets", () => {
 
     assert.equal(deck?.slides[0]?.html, "<h1>Uno</h1>");
     assert.equal(deck?.slides[0]?.animationCount, 2);
+    assert.equal(deck?.appearance, "light");
+  });
+
+  it("inherits appearance and repairs CSS from ready legacy decks", () => {
+    const deck = extractHyperframesAnimatedDeck({
+      slides: {
+        appearance: "dark",
+        animated_deck: {
+          css: '.deck-scope :root[data-appearance="dark"] { --bg: #0F1419; }',
+          fonts: [],
+          height: 1080,
+          slides: [{ animationCount: 0, classes: "slide active", html: "<h1>Legado</h1>", index: 1, label: "Legado" }],
+          status: "READY_FOR_RENDER",
+          width: 1920,
+        },
+      },
+    });
+
+    assert.equal(deck?.appearance, "dark");
+    assert.match(deck?.css || "", /\.deck-scope\[data-appearance="dark"\]/);
+    assert.doesNotMatch(deck?.css || "", /\.deck-scope\s+:root/);
   });
 
   it("marks rasterized slides as deck dependencies when the HTML deck is ready", () => {
@@ -145,6 +213,7 @@ describe("HyperFrames source assets", () => {
   it("preserves scene identity for interleaved avatar and voice assets", () => {
     const references = collectInternalMaterialAssetReferences({
       avatar_clips: [{
+        asset_name: "Lección 6 · Apertura",
         id: "scene-1",
         order: 1,
         status: "COMPLETED",
@@ -170,13 +239,54 @@ describe("HyperFrames source assets", () => {
 
     assert.deepEqual(references.map((reference) => ({
       clipId: reference.sceneClipId,
+      displayName: reference.displayName,
       order: reference.sceneOrder,
       role: reference.timelineRole,
     })), [
-      { clipId: "scene-1", order: 1, role: "VOICE" },
-      { clipId: "scene-2", order: 2, role: "VOICE" },
-      { clipId: "scene-1", order: 1, role: "AVATAR" },
+      { clipId: "scene-1", displayName: "Lección 6 · Apertura", order: 1, role: "VOICE" },
+      { clipId: "scene-2", displayName: undefined, order: 2, role: "VOICE" },
+      { clipId: "scene-1", displayName: "Lección 6 · Apertura", order: 1, role: "AVATAR" },
     ]);
+  });
+
+  it("compares synchronized durations at the persisted millisecond precision", () => {
+    assert.equal(isHyperframesSourceDurationCurrent(13_455, 13, 13.4546), true);
+    assert.equal(isHyperframesSourceDurationCurrent(13_455, 13, 13.456), false);
+    assert.equal(isHyperframesSourceDurationCurrent(null, 13, undefined), true);
+  });
+
+  it("detects stale scene identity when an active source becomes standalone", () => {
+    const standaloneReference = collectInternalMaterialAssetReferences({
+      voice_audio: {
+        file_name: "voice.mp3",
+        storage_path: "production-assets/voices/voice.mp3",
+      },
+    })[0]!;
+    const staleMetadata = {
+      assembly_source_type: "PRODUCTION_MEDIA",
+      file_name: "voice.mp3",
+      scene_clip_id: "legacy-scene",
+      scene_order: 4,
+      source_provider: "production_step",
+      timeline_role: "VOICE",
+      timeline_variant: "CLIP",
+    };
+
+    assert.equal(isHyperframesSourceMetadataCurrent(
+      staleMetadata,
+      standaloneReference,
+      "voice.mp3",
+    ), false);
+    assert.equal(isHyperframesSourceMetadataCurrent(
+      {
+        assembly_source_type: "PRODUCTION_MEDIA",
+        file_name: "voice.mp3",
+        source_provider: "production_step",
+        timeline_role: "VOICE",
+      },
+      standaloneReference,
+      "voice.mp3",
+    ), true);
   });
 
   it("registers editor-detached audio as an editable narration source", () => {
@@ -193,6 +303,29 @@ describe("HyperFrames source assets", () => {
     assert.equal(references[0]?.durationSeconds, 12.5);
     assert.equal(references[0]?.mimeType, "audio/wav");
     assert.equal(references[0]?.timelineRole, "VOICE");
+  });
+
+  it("exposes every manually uploaded voice as an independent timeline asset", () => {
+    const references = collectInternalMaterialAssetReferences({
+      manual_voice_clips: [{
+        duration: 12,
+        file_name: "voice-1.mp3",
+        id: "manual-voice-1",
+        order: 1,
+        storage_path: "production-assets/voices/voice-1.mp3",
+      }, {
+        duration: 18,
+        file_name: "voice-2.mp3",
+        id: "manual-voice-2",
+        order: 2,
+        storage_path: "production-assets/voices/voice-2.mp3",
+      }],
+    });
+
+    assert.equal(references.length, 2);
+    assert.deepEqual(references.map((asset) => asset.timelineRole), ["VOICE", "VOICE"]);
+    assert.deepEqual(references.map((asset) => asset.durationSeconds), [12, 18]);
+    assert.deepEqual(references.map((asset) => asset.fileName), ["voice-1.mp3", "voice-2.mp3"]);
   });
 
   it("accepts a video above the embedded limit when Storage delivers it remotely", () => {

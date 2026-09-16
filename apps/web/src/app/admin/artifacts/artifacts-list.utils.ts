@@ -87,47 +87,63 @@ export function getArtifactDisplayState(
 }
 
 export function getArtifactProgress(artifact: Artifact) {
-  if (artifact.state === "REJECTED") {
-    return { percent: 100, color: "bg-red-500", animated: false };
-  }
-
   if (artifact.production_complete) {
     return { percent: 100, color: "bg-emerald-500", animated: false };
   }
 
-  if (artifact.plan_state === "STEP_APPROVED") {
-    return { percent: 60, color: "bg-indigo-500", animated: false };
-  }
+  const phases = [
+    artifact.state,
+    artifact.syllabus_state,
+    artifact.plan_state,
+    artifact.curation_state,
+    artifact.materials_state,
+  ];
+  const furthestStartedPhase = phases.reduce(
+    (furthest, state, index) => (state ? index : furthest),
+    -1,
+  );
+  const completedBeforeFurthest = Math.max(0, furthestStartedPhase);
+  const activePhaseProgress =
+    furthestStartedPhase >= 0
+      ? getPipelineStateProgress(phases[furthestStartedPhase])
+      : 0;
+  const productionProgress = getProductionPhaseProgress(artifact);
+  const completedPhaseUnits =
+    productionProgress > 0
+      ? 5 + productionProgress
+      : completedBeforeFurthest + activePhaseProgress;
+  const percent = Math.min(100, Math.round((completedPhaseUnits / 6) * 100));
+  const activeState = phases[furthestStartedPhase] || artifact.state;
+  const isRejected = /REJECTED|BLOCKED|ESCALATED/.test(activeState || "");
+  const animated = /GENERATING|VALIDATING|IN_PROCESS|IN_PROGRESS/.test(
+    activeState || "",
+  );
 
-  if (artifact.syllabus_state === "STEP_APPROVED") {
-    return { percent: 40, color: "bg-blue-500", animated: false };
-  }
+  return {
+    percent,
+    color: isRejected
+      ? "bg-red-500"
+      : animated
+        ? "bg-blue-500"
+        : "bg-[#00D4B3]",
+    animated,
+  };
+}
 
-  if (artifact.state === "APPROVED") {
-    return { percent: 20, color: "bg-[#00D4B3]", animated: false };
-  }
+function getPipelineStateProgress(state?: string) {
+  if (!state) return 0;
+  if (/APPROVED$/.test(state)) return 1;
+  if (/READY_FOR_QA|PENDING_QA|REVIEW|HITL_REVIEW|GENERATED/.test(state)) return 0.8;
+  if (/VALIDATING/.test(state)) return 0.6;
+  if (/GENERATING|IN_PROCESS|IN_PROGRESS/.test(state)) return 0.3;
+  if (/REJECTED|BLOCKED|ESCALATED|NEEDS_FIX|CORRECTABLE/.test(state)) return 0.8;
+  return 0;
+}
 
-  switch (artifact.state) {
-    case "DRAFT":
-      return {
-        percent: 5,
-        color: "bg-gray-400 dark:bg-gray-600",
-        animated: false,
-      };
-    case "GENERATING":
-      return { percent: 10, color: "bg-blue-500", animated: true };
-    case "VALIDATING":
-      return { percent: 12, color: "bg-purple-500", animated: true };
-    case "READY_FOR_QA":
-    case "PENDING_QA":
-      return { percent: 18, color: "bg-cyan-500", animated: false };
-    case "ESCALATED":
-      return { percent: 18, color: "bg-orange-500", animated: false };
-    case "IN_PROCESS":
-      return { percent: 10, color: "bg-blue-500", animated: true };
-    default:
-      return { percent: 5, color: "bg-gray-300", animated: false };
-  }
+function getProductionPhaseProgress(artifact: Artifact) {
+  const status = artifact.production_status;
+  if (!status || status.total <= 0) return 0;
+  return Math.min(1, status.completed / status.total);
 }
 
 export function formatArtifactCreatedAt(createdAt: string) {

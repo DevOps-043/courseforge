@@ -23,6 +23,27 @@ test("executes saves serially in insertion order", async () => {
   assert.deepEqual(queue.snapshot(), { pendingCount: 0, status: "IDLE" });
 });
 
+test("notifies waiters only after the active command and queued tail settle", async () => {
+  const releases: Array<() => void> = [];
+  const queue = new CompositionSaveQueue<number>(
+    async () => new Promise<boolean>((resolve) => releases.push(() => resolve(true))),
+  );
+  const first = queue.enqueue(1);
+  const second = queue.enqueue(2);
+  let becameIdle = false;
+  const idle = queue.whenIdle().then(() => { becameIdle = true; });
+
+  while (releases.length === 0) await new Promise<void>((resolve) => setImmediate(resolve));
+  releases.shift()!();
+  await first;
+  assert.equal(becameIdle, false);
+
+  while (releases.length === 0) await new Promise<void>((resolve) => setImmediate(resolve));
+  releases.shift()!();
+  await Promise.all([second, idle]);
+  assert.equal(becameIdle, true);
+});
+
 test("fails closed and does not execute the queued tail after an error", async () => {
   const executed: number[] = [];
   const queue = new CompositionSaveQueue<number>(async (command) => {

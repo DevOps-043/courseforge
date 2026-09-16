@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createInitialCompositionDocument,
+  canPreassembleScenes,
   reconcileCompositionDocument,
 } from "../composition-editor/composition-document.factory";
 import { CompositionDurationResolutionError } from "../composition-editor/composition-duration.service";
@@ -14,8 +15,11 @@ import {
   hashCompositionDocument,
 } from "../composition-editor/composition-document.service";
 import { buildDeterministicPlan } from "./hyperframes-plan.service";
+import { buildCompositionNarrativeScenes, buildSceneVisualCatalog } from "../composition-editor/composition-narrative-source.service";
+import type { CompositionNarrativeScene } from "../composition-editor/composition-narrative.types";
 import {
   extractHyperframesAnimatedDeck,
+  isAutomaticTimelineSourceAsset,
   listHyperframesSourceAssets,
 } from "./hyperframes-source-asset.service";
 
@@ -41,8 +45,14 @@ export function buildProductionAssetReconciliationOperations(
   document: Parameters<typeof reconcileCompositionDocument>[0]["document"],
   assets: Parameters<typeof reconcileCompositionDocument>[0]["productionAssets"],
   deckDependencyAssetIds: Set<string> = new Set(),
+  animatedDeck: Parameters<typeof reconcileCompositionDocument>[0]["animatedDeck"] = null,
+  narrativeScenes?: CompositionNarrativeScene[],
+  replaceNarrativeTiming = false,
 ) {
   const reconciled = reconcileCompositionDocument({
+    narrativeScenes,
+    replaceNarrativeTiming,
+    animatedDeck,
     deckDependencyAssetIds,
     document,
     productionAssets: assets,
@@ -107,6 +117,7 @@ export async function getOrCreateHyperframesDraft(params: {
  * it in memory, preserving the HTML deck without uploading a legacy index file.
  */
 export async function initializeHyperframesDraft(params: {
+  preassemblyVersion?: string;
   compositionId: string;
   organizationId: string;
   userId: string;
@@ -149,15 +160,17 @@ export async function initializeHyperframesDraft(params: {
   // Images referenced inside the deck remain part of that HTML source. They
   // must not become duplicate, user-editable image clips in the timeline.
   const assets = candidates
-    .filter((asset) => asset.sourceType === "PRODUCTION_MEDIA")
+    .filter(isAutomaticTimelineSourceAsset)
     .map((asset) => ({
       checksum: asset.checksum,
       durationSeconds: asset.durationSeconds,
       fileSizeBytes: asset.fileSizeBytes,
       hasAudio: asset.hasAudio,
-      label: asset.sceneOrder
-        ? `${asset.timelineRole === "AVATAR" ? "Avatar" : "Voz"} · Escena ${asset.sceneOrder}`
-        : typeof asset.metadata.file_name === "string" ? asset.metadata.file_name : undefined,
+      label: typeof asset.metadata.asset_display_name === "string"
+        ? `${asset.metadata.asset_display_name}${asset.timelineRole === "VOICE" ? " · Voz" : ""}`
+        : asset.sceneOrder
+          ? `${asset.timelineRole === "AVATAR" ? "Avatar" : "Voz"} · Escena ${asset.sceneOrder}`
+          : typeof asset.metadata.file_name === "string" ? asset.metadata.file_name : undefined,
       mimeType: asset.mimeType,
       productionAssetId: asset.productionAssetId,
       publicUrl: null,
@@ -209,6 +222,8 @@ export async function initializeHyperframesDraft(params: {
   }
 
   const persistedDocument = await loadOrCreateInitialDocument({
+    preassemblyVersion: params.preassemblyVersion,
+    narrativeScenes: buildCompositionNarrativeScenes(component.assets, buildSceneVisualCatalog(animatedDeck)),
     animatedDeck,
     assets,
     compositionName: composition.name,
@@ -244,6 +259,8 @@ function positiveMetadataDimension(value: unknown) {
 }
 
 async function loadOrCreateInitialDocument(params: {
+  preassemblyVersion?: string;
+  narrativeScenes?: CompositionNarrativeScene[];
   animatedDeck: ReturnType<typeof extractHyperframesAnimatedDeck>;
   assets: Parameters<typeof createInitialCompositionDocument>[0]["assets"];
   compositionName: string;
@@ -255,10 +272,22 @@ async function loadOrCreateInitialDocument(params: {
 }) {
   try {
     const current = await getCurrentCompositionDocument(params);
+    if (params.preassemblyVersion) {
+      if (params.preassemblyVersion !== current.documentHash) throw new CompositionDocumentConflictError(current);
+      if (!canPreassembleScenes(params.narrativeScenes, params.assets)) {
+        throw new HyperframesDraftError("Revisa las asociaciones de todas las escenas y espera a que sus audios o avatares estén listos antes de aplicar el preensamble.", 422);
+      }
+      if (current.document.tracks.some((track) => track.kind === "DECK" && track.locked)) {
+        throw new HyperframesDraftError("Desbloquea la pista de slides antes de aplicar el preensamble.", 422);
+      }
+    }
     const operations = buildProductionAssetReconciliationOperations(
       current.document,
       params.assets,
       params.deckDependencyAssetIds,
+      params.animatedDeck,
+      params.narrativeScenes,
+      Boolean(params.preassemblyVersion),
     );
     if (operations.length === 0) {
       return { created: false, document: current.document, version: current.version };
@@ -294,6 +323,7 @@ async function loadOrCreateInitialDocument(params: {
   let document;
   try {
     document = createInitialCompositionDocument({
+      narrativeScenes: params.narrativeScenes,
       animatedDeck: params.animatedDeck,
       assets: params.assets,
       plan,

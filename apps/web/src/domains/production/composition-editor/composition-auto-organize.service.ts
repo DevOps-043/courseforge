@@ -70,7 +70,7 @@ export function buildCompositionAutoOrganizePatch(params: {
 
   for (let index = 0; index < deckClips.length; index += 1) {
     const clip = deckClips[index]!;
-    if (clip.timingSource === "USER_EDITED") continue;
+    if (clip.timingSource === "USER_EDITED" || clip.sceneId) continue;
     const startSeconds = roundSeconds(contentStart + contentDuration * index / deckClips.length);
     const endSeconds = index === deckClips.length - 1 ? contentStart + contentDuration : roundSeconds(contentStart + contentDuration * (index + 1) / deckClips.length);
     clipOperations.push({ clipId: clip.id, durationSeconds: Math.max(0.05, endSeconds - startSeconds), startSeconds, type: "clip.estimated-timing" });
@@ -88,7 +88,7 @@ export function buildCompositionAutoOrganizePatch(params: {
     let cursor = contentStart;
     for (let index = 0; index < clips.length; index += 1) {
       const clip = clips[index]!;
-      if (clip.timingSource === "USER_EDITED") {
+      if (clip.timingSource === "USER_EDITED" || clip.sceneId) {
         if (trackId !== "music") cursor = Math.max(cursor, clip.startSeconds + clip.durationSeconds);
         continue;
       }

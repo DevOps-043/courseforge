@@ -1,7 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
+import {
+  fetchWithDeadline,
+  readJsonResponseWithLimit,
+  readResponseTextWithLimit,
+} from "../../../../lib/server/outbound-http";
 import { getOptionalGeminiApiKey, getOptionalOpenAIApiKey } from "../../../../lib/server/env";
 import type { SlideSourcePack } from "../content/slide-source-pack.service";
+import { containsProductionMetadataLeak } from "../content/slide-visible-content.service";
 import {
   copyBudgetForSlideType,
   hasUnexpectedVisibleLanguage,
@@ -12,6 +18,10 @@ import type {
   SlideAgentModelSettingRecord,
   SlideAgentPromptRecord,
 } from "./slide-agent-prompt-codes";
+
+const SYNTHESIS_TIMEOUT_MS = 60_000;
+const SYNTHESIS_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
+const SYNTHESIS_ERROR_MAX_BYTES = 32 * 1024;
 
 const synthesisResponseSchema = z.object({
   slides: z.array(z.unknown()).max(24),
@@ -160,6 +170,10 @@ function hasDeckLocaleMismatch(deckSpec: CourseDeckSpec) {
   );
 }
 
+function hasDeckProductionMetadataLeak(deckSpec: CourseDeckSpec) {
+  return deckSpec.slides.some((slide) => containsProductionMetadataLeak(slideVisibleText(slide)));
+}
+
 function normalizeSynthesis(params: {
   deckSpec: CourseDeckSpec;
   response: unknown;
@@ -213,7 +227,7 @@ function normalizeSynthesis(params: {
 
 async function synthesizeWithOpenAI(params: SynthesizeVisibleCopyParams, apiKey: string) {
   const model = resolveModel(params, "openai");
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetchWithDeadline("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -225,17 +239,17 @@ async function synthesizeWithOpenAI(params: SynthesizeVisibleCopyParams, apiKey:
       ...(supportsOpenAITemperature(model) ? { temperature: temperatureFor(params) } : {}),
       text: { format: { type: "json_object" } },
     }),
-  });
+  }, SYNTHESIS_TIMEOUT_MS);
 
   if (!response.ok) {
-    const detail = (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 500);
+    const detail = (await readResponseTextWithLimit(response, SYNTHESIS_ERROR_MAX_BYTES).catch(() => "")).replace(/\s+/g, " ").slice(0, 500);
     throw new Error(`OpenAI visible-copy synthesis failed: HTTP ${response.status}${detail ? ` ${detail}` : ""}`);
   }
 
-  const payload = await response.json() as {
+  const payload = await readJsonResponseWithLimit<{
     output_text?: string;
     output?: Array<{ content?: Array<{ text?: string }> }>;
-  };
+  }>(response, SYNTHESIS_RESPONSE_MAX_BYTES);
   const text = payload.output_text || payload.output?.flatMap((item) => item.content || [])
     .find((content) => typeof content.text === "string")?.text || "";
 
@@ -247,6 +261,7 @@ async function synthesizeWithGemini(params: SynthesizeVisibleCopyParams, apiKey:
   const client = new GoogleGenAI({ apiKey });
   const result = await client.models.generateContent({
     config: {
+      abortSignal: AbortSignal.timeout(SYNTHESIS_TIMEOUT_MS),
       responseMimeType: "application/json",
       temperature: temperatureFor(params),
     },
@@ -297,6 +312,9 @@ export async function synthesizeDeckVisibleCopy(params: SynthesizeVisibleCopyPar
       }
       if (hasDeckLocaleMismatch(deckSpec)) {
         throw new Error(`El proveedor no genero copy en el idioma solicitado (${params.deckSpec.locale}).`);
+      }
+      if (hasDeckProductionMetadataLeak(deckSpec)) {
+        throw new Error("El proveedor incluyo metadatos internos de produccion en el copy visible.");
       }
       return {
         deckSpec,

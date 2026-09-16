@@ -42,7 +42,7 @@ export async function getAuthenticatedUser(supabase: SupabaseAuthLike) {
   } = await supabase.auth.getUser();
 
   if (user) {
-    console.log("[Auth] Logged in via GoTrue:", user.email);
+    console.log("[Auth] Logged in via GoTrue");
     return { userId: user.id, email: user.email };
   }
 
@@ -53,7 +53,7 @@ export async function getAuthenticatedUser(supabase: SupabaseAuthLike) {
   console.log("[Auth] Attempting Auth Bridge fallback...");
   const bridgeUser = await getAuthBridgeUser();
   if (bridgeUser) {
-    console.log("[Auth] Logged in via Auth Bridge:", bridgeUser.email);
+    console.log("[Auth] Logged in via Auth Bridge");
     return { userId: bridgeUser.id, email: bridgeUser.email };
   }
 

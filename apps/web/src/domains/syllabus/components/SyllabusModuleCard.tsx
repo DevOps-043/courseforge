@@ -261,6 +261,9 @@ export function SyllabusModuleCard({
                             <div className="flex items-baseline gap-1">
                               <input
                                 type="number"
+                                min={5}
+                                max={180}
+                                step={5}
                                 className="bg-transparent border-none p-0 text-sm font-bold text-gray-900 dark:text-white w-12 focus:outline-none focus:ring-0 font-mono text-right appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                 value={lesson.estimated_minutes}
                                 onChange={(event) =>

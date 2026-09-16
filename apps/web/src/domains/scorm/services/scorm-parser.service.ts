@@ -2,6 +2,60 @@ import JSZip from 'jszip';
 import { XMLParser } from 'fast-xml-parser';
 import { ScormManifest, ScormOrganization, ScormResource, ScormItem } from '../types';
 
+const MAX_SCORM_ENTRIES = 5_000;
+const MAX_SCORM_UNCOMPRESSED_BYTES = 500 * 1024 * 1024;
+const MAX_SCORM_ENTRY_BYTES = 100 * 1024 * 1024;
+const MAX_SCORM_COMPRESSION_RATIO = 200;
+const ZIP_EOCD_SIGNATURE = 0x06054b50;
+const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
+
+function validateZipBudget(buffer: Buffer) {
+  const minimumEocdOffset = Math.max(0, buffer.length - 65_557);
+  let eocdOffset = -1;
+  for (let offset = buffer.length - 22; offset >= minimumEocdOffset; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === ZIP_EOCD_SIGNATURE) {
+      eocdOffset = offset;
+      break;
+    }
+  }
+  if (eocdOffset < 0) throw new Error('Invalid SCORM package: ZIP directory not found');
+
+  const entryCount = buffer.readUInt16LE(eocdOffset + 10);
+  const directorySize = buffer.readUInt32LE(eocdOffset + 12);
+  const directoryOffset = buffer.readUInt32LE(eocdOffset + 16);
+  if (entryCount === 0xffff || directorySize === 0xffffffff || directoryOffset === 0xffffffff) {
+    throw new Error('Invalid SCORM package: ZIP64 packages are not supported');
+  }
+  if (entryCount > MAX_SCORM_ENTRIES || directoryOffset + directorySize > buffer.length) {
+    throw new Error('Invalid SCORM package: ZIP exceeds the processing budget');
+  }
+
+  let offset = directoryOffset;
+  let totalUncompressedBytes = 0;
+  for (let index = 0; index < entryCount; index += 1) {
+    if (offset + 46 > buffer.length || buffer.readUInt32LE(offset) !== ZIP_CENTRAL_DIRECTORY_SIGNATURE) {
+      throw new Error('Invalid SCORM package: corrupt ZIP directory');
+    }
+    const compressedBytes = buffer.readUInt32LE(offset + 20);
+    const uncompressedBytes = buffer.readUInt32LE(offset + 24);
+    const nameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    totalUncompressedBytes += uncompressedBytes;
+    const compressionRatio = compressedBytes === 0
+      ? (uncompressedBytes === 0 ? 1 : Number.POSITIVE_INFINITY)
+      : uncompressedBytes / compressedBytes;
+    if (
+      uncompressedBytes > MAX_SCORM_ENTRY_BYTES ||
+      totalUncompressedBytes > MAX_SCORM_UNCOMPRESSED_BYTES ||
+      compressionRatio > MAX_SCORM_COMPRESSION_RATIO
+    ) {
+      throw new Error('Invalid SCORM package: compressed content exceeds the processing budget');
+    }
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+}
+
 type XmlTextNode = string | { '#text'?: string } | undefined;
 
 interface ManifestXmlNode {
@@ -44,6 +98,7 @@ interface ResourceXmlNode {
 export class ScormParserService {
 
   async parsePackage(zipBuffer: Buffer): Promise<ScormManifest> {
+    validateZipBudget(zipBuffer);
     const zip = await JSZip.loadAsync(zipBuffer);
 
     // 1. Search for imsmanifest.xml in root

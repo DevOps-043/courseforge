@@ -14,6 +14,7 @@ import {
   PRODUCTION_ASSET_TYPES,
   PRODUCTION_PROVIDERS,
 } from "../../types/production.types";
+import { resolveHeygenJobFileStem } from "./heygen-asset-naming";
 
 interface DownloadedVideo {
   buffer: Buffer;
@@ -109,6 +110,7 @@ export class HeygenVideoImportService {
       artifactId: context.artifactId,
       componentId: context.componentId,
       extension: downloadedVideo.extension,
+      fileStem: resolveHeygenJobFileStem(params.job.input_snapshot, "video"),
       jobId: params.job.id,
     });
 
@@ -139,9 +141,25 @@ export class HeygenVideoImportService {
       fileSizeBytes: downloadedVideo.contentLength,
       jobId: params.job.id,
       metadata: {
+        asset_display_name: typeof params.job.input_snapshot?.asset_display_name === "string"
+          ? params.job.input_snapshot.asset_display_name
+          : null,
+        file_name: objectPath.split("/").at(-1),
+        has_audio: params.job.input_snapshot?.separate_tracks === true ? false : true,
         imported_at: new Date().toISOString(),
         output_format: params.video.outputFormat || downloadedVideo.extension,
         provider: PRODUCTION_PROVIDERS.HEYGEN,
+        scene_clip_id: typeof params.job.input_snapshot?.clip_id === "string"
+          ? params.job.input_snapshot.clip_id
+          : null,
+        scene_order: typeof params.job.input_snapshot?.scene_order === "number"
+          ? params.job.input_snapshot.scene_order
+          : null,
+        script_hash: typeof params.job.input_snapshot?.script_hash === "string"
+          ? params.job.input_snapshot.script_hash
+          : null,
+        timeline_role: "AVATAR",
+        timeline_variant: params.assetType === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP ? "CLIP" : "FULL",
         thumbnail_url: params.video.thumbnailUrl || null,
       },
       mimeType: downloadedVideo.contentType,
@@ -306,13 +324,14 @@ function buildHeygenStoragePath(params: {
   artifactId: string;
   componentId: string;
   extension: string;
+  fileStem: string;
   jobId: string;
 }) {
   return [
     "heygen",
     params.artifactId,
     params.componentId,
-    `${params.jobId}.${params.extension}`,
+    `${params.fileStem}-${params.jobId.slice(0, 8)}.${params.extension}`,
   ].join("/");
 }
 

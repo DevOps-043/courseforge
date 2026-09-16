@@ -1,28 +1,27 @@
 import type { NextConfig } from "next";
+import {
+  buildGlobalSecurityHeaders,
+  resolveAllowedServerActionOrigins,
+} from "./src/config/web-security-policy";
+
+const allowedServerActionOrigins = resolveAllowedServerActionOrigins(process.env);
+const securityHeaders = buildGlobalSecurityHeaders(process.env);
 
 const nextConfig: NextConfig = {
   devIndicators: {
     position: "bottom-right",
   },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   serverExternalPackages: ["@google/genai", "@remotion/bundler", "@remotion/renderer", "esbuild"],
   experimental: {
     serverActions: {
-      allowedOrigins: ["soflia-coursegen.netlify.app", "*.netlify.app", "localhost:3000"]
+      allowedOrigins: allowedServerActionOrigins,
     }
   },
   async headers() {
     return [
       {
         source: "/:path*",
-        headers: [
-          {
-            key: "Cross-Origin-Opener-Policy",
-            value: "same-origin-allow-popups",
-          },
-        ],
+        headers: securityHeaders,
       },
     ];
   }

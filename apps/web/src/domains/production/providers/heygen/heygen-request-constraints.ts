@@ -17,6 +17,11 @@ export function assertHeygenTextInputWithinLimits(params: {
   text: string;
 }) {
   const length = params.text.trim().length;
+  if (length === 0) {
+    throw new HeygenRequestValidationError(
+      `${params.label} no contiene texto. Agrega un guion antes de solicitar contenido facturable a HeyGen.`,
+    );
+  }
   if (length <= HEYGEN_MAX_TEXT_INPUT_CHARACTERS) {
     return;
   }

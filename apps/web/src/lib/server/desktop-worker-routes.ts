@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import {
@@ -15,22 +14,17 @@ import {
   DesktopWorkerControlPlane,
 } from "@/lib/server/desktop-worker-control-plane";
 import { OutputDurationMismatchError } from "@/lib/server/desktop-worker-errors";
+import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { apiErrorResponse } from "@/lib/server/api-response";
+import { createOperationalLogger } from "@/lib/server/operational-logger";
 
 export const WORKER_ROUTE_RUNTIME = "nodejs";
-
-export function jsonError(error: string, status: number, code?: string) {
-  return NextResponse.json({ error, code }, { status });
-}
 
 export function isUuid(value: string | undefined | null): value is string {
   return Boolean(
     value &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value),
   );
-}
-
-export async function parseJsonBody(request: Request) {
-  return (await request.json().catch(() => ({}))) as Record<string, unknown>;
 }
 
 async function getUserFromBearerToken(request: Request) {
@@ -126,17 +120,27 @@ export async function authenticateWorkerRoute(request: Request) {
   return authenticateDesktopWorker(request);
 }
 
-export function mapWorkerError(error: unknown) {
+export function mapWorkerError(error: unknown, requestId: string) {
   if (error instanceof OutputDurationMismatchError) {
-    return NextResponse.json(
-      { error: error.message, code: error.code, details: error.details },
-      { status: 422 },
-    );
+    return apiErrorResponse({
+      code: API_ERROR_CODE.invalidRequest,
+      details: error.details,
+      extensions: { workerCode: error.code },
+      message: error.message,
+      requestId,
+      status: 422,
+    });
   }
   const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("UNAUTHORIZED")) return jsonError("Unauthorized", 401);
-  if (message.includes("FORBIDDEN")) return jsonError(message, 403);
-  if (message.includes("NOT_FOUND")) return jsonError(message, 404);
+  if (message.includes("UNAUTHORIZED")) {
+    return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "Unauthorized", requestId, status: 401 });
+  }
+  if (message.includes("FORBIDDEN")) {
+    return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message, requestId, status: 403 });
+  }
+  if (message.includes("NOT_FOUND")) {
+    return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message, requestId, status: 404 });
+  }
   if (
     message.includes("NOT_CLAIMABLE") ||
     message.includes("NOT_DESKTOP_WORKER") ||
@@ -153,9 +157,30 @@ export function mapWorkerError(error: unknown) {
     message.includes("TEMPLATE_PREVIEW_NOT_CLAIMABLE") ||
     message.includes("TEMPLATE_VERSION_NOT_APPROVED")
   ) {
-    return jsonError(message, 409, message.split(":")[0]);
+    return apiErrorResponse({
+      code: API_ERROR_CODE.conflict,
+      extensions: { workerCode: message.split(":")[0] },
+      message,
+      requestId,
+      status: 409,
+    });
   }
-  if (message.includes("INVALID")) return jsonError(message, 400, message.split(":")[0]);
-  console.error("[DesktopWorkerRoutes] Unexpected error:", error);
-  return jsonError("Internal server error", 500);
+  if (message.includes("INVALID")) {
+    return apiErrorResponse({
+      code: API_ERROR_CODE.invalidRequest,
+      extensions: { workerCode: message.split(":")[0] },
+      message,
+      requestId,
+      status: 400,
+    });
+  }
+  createOperationalLogger("desktop-worker.routes", { correlationId: requestId })
+    .error("desktop_worker.unexpected_error", error);
+  return apiErrorResponse({
+    code: API_ERROR_CODE.internalError,
+    message: "Internal server error",
+    requestId,
+    retryable: true,
+    status: 500,
+  });
 }

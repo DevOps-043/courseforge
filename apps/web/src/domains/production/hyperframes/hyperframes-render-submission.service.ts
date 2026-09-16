@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getErrorMessage } from "@/lib/errors";
+import { getErrorMessage } from "../../../lib/errors";
 import {
   buildProductionIdempotencyKey,
   createOrReuseProductionJob,
@@ -13,6 +13,7 @@ import {
 } from "../types/production.types";
 import { HyperframesCloudClient } from "./hyperframes-cloud.client";
 import { resolveHyperframesAssetVariables } from "./hyperframes-asset-delivery.service";
+import { HYPERFRAMES_MEDIA_BINDING_VERSION, materializeHyperframesRenderMedia } from "./hyperframes-render-media.service";
 import { validateHyperframesPreflight } from "./hyperframes-preflight.service";
 import {
   HYPERFRAMES_ASSET_DELIVERY_MODES,
@@ -172,6 +173,7 @@ export class HyperframesRenderSubmissionService {
       resolution: effectiveInput.resolution || "1080p",
       revision_id: revision.id,
       asset_delivery_mode: revisionContract.deliveryMode,
+      media_binding_version: HYPERFRAMES_MEDIA_BINDING_VERSION,
       variables: revision.variables_values || {},
     };
     const baseIdempotencyKey = buildProductionIdempotencyKey({
@@ -309,7 +311,7 @@ export class HyperframesRenderSubmissionService {
       idempotency_key: string;
       production_job_id: string;
     };
-    if (request.provider_render_id) return;
+    if (request.provider_render_id || request.provider_status === "FAILED") return;
 
     const { data: storedJob, error: jobError } = await this.supabase
       .from("production_jobs")
@@ -381,10 +383,18 @@ export class HyperframesRenderSubmissionService {
     }
 
     try {
+      const remoteAssetVariables = deliveryMode === HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES
+        ? await resolveHyperframesAssetVariables({ assets: manifest, supabase: this.supabase })
+        : {};
       let providerAssetId = request.provider_asset_id;
+      await this.assertNotCancelled(request.id);
       if (!providerAssetId) {
         await this.markUploading(jobId, request.id);
-        const archiveBytes = await this.downloadAndVerifyArchive(revision, manifest, deliveryMode);
+        const snapshotBytes = await this.downloadAndVerifyArchive(revision, manifest, deliveryMode);
+        const archiveBytes = deliveryMode === HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES
+          ? await materializeHyperframesRenderMedia({ archive: snapshotBytes, entryPoint: revision.entry_point, assetVariables: remoteAssetVariables })
+          : snapshotBytes;
+        await this.assertNotCancelled(request.id);
         const upload = await client.uploadProjectArchive({
           bytes: archiveBytes,
           fileName: `${revision.id}.zip`,
@@ -397,9 +407,7 @@ export class HyperframesRenderSubmissionService {
           requestId: request.id,
         });
       }
-      const remoteAssetVariables = deliveryMode === HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES
-        ? await resolveHyperframesAssetVariables({ assets: manifest, supabase: this.supabase })
-        : {};
+      await this.assertNotCancelled(request.id);
       const render = await client.createRender({
         aspectRatio: input.aspectRatio,
         assetId: providerAssetId,
@@ -468,6 +476,13 @@ export class HyperframesRenderSubmissionService {
     return { jobId: job.id as string, request: request as ExistingRequest | null };
   }
 
+  private async assertNotCancelled(requestId: string) {
+    const { data, error } = await this.supabase.from("hyperframes_render_requests")
+      .select("cancelled_at").eq("id", requestId).single();
+    if (error) throw error;
+    if (data.cancelled_at) throw new HyperframesRenderSubmissionError("El proceso fue cancelado.");
+  }
+
   private async hasFailedAttempt(params: {
     idempotencyKey: string;
     organizationId: string;
@@ -479,7 +494,7 @@ export class HyperframesRenderSubmissionService {
       .eq("idempotency_key", params.idempotencyKey)
       .eq("job_type", PRODUCTION_JOB_TYPES.HYPERFRAMES_RENDER)
       .eq("provider", PRODUCTION_PROVIDERS.HYPERFRAMES)
-      .eq("status", PRODUCTION_JOB_STATUSES.FAILED)
+      .in("status", [PRODUCTION_JOB_STATUSES.FAILED, PRODUCTION_JOB_STATUSES.CANCELLED])
       .maybeSingle();
     if (error) throw error;
     return Boolean(data?.id);
@@ -516,7 +531,7 @@ export class HyperframesRenderSubmissionService {
   }
 
   private async getRevisionAssets(revisionId: string) {
-    const [{ data, error }, { data: branding, error: brandingError }] = await Promise.all([
+    const [{ data, error }, { data: branding, error: brandingError }, { data: soundEffects, error: soundEffectsError }] = await Promise.all([
       this.supabase
         .from("video_composition_assets")
         .select("production_asset_id, source_checksum, source_storage_path, file_size_bytes, mime_type")
@@ -525,15 +540,28 @@ export class HyperframesRenderSubmissionService {
         .from("video_composition_brand_assets")
         .select("organization_assembly_asset_id, source_checksum, source_storage_bucket, source_storage_path, file_size_bytes, mime_type")
         .eq("composition_revision_id", revisionId),
+      this.supabase
+        .from("video_composition_sound_effect_assets")
+        .select("sound_effect_asset_id, source_checksum, source_storage_bucket, source_storage_path, file_size_bytes, mime_type")
+        .eq("composition_revision_id", revisionId),
     ]);
     if (error) throw error;
     if (brandingError) throw brandingError;
+    if (soundEffectsError) throw soundEffectsError;
     return [
       ...((data || []) as StoredRevisionAsset[]),
       ...(branding || []).map((row) => ({
         file_size_bytes: Number(row.file_size_bytes),
         mime_type: String(row.mime_type),
         production_asset_id: String(row.organization_assembly_asset_id),
+        source_checksum: String(row.source_checksum),
+        source_storage_bucket: String(row.source_storage_bucket),
+        source_storage_path: String(row.source_storage_path),
+      })),
+      ...(soundEffects || []).map((row) => ({
+        file_size_bytes: Number(row.file_size_bytes),
+        mime_type: String(row.mime_type),
+        production_asset_id: String(row.sound_effect_asset_id),
         source_checksum: String(row.source_checksum),
         source_storage_bucket: String(row.source_storage_bucket),
         source_storage_path: String(row.source_storage_path),

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clapperboard, Film, Loader2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useMaterials } from "../hooks/useMaterials";
 import { HyperframesCompositionPanel } from "./HyperframesCompositionPanel";
 import { PRODUCTION_THEME } from "./production-asset-ui";
@@ -56,38 +57,55 @@ export function PostproductionAssemblyContainer({
   onNext,
   singleVideoOnly = false,
 }: PostproductionAssemblyContainerProps) {
-  const { materials, getLessonComponents, refresh } = useMaterials(artifactId);
+  const searchParams = useSearchParams();
+  const returnedComponentId = searchParams.get("componentId");
+  const {
+    materials,
+    loading: materialsLoading,
+    getArtifactComponents,
+    refresh,
+  } = useMaterials(artifactId);
   const [components, setComponents] = useState<VideoComponent[]>([]);
   const [activeComponentId, setActiveComponentId] = useState<string | null>(initialComponentId || null);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadComponents = useCallback(async () => {
     if (!materials?.lessons) {
+      if (materialsLoading) return;
       setComponents([]);
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     try {
-      const groups = await Promise.all(materials.lessons.map(async (lesson) => {
-        const lessonComponents = await getLessonComponents(lesson.id);
-        return lessonComponents
-          .filter((component) => component.type.includes("VIDEO"))
-          .map((component) => ({
-            assets: component.assets,
-            content: component.content,
-            id: component.id,
-            lessonTitle: lesson.lesson_title,
-            type: component.type,
-          } satisfies VideoComponent));
-      }));
-      const allComponents = groups.flat();
+      const lessonMetadata = new Map(
+        materials.lessons.map((lesson, index) => [lesson.id, {
+          order: index,
+          title: lesson.lesson_title,
+        }]),
+      );
+      const artifactComponents = await getArtifactComponents();
+      const allComponents = artifactComponents
+        .filter((component) => component.type.includes("VIDEO"))
+        .sort((left, right) =>
+          (lessonMetadata.get(left.material_lesson_id)?.order ?? Number.MAX_SAFE_INTEGER)
+          - (lessonMetadata.get(right.material_lesson_id)?.order ?? Number.MAX_SAFE_INTEGER))
+        .map((component) => ({
+          assets: component.assets,
+          content: component.content,
+          id: component.id,
+          lessonTitle: lessonMetadata.get(component.material_lesson_id)?.title || "Lección",
+          type: component.type,
+        } satisfies VideoComponent));
       const scoped = initialComponentId
         ? allComponents.filter((component) => component.id === initialComponentId)
         : singleVideoOnly
           ? allComponents.slice(0, 1)
           : allComponents;
-      const preferredComponent = scoped.find(hasProductionMedia) || scoped[0] || null;
+      const preferredComponent = scoped.find((component) => component.id === returnedComponentId)
+        || scoped.find(hasProductionMedia)
+        || scoped[0]
+        || null;
       setComponents(scoped);
       setActiveComponentId((current) => current && scoped.some((component) => component.id === current)
         ? current
@@ -98,7 +116,7 @@ export function PostproductionAssemblyContainer({
     } finally {
       setIsLoading(false);
     }
-  }, [getLessonComponents, initialComponentId, materials?.lessons]);
+  }, [getArtifactComponents, initialComponentId, materials, materialsLoading, returnedComponentId, singleVideoOnly]);
 
   useEffect(() => { void loadComponents(); }, [loadComponents]);
 
@@ -164,6 +182,7 @@ export function PostproductionAssemblyContainer({
         <div className="h-full min-w-0">
           {activeComponent && (
             <HyperframesCompositionPanel
+              key={activeComponent.id}
               componentId={activeComponent.id}
               componentTitle={getComponentTitle(activeComponent)}
               lessonLibrary={components.map((component) => ({

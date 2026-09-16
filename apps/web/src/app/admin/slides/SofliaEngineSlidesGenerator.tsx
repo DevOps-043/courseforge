@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, FileJson, FileText, Layers3, Loader2, RefreshCw, WandSparkles } from "lucide-react";
+import { ArrowLeft, BookOpen, FileJson, FileText, Layers3, Loader2, RefreshCw, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { readApiResponse } from "@/lib/client/api-response";
 import { waitForSlideGeneration } from "@/lib/client/slide-generation";
@@ -13,6 +13,7 @@ export interface SlideGenerationCandidate {
   artifactId: string;
   componentId: string;
   componentType: string;
+  courseTitle: string;
   hasPreparedSpec?: boolean;
   label: string;
   lessonTitle: string;
@@ -235,6 +236,36 @@ export function SofliaEngineSlidesGenerator({
           <span><b>03</b> Generar</span>
         </div>
       </header>
+
+      {selectedCandidate ? (
+        <section
+          aria-label="Contexto del taller"
+          className="grid gap-3 border-x border-b border-[var(--engine-border)] bg-[var(--engine-surface-soft)] px-5 py-4 sm:grid-cols-2"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--engine-accent)]/10 text-[var(--engine-accent-strong)]">
+              <Layers3 size={16} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--engine-text-muted)]">Taller</p>
+              <p className="mt-1 truncate text-sm font-bold text-[var(--engine-text)]" title={selectedCandidate.courseTitle}>
+                {selectedCandidate.courseTitle}
+              </p>
+            </div>
+          </div>
+          <div className="flex min-w-0 items-center gap-3 sm:border-l sm:border-[var(--engine-border)] sm:pl-4">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--engine-accent)]/10 text-[var(--engine-accent-strong)]">
+              <BookOpen size={16} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--engine-text-muted)]">Lección</p>
+              <p className="mt-1 truncate text-sm font-bold text-[var(--engine-text)]" title={selectedCandidate.lessonTitle}>
+                {selectedCandidate.lessonTitle}
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <div className="engine-workbench-body">
         <aside className="engine-workbench-controls">

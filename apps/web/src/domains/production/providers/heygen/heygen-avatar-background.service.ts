@@ -46,7 +46,12 @@ export async function runHeygenAvatarClipsBackground(
     }).catch(() => undefined);
     console.error("[HeyGen Avatar Background] Failed:", {
       componentId: options.componentId,
+      generationTarget: options.generationTarget,
       message,
+      providerEndpoint: options.generationTarget === "voice_only"
+        ? "/v3/voices/speech"
+        : "/v3/videos",
+      requestOrigin: options.requestOrigin || "unknown",
     });
     throw error;
   }

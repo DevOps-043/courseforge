@@ -12,8 +12,10 @@ import {
   type ProductionComponentContext,
   type ProductionJobRecord,
 } from "../types/production.types";
+import { videoDurationContractSchema } from "../../video-duration/video-duration-policy";
 
 interface ArtifactRelation {
+  idea_central?: string | null;
   organization_id?: string | null;
 }
 
@@ -24,11 +26,14 @@ interface MaterialRelation {
 
 interface MaterialLessonRelation {
   lesson_id?: string | null;
+  lesson_title?: string | null;
   materials?: MaterialRelation | MaterialRelation[] | null;
   module_id?: string | null;
+  module_title?: string | null;
 }
 
 interface MaterialComponentContextRecord {
+  assets?: unknown;
   id: string;
   material_lesson_id?: string | null;
   material_lessons?: MaterialLessonRelation | MaterialLessonRelation[] | null;
@@ -53,6 +58,17 @@ function normalizeError(error: unknown) {
   }
 
   return { message: String(error) };
+}
+
+export function preserveRetryableProviderCheckpoint(
+  outputSnapshot: Record<string, unknown> | null | undefined,
+) {
+  if (!outputSnapshot || typeof outputSnapshot !== "object") return {};
+  const speechCheckpoint = outputSnapshot.speech_checkpoint;
+  if (!speechCheckpoint || typeof speechCheckpoint !== "object" || Array.isArray(speechCheckpoint)) {
+    return {};
+  }
+  return { speech_checkpoint: speechCheckpoint };
 }
 
 export function buildProductionIdempotencyKey(params: {
@@ -83,12 +99,12 @@ export async function resolveProductionComponentContext(params: {
     .from("material_components")
     .select(
       `
-        id, type, material_lesson_id,
+        id, type, assets, material_lesson_id,
         material_lessons (
-          lesson_id, module_id,
+          lesson_id, lesson_title, module_id, module_title,
           materials (
             artifact_id,
-            artifacts ( organization_id )
+            artifacts ( idea_central, organization_id )
           )
         )
       `,
@@ -108,6 +124,11 @@ export async function resolveProductionComponentContext(params: {
   const lesson = firstRelation(component.material_lessons);
   const material = firstRelation(lesson?.materials);
   const artifact = firstRelation(material?.artifacts);
+  const durationContractResult = videoDurationContractSchema.safeParse(
+    component.assets && typeof component.assets === "object"
+      ? (component.assets as Record<string, unknown>).video_duration_contract
+      : null,
+  );
 
   if (!material?.artifact_id) {
     throw new Error("No se pudo resolver el artefacto del componente.");
@@ -115,12 +136,16 @@ export async function resolveProductionComponentContext(params: {
 
   return {
     artifactId: material.artifact_id,
+    artifactTitle: artifact?.idea_central || null,
     componentId: component.id,
     componentType: component.type,
     lessonId: lesson?.lesson_id || null,
+    lessonTitle: lesson?.lesson_title || null,
     materialLessonId: component.material_lesson_id || null,
     moduleId: lesson?.module_id || null,
+    moduleTitle: lesson?.module_title || null,
     organizationId: artifact?.organization_id || null,
+    videoDurationContract: durationContractResult.success ? durationContractResult.data : null,
   };
 }
 
@@ -159,7 +184,10 @@ export async function createOrReuseProductionJob(
         .update({
           attempt: (existingJob.attempt || 1) + 1,
           failed_at: null,
-          output_snapshot: {},
+          // Speech generation is synchronous and may already have consumed
+          // provider credits. Keep only its recovery checkpoint so a retry can
+          // import the same audio instead of generating (and charging) again.
+          output_snapshot: preserveRetryableProviderCheckpoint(existingJob.output_snapshot),
           provider_callback_id: null,
           provider_error: null,
           provider_job_id: null,
@@ -193,6 +221,7 @@ export async function createOrReuseProductionJob(
     .insert({
       artifact_id: params.context.artifactId,
       created_by: params.createdBy || null,
+      estimated_cost_cents: params.estimatedCostCents ?? null,
       idempotency_key: params.idempotencyKey,
       input_snapshot: params.inputSnapshot,
       job_type: params.jobType,
@@ -209,10 +238,46 @@ export async function createOrReuseProductionJob(
     .single();
 
   if (error) {
+    if ((error as { code?: string }).code === "23505") {
+      let concurrentQuery = supabase
+        .from("production_jobs")
+        .select("id, attempt, output_snapshot, provider_job_id, status")
+        .eq("idempotency_key", params.idempotencyKey)
+        .eq("job_type", params.jobType)
+        .eq("provider", params.provider);
+      concurrentQuery = params.context.organizationId
+        ? concurrentQuery.eq("organization_id", params.context.organizationId)
+        : concurrentQuery.is("organization_id", null);
+      const { data: concurrentJob, error: concurrentError } = await concurrentQuery.single();
+      if (concurrentError) throw concurrentError;
+      return concurrentJob as ProductionJobRecord;
+    }
     throw error;
   }
 
   return data as ProductionJobRecord;
+}
+
+/** Atomically grants one worker permission to start a billable provider call. */
+export async function claimPendingProductionJob(params: {
+  jobId: string;
+  supabase: SupabaseClient;
+}) {
+  const now = new Date().toISOString();
+  const { data, error } = await params.supabase
+    .from("production_jobs")
+    .update({
+      started_at: now,
+      status: PRODUCTION_JOB_STATUSES.RUNNING,
+      updated_at: now,
+    })
+    .eq("id", params.jobId)
+    .eq("status", PRODUCTION_JOB_STATUSES.PENDING)
+    .select("id")
+    .maybeSingle();
+
+  if (error) throw error;
+  return Boolean(data?.id);
 }
 
 export async function markProductionJobRunning(params: {
@@ -350,10 +415,12 @@ export async function failProductionJob(params: {
 export function buildBrollPromptJobInputSnapshot(params: {
   componentId: string;
   storyboard: unknown;
+  videoDurationContract?: unknown;
 }) {
   return {
     component_id: params.componentId,
     storyboard: params.storyboard,
+    video_duration_contract: params.videoDurationContract || null,
     job_type: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
   };
 }

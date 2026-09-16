@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { getCompositionClipMediaAssetId, type CompositionClip, type CompositionEditorDocument, type CompositionTrack } from "./composition-document.types";
-import { resolveCompositionAnimationWindow } from "./composition-motion-scheduling.service";
+import { buildCompositionMotionRuntime } from "./composition-motion-runtime";
 import {
   buildCompositionVolumeAutomations,
   type CompositionClipVolumeAutomation,
@@ -18,6 +18,10 @@ import {
   resolveCompositionPreviewClipVolume,
   resolveCompositionPreviewMediaFit,
 } from "./composition-preview-visual-state";
+import {
+  normalizeAnimatedDeckAppearance,
+  repairLegacyAnimatedDeckAppearanceSelectors,
+} from "../animated-deck/animated-deck-appearance.service";
 
 export class CompositionPreviewCompilerError extends Error {}
 
@@ -58,17 +62,20 @@ export async function compileCompositionPreview(params: {
   const volumeAutomations = buildCompositionVolumeAutomations(document);
   const automatedClipIds = new Set(volumeAutomations.map((automation) => automation.targetClipId));
   const deckStyles = document.deckStyles
-    ? `${document.deckStyles.fontUrls.map((url) => `@import url(${JSON.stringify(replaceUrls(url, params.deckAssetUrls))});`).join("\n")}\n${replaceUrls(document.deckStyles.css, params.deckAssetUrls)}`
+    ? `${document.deckStyles.fontUrls.map((url) => `@import url(${JSON.stringify(replaceUrls(url, params.deckAssetUrls))});`).join("\n")}\n${replaceUrls(repairLegacyAnimatedDeckAppearanceSelectors(document.deckStyles.css), params.deckAssetUrls)}`
     : "";
+  const deckAppearance = normalizeAnimatedDeckAppearance(document.deckStyles?.appearance);
   const clips = document.clips
     .slice()
     .sort((left, right) => left.layout.zIndex - right.layout.zIndex || left.startSeconds - right.startSeconds)
     .map((clip) => renderClip(
       clip,
+      document.canvas,
       tracksById.get(clip.trackId),
       params.assetVariableNames,
       params.assetUrls,
       params.deckAssetUrls,
+      deckAppearance,
       target,
       requireRuntimeTrackIndex(timelineLayout.trackIndexByClipId, clip.id),
       timelineLayout.audioTrackIndexByClipId.get(clip.id),
@@ -113,7 +120,7 @@ export async function compileCompositionPreview(params: {
     ${isInteractivePreview ? `.composition-audio-unlock { position: absolute; left: 50%; bottom: 28px; z-index: 2147483647; display: none; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: rgba(2,6,23,.92); color: #fff; padding: 12px 18px; font: 700 16px/1 system-ui, sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,.4); cursor: pointer; }
     .composition-audio-unlock[data-visible="true"] { display: block; }` : ""}
     .deck-content { overflow: hidden; }
-    .deck-content .deck-scope, .deck-content .deck-shell, .deck-content .deck-stage, .deck-content .deck-stage > .slide { width: 100%; height: 100%; }
+    .deck-content .deck-shell, .deck-content .deck-stage, .deck-content .deck-stage > .slide { width: 100%; height: 100%; }
     ${deckStyles}
   </style>
 </head>
@@ -134,10 +141,12 @@ export async function compileCompositionPreview(params: {
 
 function renderClip(
   clip: CompositionClip,
+  canvas: Pick<CompositionEditorDocument["canvas"], "height" | "width">,
   track: CompositionTrack | undefined,
   assetVariableNames: Map<string, string> | undefined,
   assetUrls: Map<string, string>,
   deckAssetUrls: Map<string, string> | undefined,
+  deckAppearance: "light" | "dark",
   target: CompositionCompilationTarget,
   runtimeTrackIndex: number,
   runtimeAudioTrackIndex: number | undefined,
@@ -160,7 +169,8 @@ function renderClip(
   const hasSynchronizedVideoAudio = clip.kind === "VIDEO"
     && compositionClipHasConfigurableAudio(clip, track);
   if (clip.source.type === "DECK_SLIDE") {
-    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
+    const deckContainStyle = renderDeckContainStyle(clip, canvas);
+    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope" data-appearance="${deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
   const mediaAssetId = getCompositionClipMediaAssetId(clip);
   if (!mediaAssetId) throw new CompositionPreviewCompilerError(`El clip ${clip.id} no tiene un asset multimedia válido.`);
@@ -186,8 +196,29 @@ function renderClip(
   return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${media}</div></div></section>`;
 }
 
+/**
+ * Deck markup is authored in the canvas coordinate space. Preset layouts can
+ * make a deck clip smaller or change its aspect ratio, so scale that source
+ * frame with `contain` semantics instead of shrinking its viewport and
+ * clipping the authored slide.
+ */
+function renderDeckContainStyle(
+  clip: CompositionClip,
+  canvas: Pick<CompositionEditorDocument["canvas"], "height" | "width">,
+) {
+  const scale = Math.min(
+    clip.layout.width / canvas.width,
+    clip.layout.height / canvas.height,
+  );
+  const width = canvas.width * scale;
+  const height = canvas.height * scale;
+  const left = (clip.layout.width - width) / 2;
+  const top = (clip.layout.height - height) / 2;
+  return `position:absolute;width:${canvas.width}px;height:${canvas.height}px;left:${left}px;top:${top}px;transform:scale(${scale});transform-origin:top left;overflow:hidden;`;
+}
+
 function renderMediaSourceAttribute(sourceUrl: string | undefined, variableName: string | undefined) {
-  if (variableName) return `data-hf-src="${escapeAttribute(variableName)}"`;
+  if (variableName) return `data-var-src="${escapeAttribute(variableName)}"`;
   if (sourceUrl) return `src="${escapeAttribute(sourceUrl)}"`;
   throw new CompositionPreviewCompilerError("No se pudo resolver la fuente de un medio.");
 }
@@ -200,7 +231,7 @@ function renderHyperframesCompositionVariables(
   const declarations = [...assetVariableNames.values()].map((name) => ({
     default: "",
     id: name,
-    label: "Courseforge remote asset",
+    label: "SofLIA - Engine remote asset",
     type: "string",
   }));
   return ` data-composition-variables='${escapeAttribute(JSON.stringify(declarations))}'`;
@@ -232,18 +263,7 @@ function renderTimelineInitializer(
     kind: clip.kind,
     start: clip.startSeconds,
   }));
-  const motionAnimations = document.motion.animations.map((animation) => {
-    const clip = document.clips.find((candidate) => candidate.id === animation.target.clipId)!;
-    const relativeStart = resolveCompositionAnimationWindow(animation, clip.durationSeconds).start;
-    return {
-      duration: animation.timing.durationSeconds,
-      id: animation.id,
-      keyframes: animation.keyframes,
-      loop: animation.loop,
-      start: clip.startSeconds + relativeStart,
-      targetId: `${clip.id}-motion`,
-    };
-  });
+  const motionAnimations = buildCompositionMotionRuntime(document);
   return `<script>
     (() => {
       const clips = ${JSON.stringify(clipMetadata)};
@@ -289,6 +309,7 @@ function renderTimelineInitializer(
           );
         }
       }
+      function addMotion(timeline, motionAnimations) {
       for (const animation of motionAnimations) {
         const target = document.getElementById(animation.targetId);
         const first = animation.keyframes[0];
@@ -326,6 +347,25 @@ function renderTimelineInitializer(
           }, animation.start + previous.offset * animation.duration);
         }
       }
+      }
+      let motionTimeline = gsap.timeline();
+      let motionTargets = new Set(motionAnimations.map((animation) => animation.targetId));
+      addMotion(motionTimeline, motionAnimations);
+      timeline.add(motionTimeline, 0);
+      window.__courseforgeReplaceMotion = (animations) => {
+        const nextTargets = new Set(animations.map((animation) => animation.targetId));
+        if ([...nextTargets].some((id) => !document.getElementById(id))) throw new Error("MOTION_TARGET_NOT_FOUND");
+        timeline.remove(motionTimeline);
+        motionTimeline.kill();
+        for (const id of new Set([...motionTargets, ...nextTargets])) {
+          const target = document.getElementById(id);
+          if (target) gsap.set(target, { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 });
+        }
+        motionTargets = nextTargets;
+        motionTimeline = gsap.timeline();
+        addMotion(motionTimeline, animations);
+        timeline.add(motionTimeline, 0);
+      };
       window.__timelines = window.__timelines || {};
       window.__timelines["courseforge-composition"] = timeline;
     })();
@@ -1052,7 +1092,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           return;
         }
         const changes = message.patch?.changes;
-        if (!Number.isInteger(message.sequence) || message.sequence < 1 || !Array.isArray(changes) || changes.length < 1 || changes.length > 100) {
+        if (!Number.isInteger(message.sequence) || message.sequence < 1 || !Array.isArray(changes) || changes.length > 100
+          || (changes.length === 0 && !Array.isArray(message.patch?.motion))
+          || (message.patch?.motion !== undefined && (!Array.isArray(message.patch.motion) || message.patch.motion.length > 200))) {
           finish(false, "INVALID_PATCH");
           return;
         }
@@ -1094,6 +1136,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
               if (volumeTarget.dataset.volumeAutomated !== "true") volumeTarget.volume = change.volume;
             }
           }
+          if (message.patch.motion !== undefined) window.__courseforgeReplaceMotion(message.patch.motion);
           seek(currentTime);
           finish(true, "APPLIED");
         } catch {

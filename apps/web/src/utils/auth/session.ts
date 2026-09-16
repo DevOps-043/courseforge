@@ -54,6 +54,13 @@ function getErrorCode(error: unknown) {
     : null
 }
 
+function isNextDynamicRenderingSignal(error: unknown) {
+  return typeof error === 'object'
+    && error !== null
+    && 'digest' in error
+    && error.digest === 'DYNAMIC_SERVER_USAGE'
+}
+
 export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
   try {
     const cookieStore = await cookies()
@@ -97,6 +104,11 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
       active_organization_id: appMetadata.active_organization_id || null,
     }
   } catch (error: unknown) {
+    // cookies() uses this control-flow signal so Next can switch the route to
+    // dynamic rendering. Swallowing it produces misleading build errors.
+    if (isNextDynamicRenderingSignal(error)) {
+      throw error
+    }
     if (getErrorCode(error) === 'ERR_JWT_EXPIRED') {
       console.log('Auth token expired')
     } else {

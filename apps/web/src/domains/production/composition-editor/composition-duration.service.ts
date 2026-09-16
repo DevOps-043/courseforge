@@ -4,6 +4,8 @@ import {
 } from "./composition-document.types";
 
 export interface CompositionDurationAsset {
+  sceneClipId?: string;
+  sceneOrder?: number;
   durationSeconds?: number;
   timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";
@@ -31,6 +33,16 @@ export function resolveCompositionDuration(input: {
   assets: CompositionDurationAsset[];
   slideCount: number;
 }): CompositionDurationResolution {
+  const sceneMedia = input.assets.filter((asset) => asset.sceneClipId && Number.isInteger(asset.sceneOrder)
+    && (asset.timelineRole === "VOICE" || asset.timelineRole === "AVATAR"));
+  if (sceneMedia.length && !input.assets.some((asset) => asset.timelineVariant === "FULL" && asset.timelineRole === "AVATAR")) {
+    const ids = [...new Set(sceneMedia.map((asset) => asset.sceneClipId))];
+    const total = ids.reduce((sum, id) => {
+      const media = sceneMedia.filter((asset) => asset.sceneClipId === id);
+      return sum + (maxMeasuredDuration(media.filter((asset) => asset.timelineRole === "VOICE")) || maxMeasuredDuration(media));
+    }, 0) + sumMeasuredDurations(input.assets.filter((asset) => !asset.sceneClipId && asset.timelineRole === "VOICE"));
+    if (total > 0) return assertSupportedDuration(roundSeconds(total), sceneMedia.some((asset) => asset.timelineRole === "VOICE") ? "voice" : "avatar_clips");
+  }
   const voiceDuration = sumMeasuredDurations(input.assets.filter((asset) => asset.timelineRole === "VOICE"));
   if (voiceDuration > 0) return assertSupportedDuration(voiceDuration, "voice");
 

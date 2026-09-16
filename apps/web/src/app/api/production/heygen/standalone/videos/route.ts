@@ -1,7 +1,5 @@
-import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -23,6 +21,12 @@ import {
   HeygenRequestValidationError,
 } from "@/domains/production/providers/heygen/heygen-request-constraints";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { heygenCredentialErrorResponse, heygenProviderErrorResponse, heygenServiceErrorResponse } from "@/lib/server/heygen-route-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+
+const MAX_HEYGEN_STANDALONE_VIDEO_REQUEST_BYTES = 128 * 1024;
 
 const standaloneVideoRequestSchema = z
   .object({
@@ -39,11 +43,20 @@ const standaloneVideoRequestSchema = z
   .strict();
 
 export async function POST(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.heygen.standalone.videos", { correlationId: requestId });
   let requestedResolution: "720p" | "1080p" | "4k" = "1080p";
   try {
-    const payload = standaloneVideoRequestSchema.parse(
-      await request.json().catch(() => ({})),
-    );
+    const parsedRequest = await parseJsonRequest(request, standaloneVideoRequestSchema, MAX_HEYGEN_STANDALONE_VIDEO_REQUEST_BYTES);
+    if (!parsedRequest.success) {
+      return apiErrorResponse({
+        code: parsedRequest.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+        message: parsedRequest.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "Payload invalido para generar video HeyGen standalone.",
+        requestId,
+        status: parsedRequest.reason === "too_large" ? 413 : 400,
+      });
+    }
+    const payload = parsedRequest.data;
     requestedResolution = payload.resolution;
     assertHeygenTextInputWithinLimits({
       label: "El guion standalone",
@@ -52,23 +65,17 @@ export async function POST(request: Request) {
     const supabase = await createClient();
     const authenticatedUser = await getAuthenticatedUser(supabase);
     if (!authenticatedUser) {
-      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
 
     const canReview = await canReviewContent(authenticatedUser.userId);
     if (!canReview) {
-      return NextResponse.json(
-        { error: "No tienes permisos para generar videos con HeyGen." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para generar videos con HeyGen.", requestId, status: 403 });
     }
 
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
-      return NextResponse.json(
-        { error: "Empresa no valida o no autorizada." },
-        { status: 403 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no valida o no autorizada.", requestId, status: 403 });
     }
 
     const repository = new HeygenRepository(getServiceRoleClient());
@@ -77,10 +84,7 @@ export async function POST(request: Request) {
       presetId: payload.avatarPresetId,
     });
     if (!avatar) {
-      return NextResponse.json(
-        { error: "No hay avatar HeyGen disponible para esta empresa." },
-        { status: 400 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "No hay avatar HeyGen disponible para esta empresa.", requestId, status: 400 });
     }
 
     const voice = payload.voicePresetId
@@ -91,13 +95,7 @@ export async function POST(request: Request) {
       : null;
     const providerVoiceId = voice?.heygen_voice_id || avatar.default_voice_id;
     if (!providerVoiceId) {
-      return NextResponse.json(
-        {
-          error:
-            "Selecciona una voz o marca una voz default para el avatar HeyGen.",
-        },
-        { status: 400 },
-      );
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Selecciona una voz o marca una voz default para el avatar HeyGen.", requestId, status: 400 });
     }
 
     const admin = getServiceRoleClient();
@@ -125,8 +123,7 @@ export async function POST(request: Request) {
       `heygen-standalone-${tenant.organizationId}-${crypto.randomUUID()}`,
     );
 
-    return NextResponse.json({
-      success: true,
+    return apiSuccessResponse({
       data: {
         jobId: createdVideo.videoId,
         providerJobId: createdVideo.videoId,
@@ -134,57 +131,26 @@ export async function POST(request: Request) {
         standalone: true,
         status: "WAITING_PROVIDER",
       },
-    });
+    }, { requestId });
   } catch (error: unknown) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Payload invalido para generar video HeyGen standalone." },
-        { status: 400 },
-      );
-    }
-
     if (error instanceof HeygenRequestValidationError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: error.status },
-      );
+      return heygenServiceErrorResponse(error, requestId);
     }
 
     if (error instanceof HeygenApiError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          hint: buildResolutionRejectionHint(requestedResolution, error),
-          providerCode: error.providerCode || null,
-          retryAfterSeconds: error.retryAfterSeconds || null,
-        },
-        {
-          headers: buildRetryAfterHeaders(error.retryAfterSeconds),
-          status: error.status === 429 ? 429 : 502,
-        },
-      );
+      return heygenProviderErrorResponse({
+        error,
+        failureMessage: "HeyGen no pudo generar el video standalone.",
+        hint: buildResolutionRejectionHint(requestedResolution, error),
+        requestId,
+      });
     }
 
     if (error instanceof HeygenCredentialResolverError) {
-      return NextResponse.json(
-        { error: error.message, code: error.code },
-        { status: error.status },
-      );
+      return heygenCredentialErrorResponse(error, requestId);
     }
 
-    console.error("[API /production/heygen/standalone/videos] Unexpected error:", {
-      message: getErrorMessage(error),
-    });
-
-    return NextResponse.json(
-      { error: "Error interno del servidor al generar video HeyGen standalone." },
-      { status: 500 },
-    );
+    logger.error("production.heygen.standalone.video_generate_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno del servidor al generar video HeyGen standalone.", requestId, retryable: true, status: 500 });
   }
-}
-
-function buildRetryAfterHeaders(retryAfterSeconds?: number) {
-  return retryAfterSeconds
-    ? { "Retry-After": String(retryAfterSeconds) }
-    : undefined;
 }

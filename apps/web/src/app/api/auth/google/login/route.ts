@@ -3,18 +3,22 @@ import { createClient } from "@/utils/supabase/server";
 import { getAuthenticatedUser } from "@/lib/server/artifact-action-auth";
 import { createOAuthState } from "@/lib/server/oauth-state";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { apiErrorResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 export async function GET(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   try {
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);
     if (!user) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado", requestId, status: 401 });
     }
 
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
-      return NextResponse.json({ error: "Empresa no valida o no autorizada" }, { status: 403 });
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no valida o no autorizada", requestId, status: 403 });
     }
 
     const requestUrl = new URL(request.url);
@@ -46,9 +50,11 @@ export async function GET(request: Request) {
 
     const qs = new URLSearchParams(options).toString();
     redirectResponse.headers.set("Location", `https://accounts.google.com/o/oauth2/v2/auth?${qs}`);
+    redirectResponse.headers.set("x-request-id", requestId);
     return redirectResponse;
-  } catch (error: any) {
-    console.error("[Google OAuth Login Error]:", error);
-    return NextResponse.json({ error: "Error iniciando flujo OAuth" }, { status: 500 });
+  } catch (error: unknown) {
+    createOperationalLogger("auth.google.login", { correlationId: requestId })
+      .error("google_oauth.login_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error iniciando flujo OAuth", requestId, retryable: true, status: 500 });
   }
 }

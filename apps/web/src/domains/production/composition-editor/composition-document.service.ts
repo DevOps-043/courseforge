@@ -9,6 +9,7 @@ import { buildCompositionAgentDiff } from "./composition-agent-diff.service";
 import { assertCompositionAgentOperationsAllowed, CompositionAgentPolicyError } from "./composition-agent-policy.service";
 import { validateCompositionAgentSimulation, CompositionAgentValidationError } from "./composition-agent-validation.service";
 import { normalizeCompositionDocumentLayerDepths } from "./composition-layer-depth";
+import { readReadyLinkedSoundEffectAssetIds } from "./composition-sound-effect-assets.service";
 
 export class CompositionDocumentError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -246,6 +247,17 @@ async function assertAddedAssetsBelongToDraft(params: {
     }
     return [];
   }))];
+  const soundEffectAssetIds = [...new Set(params.patch.operations.flatMap((operation) => {
+    if (operation.type === "clip.add" && operation.clip.source.type === "SOUND_EFFECT_ASSET") {
+      return [operation.clip.source.soundEffectAssetId];
+    }
+    if (operation.type === "document.restore" || operation.type === "document.reconcile") {
+      return operation.document.clips.flatMap((clip) => (
+        clip.source.type === "SOUND_EFFECT_ASSET" ? [clip.source.soundEffectAssetId] : []
+      ));
+    }
+    return [];
+  }))];
   const brandingAssetIds = [...new Set(params.patch.operations.flatMap((operation) => {
     if (operation.type === "clip.add" && operation.clip.source.type === "ASSEMBLY_BRAND_ASSET") {
       return [operation.clip.source.assemblyBrandAssetId];
@@ -257,15 +269,21 @@ async function assertAddedAssetsBelongToDraft(params: {
     }
     return [];
   }))];
-  if (assetIds.length === 0 && brandingAssetIds.length === 0) return;
+  if (assetIds.length === 0 && brandingAssetIds.length === 0 && soundEffectAssetIds.length === 0) return;
 
-  const [{ data, error }, { data: branding, error: brandingError }] = await Promise.all([
+  const [{ data, error }, { data: branding, error: brandingError }, linkedSoundEffectIds] = await Promise.all([
     assetIds.length > 0
       ? params.supabase.from("video_composition_draft_assets").select("production_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("production_asset_id", assetIds)
       : Promise.resolve({ data: [], error: null }),
     brandingAssetIds.length > 0
       ? params.supabase.from("video_composition_draft_branding").select("intro_asset_id, outro_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    readReadyLinkedSoundEffectAssetIds({
+      draftId: params.draftId,
+      organizationId: params.organizationId,
+      soundEffectAssetIds,
+      supabase: params.supabase,
+    }),
   ]);
   if (error) throw error;
   if (brandingError) throw brandingError;
@@ -276,6 +294,9 @@ async function assertAddedAssetsBelongToDraft(params: {
   const linkedBrandingIds = new Set([branding?.intro_asset_id, branding?.outro_asset_id].filter((id): id is string => typeof id === "string"));
   if (brandingAssetIds.some((assetId) => !linkedBrandingIds.has(assetId))) {
     throw new CompositionDocumentError("El intro u outro seleccionado no está vinculado a este borrador.");
+  }
+  if (soundEffectAssetIds.some((assetId) => !linkedSoundEffectIds.has(assetId))) {
+    throw new CompositionDocumentError("El efecto de sonido seleccionado no está listo o no está vinculado a este borrador.", 409);
   }
 }
 

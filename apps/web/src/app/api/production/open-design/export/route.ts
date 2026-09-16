@@ -1,24 +1,28 @@
-import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/utils/supabase/server';
 import {
     getAuthenticatedUser,
     getAuthorizedMaterialComponentAdmin,
     getServiceRoleClient,
 } from '@/lib/server/artifact-action-auth';
+import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract';
+import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response';
+import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger';
 
-interface StoryboardItem {
-    slide_index?: number;
-    on_screen_text?: string;
-    narration_text?: string;
-    visual_content?: string;
-}
-
-interface ScriptSection {
-    section_number?: number;
-    on_screen_text?: string;
-    narration_text?: string;
-    visual_notes?: string;
-}
+const MAX_OPEN_DESIGN_EXPORT_REQUEST_BYTES = 4 * 1024;
+const requestSchema = z.object({ componentId: z.string().uuid() }).strict();
+const storyboardSchema = z.array(z.object({
+    slide_index: z.number().int().positive().optional(),
+    on_screen_text: z.string().optional(),
+    narration_text: z.string().optional(),
+    visual_content: z.string().optional(),
+}).passthrough());
+const scriptSectionsSchema = z.array(z.object({
+    section_number: z.number().int().positive().optional(),
+    on_screen_text: z.string().optional(),
+    narration_text: z.string().optional(),
+    visual_notes: z.string().optional(),
+}).passthrough());
 
 interface RenderableSlideAsset {
     file_name?: string;
@@ -123,7 +127,7 @@ function buildSlideSvg(slide: {
   <rect width="1920" height="1080" fill="url(#bg)"/>
   <rect x="72" y="72" width="1776" height="936" rx="44" fill="#1E293B" stroke="#334155" stroke-width="2"/>
   <rect x="72" y="72" width="14" height="936" rx="7" fill="url(#accent)"/>
-  <text x="120" y="118" fill="#38BDF8" font-size="24" font-weight="700" letter-spacing="3">COURSEFORGE</text>
+  <text x="120" y="118" fill="#38BDF8" font-size="24" font-weight="700" letter-spacing="3">SOFLIA - ENGINE</text>
   <text x="1700" y="118" fill="#94A3B8" font-size="28" font-weight="700">${String(slide.index).padStart(2, '0')}</text>
   ${titleSvg}
   ${bulletsDotsSvg}
@@ -176,33 +180,36 @@ async function uploadRenderableSlideImages(params: {
 }
 
 export async function POST(request: Request) {
+    const requestId = resolveCorrelationId(request.headers.get('x-request-id'));
+    const logger = createOperationalLogger('production.open_design.export', { correlationId: requestId });
     try {
-        const { componentId } = await request.json() as { componentId?: string };
-
-        if (!componentId) {
-            return NextResponse.json(
-                { error: 'El parámetro componentId es requerido' },
-                { status: 400 },
-            );
+        const parsed = await parseJsonRequest(request, requestSchema, MAX_OPEN_DESIGN_EXPORT_REQUEST_BYTES);
+        if (!parsed.success) {
+            return apiErrorResponse({
+                code: parsed.reason === 'too_large' ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+                message: parsed.reason === 'too_large' ? 'La solicitud excede el tamaño permitido.' : 'La solicitud de exportación no es válida.',
+                requestId,
+                status: parsed.reason === 'too_large' ? 413 : 400,
+            });
         }
+        const { componentId } = parsed.data;
 
         const supabase = await createClient();
         const authenticatedUser = await getAuthenticatedUser(supabase);
         if (!authenticatedUser) {
-            return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
+            return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'No autorizado.', requestId, status: 401 });
         }
 
         const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
         if (!authorizedComponent) {
-            return NextResponse.json(
-                { error: 'Componente no encontrado para esta empresa' },
-                { status: 404 },
-            );
+            return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: 'Componente no encontrado para esta empresa.', requestId, status: 404 });
         }
 
         const admin = authorizedComponent.admin;
         const component = authorizedComponent.component;
-        const content = (component.content || {}) as Record<string, any>;
+        const content = component.content && typeof component.content === 'object' && !Array.isArray(component.content)
+            ? component.content as Record<string, unknown>
+            : {};
 
         // Extract slides data from storyboard or script sections
         const slides: Array<{
@@ -213,8 +220,11 @@ export async function POST(request: Request) {
             visualNotes: string;
         }> = [];
 
-        const rawStoryboard = content.storyboard as StoryboardItem[] | undefined;
-        const rawScriptSections = content.script?.sections as ScriptSection[] | undefined;
+        const rawStoryboard = storyboardSchema.safeParse(content.storyboard).data;
+        const script = content.script && typeof content.script === 'object' && !Array.isArray(content.script)
+            ? content.script as Record<string, unknown>
+            : null;
+        const rawScriptSections = scriptSectionsSchema.safeParse(script?.sections).data;
 
         if (Array.isArray(rawStoryboard) && rawStoryboard.length > 0) {
             rawStoryboard.forEach((item, idx) => {
@@ -446,12 +456,12 @@ export async function POST(request: Request) {
     ${slides.map((slide) => `
     <div class="slide">
       <div class="slide-header">
-        <h2 class="slide-title">${slide.title}</h2>
+        <h2 class="slide-title">${escapeXml(slide.title)}</h2>
         <span class="slide-number">${String(slide.index).padStart(2, '0')}</span>
       </div>
       <div class="slide-body">
         <ul class="bullet-list">
-          ${slide.bullets.map(b => `<li class="bullet-item">${b}</li>`).join('')}
+          ${slide.bullets.map(b => `<li class="bullet-item">${escapeXml(b)}</li>`).join('')}
         </ul>
       </div>
       <div class="slide-footer">
@@ -462,10 +472,10 @@ export async function POST(request: Request) {
 
     <div class="notes-container">
       <div class="notes-heading">Locución / Notas del Orador</div>
-      <p class="notes-content">${slide.narration || 'Sin locución para esta diapositiva.'}</p>
+      <p class="notes-content">${escapeXml(slide.narration || 'Sin locución para esta diapositiva.')}</p>
       ${slide.visualNotes ? `
       <div class="notes-heading" style="margin-top: 1rem;">Contexto Visual</div>
-      <p class="notes-content" style="color: var(--text-muted);">${slide.visualNotes}</p>
+      <p class="notes-content" style="color: var(--text-muted);">${escapeXml(slide.visualNotes)}</p>
       ` : ''}
     </div>
     `).join('<hr style="border-color: var(--border-color); margin: 2rem 0; opacity: 0.3;" />')}
@@ -487,8 +497,7 @@ export async function POST(request: Request) {
             ...slidesWithoutHtmlSource
         } = currentAssets.slides || {};
 
-        const updatedAssets = {
-            ...currentAssets,
+        const assetsPatch = {
             slides: {
                 ...slidesWithoutHtmlSource,
                 open_design_project_id: generatedSlidesId,
@@ -497,26 +506,24 @@ export async function POST(request: Request) {
             updated_at: new Date().toISOString(),
         };
 
-        // Save updated assets to material_component
-        await admin
-            .from('material_components')
-            .update({ assets: updatedAssets })
-            .eq('id', componentId);
+        const { error: updateError } = await admin.rpc(
+            'patch_material_component_assets',
+            { p_component_id: componentId, p_assets_patch: assetsPatch },
+        );
+        if (updateError) {
+            throw updateError;
+        }
 
-        return NextResponse.json({
-            success: true,
+        return apiSuccessResponse({
             html,
             generatedSlidesId,
             openDesignProjectId: generatedSlidesId,
             htmlPublicUrl: null,
             slideImages,
-        });
+        }, { requestId });
 
     } catch (error: unknown) {
-        console.error('[API /open-design/export] Unexpected error:', error);
-        return NextResponse.json(
-            { error: 'Error interno del servidor al exportar presentacion' },
-            { status: 500 },
-        );
+        logger.error('production.open_design.export_failed', error);
+        return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo exportar la presentación.', requestId, retryable: true, status: 500 });
     }
 }

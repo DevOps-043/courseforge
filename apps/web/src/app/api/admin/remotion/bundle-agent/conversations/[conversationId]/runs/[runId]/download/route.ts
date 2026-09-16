@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { resolveBundleStorageLocation } from "@/domains/production/templates/template-version.service";
-import { sanitizeErrorMessage } from "@/domains/production/bundle-agent/redaction.service";
 import { resolveBundleAgentAuthContext } from "@/domains/production/bundle-agent/route-context";
+import { bundleAgentConversationIdSchema, bundleAgentRouteErrorResponse } from "@/domains/production/bundle-agent/route-contract";
+import { resolveCorrelationId } from "@/lib/server/operational-logger";
 
 interface RouteContext {
   params: Promise<{
@@ -15,9 +16,12 @@ function fileNameFromPath(path: string) {
   return name.endsWith(".zip") ? name : `${name}.zip`;
 }
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   try {
-    const { conversationId, runId } = await context.params;
+    const params = await context.params;
+    const conversationId = bundleAgentConversationIdSchema.parse(params.conversationId);
+    const runId = bundleAgentConversationIdSchema.parse(params.runId);
     const authContext = await resolveBundleAgentAuthContext();
     const { data: run, error } = await authContext.admin
       .from("soflia_bundle_generation_runs")
@@ -46,17 +50,16 @@ export async function GET(_request: Request, context: RouteContext) {
       throw downloadError || new Error("No se pudo descargar el bundle desde storage.");
     }
 
-    const buffer = Buffer.from(await data.arrayBuffer());
-    return new NextResponse(buffer, {
+    return new NextResponse(data, {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${fileNameFromPath(location.path)}"`,
         "Cache-Control": "no-store",
         "X-Content-Type-Options": "nosniff",
+        "x-request-id": requestId,
       },
     });
   } catch (error) {
-    const message = sanitizeErrorMessage(error);
-    return NextResponse.json({ success: false, error: message }, { status: message.includes("No autorizado") ? 401 : 404 });
+    return bundleAgentRouteErrorResponse({ component: "admin.bundle-agent.run-download", error, requestId });
   }
 }

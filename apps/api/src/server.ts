@@ -11,7 +11,6 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { errorHandler } from './core/middleware/errorHandler';
 import { getApiPort } from './config/env';
-import { authRoutes } from './features/auth/auth.routes';
 import { getCorsOptions } from './config/cors';
 
 // Las guardas globales evitan que una excepción o rechazo no manejado derribe
@@ -35,7 +34,6 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.use('/api/v1/auth', authRoutes);
 app.use(errorHandler);
 
 app.listen(PORT, () => {

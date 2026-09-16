@@ -26,6 +26,7 @@ interface UseMaterialsReturn {
   forceResetGeneration: () => Promise<void>;
   refresh: () => Promise<void>;
   getLessonComponents: (lessonId: string) => Promise<MaterialComponent[]>;
+  getArtifactComponents: () => Promise<MaterialComponent[]>;
   isGenerating: boolean;
   isValidating: boolean;
   isReadyForQA: boolean;
@@ -100,7 +101,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
     materials?.state === 'PHASE3_GENERATING' ||
     Boolean(materials?.lessons?.some((lesson) => lesson.state === 'GENERATING'));
 
-  usePolling(loadMaterials, isGenerating, { intervalMs: 8000 });
+  usePolling(loadMaterials, isGenerating || materials?.state === 'PHASE3_VALIDATING', { intervalMs: 8000 });
 
   const startGeneration = useCallback(async () => {
     try {
@@ -203,7 +204,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
       console.error('Error submitting to QA:', err);
       setError('Error al enviar a QA');
     }
-  }, [materials?.id]);
+  }, [materials]);
 
   const applyQADecision = useCallback(
     async (decision: 'APPROVED' | 'REJECTED', notes?: string) => {
@@ -228,7 +229,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
         setError('Error al aplicar decision');
       }
     },
-    [materials?.id],
+    [materials],
   );
 
   const validateMaterials = useCallback(async () => {
@@ -252,7 +253,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
       console.error('Error validating materials:', err);
       setError('Error al validar materiales');
     }
-  }, [materials?.artifact_id, loadMaterials]);
+  }, [materials, loadMaterials]);
 
   const forceResetGeneration = useCallback(async () => {
     try {
@@ -275,6 +276,10 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
     return materialsService.getLessonComponents(lessonId);
   }, []);
 
+  const getArtifactComponents = useCallback(async () => {
+    return materialsService.getArtifactComponents(artifactId);
+  }, [artifactId]);
+
   return {
     materials,
     loading,
@@ -289,6 +294,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
     forceResetGeneration,
     refresh: loadMaterials,
     getLessonComponents,
+    getArtifactComponents,
     isGenerating: isGenerating || false,
     isValidating: materials?.state === 'PHASE3_VALIDATING',
     isReadyForQA: materials?.state === 'PHASE3_READY_FOR_QA',

@@ -1,6 +1,4 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getErrorMessage } from "@/lib/errors";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -11,11 +9,15 @@ import { renderCourseDeckHtml } from "@/domains/production/slides/render/html-de
 import { courseDeckSpecSchema } from "@/domains/production/slides/specs/course-deck.schema";
 import { normalizeProductionAssetStoragePath } from "@/domains/production/validation/open-design-html-rasterizer.service";
 import { createClient } from "@/utils/supabase/server";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
+import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 export const runtime = "nodejs";
 
 const STORAGE_BUCKET = "production-assets";
 const APPEARANCE_VARIABLES_MARKER = "soflia-appearance-variables:v1";
+const MAX_SLIDES_APPEARANCE_REQUEST_BYTES = 4 * 1024;
 const requestSchema = z.object({
   appearance: z.enum(["light", "dark"]),
   componentId: z.string().uuid(),
@@ -39,22 +41,33 @@ function renderLegacyDeckWithAppearance(rawSpec: unknown, appearance: "light" | 
 
 /** Switches an existing deck between built-in CSS palettes without invoking generation services. */
 export async function PATCH(request: Request) {
+  const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
+  const logger = createOperationalLogger("production.slides.appearance", { correlationId: requestId });
   try {
-    const payload = requestSchema.parse(await request.json().catch(() => ({})));
+    const parsed = await parseJsonRequest(request, requestSchema, MAX_SLIDES_APPEARANCE_REQUEST_BYTES);
+    if (!parsed.success) {
+      return apiErrorResponse({
+        code: parsed.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+        message: parsed.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "Payload inválido para cambiar la apariencia de slides.",
+        requestId,
+        status: parsed.reason === "too_large" ? 413 : 400,
+      });
+    }
+    const payload = parsed.data;
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);
-    if (!user) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+    if (!user) return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     if (!(await canReviewContent(user.userId))) {
-      return NextResponse.json({ error: "No tienes permisos para cambiar la apariencia de slides." }, { status: 403 });
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para cambiar la apariencia de slides.", requestId, status: 403 });
     }
 
     const authorized = await getAuthorizedMaterialComponentAdmin(payload.componentId);
-    if (!authorized) return NextResponse.json({ error: "Componente no encontrado para esta empresa." }, { status: 404 });
+    if (!authorized) return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado para esta empresa.", requestId, status: 404 });
 
     const currentAssets = (authorized.component.assets || {}) as MaterialAssets;
     const currentSlides = currentAssets.slides;
     if (!currentSlides?.html_content_path) {
-      return NextResponse.json({ error: "No hay HTML de slides para cambiar su apariencia." }, { status: 409 });
+      return apiErrorResponse({ code: API_ERROR_CODE.conflict, message: "No hay HTML de slides para cambiar su apariencia.", requestId, status: 409 });
     }
 
     const storagePath = normalizeProductionAssetStoragePath(currentSlides.html_content_path);
@@ -70,9 +83,7 @@ export async function PATCH(request: Request) {
       ? null
       : renderLegacyDeckWithAppearance(currentSlides.prepared_spec, payload.appearance);
     if (!currentHtml.includes(APPEARANCE_VARIABLES_MARKER) && !legacyDeck) {
-      return NextResponse.json({
-        error: "Este deck no contiene variables de apariencia ni un spec reutilizable. Genera el HTML una vez para actualizarlo.",
-      }, { status: 409 });
+      return apiErrorResponse({ code: API_ERROR_CODE.conflict, message: "Este deck no contiene variables de apariencia ni un spec reutilizable. Genera el HTML una vez para actualizarlo.", requestId, status: 409 });
     }
 
     const nextHtml = legacyDeck?.html || applyAppearanceAttribute(currentHtml, payload.appearance);
@@ -110,12 +121,12 @@ export async function PATCH(request: Request) {
     );
     if (updateError) throw new Error(`No se pudo guardar la apariencia de slides: ${updateError.message}`);
 
-    return NextResponse.json({ success: true, assets });
+    return apiSuccessResponse({ assets }, { requestId });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: "Payload inválido para cambiar la apariencia de slides." }, { status: 400 });
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Payload inválido para cambiar la apariencia de slides.", requestId, status: 400 });
     }
-    console.error("[API /production/slides/appearance] Unexpected error:", { message: getErrorMessage(error) });
-    return NextResponse.json({ error: "No se pudo cambiar la apariencia de slides." }, { status: 500 });
+    logger.error("production.slides.appearance_failed", error);
+    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo cambiar la apariencia de slides.", requestId, retryable: true, status: 500 });
   }
 }
