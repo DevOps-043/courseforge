@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { AudioLines, Cable, Clapperboard, Gauge, LayoutTemplate, Presentation, Settings2, Shapes, UserRoundCheck, UsersRound } from 'lucide-react';
+import { Activity, AudioLines, Cable, Clapperboard, Gauge, LayoutTemplate, Presentation, Settings2, Shapes, UserRoundCheck, UsersRound } from 'lucide-react';
 import SharedSidebarLayout, { NavItemConfig } from '@/components/layout/SharedSidebarLayout';
 import type { SidebarProfile } from '@/components/layout/layout.types';
 
@@ -10,13 +10,15 @@ export default function AdminLayoutClient({
     userEmail,
     logoutAction,
     profile,
-    basePath = '/admin'
+    basePath = '/admin',
+    showPlatformMonitoring = false,
 }: {
     children: React.ReactNode;
     userEmail?: string;
     logoutAction: () => void;
     profile?: SidebarProfile | null;
     basePath?: string;
+    showPlatformMonitoring?: boolean;
 }) {
     const navItems: NavItemConfig[] = [
         { href: basePath, icon: <Gauge size={22} />, label: 'Dashboard' },
@@ -29,6 +31,9 @@ export default function AdminLayoutClient({
         { href: `${basePath}/assembly`, icon: <Clapperboard size={22} />, label: 'Ensamble' },
         { href: `${basePath}/integrations`, icon: <Cable size={22} />, label: 'Integraciones' },
         { href: `${basePath}/settings`, icon: <Settings2 size={22} />, label: 'Configuración' },
+        ...(showPlatformMonitoring
+            ? [{ href: '/platform/ai-usage', icon: <Activity size={22} />, label: 'Consumo de IA' }]
+            : []),
     ];
 
     return (

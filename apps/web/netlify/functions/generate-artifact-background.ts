@@ -23,12 +23,17 @@ import {
   isCloudStorageProvider,
   type CloudStorageProvider,
 } from "../../src/domains/production/cloud-storage/types";
-import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
+import { resolvePromptWithMetadata } from "../../src/shared/config/prompts/prompt-resolver.service";
 import {
   ARTIFACT_BASE_PROMPT_CODE,
   ARTIFACT_BASE_RESEARCH_PROMPT_CODE,
   renderPromptTemplate,
 } from "../../src/shared/config/prompts/pipeline.prompts";
+import {
+  recordAiFailure,
+  recordAiSdkUsage,
+  recordGeminiUsage,
+} from "../../src/shared/ai/usage-telemetry";
 
 const BLOOM_VERBS = [
   "comprender",
@@ -170,8 +175,27 @@ export const handler: Handler = async (event) => {
 
     let researchContext = "";
     let detectedSearchQueries: string[] = [];
-    const searchModels = [...new Set([modelConfig.model, modelConfig.fallbackModel])]
+    const configuredModels = [modelConfig.model, modelConfig.fallbackModel].filter(Boolean);
+    const configurationWarnings: string[] = [];
+    if (
+      modelConfig.fallbackModel &&
+      modelConfig.model.trim() === modelConfig.fallbackModel.trim()
+    ) {
+      configurationWarnings.push(
+        "El modelo principal y el fallback de ARTIFACT_BASE son iguales; no existe respaldo real.",
+      );
+    }
+
+    const configuredSearchModels = [...new Set(configuredModels)]
       .filter((model) => model?.startsWith("gemini-"));
+    const searchModels = configuredSearchModels.length > 0
+      ? configuredSearchModels
+      : [process.env.GEMINI_SEARCH_MODEL || "gemini-3.5-flash"];
+    if (configuredSearchModels.length === 0) {
+      configurationWarnings.push(
+        `ARTIFACT_BASE no incluye un modelo Gemini para research; se usará ${searchModels[0]} exclusivamente para Google Search.`,
+      );
+    }
     let researchSuccess = false;
 
     const hardcodedResearchPrompt = `
@@ -182,13 +206,13 @@ export const handler: Handler = async (event) => {
             ${feedback ? `\nNOTA IMPORTANTE (Feedback Usuario): ${feedback}` : ""}
         `;
 
-    const researchPromptTemplate = await resolvePromptWithFallback(
+    const researchPromptResolution = await resolvePromptWithMetadata(
       serviceSupabase,
       ARTIFACT_BASE_RESEARCH_PROMPT_CODE,
       hardcodedResearchPrompt,
       organizationId || null,
     );
-    const researchPrompt = renderPromptTemplate(researchPromptTemplate, {
+    const researchPrompt = renderPromptTemplate(researchPromptResolution.content, {
       courseTitle: formData.title || "",
       courseDescription: formData.description || "",
       feedbackBlock: feedback
@@ -198,6 +222,7 @@ export const handler: Handler = async (event) => {
 
     stage = "research";
     for (const modelName of searchModels) {
+      const startedAt = Date.now();
       try {
         console.log(`[Background Job] Researching with ${modelName}...`);
 
@@ -210,6 +235,21 @@ export const handler: Handler = async (event) => {
             temperature: 0.7,
           },
         })) as ResearchResponse;
+
+        await recordGeminiUsage({
+          context: {
+            artifactId,
+            operation: "research_artifact_base",
+            organizationId,
+            pipelineStep: "BASE",
+            runId,
+            userId,
+          },
+          model: modelName,
+          response: result,
+          startedAt,
+          supabase: serviceSupabase,
+        });
 
         researchContext = result.text || "";
 
@@ -234,6 +274,21 @@ export const handler: Handler = async (event) => {
         researchSuccess = true;
         break;
       } catch (error: unknown) {
+        await recordAiFailure({
+          context: {
+            artifactId,
+            operation: "research_artifact_base",
+            organizationId,
+            pipelineStep: "BASE",
+            runId,
+            userId,
+          },
+          error,
+          model: modelName,
+          provider: "gemini",
+          startedAt,
+          supabase: serviceSupabase,
+        });
         console.warn(
           `[Background Job] Research failed with ${modelName}:`,
           getErrorMessage(error),
@@ -248,7 +303,20 @@ export const handler: Handler = async (event) => {
       researchContext = "Research unavailable due to API errors.";
     }
 
-    const genModels = [...new Set([modelConfig.model, modelConfig.fallbackModel].filter(Boolean))];
+    const genModels = [...new Set(configuredModels)];
+    if (
+      genModels.length === 1 &&
+      modelConfig.fallbackModel &&
+      modelConfig.model.trim() === modelConfig.fallbackModel.trim()
+    ) {
+      const emergencyFallback = modelConfig.model.startsWith("gemini-")
+        ? "gpt-4o-mini"
+        : "gemini-3.5-flash";
+      genModels.push(emergencyFallback);
+      configurationWarnings.push(
+        `Se agregó ${emergencyFallback} como respaldo operativo porque la configuración guardada repite el modelo principal.`,
+      );
+    }
     const hardcodedSystemPrompt = `
             Eres un Diseñador Instruccional Experto y Copywriter Senior.
             CONTEXTO RESEARCH: ${researchContext}
@@ -265,13 +333,13 @@ export const handler: Handler = async (event) => {
             NO generes el temario ni módulos aún. Solo la definición estratégica.
         `;
 
-    const systemPromptTemplate = await resolvePromptWithFallback(
+    const systemPromptResolution = await resolvePromptWithMetadata(
       serviceSupabase,
       ARTIFACT_BASE_PROMPT_CODE,
       hardcodedSystemPrompt,
       organizationId || null,
     );
-    const systemPrompt = renderPromptTemplate(systemPromptTemplate, {
+    const systemPrompt = renderPromptTemplate(systemPromptResolution.content, {
       bloomVerbs: BLOOM_VERBS.join(", "),
       courseTitle: formData.title || "",
       courseDescription: formData.description || "",
@@ -281,11 +349,39 @@ export const handler: Handler = async (event) => {
       researchContext,
     });
 
+    const promptResolution = {
+      generation: {
+        source: systemPromptResolution.source,
+        version: systemPromptResolution.version,
+      },
+      research: {
+        source: researchPromptResolution.source,
+        version: researchPromptResolution.version,
+      },
+    };
+    const { error: diagnosticsError } = await serviceSupabase
+      .from("artifacts")
+      .update({
+        generation_metadata: {
+          ...(scopedArtifact.generation_metadata || {}),
+          configuration_warnings: configurationWarnings,
+          prompt_resolution: promptResolution,
+        },
+      })
+      .eq("id", artifactId)
+      .eq("state", "GENERATING")
+      .eq("generation_metadata->>run_id", runId);
+
+    if (diagnosticsError) {
+      throw diagnosticsError;
+    }
+
     let content: GeneratedArtifactContent | null = null;
     let genModelUsed = "";
     let lastGenerationError: unknown;
 
     for (const modelName of genModels) {
+      const startedAt = Date.now();
       try {
         stage = "generation";
         activeModel = modelName;
@@ -298,6 +394,20 @@ export const handler: Handler = async (event) => {
           abortSignal: AbortSignal.timeout(PIPELINE_GENERATION_LIMITS.requestTimeoutMs),
           maxRetries: 0,
         });
+        await recordAiSdkUsage({
+          context: {
+            artifactId,
+            operation: "generate_artifact_base",
+            organizationId,
+            pipelineStep: "BASE",
+            runId,
+            userId,
+          },
+          model: modelName,
+          startedAt,
+          supabase: serviceSupabase,
+          usage: result.usage,
+        });
         content = result.object;
         genModelUsed = modelName;
         console.log(
@@ -305,6 +415,21 @@ export const handler: Handler = async (event) => {
         );
         break;
       } catch (error: unknown) {
+        await recordAiFailure({
+          context: {
+            artifactId,
+            operation: "generate_artifact_base",
+            organizationId,
+            pipelineStep: "BASE",
+            runId,
+            userId,
+          },
+          error,
+          model: modelName,
+          provider: modelName.startsWith("gemini-") ? "gemini" : "openai",
+          startedAt,
+          supabase: serviceSupabase,
+        });
         lastGenerationError = error;
         console.warn(
           `[Background Job] Generation failed with ${modelName}:`,
@@ -379,6 +504,8 @@ export const handler: Handler = async (event) => {
           research_summary: researchContext.slice(0, 2000),
           search_queries: detectedSearchQueries,
           model_used: genModelUsed,
+          configuration_warnings: configurationWarnings,
+          prompt_resolution: promptResolution,
           phase: "PHASE_1_BASE",
           structure: [],
           original_input: formData,

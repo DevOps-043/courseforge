@@ -420,6 +420,26 @@ export async function applyMaterialsQaDecisionAction(
     return context.errorResult;
   }
 
+  if (decision === "APPROVED") {
+    if (context.materials.state !== "PHASE3_READY_FOR_QA") {
+      return createMaterialsActionError(
+        "No se pueden aprobar materiales que todavía no están listos para QA.",
+      );
+    }
+    const { count, error: countError } = await countNonApprovableLessons(
+      context.admin,
+      materialsId,
+    );
+    if (countError) {
+      return createMaterialsActionError(countError.message);
+    }
+    if (count > 0) {
+      return createMaterialsActionError(
+        `${count} lecciones todavía no cumplen todos los controles de completitud.`,
+      );
+    }
+  }
+
   const qaDecision: QADecision = {
     decision,
     notes,

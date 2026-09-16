@@ -6,6 +6,8 @@ import AdminLayoutClient from './AdminLayoutClient';
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 import { resolveSidebarProfile } from '@/components/layout/layout.types';
 import { normalizePlatformRole } from '@/utils/auth/platform-role';
+import { userHasPlatformPermission } from '@/lib/server/platform-authorization';
+import { PLATFORM_PERMISSIONS } from '@/utils/auth/platform-permissions';
 
 export default async function AdminLayout({
   children,
@@ -69,9 +71,12 @@ export default async function AdminLayout({
     ...(resolveSidebarProfile(profile, bridgeUser) || {}),
     platform_role: effectiveRole,
   };
+  const showPlatformMonitoring = await userHasPlatformPermission(
+    PLATFORM_PERMISSIONS.AI_USAGE_READ,
+  );
 
   return (
-    <AdminLayoutClient userEmail={userEmail} logoutAction={logoutAction} profile={displayProfile}>
+    <AdminLayoutClient userEmail={userEmail} logoutAction={logoutAction} profile={displayProfile} showPlatformMonitoring={showPlatformMonitoring}>
       {children}
     </AdminLayoutClient>
   );

@@ -25,6 +25,7 @@
     "src/domains/syllabus/lib/__tests__/syllabus-generation-request.schema.test.ts",
     "src/domains/syllabus/lib/__tests__/syllabus-document-extractor.test.ts",
     "src/domains/plan/lib/plan-iteration.ts",
+    "src/domains/plan/lib/plan-completeness.ts",
     "src/domains/plan/lib/instructional-plan-generation.schema.ts",
     "src/domains/plan/lib/instructional-plan-prompt.ts",
     "src/domains/plan/lib/instructional-plan-validation-context.ts",

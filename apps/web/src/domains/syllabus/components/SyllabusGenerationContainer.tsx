@@ -359,9 +359,14 @@ export function SyllabusGenerationContainer({
       return undefined;
     }
 
-    const interval = setInterval(async () => {
+    let disposed = false;
+    let inFlight = false;
+    const poll = async () => {
+      if (disposed || inFlight) return;
+      inFlight = true;
       try {
         const data = await syllabusService.getSyllabus(artifactId);
+        if (disposed) return;
         if (data) {
           setHasExistingSyllabus(true);
           setIterationCount(
@@ -380,13 +385,20 @@ export function SyllabusGenerationContainer({
           setStatus(data.state);
         }
       } catch (pollingError) {
-        if (pollingError instanceof Error) {
+        if (!disposed && pollingError instanceof Error) {
           setError(pollingError.message);
         }
+      } finally {
+        inFlight = false;
       }
-    }, 3000);
+    };
+    void poll();
+    const interval = setInterval(() => void poll(), 3000);
 
-    return () => clearInterval(interval);
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+    };
   }, [artifactId, status]);
 
   if (loading) {

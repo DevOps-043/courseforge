@@ -6,15 +6,13 @@
     "module": "CommonJS",
     "moduleResolution": "Node",
     "noEmit": false,
-    "outDir": ".tmp/auth-bridge-tests",
+    "outDir": ".tmp/ai-usage-tests",
     "rootDir": "src",
     "types": ["node"]
   },
   "include": [
-    "src/app/login/auth-bridge-contract.ts",
-    "src/utils/auth/platform-role.ts",
-    "src/utils/auth/platform-permissions.ts",
-    "src/app/login/__tests__/**/*.ts"
+    "src/shared/ai/usage-telemetry.ts",
+    "src/shared/ai/__tests__/usage-telemetry.test.ts"
   ],
   "exclude": ["node_modules"]
 }

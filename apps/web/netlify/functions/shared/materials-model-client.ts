@@ -4,19 +4,34 @@ import { ModelJsonResponseError, parseModelJsonResponse } from "../../../src/sha
 import { getMaterialsModelProvider } from "../../../src/shared/ai/materials-model-provider";
 import { VIDEO_GENERATION_LIMITS, VideoModelResponseError, type VideoModelRequest, type VideoModelResponse } from "../../../src/domains/materials/generation/video-generation.contracts";
 import { createGeminiClient, createOpenAiClient } from "./bootstrap";
+import {
+  recordAiFailure,
+  recordGeminiUsage,
+  recordOpenAiUsage,
+  type AiUsageContext,
+} from "../../../src/shared/ai/usage-telemetry";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface MaterialsModelRuntimeConfig {
   temperature: number;
   thinkingLevel: string;
 }
 
-export function createMaterialsModelRequest(runtime: MaterialsModelRuntimeConfig): VideoModelRequest {
+export interface MaterialsModelTelemetry {
+  context: AiUsageContext;
+  supabase?: SupabaseClient | null;
+}
+
+export function createMaterialsModelRequest(
+  runtime: MaterialsModelRuntimeConfig,
+  telemetry?: MaterialsModelTelemetry,
+): VideoModelRequest {
   let gemini: GoogleGenAI | undefined;
   let openai: OpenAI | undefined;
   return async ({ model, prompt, timeoutMs }) => {
     const provider = getMaterialsModelProvider(model);
-    if (provider === "gemini") return requestGeminiJson(gemini ||= createGeminiClient(), model, prompt, runtime, timeoutMs);
-    if (provider === "openai") return requestOpenAiJson(openai ||= createOpenAiClient(), model, prompt, runtime, timeoutMs);
+    if (provider === "gemini") return requestGeminiJson(gemini ||= createGeminiClient(), model, prompt, runtime, timeoutMs, telemetry);
+    if (provider === "openai") return requestOpenAiJson(openai ||= createOpenAiClient(), model, prompt, runtime, timeoutMs, telemetry);
     throw new Error("UNSUPPORTED_MATERIALS_MODEL: El modelo configurado no tiene proveedor implementado.");
   };
 }
@@ -27,18 +42,27 @@ export async function requestGeminiJson(
   prompt: string,
   runtime: MaterialsModelRuntimeConfig,
   timeoutMs: number = VIDEO_GENERATION_LIMITS.requestTimeoutMs,
+  telemetry?: MaterialsModelTelemetry,
 ): Promise<VideoModelResponse> {
-  const response = await client.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      temperature: runtime.temperature,
-      maxOutputTokens: VIDEO_GENERATION_LIMITS.maximumOutputTokens,
-      responseMimeType: "application/json",
-      abortSignal: AbortSignal.timeout(timeoutMs),
-      httpOptions: { timeout: timeoutMs },
-    },
-  });
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await client.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        temperature: runtime.temperature,
+        maxOutputTokens: VIDEO_GENERATION_LIMITS.maximumOutputTokens,
+        responseMimeType: "application/json",
+        abortSignal: AbortSignal.timeout(timeoutMs),
+        httpOptions: { timeout: timeoutMs },
+      },
+    });
+  } catch (error) {
+    if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "gemini", startedAt });
+    throw error;
+  }
+  if (telemetry) await recordGeminiUsage({ ...telemetry, model, response, startedAt });
   const finishReason = response.candidates?.[0]?.finishReason;
   return parseResponse(response.text, finishReason, response.usageMetadata?.candidatesTokenCount);
 }
@@ -49,14 +73,23 @@ export async function requestOpenAiJson(
   prompt: string,
   runtime: MaterialsModelRuntimeConfig,
   timeoutMs: number = VIDEO_GENERATION_LIMITS.requestTimeoutMs,
+  telemetry?: MaterialsModelTelemetry,
 ): Promise<VideoModelResponse> {
-  const response = await client.responses.create({
-    model,
-    input: prompt,
-    max_output_tokens: VIDEO_GENERATION_LIMITS.maximumOutputTokens,
-    reasoning: { effort: normalizeReasoningEffort(runtime.thinkingLevel) },
-    text: { format: { type: "json_object" } },
-  }, { timeout: timeoutMs, maxRetries: 0, signal: AbortSignal.timeout(timeoutMs) });
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await client.responses.create({
+      model,
+      input: prompt,
+      max_output_tokens: VIDEO_GENERATION_LIMITS.maximumOutputTokens,
+      reasoning: { effort: normalizeReasoningEffort(runtime.thinkingLevel) },
+      text: { format: { type: "json_object" } },
+    }, { timeout: timeoutMs, maxRetries: 0, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (error) {
+    if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "openai", startedAt });
+    throw error;
+  }
+  if (telemetry) await recordOpenAiUsage({ ...telemetry, model, response, startedAt });
   const finishReason = response.status === "incomplete" && response.incomplete_details?.reason === "max_output_tokens"
     ? "MAX_TOKENS" : response.status;
   return parseResponse(response.output_text, finishReason, response.usage?.output_tokens);

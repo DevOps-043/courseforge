@@ -78,6 +78,14 @@ export function getOptionalOpenAiApiKey() {
   return getOptionalEnv("OPENAI_API_KEY");
 }
 
+export function getOptionalOpenAiAdminConfig() {
+  return {
+    adminKey: getOptionalEnv("OPENAI_ADMIN_KEY"),
+    organizationId: getOptionalEnv("OPENAI_ORG_ID"),
+    projectId: getOptionalEnv("OPENAI_PROJECT_ID"),
+  };
+}
+
 export function getSofliaAuthSupabaseAnonKey() {
   return getRequiredEnv("SOFLIA_AUTH_SUPABASE_ANON_KEY");
 }

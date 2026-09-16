@@ -43,6 +43,7 @@ import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response"
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 import { resolvePromptWithMetadata } from "@/shared/config/prompts/prompt-resolver.service";
 import { SYLLABUS_PROMPT_CODE } from "@/shared/config/prompts/pipeline.prompts";
+import { isGenerationStale } from "@/lib/pipeline-generation-policy";
 
 const MAX_SYLLABUS_REQUEST_BYTES = 768 * 1024;
 const MAX_SYLLABUS_MANAGEMENT_REQUEST_BYTES = 256 * 1024;
@@ -129,7 +130,34 @@ export async function GET(request: Request) {
       .eq("artifact_id", artifactId)
       .maybeSingle();
     if (error) throw error;
-    return apiSuccessResponse({ syllabus: data || null }, { requestId });
+    let syllabus = data;
+    if (
+      syllabus?.state === "STEP_GENERATING" &&
+      syllabus.updated_at &&
+      isGenerationStale(syllabus.updated_at)
+    ) {
+      const timeoutMessage =
+        "La generación del temario dejó de registrar actividad y fue detenida. Puedes reintentar sin esperar indefinidamente.";
+      const { data: recovered, error: recoveryError } = await authorization.admin
+        .from("syllabus")
+        .update({
+          state: "STEP_ESCALATED",
+          source_summary: {
+            ...(syllabus.source_summary || {}),
+            error: timeoutMessage,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("artifact_id", artifactId)
+        .eq("state", "STEP_GENERATING")
+        .eq("iteration_count", syllabus.iteration_count)
+        .eq("updated_at", syllabus.updated_at)
+        .select("*")
+        .maybeSingle();
+      if (recoveryError) throw recoveryError;
+      if (recovered) syllabus = recovered;
+    }
+    return apiSuccessResponse({ syllabus: syllabus || null }, { requestId });
   } catch (error) {
     createOperationalLogger("syllabus.read", { correlationId: requestId })
       .error("syllabus.read_failed", error);
@@ -187,6 +215,46 @@ export async function PATCH(request: Request) {
         });
       }
     } else {
+      let validatedApproval:
+        | { automatic_pass: boolean; checks: ReturnType<typeof runAllValidations>["checks"] }
+        | undefined;
+      if (parsedRequest.data.state === "STEP_APPROVED") {
+        const [syllabusResult, artifactResult] = await Promise.all([
+          authorization.admin
+            .from("syllabus")
+            .select("modules")
+            .eq("artifact_id", parsedRequest.data.artifactId)
+            .maybeSingle(),
+          authorization.admin
+            .from("artifacts")
+            .select("objetivos")
+            .eq("id", parsedRequest.data.artifactId)
+            .single(),
+        ]);
+        if (syllabusResult.error) throw syllabusResult.error;
+        if (artifactResult.error) throw artifactResult.error;
+        const validation = runAllValidations(
+          Array.isArray(syllabusResult.data?.modules)
+            ? syllabusResult.data.modules
+            : [],
+          Array.isArray(artifactResult.data?.objetivos)
+            ? artifactResult.data.objetivos
+            : [],
+        );
+        if (!validation.passed) {
+          return apiErrorResponse({
+            code: API_ERROR_CODE.conflict,
+            message:
+              "No se puede aprobar el temario porque aún tiene validaciones estructurales pendientes.",
+            requestId,
+            status: 409,
+          });
+        }
+        validatedApproval = {
+          automatic_pass: true,
+          checks: validation.checks,
+        };
+      }
       const qa = parsedRequest.data.notes === undefined
         ? undefined
         : {
@@ -201,6 +269,7 @@ export async function PATCH(request: Request) {
       const payload = {
         state: parsedRequest.data.state,
         updated_at: new Date().toISOString(),
+        ...(validatedApproval ? { validation: validatedApproval } : {}),
         ...(qa ? { qa } : {}),
       };
       const { error } = await authorization.admin.from("syllabus").upsert(
@@ -325,6 +394,15 @@ export async function POST(request: Request) {
 
     if (syllabusLookupError) {
       throw syllabusLookupError;
+    }
+
+    if (currentSyllabus?.state === "STEP_GENERATING") {
+      return apiErrorResponse({
+        code: API_ERROR_CODE.conflict,
+        message: "La generación del temario ya está en curso.",
+        requestId,
+        status: 409,
+      });
     }
 
     if (!canIterateSyllabus(currentSyllabus?.iteration_count)) {
@@ -537,6 +615,14 @@ export async function POST(request: Request) {
 
     content.generation_metadata = metadata;
     const validation = runAllValidations(content.modules, objetivos);
+    if (!validation.passed) {
+      throw new Error(
+        `El temario generado no superó la validación estructural: ${validation.checks
+          .filter((check) => !check.pass)
+          .map((check) => check.message)
+          .join(" | ")}`,
+      );
+    }
     const completedSyllabus = {
       ...content,
       iteration_count: reservedIteration,
@@ -550,9 +636,9 @@ export async function POST(request: Request) {
       },
     };
 
-    const { error: saveError } = await admin.from("syllabus").upsert(
-      {
-        artifact_id: artifactId,
+    const { data: savedSyllabus, error: saveError } = await admin
+      .from("syllabus")
+      .update({
         route,
         modules: content.modules,
         source_summary: metadata,
@@ -561,10 +647,18 @@ export async function POST(request: Request) {
         state: completedSyllabus.state,
         iteration_count: reservedIteration,
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: "artifact_id" },
-    );
+      })
+      .eq("artifact_id", artifactId)
+      .eq("state", "STEP_GENERATING")
+      .eq("iteration_count", reservedIteration)
+      .select("id")
+      .maybeSingle();
     if (saveError) throw saveError;
+    if (!savedSyllabus) {
+      throw new Error(
+        "La generación del temario fue cancelada o reemplazada por otra ejecución.",
+      );
+    }
 
     logger.info("syllabus.generation_completed", {
       artifactId,

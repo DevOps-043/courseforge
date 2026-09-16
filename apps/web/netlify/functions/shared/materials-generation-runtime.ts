@@ -292,6 +292,10 @@ export async function generateLessonMaterials(params: {
     fixInstructions,
     videoDurationPolicy: generationContext.videoDurationPolicy,
   });
+  input.requires_sources = generationContext.requiresSources;
+  input.required_source_count = generationContext.requiresSources
+    ? requiredSources
+    : 0;
 
   const isPartial = componentTypes && componentTypes.length > 0;
   if (isPartial) {
@@ -309,6 +313,8 @@ export async function generateLessonMaterials(params: {
       standardInput, logPrefix, models, modelRuntimeConfig, supabase,
       standardInput.lesson.components.map((component) => component.type), organizationId,
       deadlineMs,
+      generationContext.artifactId,
+      lesson.id,
     ),
     generateVideo: (componentType, contract) => generateAndTraceMaterialVideo({
       supabase, input, componentType, contract, models, modelRuntimeConfig, organizationId,

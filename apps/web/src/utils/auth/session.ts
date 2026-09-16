@@ -25,11 +25,13 @@ export interface AuthBridgeUser {
   platform_role?: string
   organization_ids?: string[]
   active_organization_id?: string | null
+  platform_permissions?: string[]
 }
 
 interface AuthBridgeJwtAppMetadata {
   active_organization_id?: string | null
   organization_ids?: string[]
+  platform_permissions?: string[]
 }
 
 interface AuthBridgeJwtUserMetadata {
@@ -102,6 +104,11 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
       platform_role: platformRole || rawPlatformRole,
       organization_ids: appMetadata.organization_ids || [],
       active_organization_id: appMetadata.active_organization_id || null,
+      platform_permissions: Array.isArray(appMetadata.platform_permissions)
+        ? appMetadata.platform_permissions.filter(
+            (permission): permission is string => typeof permission === 'string',
+          )
+        : [],
     }
   } catch (error: unknown) {
     // cookies() uses this control-flow signal so Next can switch the route to

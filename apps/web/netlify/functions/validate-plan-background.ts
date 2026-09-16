@@ -11,6 +11,7 @@ import {
 import { getErrorMessage } from './shared/errors';
 import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from './shared/http';
 import { resolveInstructionalPlanAudience } from '../../src/domains/plan/lib/instructional-plan-validation-context';
+import { recordAiFailure, recordAiSdkUsage } from '../../src/shared/ai/usage-telemetry';
 
 // EMBEDDED PROMPT TO AVOID IMPORT ISSUES
 const INSTRUCTIONAL_PLAN_VALIDATION_PROMPT = `Actúa como un Auditor de Calidad Instruccional Senior y Experto en Validación Curricular.
@@ -193,11 +194,42 @@ export const handler: Handler = async (event) => {
         const modelName = modelSettings.model;
         console.log(`[Validation Job] Validating with ${modelName}...`);
 
-        const result = await generateObject({
-            model: resolveAiModel(modelName),
-            schema: ValidationResultSchema,
-            prompt: `${INSTRUCTIONAL_PLAN_VALIDATION_PROMPT}\n\n${validationContext}`,
-            temperature: modelSettings.temperature,
+        const startedAt = Date.now();
+        let result;
+        try {
+            result = await generateObject({
+                model: resolveAiModel(modelName),
+                schema: ValidationResultSchema,
+                prompt: `${INSTRUCTIONAL_PLAN_VALIDATION_PROMPT}\n\n${validationContext}`,
+                temperature: modelSettings.temperature,
+            });
+        } catch (error) {
+            await recordAiFailure({
+                context: {
+                    artifactId,
+                    operation: 'validate_instructional_plan',
+                    organizationId: artifact?.organization_id || null,
+                    pipelineStep: 'PLAN_VALIDATION',
+                },
+                error,
+                model: modelName,
+                provider: modelName.startsWith('gemini-') ? 'gemini' : 'openai',
+                startedAt,
+                supabase,
+            });
+            throw error;
+        }
+        await recordAiSdkUsage({
+            context: {
+                artifactId,
+                operation: 'validate_instructional_plan',
+                organizationId: artifact?.organization_id || null,
+                pipelineStep: 'PLAN_VALIDATION',
+            },
+            model: modelName,
+            startedAt,
+            supabase,
+            usage: result.usage,
         });
 
         const validationOutput = result.object;

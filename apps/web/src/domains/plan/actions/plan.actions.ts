@@ -28,6 +28,8 @@ import {
   INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE,
   instructionalPlanContextPromptDefault,
 } from "@/shared/config/prompts/pipeline.prompts";
+import { isGenerationStale } from "@/lib/pipeline-generation-policy";
+import { getInstructionalPlanCompletenessIssues } from "../lib/plan-completeness";
 
 export async function generateInstructionalPlanAction(
   artifactId: string,
@@ -57,12 +59,18 @@ export async function generateInstructionalPlanAction(
   try {
     const { data: currentPlan, error: lookupError } = await admin
       .from("instructional_plans")
-      .select("id, iteration_count, lesson_plans")
+      .select("id, iteration_count, lesson_plans, state")
       .eq("artifact_id", artifactId)
       .maybeSingle();
 
     if (lookupError) {
       throw lookupError;
+    }
+    if (currentPlan?.state === "STEP_PROCESSING") {
+      return {
+        success: false,
+        error: "La generación del plan ya está en curso.",
+      };
     }
 
     const currentIteration = getPlanIterationCount(
@@ -226,6 +234,36 @@ export async function updateInstructionalPlanStatusAction(
   }
 
   const { admin } = authorized;
+  if (status === "STEP_APPROVED") {
+    const [planResult, syllabusResult] = await Promise.all([
+      admin
+        .from("instructional_plans")
+        .select("lesson_plans")
+        .eq("artifact_id", artifactId)
+        .single(),
+      admin
+        .from("syllabus")
+        .select("modules")
+        .eq("artifact_id", artifactId)
+        .single(),
+    ]);
+    if (planResult.error) {
+      return { success: false, error: planResult.error.message };
+    }
+    if (syllabusResult.error) {
+      return { success: false, error: syllabusResult.error.message };
+    }
+    const completenessIssues = getInstructionalPlanCompletenessIssues(
+      syllabusResult.data.modules,
+      planResult.data.lesson_plans,
+    );
+    if (completenessIssues.length > 0) {
+      return {
+        success: false,
+        error: `No se puede aprobar un plan incompleto. ${completenessIssues.join(" ")}`,
+      };
+    }
+  }
   const { error } = await admin
     .from("instructional_plans")
     .update({
@@ -446,6 +484,42 @@ export async function getInstructionalPlanSnapshotAction(artifactId: string) {
     return { success: false, error: artifactError.message };
   }
 
+  let plan = data;
+  if (
+    plan?.state === "STEP_PROCESSING" &&
+    plan.updated_at &&
+    isGenerationStale(plan.updated_at)
+  ) {
+    const observedIteration = getPlanIterationCount(
+      plan.iteration_count,
+      Array.isArray(plan.lesson_plans) && plan.lesson_plans.length > 0,
+    );
+    const timeoutMessage =
+      "La generación del plan dejó de registrar actividad y fue detenida. Se conservó el último plan guardado y puedes reintentar.";
+    const { data: recovered, error: recoveryError } = await admin
+      .from("instructional_plans")
+      .update({
+        state: "STEP_FAILED",
+        iteration_count: getPreviousPlanIteration(observedIteration),
+        last_error: {
+          code: "INSTRUCTIONAL_PLAN_STALE_EXECUTION",
+          message: timeoutMessage,
+          occurred_at: new Date().toISOString(),
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", plan.id)
+      .eq("state", "STEP_PROCESSING")
+      .eq("iteration_count", plan.iteration_count)
+      .eq("updated_at", plan.updated_at)
+      .select("*")
+      .maybeSingle();
+    if (recoveryError) {
+      return { success: false, error: recoveryError.message };
+    }
+    if (recovered) plan = recovered;
+  }
+
   const generationPrompt = await resolvePromptWithMetadata(
     admin,
     INSTRUCTIONAL_PLAN_CONTEXT_PROMPT_CODE,
@@ -456,7 +530,7 @@ export async function getInstructionalPlanSnapshotAction(artifactId: string) {
   return {
     success: true,
     generationPrompt,
-    plan: data,
+    plan,
     videoDurationPolicy: resolveArtifactVideoDurationPolicy(
       artifact?.generation_metadata,
     ),

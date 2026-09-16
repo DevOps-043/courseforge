@@ -14,6 +14,9 @@ const serverEnvSchema = z
     COURSEFORGE_JWT_SECRET: z.string().min(1).optional(),
     BACKGROUND_FUNCTION_SECRET: z.string().min(32).optional(),
     OPENAI_API_KEY: z.string().min(1).optional(),
+    OPENAI_ADMIN_KEY: z.string().min(1).optional(),
+    OPENAI_ORG_ID: z.string().min(1).optional(),
+    OPENAI_PROJECT_ID: z.string().min(1).optional(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     GOOGLE_API_KEY: z.string().min(1).optional(),
     HEYGEN_API_KEY: z.string().min(1).optional(),
@@ -43,6 +46,9 @@ function buildEnvObject(): Record<string, string | undefined> {
     COURSEFORGE_JWT_SECRET: process.env.COURSEFORGE_JWT_SECRET,
     BACKGROUND_FUNCTION_SECRET: process.env.BACKGROUND_FUNCTION_SECRET,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OPENAI_ADMIN_KEY: process.env.OPENAI_ADMIN_KEY,
+    OPENAI_ORG_ID: process.env.OPENAI_ORG_ID,
+    OPENAI_PROJECT_ID: process.env.OPENAI_PROJECT_ID,
     GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
     GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
     HEYGEN_API_KEY: process.env.HEYGEN_API_KEY,
@@ -182,6 +188,15 @@ export function getOptionalGeminiApiKey() {
 
 export function getOptionalOpenAIApiKey() {
   return getParsedServerEnv().OPENAI_API_KEY || null;
+}
+
+export function getOptionalOpenAIAdminConfig() {
+  const env = getParsedServerEnv();
+  return {
+    adminKey: env.OPENAI_ADMIN_KEY || null,
+    organizationId: env.OPENAI_ORG_ID || null,
+    projectId: env.OPENAI_PROJECT_ID || null,
+  };
 }
 
 export function getHeygenApiKey() {

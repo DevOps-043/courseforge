@@ -13,6 +13,10 @@ import {
   mapOrganizationRoleToPlatformRole,
   normalizePlatformRole,
 } from "../../../utils/auth/platform-role";
+import {
+  getSofliaPlatformPermissions,
+  PLATFORM_PERMISSIONS,
+} from "../../../utils/auth/platform-permissions";
 
 function authClient(result: Awaited<ReturnType<SupabasePasswordAuthClient["auth"]["signInWithPassword"]>>) {
   return {
@@ -131,6 +135,18 @@ describe("Auth Bridge contract", () => {
     assert.equal(mapOrganizationRoleToPlatformRole("admin"), "ADMIN");
     assert.equal(mapOrganizationRoleToPlatformRole("reviewer"), "ARQUITECTO");
     assert.equal(mapOrganizationRoleToPlatformRole("member"), "CONSTRUCTOR");
+  });
+
+  it("grants global monitoring only to the explicit Learning administrator role", () => {
+    assert.deepEqual(getSofliaPlatformPermissions("Administrador"), [
+      PLATFORM_PERMISSIONS.AI_USAGE_READ,
+    ]);
+    assert.deepEqual(getSofliaPlatformPermissions("administrador"), [
+      PLATFORM_PERMISSIONS.AI_USAGE_READ,
+    ]);
+    assert.deepEqual(getSofliaPlatformPermissions("Business"), []);
+    assert.deepEqual(getSofliaPlatformPermissions("owner"), []);
+    assert.deepEqual(getSofliaPlatformPermissions("admin"), []);
   });
 
   it("routes canonical roles to their corresponding workspace", () => {

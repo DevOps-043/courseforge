@@ -6,15 +6,13 @@
     "module": "CommonJS",
     "moduleResolution": "Node",
     "noEmit": false,
-    "outDir": ".tmp/auth-bridge-tests",
+    "outDir": ".tmp/profile-tests",
     "rootDir": "src",
     "types": ["node"]
   },
   "include": [
-    "src/app/login/auth-bridge-contract.ts",
-    "src/utils/auth/platform-role.ts",
-    "src/utils/auth/platform-permissions.ts",
-    "src/app/login/__tests__/**/*.ts"
+    "src/app/admin/profile/profile-member-since.ts",
+    "src/app/admin/profile/__tests__/profile-member-since.test.ts"
   ],
   "exclude": ["node_modules"]
 }

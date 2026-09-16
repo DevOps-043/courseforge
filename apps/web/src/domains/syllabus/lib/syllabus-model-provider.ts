@@ -1,6 +1,13 @@
 import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
 import { getTextModelProvider } from "../../../shared/ai/text-model-provider";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  recordAiFailure,
+  recordGeminiUsage,
+  recordOpenAiUsage,
+  type AiUsageContext,
+} from "../../../shared/ai/usage-telemetry";
 
 export interface SyllabusModelClients {
   gemini?: GoogleGenAI;
@@ -11,6 +18,11 @@ export interface SyllabusResearchResult {
   groundingMetadata?: unknown;
   searchQueries: string[];
   text: string;
+}
+
+interface SyllabusTelemetry {
+  context: AiUsageContext;
+  supabase?: SupabaseClient | null;
 }
 
 function requireProviderClient(
@@ -46,19 +58,28 @@ export async function generateSyllabusResearch(params: {
   model: string;
   prompt: string;
   temperature: number;
+  telemetry?: SyllabusTelemetry;
 }): Promise<SyllabusResearchResult> {
-  const { clients, model, prompt, temperature } = params;
+  const { clients, model, prompt, temperature, telemetry } = params;
   const resolved = requireProviderClient(clients, model);
 
   if (resolved.provider === "gemini") {
-    const response = await resolved.client.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        temperature,
-      },
-    });
+    const startedAt = Date.now();
+    let response;
+    try {
+      response = await resolved.client.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          tools: [{ googleSearch: {} }],
+          temperature,
+        },
+      });
+    } catch (error) {
+      if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "gemini", startedAt });
+      throw error;
+    }
+    if (telemetry) await recordGeminiUsage({ ...telemetry, model, response, startedAt });
     const groundingMetadata = response.candidates?.[0]?.groundingMetadata as
       | { webSearchQueries?: string[] }
       | undefined;
@@ -70,12 +91,20 @@ export async function generateSyllabusResearch(params: {
     };
   }
 
-  const response = await resolved.client.responses.create({
-    model,
-    input: prompt,
-    max_output_tokens: 5000,
-    tools: [{ type: "web_search" }],
-  });
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await resolved.client.responses.create({
+      model,
+      input: prompt,
+      max_output_tokens: 5000,
+      tools: [{ type: "web_search" }],
+    });
+  } catch (error) {
+    if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "openai", startedAt });
+    throw error;
+  }
+  if (telemetry) await recordOpenAiUsage({ ...telemetry, model, response, startedAt });
 
   return {
     text: response.output_text || "",
@@ -92,29 +121,46 @@ export async function generateSyllabusJson(params: {
   model: string;
   prompt: string;
   temperature: number;
+  telemetry?: SyllabusTelemetry;
 }) {
-  const { clients, model, prompt, temperature } = params;
+  const { clients, model, prompt, temperature, telemetry } = params;
   const resolved = requireProviderClient(clients, model);
 
   if (resolved.provider === "gemini") {
-    const response = await resolved.client.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        temperature,
-        responseMimeType: "application/json",
-      },
-    });
+    const startedAt = Date.now();
+    let response;
+    try {
+      response = await resolved.client.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          temperature,
+          responseMimeType: "application/json",
+        },
+      });
+    } catch (error) {
+      if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "gemini", startedAt });
+      throw error;
+    }
+    if (telemetry) await recordGeminiUsage({ ...telemetry, model, response, startedAt });
 
     return response.text || "";
   }
 
-  const response = await resolved.client.responses.create({
-    model,
-    input: prompt,
-    max_output_tokens: 16000,
-    text: { format: { type: "json_object" } },
-  });
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await resolved.client.responses.create({
+      model,
+      input: prompt,
+      max_output_tokens: 16000,
+      text: { format: { type: "json_object" } },
+    });
+  } catch (error) {
+    if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "openai", startedAt });
+    throw error;
+  }
+  if (telemetry) await recordOpenAiUsage({ ...telemetry, model, response, startedAt });
 
   if (
     response.status === "incomplete" &&
