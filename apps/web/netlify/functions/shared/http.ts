@@ -5,6 +5,8 @@ import {
 } from "../../../src/lib/server/background-payload-signature";
 import { isLocalBackgroundInvocation } from "../../../src/lib/server/background-request-environment";
 import { createServiceRoleClient } from "./bootstrap";
+import { getErrorMessage } from "./errors";
+import { createOperationalLogger } from "../../../src/lib/server/operational-logger";
 
 export function jsonResponse(
   body: Record<string, unknown>,
@@ -39,8 +41,17 @@ export function parseJsonBody<TData>(event: HandlerEvent): TData {
 }
 
 export async function parseVerifiedBackgroundBody<TData>(event: HandlerEvent): Promise<TData> {
-  const envelope = parseJsonBody<SignedBackgroundPayload>(event);
-  const verified = verifyBackgroundPayloadEnvelope<TData>(envelope);
+  const logger = createOperationalLogger("background.guard", { path: event.path });
+
+  let verified;
+  try {
+    const envelope = parseJsonBody<SignedBackgroundPayload>(event);
+    verified = verifyBackgroundPayloadEnvelope<TData>(envelope);
+  } catch (error) {
+    logger.warn("background.guard_rejected", { reason: getErrorMessage(error, "envelope_invalido") });
+    throw error;
+  }
+
   if (isLocalBackgroundInvocation({
     netlify: process.env.NETLIFY,
     nodeEnv: process.env.NODE_ENV,
@@ -49,16 +60,31 @@ export async function parseVerifiedBackgroundBody<TData>(event: HandlerEvent): P
     return verified.value;
   }
 
-  const admin = createServiceRoleClient();
-  const { data: accepted, error } = await admin.rpc(
-    "consume_background_request_nonce",
-    {
-      p_expires_at: new Date(verified.issuedAt + (5 * 60 * 1000)).toISOString(),
-      p_nonce: verified.nonce,
-    },
-  );
-  if (error || accepted !== true) {
+  let accepted: unknown;
+  try {
+    const admin = createServiceRoleClient();
+    const { data, error } = await admin.rpc(
+      "consume_background_request_nonce",
+      {
+        p_expires_at: new Date(verified.issuedAt + (5 * 60 * 1000)).toISOString(),
+        p_nonce: verified.nonce,
+      },
+    );
+    if (error) {
+      throw error;
+    }
+    accepted = data;
+  } catch (error) {
+    // Fallo de infraestructura (credenciales, RPC ausente, base inalcanzable): no es un
+    // rechazo de seguridad y debe quedar registrado, porque el llamador ya recibio 202.
+    logger.error("background.guard_dependency_unavailable", error);
+    throw new Error("No se pudo verificar la solicitud de background.");
+  }
+
+  if (accepted !== true) {
+    logger.warn("background.guard_rejected", { reason: "nonce_consumido" });
     throw new Error("Replay de background rechazado.");
   }
+
   return verified.value;
 }

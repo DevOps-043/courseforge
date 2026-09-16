@@ -37,6 +37,7 @@ import { getTextModelProvider } from "@/shared/ai/text-model-provider";
 import { syllabusGenerationRequestSchema } from "@/domains/syllabus/syllabus-generation-request.schema";
 import { syllabusManagementRequestSchema } from "@/domains/syllabus/syllabus-management-request.schema";
 import { runAllValidations } from "@/domains/syllabus/validators/syllabus.validators";
+import { recoverStaleSyllabusGeneration } from "@/domains/syllabus/lib/syllabus-generation-recovery";
 import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
@@ -129,7 +130,12 @@ export async function GET(request: Request) {
       .eq("artifact_id", artifactId)
       .maybeSingle();
     if (error) throw error;
-    return apiSuccessResponse({ syllabus: data || null }, { requestId });
+    const syllabus = await recoverStaleSyllabusGeneration(
+      authorization.admin,
+      artifactId,
+      data || null,
+    );
+    return apiSuccessResponse({ syllabus }, { requestId });
   } catch (error) {
     createOperationalLogger("syllabus.read", { correlationId: requestId })
       .error("syllabus.read_failed", error);
