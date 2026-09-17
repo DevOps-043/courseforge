@@ -133,6 +133,33 @@ export async function fetchCurationSnapshot(
   const typedRows = (rows as CurationRow[] | null) || [];
   let typedCuration = curation as Curation;
 
+  if (
+    typedCuration.state === CURATION_STATES.PAUSED_REQUESTED ||
+    typedCuration.state === CURATION_STATES.STOPPED_REQUESTED
+  ) {
+    const requestedState = typedCuration.state;
+    const terminalState = requestedState === CURATION_STATES.PAUSED_REQUESTED
+      ? CURATION_STATES.PAUSED
+      : CURATION_STATES.STOPPED;
+    const transitionedAt = new Date().toISOString();
+    const { data: transitioned, error: transitionError } = await admin
+      .from("curation")
+      .update({ state: terminalState, updated_at: transitionedAt })
+      .eq("id", typedCuration.id)
+      .eq("state", requestedState)
+      .eq("attempt_number", typedCuration.attempt_number)
+      .select("id")
+      .maybeSingle();
+    if (transitionError) throw new Error(transitionError.message);
+    if (transitioned) {
+      typedCuration = {
+        ...typedCuration,
+        state: terminalState,
+        updated_at: transitionedAt,
+      };
+    }
+  }
+
   if (isStaleGeneratingCuration(typedCuration)) {
     const notes =
       "La curaduría no registró actividad dentro del tiempo permitido. Reanuda para completar las fuentes pendientes; se conserva el progreso guardado.";

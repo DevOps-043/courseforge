@@ -9,7 +9,7 @@ import { getErrorMessage } from "./shared/errors";
 import {
   methodNotAllowedResponse,
   parseVerifiedBackgroundBody,
-  unauthorizedBackgroundResponse,
+  backgroundGuardFailureResponse,
 } from "./shared/http";
 import { SYLLABUS_PROMPT } from "../../src/domains/syllabus/config/syllabus.config";
 import {
@@ -22,7 +22,10 @@ import {
 import { SyllabusGenerationMetadata } from "../../src/domains/syllabus/types/syllabus.types";
 import { applyGeneratedLessonDurationEstimates } from "../../src/domains/syllabus/lib/lesson-duration-estimator";
 import { resolveArtifactVideoDurationPolicy } from "../../src/domains/video-duration/video-duration-policy";
-import { validateCourseDuration } from "../../src/domains/syllabus/validators/syllabus.validators";
+import {
+  runAllValidations,
+  validateCourseDuration,
+} from "../../src/domains/syllabus/validators/syllabus.validators";
 import {
   resolvePromptWithFallback,
   resolvePromptWithMetadata,
@@ -103,8 +106,8 @@ export const handler: Handler = async (event) => {
   let verifiedBody: unknown;
   try {
     verifiedBody = await parseVerifiedBackgroundBody<unknown>(event);
-  } catch {
-    return unauthorizedBackgroundResponse();
+  } catch (error) {
+    return backgroundGuardFailureResponse(error);
   }
 
   const parsedBody = syllabusGenerationBackgroundRequestSchema.safeParse(verifiedBody);
@@ -128,6 +131,7 @@ export const handler: Handler = async (event) => {
   );
 
   const supabase = createServiceRoleClient();
+  let activeIteration = iterationNumber;
   try {
     const { data: currentSyllabus, error: syllabusLookupError } = await supabase
       .from("syllabus")
@@ -159,6 +163,7 @@ export const handler: Handler = async (event) => {
     const nextIteration = iterationNumber === undefined
       ? getNextSyllabusIteration(currentSyllabus?.iteration_count)
       : iterationNumber;
+    activeIteration = nextIteration;
 
     if (
       !Number.isInteger(nextIteration) ||
@@ -242,6 +247,16 @@ export const handler: Handler = async (event) => {
           objetivos: objetivos.map((objetivo, index) => `${index + 1}. ${objetivo}`).join("\n"),
         }) || buildSyllabusResearchPrompt(ideaCentral, objetivos),
         temperature: 0.7,
+        telemetry: {
+          supabase,
+          context: {
+            artifactId,
+            attempt: activeIteration,
+            operation: "research_syllabus",
+            organizationId: promptOrganizationId,
+            pipelineStep: "SYLLABUS",
+          },
+        },
       });
 
       researchContext = searchResult.text;
@@ -301,6 +316,16 @@ export const handler: Handler = async (event) => {
           model: attemptModel,
           prompt: appendValidationFeedback(basePrompt, validationErrors),
           temperature: modelConfig.temperature,
+          telemetry: {
+            supabase,
+            context: {
+              artifactId,
+              attempt: attempts,
+              operation: "generate_syllabus",
+              organizationId: promptOrganizationId,
+              pipelineStep: "SYLLABUS",
+            },
+          },
         });
 
         content = parseSyllabusResponseText(responseText);
@@ -340,6 +365,11 @@ export const handler: Handler = async (event) => {
         `No se pudo generar un JSON válido después de varios intentos. ${attemptErrors.join(" | ")}`,
       );
     }
+    if (validationErrors.length > 0) {
+      throw new Error(
+        `El temario no superó la validación después de ${attempts} intentos: ${validationErrors.join(" | ")}`,
+      );
+    }
 
     content.total_estimated_hours = calculateSyllabusEstimatedHours(
       content.modules,
@@ -374,22 +404,45 @@ export const handler: Handler = async (event) => {
     };
 
     content.generation_metadata = metadata;
+    const validation = runAllValidations(content.modules, objetivos);
+    if (!validation.passed) {
+      throw new Error(
+        `El temario no superó la validación estructural: ${validation.checks
+          .filter((check) => !check.pass)
+          .map((check) => check.message)
+          .join(" | ")}`,
+      );
+    }
 
-    const { error: syllabusError } = await supabase.from("syllabus").upsert(
-      {
-        artifact_id: artifactId,
+    const { data: savedSyllabus, error: syllabusError } = await supabase
+      .from("syllabus")
+      .update({
         route,
         modules: content.modules,
         source_summary: metadata,
-        state: "STEP_REVIEW",
+        validation: {
+          automatic_pass: true,
+          checks: validation.checks,
+        },
+        qa: { status: "PENDING" },
+        state: "STEP_READY_FOR_QA",
         iteration_count: nextIteration,
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: "artifact_id" },
-    );
+      })
+      .eq("artifact_id", artifactId)
+      .eq("state", "STEP_GENERATING")
+      .eq("iteration_count", nextIteration)
+      .select("id")
+      .maybeSingle();
 
     if (syllabusError) {
       throw syllabusError;
+    }
+    if (!savedSyllabus) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ superseded: true }),
+      };
     }
 
     console.log("[Syllabus Background] Proceso completado exitosamente.");
@@ -405,14 +458,18 @@ export const handler: Handler = async (event) => {
 
     console.error("[Syllabus Background] Error fatal:", message);
 
-    await supabase.from("syllabus").upsert(
-      {
-        artifact_id: artifactId,
-        state: "STEP_ESCALATED",
-        source_summary: { error: message },
-      },
-      { onConflict: "artifact_id" },
-    );
+    if (activeIteration !== undefined) {
+      await supabase
+        .from("syllabus")
+        .update({
+          state: "STEP_ESCALATED",
+          source_summary: { error: message },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("artifact_id", artifactId)
+        .eq("state", "STEP_GENERATING")
+        .eq("iteration_count", activeIteration);
+    }
 
     return {
       statusCode: 500,

@@ -6,6 +6,8 @@ import AdminLayoutClient from '@/app/admin/AdminLayoutClient';
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 import { resolveSidebarProfile } from '@/components/layout/layout.types';
 import { resolveTenantContext } from '@/lib/server/tenant-context';
+import { userHasPlatformPermission } from '@/lib/server/platform-authorization';
+import { PLATFORM_PERMISSIONS } from '@/utils/auth/platform-permissions';
 
 export default async function TenantAdminLayout({
   children,
@@ -65,6 +67,9 @@ export default async function TenantAdminLayout({
     ...(resolveSidebarProfile(profile, bridgeUser) || {}),
     platform_role: effectiveRole,
   };
+  const showPlatformMonitoring = await userHasPlatformPermission(
+    PLATFORM_PERMISSIONS.AI_USAGE_READ,
+  );
 
   return (
     <AdminLayoutClient
@@ -72,6 +77,7 @@ export default async function TenantAdminLayout({
       logoutAction={logoutAction}
       profile={displayProfile}
       basePath={`/${tenant.organizationSlug}/admin`}
+      showPlatformMonitoring={showPlatformMonitoring}
     >
       {children}
     </AdminLayoutClient>

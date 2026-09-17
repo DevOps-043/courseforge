@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Sparkles, Upload, ArrowRight, BookOpen, Users, Target, Settings, ChevronDown, CheckCircle2, HardDrive } from 'lucide-react';
@@ -45,6 +45,7 @@ export default function ConstructorNewArtifactPage() {
     const [mode, setMode] = useState<'ai' | 'import'>('ai');
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const submission = useRef({ pending: false, requestId: '' });
     const [cloudStorageProvider, setCloudStorageProvider] = useState<CloudStorageProvider | null>(null);
     const [videoDurationPolicy, setVideoDurationPolicy] = useState<VideoDurationPolicy>(
         createDefaultVideoDurationPolicy,
@@ -70,6 +71,7 @@ export default function ConstructorNewArtifactPage() {
     }, []);
 
     const handleGenerate = async () => {
+        if (submission.current.pending) return;
         const validation = videoDurationPolicySchema.safeParse(videoDurationPolicy);
         if (!validation.success) {
             setIsAdvancedOpen(true);
@@ -77,9 +79,12 @@ export default function ConstructorNewArtifactPage() {
             return;
         }
 
+        submission.current.pending = true;
+        submission.current.requestId ||= crypto.randomUUID();
         setIsLoading(true);
         try {
             const result = await generateArtifactAction({
+                requestId: submission.current.requestId,
                 title: formData.title,
                 description: formData.description,
                 targetAudience: formData.targetAudience,
@@ -90,17 +95,18 @@ export default function ConstructorNewArtifactPage() {
             });
 
             if (result.success) {
-                // Redirigir al pipeline del constructor en lugar del admin
-                router.push('/builder/artifacts');
+                router.push(`/builder/artifacts/${result.artifactId}`);
             } else {
+                submission.current.pending = false;
                 console.error(result.error);
                 toast.error(`Error generando el artefacto: ${result.error}`);
             }
         } catch (error) {
+            submission.current.pending = false;
             console.error(error);
             toast.error('Ocurrió un error inesperado.');
         } finally {
-            setIsLoading(false);
+            if (!submission.current.pending) setIsLoading(false);
         }
     };
 

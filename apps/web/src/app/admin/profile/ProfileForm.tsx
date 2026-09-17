@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { User, Shield, Camera, Save, Loader2, Lock, Eye, EyeOff, Calendar, CheckCircle2, FileCode, Key, HardDrive } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,6 +10,7 @@ import { createClient } from '@/utils/supabase/client';
 import { updateProfile, updatePassword, updateAvatar } from './actions';
 import { disconnectCloudStorageAction } from '@/domains/production/actions/cloud-storage.actions';
 import { CloudStorageConnectButton } from '@/app/admin/artifacts/new/components/CloudStorageConnectButton';
+import { formatMemberSinceDate } from './profile-member-since';
 
 interface ProfileFormProfile {
   avatar_url?: string | null;
@@ -24,7 +24,11 @@ interface ProfileFormProfile {
 interface ProfileFormProps {
   artifactCount: number;
   profile: ProfileFormProfile | null;
-  user: Pick<SupabaseUser, 'created_at' | 'email' | 'id'>;
+  user: {
+    created_at?: string | null;
+    email?: string;
+    id: string;
+  };
   googleConnected?: boolean;
   googleEmail?: string | null;
   oneDriveConnected?: boolean;
@@ -70,6 +74,7 @@ export default function ProfileForm({
   const [googleEmailAddress, setGoogleEmailAddress] = useState(googleEmail);
   const [isOneDriveConnected, setIsOneDriveConnected] = useState(oneDriveConnected);
   const [oneDriveEmailAddress, setOneDriveEmailAddress] = useState(oneDriveEmail);
+  const memberSinceLabel = formatMemberSinceDate(user.created_at);
 
   // Profile State
   const [formData, setFormData] = useState({
@@ -260,7 +265,9 @@ export default function ProfileForm({
                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-gray-500 dark:text-slate-500 font-medium pt-2">
                         <span className="flex items-center gap-2">
                              <Calendar size={14} />
-                             Miembro desde {new Date(user.created_at || Date.now()).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+                             {memberSinceLabel
+                               ? `Miembro desde ${memberSinceLabel}`
+                               : 'Fecha de registro no disponible'}
                         </span>
                         <span className="flex items-center gap-2 text-emerald-500 dark:text-green-400">
                              <CheckCircle2 size={14} />

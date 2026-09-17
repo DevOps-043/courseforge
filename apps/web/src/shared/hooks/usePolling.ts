@@ -24,14 +24,29 @@ export function usePolling(
       return;
     }
 
+    let disposed = false;
+    let inFlight = false;
+    const run = async () => {
+      if (disposed || inFlight) return;
+      inFlight = true;
+      try {
+        await latestCallbackRef.current();
+      } finally {
+        inFlight = false;
+      }
+    };
+
     if (runImmediately) {
-      void latestCallbackRef.current();
+      void run();
     }
 
     const intervalId = window.setInterval(() => {
-      void latestCallbackRef.current();
+      void run();
     }, intervalMs);
 
-    return () => window.clearInterval(intervalId);
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+    };
   }, [enabled, intervalMs, runImmediately]);
 }

@@ -242,6 +242,8 @@ export async function generateWithRetry(
   componentTypes?: string[],
   organizationId?: string | null,
   deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.lessonTimeoutMs,
+  artifactId?: string,
+  lessonId?: string,
 ) {
   const modelsToTry = Array.from(new Set(models.filter(Boolean)));
   if (modelsToTry.length === 0) {
@@ -283,6 +285,8 @@ export async function generateWithRetry(
               organizationId,
               modelRuntimeConfig,
               deadlineMs,
+              artifactId,
+              lessonId,
             )
           : await generateMaterialsWithOpenAI(
               (openAiClient ||= createOpenAiClient()),
@@ -294,6 +298,8 @@ export async function generateWithRetry(
               organizationId,
               modelRuntimeConfig,
               deadlineMs,
+              artifactId,
+              lessonId,
             );
         return { success: true as const, content };
       } catch (error) {
@@ -355,6 +361,8 @@ export async function generateMaterialsWithGemini(
     thinkingLevel: "medium",
   },
   deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.requestTimeoutMs,
+  artifactId?: string,
+  lessonId?: string,
 ) {
   const prompt = await buildMaterialsPrompt(
     input,
@@ -366,7 +374,17 @@ export async function generateMaterialsWithGemini(
 
   console.log(`${logPrefix} Calling ${model} through Gemini`);
 
-  const response = await requestGeminiJson(genAI, model, prompt, modelRuntimeConfig, remainingRequestTime(deadlineMs));
+  const response = await requestGeminiJson(genAI, model, prompt, modelRuntimeConfig, remainingRequestTime(deadlineMs), {
+    supabase,
+    context: {
+      artifactId,
+      attempt: input.iteration_number,
+      lessonId: lessonId || input.lesson.lesson_id,
+      operation: "generate_material_components",
+      organizationId,
+      pipelineStep: "MATERIALS",
+    },
+  });
   return parseAndValidateMaterialsOutput(input, response.content);
 }
 
@@ -383,6 +401,8 @@ export async function generateMaterialsWithOpenAI(
     thinkingLevel: "medium",
   },
   deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.requestTimeoutMs,
+  artifactId?: string,
+  lessonId?: string,
 ) {
   const prompt = await buildMaterialsPrompt(
     input,
@@ -394,7 +414,17 @@ export async function generateMaterialsWithOpenAI(
 
   console.log(`${logPrefix} Calling ${model} through OpenAI`);
 
-  const response = await requestOpenAiJson(client, model, prompt, modelRuntimeConfig, remainingRequestTime(deadlineMs));
+  const response = await requestOpenAiJson(client, model, prompt, modelRuntimeConfig, remainingRequestTime(deadlineMs), {
+    supabase,
+    context: {
+      artifactId,
+      attempt: input.iteration_number,
+      lessonId: lessonId || input.lesson.lesson_id,
+      operation: "generate_material_components",
+      organizationId,
+      pipelineStep: "MATERIALS",
+    },
+  });
   return parseAndValidateMaterialsOutput(input, response.content);
 }
 
@@ -472,7 +502,7 @@ async function buildMaterialsPrompt(
   );
 }
 
-function parseAndValidateMaterialsOutput(
+export function parseAndValidateMaterialsOutput(
   input: MaterialsGenerationInput,
   response: unknown,
 ) {
@@ -488,6 +518,15 @@ function parseAndValidateMaterialsOutput(
   const sources = new Set(input.sources.map((source) => source.id));
   if (generated.source_refs_used.some((ref) => !sources.has(ref))) {
     throw new Error("UNKNOWN_SOURCE_REFS: La respuesta usa fuentes ajenas a la lección.");
+  }
+  const distinctUsedSources = new Set(generated.source_refs_used);
+  const requiredSourceCount = input.requires_sources
+    ? Math.max(1, input.required_source_count || 0)
+    : 0;
+  if (distinctUsedSources.size < requiredSourceCount) {
+    throw new Error(
+      `INSUFFICIENT_SOURCE_USAGE: La respuesta debe utilizar al menos ${requiredSourceCount} fuentes validadas y utilizó ${distinctUsedSources.size}.`,
+    );
   }
   return generated as unknown as MaterialsGenerationOutput;
 }

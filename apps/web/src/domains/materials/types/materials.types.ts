@@ -426,6 +426,10 @@ export interface MaterialsGenerationInput {
         source_excerpt?: string;
         cobertura_completa: boolean;
     }[];
+    /** Minimum distinct validated sources that the generated content must cite. */
+    required_source_count?: number;
+    /** False only for the explicit no-sources syllabus route. */
+    requires_sources?: boolean;
     iteration_number: number;
     fix_instructions?: string;
 }

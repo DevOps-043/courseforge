@@ -7,7 +7,7 @@ import { requestGeminiJson, requestOpenAiJson } from "../materials-model-client"
 import { commitGeneratedLesson } from "../material-components.repository";
 import { generateLessonMaterials, loadAptaSources, processGenerationResult, triggerNextLesson } from "../materials-generation-runtime";
 import { resolveVideoDurationPolicy } from "../../../../src/domains/video-duration/video-duration-policy";
-import { generateWithRetry, matchesLesson } from "../materials-generation-helpers";
+import { generateWithRetry, matchesLesson, parseAndValidateMaterialsOutput } from "../materials-generation-helpers";
 import { generationFailureMessage, isGenerationStale, isPermanentProviderFailure } from "../../../../src/lib/pipeline-generation-policy";
 import { markArtifactGenerationFailed } from "../../../../src/domains/artifacts/lib/artifact-generation-failure";
 import type { MaterialsGenerationInput, MaterialsGenerationOutput } from "../../../../src/domains/materials/types/materials.types";
@@ -145,6 +145,28 @@ test("source-required lessons fail before spending provider tokens when coverage
   assert.equal(result.success, false);
   assert.match(String(writes[0].p_error), /Fuentes insuficientes/);
   assert.deepEqual(writes[0].p_rows, []);
+});
+
+test("source-required model output must cite the required validated sources", () => {
+  const input = {
+    lesson: { lesson_id: "lesson-1", lesson_title: "Lesson", module_id: "module-1", module_title: "Module", oa_text: "Apply", components: [{ type: "EXERCISE", summary: "Practice" }], quiz_spec: null, requires_demo_guide: false },
+    sources: [
+      { id: "source-1", source_title: "One", source_ref: "https://example.test/1", cobertura_completa: true },
+      { id: "source-2", source_title: "Two", source_ref: "https://example.test/2", cobertura_completa: true },
+    ],
+    requires_sources: true,
+    required_source_count: 2,
+    iteration_number: 1,
+  } as MaterialsGenerationInput;
+  const response = { components: { EXERCISE: { title: "Practice" } }, source_refs_used: ["source-1"] };
+  assert.throws(
+    () => parseAndValidateMaterialsOutput(input, response),
+    /INSUFFICIENT_SOURCE_USAGE/,
+  );
+  assert.doesNotThrow(() => parseAndValidateMaterialsOutput(input, {
+    ...response,
+    source_refs_used: ["source-1", "source-2"],
+  }));
 });
 
 test("provider failures are actionable without leaking response bodies", () => {

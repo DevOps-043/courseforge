@@ -110,7 +110,7 @@ export async function runCurationWorkflowV2(params: {
     supabase
       .from("artifacts")
       .select(
-        "idea_central, nombres, objetivos, descripcion, generation_metadata",
+        "idea_central, nombres, objetivos, descripcion, generation_metadata, organization_id",
       )
       .eq("id", artifactId)
       .single(),
@@ -224,6 +224,9 @@ export async function runCurationWorkflowV2(params: {
             systemPrompt,
             reasoningEffort,
             round,
+            artifactId,
+            organizationId: artifactResult.data.organization_id,
+            supabase,
           });
           successfulSearchCalls += 1;
           lastSearchError = undefined;

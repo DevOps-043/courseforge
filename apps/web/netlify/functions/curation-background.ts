@@ -9,7 +9,7 @@ import {
   getSupabaseUrl,
 } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
-import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from './shared/http';
+import { backgroundGuardFailureResponse, methodNotAllowedResponse, parseVerifiedBackgroundBody } from './shared/http';
 
 const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') return methodNotAllowedResponse();
@@ -24,8 +24,8 @@ const handler: Handler = async (event) => {
   };
   try {
     payload = await parseVerifiedBackgroundBody(event);
-  } catch {
-    return unauthorizedBackgroundResponse();
+  } catch (error) {
+    return backgroundGuardFailureResponse(error);
   }
 
   try {

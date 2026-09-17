@@ -817,6 +817,21 @@ export async function updateModelSettingsAction(settings: ModelSettingsUpdateInp
     };
   }
 
+  const duplicatedArtifactBaseFallback = settings.find(
+    (setting) =>
+      setting.setting_type === 'ARTIFACT_BASE' &&
+      Boolean(setting.fallback_model) &&
+      setting.model_name.trim() === setting.fallback_model?.trim(),
+  );
+
+  if (duplicatedArtifactBaseFallback) {
+    return {
+      success: false,
+      error:
+        'La generación base necesita un modelo de respaldo distinto al principal. Elige otro fallback para conservar recuperación ante errores o límites del proveedor.',
+    };
+  }
+
   const updates = settings.map(async (setting) => {
       const payload = {
         model_name: setting.model_name,

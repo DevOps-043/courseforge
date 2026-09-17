@@ -71,12 +71,12 @@ export async function generateArtifactAction(formData: {
 
   const tenant = await resolveActiveTenantContext();
   const activeOrgId = tenant?.organizationId ?? (await getActiveOrganizationId());
-  const artifactId = formData.requestId || randomUUID();
+  const artifactId = formData.requestId;
   const runId = randomUUID();
   let created = false;
 
   try {
-    if (!z.uuid().safeParse(artifactId).success || !formData.description?.trim()) {
+    if (!artifactId || !z.uuid().safeParse(artifactId).success || !formData.description?.trim()) {
       return { success: false, error: "Solicitud inválida: se requiere una descripción y un identificador válido." };
     }
     const parsedVideoDurationPolicy = videoDurationPolicySchema.safeParse(formData.videoDurationPolicy);
@@ -122,9 +122,16 @@ export async function generateArtifactAction(formData: {
 
     if (error) {
       if (error.code === "23505") {
-        const { data: existing } = await supabase.from("artifacts").select("id")
+        const { data: existing } = await supabase.from("artifacts").select("id, state")
           .eq("id", artifactId).eq("created_by", authUser.userId).maybeSingle();
-        if (existing) return { success: true, artifactId: existing.id, status: "existing" };
+        if (existing) {
+          return {
+            success: true,
+            artifactId: existing.id,
+            artifactState: existing.state,
+            status: "existing",
+          };
+        }
       }
       throw new Error(`Database Error: ${error.message}`);
     }
@@ -152,7 +159,9 @@ export async function generateArtifactAction(formData: {
 
     return { success: true, artifactId: artifact.id, status: "queued" };
   } catch (error: unknown) {
-    if (created) await markArtifactGenerationFailed(supabase, artifactId, runId, error);
+    if (created && artifactId) {
+      await markArtifactGenerationFailed(supabase, artifactId, runId, error);
+    }
     console.error("[ArtifactActions] Generation error:", error);
     return {
       success: false,

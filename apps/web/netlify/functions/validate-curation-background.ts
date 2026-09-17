@@ -14,7 +14,7 @@ import { getErrorMessage } from "./shared/errors";
 import {
   methodNotAllowedResponse,
   parseVerifiedBackgroundBody,
-  unauthorizedBackgroundResponse,
+  backgroundGuardFailureResponse,
 } from "./shared/http";
 
 const handler: Handler = async (event) => {
@@ -25,8 +25,8 @@ const handler: Handler = async (event) => {
     artifactId = (
       await parseVerifiedBackgroundBody<{ artifactId?: string }>(event)
     ).artifactId;
-  } catch {
-    return unauthorizedBackgroundResponse();
+  } catch (error) {
+    return backgroundGuardFailureResponse(error);
   }
   if (!artifactId) {
     return { statusCode: 400, body: "Missing artifactId" };

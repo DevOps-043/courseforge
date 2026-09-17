@@ -5,7 +5,7 @@ import {
   jsonResponse,
   methodNotAllowedResponse,
   parseVerifiedBackgroundBody,
-  unauthorizedBackgroundResponse,
+  backgroundGuardFailureResponse,
 } from "./shared/http";
 import { createServiceRoleClient } from "./shared/bootstrap";
 import { createOperationalLogger, resolveCorrelationId } from "../../src/lib/server/operational-logger";
@@ -22,8 +22,8 @@ export const handler: Handler = async (event) => {
   let request: ScormTransformationRequest;
   try {
     request = await parseVerifiedBackgroundBody<ScormTransformationRequest>(event);
-  } catch {
-    return unauthorizedBackgroundResponse();
+  } catch (error) {
+    return backgroundGuardFailureResponse(error);
   }
 
   const importId = scormProcessRequestSchema.shape.importId.safeParse(request.importId);

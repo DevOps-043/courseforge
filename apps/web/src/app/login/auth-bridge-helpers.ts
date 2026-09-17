@@ -11,6 +11,7 @@ import {
   getPlatformRoleHome,
   normalizePlatformRole,
 } from "@/utils/auth/platform-role";
+import { getSofliaPlatformPermissions } from "@/utils/auth/platform-permissions";
 
 const DEFAULT_SESSION_MAX_AGE = 60 * 60 * 24 * 7;
 const REMEMBER_ME_MAX_AGE = 60 * 60 * 24 * 365;
@@ -75,6 +76,7 @@ export async function createAuthBridgeTokens(params: {
   const secret = new TextEncoder().encode(jwtSecret);
   const now = Math.floor(Date.now() / 1000);
   const platformRole = normalizePlatformRole(user.platform_role);
+  const platformPermissions = getSofliaPlatformPermissions(user.platform_role);
 
   const accessToken = await new SignJWT({
     aud: "authenticated",
@@ -86,6 +88,7 @@ export async function createAuthBridgeTokens(params: {
       provider: "soflia",
       organization_ids: organizations.map((organization) => organization.id),
       active_organization_id: activeOrgId,
+      platform_permissions: platformPermissions,
     },
     user_metadata: {
       username: user.username,

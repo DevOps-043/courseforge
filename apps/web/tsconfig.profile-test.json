@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "baseUrl": ".",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".tmp/profile-tests",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": [
+    "src/app/admin/profile/profile-member-since.ts",
+    "src/app/admin/profile/__tests__/profile-member-since.test.ts"
+  ],
+  "exclude": ["node_modules"]
+}

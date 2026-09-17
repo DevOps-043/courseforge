@@ -17,7 +17,7 @@ import {
   resolveModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
-import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from "./shared/http";
+import { backgroundGuardFailureResponse, methodNotAllowedResponse, parseVerifiedBackgroundBody } from "./shared/http";
 import {
   resolveArtifactVideoDurationPolicy,
   type VideoDurationPolicy,
@@ -36,6 +36,8 @@ import {
   type GeneratedInstructionalPlanLesson,
 } from "../../src/domains/plan/lib/instructional-plan-generation.schema";
 import { buildInstructionalPlanContextPrompt } from "../../src/domains/plan/lib/instructional-plan-prompt";
+import { getInstructionalPlanCompletenessIssues } from "../../src/domains/plan/lib/plan-completeness";
+import { recordAiFailure, recordAiSdkUsage } from "../../src/shared/ai/usage-telemetry";
 
 type BackgroundSupabaseClient = SupabaseClient;
 type GeneratedLessonPlan = GeneratedInstructionalPlanLesson;
@@ -203,6 +205,10 @@ async function generateModulePlans(params: {
   systemPromptTemplate: string;
   temperature: number;
   videoDurationPolicy: VideoDurationPolicy;
+  artifactId: string;
+  attempt: number;
+  organizationId?: string | null;
+  supabase: SupabaseClient;
 }) {
   const {
     artifact,
@@ -213,6 +219,10 @@ async function generateModulePlans(params: {
     systemPromptTemplate,
     temperature,
     videoDurationPolicy,
+    artifactId,
+    attempt,
+    organizationId,
+    supabase,
   } = params;
   const lessons = module.lessons || [];
   const lessonsText = renderLessonsText(lessons);
@@ -232,11 +242,44 @@ async function generateModulePlans(params: {
     promptVariables,
   );
 
-  const result = await generateObject({
-    model: resolveAiModel(modelName),
-    schema: GeneratedInstructionalPlanSchema,
-    prompt: `${finalSystemPrompt}\n\nMODULO ACTUAL: ${module.title}\n${finalContextPrompt}`,
-    temperature,
+  const startedAt = Date.now();
+  let result;
+  try {
+    result = await generateObject({
+      model: resolveAiModel(modelName),
+      schema: GeneratedInstructionalPlanSchema,
+      prompt: `${finalSystemPrompt}\n\nMODULO ACTUAL: ${module.title}\n${finalContextPrompt}`,
+      temperature,
+    });
+  } catch (error) {
+    await recordAiFailure({
+      context: {
+        artifactId,
+        attempt,
+        operation: "generate_instructional_plan_module",
+        organizationId,
+        pipelineStep: "PLAN",
+      },
+      error,
+      model: modelName,
+      provider: modelName.startsWith("gemini-") ? "gemini" : "openai",
+      startedAt,
+      supabase,
+    });
+    throw error;
+  }
+  await recordAiSdkUsage({
+    context: {
+      artifactId,
+      attempt,
+      operation: "generate_instructional_plan_module",
+      organizationId,
+      pipelineStep: "PLAN",
+    },
+    model: modelName,
+    startedAt,
+    supabase,
+    usage: result.usage,
   });
 
   const moduleLessonPlans = result.object.lesson_plans.map((lessonPlan, lessonIndex) => {
@@ -276,8 +319,8 @@ export const handler: Handler = async (event) => {
   let body: RequestBody;
   try {
     body = await parseVerifiedBackgroundBody(event);
-  } catch {
-    return unauthorizedBackgroundResponse();
+  } catch (error) {
+    return backgroundGuardFailureResponse(error);
   }
 
   try {
@@ -396,6 +439,8 @@ export const handler: Handler = async (event) => {
 
       try {
         const moduleResult = await generateModulePlans({
+          artifactId,
+          attempt: iterationNumber,
           artifact,
           contextPromptTemplate,
           module,
@@ -404,10 +449,27 @@ export const handler: Handler = async (event) => {
           systemPromptTemplate,
           temperature: modelConfig.temperature,
           videoDurationPolicy,
+          organizationId: promptOrganizationId,
+          supabase,
         });
 
         allGeneratedPlans = [...allGeneratedPlans, ...moduleResult.lessonPlans];
         allBlockers = [...allBlockers, ...moduleResult.blockers];
+
+        const { data: heartbeat, error: heartbeatError } = await supabase
+          .from("instructional_plans")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("artifact_id", artifactId)
+          .eq("state", "STEP_PROCESSING")
+          .eq("iteration_count", iterationNumber)
+          .select("id")
+          .maybeSingle();
+        if (heartbeatError) throw heartbeatError;
+        if (!heartbeat) {
+          throw new Error(
+            "La iteracion fue cancelada o reemplazada por una solicitud mas reciente.",
+          );
+        }
 
         console.log(
           `[Background Job] Module ${moduleIndex + 1} generated. Total lessons so far: ${allGeneratedPlans.length}`,
@@ -426,6 +488,15 @@ export const handler: Handler = async (event) => {
     if (allGeneratedPlans.length === 0) {
       throw new Error("La generacion no produjo ninguna leccion para el plan.");
     }
+    const completenessIssues = getInstructionalPlanCompletenessIssues(
+      syllabusModules,
+      allGeneratedPlans,
+    );
+    if (completenessIssues.length > 0) {
+      throw new Error(
+        `La generación produjo un plan incompleto: ${completenessIssues.join(" ")}`,
+      );
+    }
 
     const { data: completedPlan, error: completionError } = await supabase
       .from("instructional_plans")
@@ -441,6 +512,7 @@ export const handler: Handler = async (event) => {
         updated_at: new Date().toISOString(),
       })
       .eq("artifact_id", artifactId)
+      .eq("state", "STEP_PROCESSING")
       .eq("iteration_count", iterationNumber)
       .select("id")
       .maybeSingle();
@@ -484,7 +556,9 @@ export const handler: Handler = async (event) => {
         .eq("artifact_id", artifactId);
 
       if (activeIteration !== undefined) {
-        failureQuery = failureQuery.eq("iteration_count", activeIteration);
+        failureQuery = failureQuery
+          .eq("state", "STEP_PROCESSING")
+          .eq("iteration_count", activeIteration);
       }
 
       await failureQuery;
