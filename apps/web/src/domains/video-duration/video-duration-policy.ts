@@ -13,6 +13,8 @@ export const videoDurationPolicySchema = z.object({
   minimumDurationSeconds: z.number().int().min(60).max(3_600),
   narrationWordsPerMinute: z.number().int().min(90).max(220),
   targetDurationSeconds: z.number().int().min(60).max(3_600),
+  // Optional upper margin; legacy contracts retain the editorial 5% tolerance.
+  targetOverrunSeconds: z.number().int().min(0).max(3_600).optional(),
   version: z.literal(1),
   visualBeatCadenceSeconds: z.number().int().min(10).max(90),
 }).superRefine((policy, context) => {
@@ -79,7 +81,7 @@ export interface VideoNarrationCharacterBudget {
 }
 
 export function buildVideoNarrationCharacterBudget(
-  contract: Pick<VideoDurationContract, "maximumDurationSeconds" | "minimumDurationSeconds" | "targetDurationSeconds">,
+  contract: Pick<VideoDurationContract, "maximumDurationSeconds" | "minimumDurationSeconds" | "targetDurationSeconds" | "targetOverrunSeconds">,
 ): VideoNarrationCharacterBudget {
   const charactersForDuration = (seconds: number) => Math.round(
     (seconds / 60) * VIDEO_NARRATION_CHARACTERS_PER_MINUTE,
@@ -90,7 +92,10 @@ export function buildVideoNarrationCharacterBudget(
     absoluteMaximum: charactersForDuration(contract.maximumDurationSeconds),
     absoluteMinimum: charactersForDuration(contract.minimumDurationSeconds),
     target,
-    targetMaximum: Math.min(charactersForDuration(contract.maximumDurationSeconds), Math.round(target * (1 + VIDEO_NARRATION_TARGET_TOLERANCE_RATIO))),
+    targetMaximum: Math.min(charactersForDuration(contract.maximumDurationSeconds),
+      contract.targetOverrunSeconds === undefined
+        ? Math.round(target * (1 + VIDEO_NARRATION_TARGET_TOLERANCE_RATIO))
+        : charactersForDuration(contract.targetDurationSeconds + contract.targetOverrunSeconds)),
     targetMinimum: Math.max(charactersForDuration(contract.minimumDurationSeconds), Math.round(target * (1 - VIDEO_NARRATION_TARGET_TOLERANCE_RATIO))),
   };
 }

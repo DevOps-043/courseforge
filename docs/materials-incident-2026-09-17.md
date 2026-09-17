@@ -1,5 +1,15 @@
 # Materiales pendientes sin generación — 17 de septiembre de 2026
 
+## Ajuste posterior autorizado: máximo de 8:30
+
+El usuario solicitó ampliar a 510 segundos el máximo de los videos del curso. Se mantuvo el objetivo de 420 segundos. Cambiar solo `maximumDurationSeconds` no bastaba: otra validación rechazaba guiones por encima del objetivo +5% (441 segundos).
+
+La política admite ahora un margen superior opcional `targetOverrunSeconds`. Si no existe, conserva el comportamiento anterior. Este curso utiliza 90 segundos de margen, limitado siempre por el máximo absoluto. El límite inferior se conserva. La narración puede tener hasta 7,650 caracteres editoriales, con objetivo de 6,300. Las instrucciones técnicas, los errores y las validaciones de caracteres y tiempo respetan ese margen.
+
+Se actualizaron y verificaron la política del artefacto y los 20 contratos de video del plan remoto, conservando una copia local previa en `.tmp/incident-backups`. Las escrituras compararon el timestamp leído para evitar sobrescribir cambios concurrentes. No se modificaron componentes generados ni se reiniciaron trabajos en curso.
+
+Pasaron las pruebas de duración, generación y validación, incluido aceptar los 6,875 y 7,452 caracteres de los intentos reportados, aceptar 8:30 y rechazar 8:31. El build con TypeScript pasó, con las cuatro advertencias previas. El código debe desplegarse para que el servidor reconozca el nuevo margen; las lecciones fallidas requieren reintento después del despliegue.
+
 ## Evidencia de la incidencia
 
 Consulta de solo lectura del artefacto `66630878-4017-402b-ad46-4f10cc56f61d`:

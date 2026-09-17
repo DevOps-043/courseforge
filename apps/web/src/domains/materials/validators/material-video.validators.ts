@@ -37,7 +37,7 @@ export function buildVideoGenerationGuardrails(
     const contract = parsed.data;
     const characterBudget = buildVideoNarrationCharacterBudget(contract);
     return [
-      `- ${component.type}: objetivo editorial ${characterBudget.target} caracteres; rango objetivo obligatorio ${characterBudget.targetMinimum}-${characterBudget.targetMaximum} caracteres (±5%); límites absolutos ${characterBudget.absoluteMinimum}-${characterBudget.absoluteMaximum}; la duración efectiva y todos los timecodes se derivarán en servidor a partir de la narración; mínimo ${contract.minimumStoryboardTakes} tomas, ${contract.minimumBrollTakes} B-roll y ${contract.minimumSlideCount} diapositivas potenciales.`,
+      `- ${component.type}: objetivo editorial ${characterBudget.target} caracteres; rango permitido obligatorio ${characterBudget.targetMinimum}-${characterBudget.targetMaximum} caracteres; este rango sustituye cualquier tolerancia porcentual de prompts generales; límites absolutos ${characterBudget.absoluteMinimum}-${characterBudget.absoluteMaximum}; la duración efectiva y todos los timecodes se derivarán en servidor a partir de la narración; mínimo ${contract.minimumStoryboardTakes} tomas, ${contract.minimumBrollTakes} B-roll y ${contract.minimumSlideCount} diapositivas potenciales.`,
     ];
   });
   if (contracts.length === 0) return "";
