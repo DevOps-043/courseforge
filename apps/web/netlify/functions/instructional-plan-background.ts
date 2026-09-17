@@ -17,7 +17,7 @@ import {
   resolveModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
-import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from "./shared/http";
+import { backgroundGuardFailureResponse, methodNotAllowedResponse, parseVerifiedBackgroundBody } from "./shared/http";
 import {
   resolveArtifactVideoDurationPolicy,
   type VideoDurationPolicy,
@@ -319,8 +319,8 @@ export const handler: Handler = async (event) => {
   let body: RequestBody;
   try {
     body = await parseVerifiedBackgroundBody(event);
-  } catch {
-    return unauthorizedBackgroundResponse();
+  } catch (error) {
+    return backgroundGuardFailureResponse(error);
   }
 
   try {

@@ -16,7 +16,7 @@ import { getErrorMessage } from "./shared/errors";
 import {
   methodNotAllowedResponse,
   parseVerifiedBackgroundBody,
-  unauthorizedBackgroundResponse,
+  backgroundGuardFailureResponse,
 } from "./shared/http";
 import { getCloudStorageService } from "../../src/domains/production/cloud-storage/cloud-storage.service";
 import {
@@ -95,8 +95,8 @@ export const handler: Handler = async (event) => {
   let body: GenerateArtifactRequestBody;
   try {
     body = await parseVerifiedBackgroundBody<GenerateArtifactRequestBody>(event);
-  } catch {
-    return unauthorizedBackgroundResponse();
+  } catch (error) {
+    return backgroundGuardFailureResponse(error);
   }
 
   let stage = "request";

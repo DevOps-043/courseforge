@@ -1,7 +1,7 @@
 import { Handler } from '@netlify/functions';
 import { createServiceRoleClient } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
-import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from './shared/http';
+import { backgroundGuardFailureResponse, methodNotAllowedResponse, parseVerifiedBackgroundBody } from './shared/http';
 import { selectLatestComponentsByType } from '../../src/domains/materials/lib/material-component-versions';
 import {
     hasSubstantiveQuizOptionText,
@@ -165,8 +165,8 @@ export const handler: Handler = async (event) => {
             lessonId?: string;
             markForFix?: boolean;
         }>(event);
-    } catch {
-        return unauthorizedBackgroundResponse();
+    } catch (error) {
+        return backgroundGuardFailureResponse(error);
     }
 
     try {

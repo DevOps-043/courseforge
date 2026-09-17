@@ -7,7 +7,7 @@ import {
   jsonResponse,
   methodNotAllowedResponse,
   parseVerifiedBackgroundBody,
-  unauthorizedBackgroundResponse,
+  backgroundGuardFailureResponse,
 } from "./shared/http";
 
 interface ScormParsingRequest {
@@ -22,8 +22,8 @@ export const handler: Handler = async (event) => {
   let request: ScormParsingRequest;
   try {
     request = await parseVerifiedBackgroundBody<ScormParsingRequest>(event);
-  } catch {
-    return unauthorizedBackgroundResponse();
+  } catch (error) {
+    return backgroundGuardFailureResponse(error);
   }
 
   const importId = scormProcessRequestSchema.shape.importId.safeParse(request.importId);

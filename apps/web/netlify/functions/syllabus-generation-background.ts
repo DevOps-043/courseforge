@@ -9,7 +9,7 @@ import { getErrorMessage } from "./shared/errors";
 import {
   methodNotAllowedResponse,
   parseVerifiedBackgroundBody,
-  unauthorizedBackgroundResponse,
+  backgroundGuardFailureResponse,
 } from "./shared/http";
 import { SYLLABUS_PROMPT } from "../../src/domains/syllabus/config/syllabus.config";
 import {
@@ -106,8 +106,8 @@ export const handler: Handler = async (event) => {
   let verifiedBody: unknown;
   try {
     verifiedBody = await parseVerifiedBackgroundBody<unknown>(event);
-  } catch {
-    return unauthorizedBackgroundResponse();
+  } catch (error) {
+    return backgroundGuardFailureResponse(error);
   }
 
   const parsedBody = syllabusGenerationBackgroundRequestSchema.safeParse(verifiedBody);

@@ -9,7 +9,7 @@ import {
     resolveModelSetting,
 } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
-import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from './shared/http';
+import { backgroundGuardFailureResponse, methodNotAllowedResponse, parseVerifiedBackgroundBody } from './shared/http';
 import { resolveInstructionalPlanAudience } from '../../src/domains/plan/lib/instructional-plan-validation-context';
 import { recordAiFailure, recordAiSdkUsage } from '../../src/shared/ai/usage-telemetry';
 
@@ -123,8 +123,8 @@ export const handler: Handler = async (event) => {
             artifactId?: string;
             organizationId?: string | null;
         }>(event);
-    } catch {
-        return unauthorizedBackgroundResponse();
+    } catch (error) {
+        return backgroundGuardFailureResponse(error);
     }
 
     try {

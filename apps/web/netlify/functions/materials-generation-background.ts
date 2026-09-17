@@ -11,7 +11,7 @@ import { buildLocalBackgroundHandlerUrl } from "../../src/lib/server/background-
 import {
   methodNotAllowedResponse,
   parseVerifiedBackgroundBody,
-  unauthorizedBackgroundResponse,
+  backgroundGuardFailureResponse,
 } from "./shared/http";
 import {
   findOrCreateMaterialLesson,
@@ -394,8 +394,8 @@ export const handler: Handler = async (event) => {
   let body: RequestBody;
   try {
     body = await parseVerifiedBackgroundBody<RequestBody>(event);
-  } catch {
-    return unauthorizedBackgroundResponse();
+  } catch (error) {
+    return backgroundGuardFailureResponse(error);
   }
 
   let logPrefix = "[Mat unknown]";

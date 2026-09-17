@@ -37,13 +37,13 @@ import { getTextModelProvider } from "@/shared/ai/text-model-provider";
 import { syllabusGenerationRequestSchema } from "@/domains/syllabus/syllabus-generation-request.schema";
 import { syllabusManagementRequestSchema } from "@/domains/syllabus/syllabus-management-request.schema";
 import { runAllValidations } from "@/domains/syllabus/validators/syllabus.validators";
+import { recoverStaleSyllabusGeneration } from "@/domains/syllabus/lib/syllabus-generation-recovery";
 import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 import { resolvePromptWithMetadata } from "@/shared/config/prompts/prompt-resolver.service";
 import { SYLLABUS_PROMPT_CODE } from "@/shared/config/prompts/pipeline.prompts";
-import { isGenerationStale } from "@/lib/pipeline-generation-policy";
 
 const MAX_SYLLABUS_REQUEST_BYTES = 768 * 1024;
 const MAX_SYLLABUS_MANAGEMENT_REQUEST_BYTES = 256 * 1024;
@@ -130,34 +130,12 @@ export async function GET(request: Request) {
       .eq("artifact_id", artifactId)
       .maybeSingle();
     if (error) throw error;
-    let syllabus = data;
-    if (
-      syllabus?.state === "STEP_GENERATING" &&
-      syllabus.updated_at &&
-      isGenerationStale(syllabus.updated_at)
-    ) {
-      const timeoutMessage =
-        "La generación del temario dejó de registrar actividad y fue detenida. Puedes reintentar sin esperar indefinidamente.";
-      const { data: recovered, error: recoveryError } = await authorization.admin
-        .from("syllabus")
-        .update({
-          state: "STEP_ESCALATED",
-          source_summary: {
-            ...(syllabus.source_summary || {}),
-            error: timeoutMessage,
-          },
-          updated_at: new Date().toISOString(),
-        })
-        .eq("artifact_id", artifactId)
-        .eq("state", "STEP_GENERATING")
-        .eq("iteration_count", syllabus.iteration_count)
-        .eq("updated_at", syllabus.updated_at)
-        .select("*")
-        .maybeSingle();
-      if (recoveryError) throw recoveryError;
-      if (recovered) syllabus = recovered;
-    }
-    return apiSuccessResponse({ syllabus: syllabus || null }, { requestId });
+    const syllabus = await recoverStaleSyllabusGeneration(
+      authorization.admin,
+      artifactId,
+      data || null,
+    );
+    return apiSuccessResponse({ syllabus }, { requestId });
   } catch (error) {
     createOperationalLogger("syllabus.read", { correlationId: requestId })
       .error("syllabus.read_failed", error);
