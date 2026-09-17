@@ -81,3 +81,13 @@ test("keeps chained handlers in-process only during direct Next development", ()
     nodeEnv: "production",
   }), false);
 });
+
+test("missing build flags never imply local execution or bypass replay protection", () => {
+  for (const nodeEnv of [undefined, "", "test"]) {
+    assert.equal(shouldDispatchBackgroundInProcess({ hasLocalHandler: true, nodeEnv }), false);
+    assert.equal(isLocalBackgroundInvocation({
+      nodeEnv,
+      rawUrl: buildLocalBackgroundHandlerUrl("materials-generation-background"),
+    }), false);
+  }
+});

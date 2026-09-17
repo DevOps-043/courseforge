@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { recoverExpiredMaterialLessons, MATERIAL_LESSON_EXPIRED_MESSAGE } from "../materials-generation-recovery";
+import { recoverExpiredMaterialLessons, MATERIAL_LESSON_EXPIRED_MESSAGE, markMaterialsGenerationFailed } from "../materials-generation-recovery";
 
 const now = Date.parse("2026-09-15T22:00:00Z");
 const expired = { id: "lesson-1", state: "GENERATING", iteration_count: 4,
@@ -45,4 +45,20 @@ test("concurrent newer iteration is neither overwritten nor reported as recovere
 test("database failure is visible instead of reporting an empty course", async () => {
   const db = database(false, new Error("database unavailable"));
   await assert.rejects(recoverExpiredMaterialLessons(db.client, "materials-1", [expired], now), /database unavailable/);
+});
+
+test("dispatch failures persist a safe explanation only for the owning running version", async () => {
+  const filters: Array<[string, unknown]> = [];
+  let saved: { state?: string; qa_decision?: { notes: string } } = {};
+  const query = {
+    update: (value: typeof saved) => { saved = value; return query; },
+    eq: (column: string, value: unknown) => { filters.push([column, value]); return query; },
+    in: (column: string, value: unknown) => { filters.push([column, value]); return Promise.resolve({ error: null }); },
+  };
+  const client = { from: (table: string) => { assert.equal(table, "materials"); return query; } } as unknown as SupabaseClient;
+  await markMaterialsGenerationFailed(client, "materials-1", 2, new Error("timeout with sensitive provider body"));
+  assert.equal(saved.state, "PHASE3_NEEDS_FIX");
+  assert.match(saved.qa_decision!.notes, /tiempo permitido/);
+  assert.equal(saved.qa_decision!.notes.includes("sensitive"), false);
+  assert.deepEqual(filters, [["id", "materials-1"], ["version", 2], ["state", ["PHASE3_GENERATING", "PHASE3_VALIDATING"]]]);
 });

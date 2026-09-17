@@ -188,12 +188,18 @@ export function MaterialsValidationBanner({
 
 export function MaterialsStatsGrid({ lessons }: { lessons: MaterialLesson[] }) {
   return (
-    <div className="grid grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
       <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg text-center border border-transparent dark:border-white/10">
         <p className="text-2xl font-bold text-gray-900 dark:text-white">
           {lessons.length}
         </p>
         <p className="text-xs text-gray-500 dark:text-gray-400">Lecciones</p>
+      </div>
+      <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-lg text-center border border-transparent dark:border-white/10">
+        <p className="text-2xl font-bold text-gray-900 dark:text-white">
+          {lessons.filter((lesson) => lesson.state === "PENDING").length}
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">Pendientes</p>
       </div>
       <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg text-center border border-transparent dark:border-green-800">
         <p className="text-2xl font-bold text-green-600 dark:text-green-400">
@@ -221,23 +227,35 @@ export function MaterialsStatsGrid({ lessons }: { lessons: MaterialLesson[] }) {
   );
 }
 
-interface MaterialsBulkRegenerateButtonProps {
-  pendingCount: number;
-  onRegenerateAll: () => Promise<void>;
+interface MaterialsRecoveryPanelProps {
+  notes?: string;
+  isStarting: boolean;
+  onResume: () => Promise<void>;
 }
 
-export function MaterialsBulkRegenerateButton({
-  pendingCount,
-  onRegenerateAll,
-}: MaterialsBulkRegenerateButtonProps) {
+export function MaterialsRecoveryPanel({
+  notes,
+  isStarting,
+  onResume,
+}: MaterialsRecoveryPanelProps) {
   return (
-    <button
-      onClick={onRegenerateAll}
-      className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors font-medium"
-    >
-      <RefreshCw className="h-4 w-4" />
-      Regenerar Todas las Pendientes ({pendingCount})
-    </button>
+    <div role="status" className="p-4 space-y-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+      <p className="font-medium text-orange-800 dark:text-orange-300">Materiales incompletos</p>
+      <p className="text-sm text-orange-700 dark:text-orange-400">
+        {notes || "La generación no se completó. Puedes reanudar las lecciones pendientes o que requieren corrección."}
+      </p>
+      <p className="text-sm text-orange-700 dark:text-orange-400">
+        Se conservarán las lecciones ya generadas y los componentes guardados.
+      </p>
+      <button
+        onClick={onResume}
+        disabled={isStarting}
+        className="inline-flex items-center justify-center gap-2 px-4 py-3 text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors font-medium"
+      >
+        {isStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        {isStarting ? "Reanudando..." : "Reanudar generación"}
+      </button>
+    </div>
   );
 }
 

@@ -12,7 +12,7 @@ import type { MaterialLesson, MaterialsPayload } from "../types/materials.types"
 import { LessonMaterialsCard } from "./LessonMaterialsCard";
 import {
   MaterialsApprovedBanner,
-  MaterialsBulkRegenerateButton,
+  MaterialsRecoveryPanel,
   MaterialsGeneratingBanner,
   MaterialsQaReviewPanel,
   MaterialsStatsGrid,
@@ -94,12 +94,8 @@ export function MaterialsForm({
 
   const materialsData = materials as MaterialsPayloadWithDirty | null;
   const lessonsByModule = groupLessonsByModule(materials?.lessons || []);
-  const needsFixLessons = (materials?.lessons || []).filter(
-    (lesson) => lesson.state === "NEEDS_FIX",
-  );
-  const allLessonsApprovable = (materials?.lessons || []).every(
-    (lesson) => lesson.state === "APPROVABLE",
-  );
+  const allLessonsApprovable = Boolean(materials?.lessons.length) &&
+    (materials?.lessons || []).every((lesson) => lesson.state === "APPROVABLE");
 
   const handleForceReset = async () => {
     if (
@@ -120,15 +116,6 @@ export function MaterialsForm({
     await validateMaterials();
     await refresh();
     setIsValidatingAll(false);
-  };
-
-  const handleRegenerateAll = async () => {
-    for (const lesson of needsFixLessons) {
-      await runFixIteration(
-        lesson.id,
-        "Regenerar esta leccion corrigiendo los errores identificados.",
-      );
-    }
   };
 
   const handleQADecision = async (decision: "APPROVED" | "REJECTED") => {
@@ -254,10 +241,11 @@ export function MaterialsForm({
         <MaterialsStatsGrid lessons={materials.lessons} />
       )}
 
-      {needsFixLessons.length > 0 && !isGenerating && (
-        <MaterialsBulkRegenerateButton
-          pendingCount={needsFixLessons.length}
-          onRegenerateAll={handleRegenerateAll}
+      {materials.state === "PHASE3_NEEDS_FIX" && !isGenerating && (
+        <MaterialsRecoveryPanel
+          notes={materials.qa_decision?.notes}
+          isStarting={isStartingGeneration}
+          onResume={startGeneration}
         />
       )}
 
