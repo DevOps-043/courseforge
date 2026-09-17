@@ -90,6 +90,13 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
   `SOUND_EFFECT_ASSET` con UUID del catalogo.
 - El documento conserva identidad, timing, offset, duracion y volumen de la
   instancia; no conserva rutas de Storage ni URLs.
+- Las transiciones reales se persisten como relaciones declarativas entre dos
+  clips en `document.transitions`; no se representan como dos animaciones
+  independientes. Su contrato y reglas de handles se definen en
+  `docs/architecture/composition-transitions-v1.md`.
+- El compilador deriva de esas relaciones una ventana visual desechable y, si
+  hay solapamiento, lanes HyperFrames independientes. Preview y render consumen
+  esa misma proyección; el documento editable conserva sus tiempos canónicos.
 - Un mismo asset puede producir varias instancias con ids de clip distintos.
 - Los intervalos superpuestos se empaquetan en lanes y reciben indices de track
   HyperFrames independientes.

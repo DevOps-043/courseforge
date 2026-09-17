@@ -1,9 +1,11 @@
 import { AlertTriangle } from "lucide-react";
 import type { CompositionClip, CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionAnimation } from "@/domains/production/composition-editor/composition-motion.types";
+import type { CompositionTransition } from "@/domains/production/composition-editor/composition-transition.types";
 import { formatCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import { AudioMixControls, type CompositionDuckingUpdate } from "./AudioMixControls";
 import { CompositionTimeline } from "./CompositionTimeline";
+import type { CompositionTransitionUpdateSettings } from "./TransitionControls";
 import type { CompositionTrackUpdateHandler } from "./composition-studio.types";
 import styles from "./CompositionStudio.module.css";
 
@@ -25,8 +27,10 @@ interface CompositionTimelineWorkspaceProps {
   onAnimationTimingChange: (animation: CompositionAnimation, timing: CompositionAnimation["timing"]) => void;
   onAudioMixUpdate: (settings: CompositionDuckingUpdate, summary: string) => void;
   onClearSelection: () => void;
+  onCreateGroup: (clipIds: string[], groupId: string) => void;
   onDurationChange: (clip: CompositionClip, durationSeconds: number) => void;
   onMove: (clip: CompositionClip, startSeconds: number) => void;
+  onMoveGroup: (groupId: string, startSeconds: number) => void;
   onOrganize: () => void;
   onOutroChange: (outroId: string | null) => void;
   onRecalculateDuration: () => void;
@@ -35,7 +39,11 @@ interface CompositionTimelineWorkspaceProps {
   onSeek: (seconds: number) => void;
   onSelect: (hfId: string) => void;
   onTrackUpdate: CompositionTrackUpdateHandler;
+  onTransitionAdd: (transition: CompositionTransition) => void;
+  onTransitionRemove: (transitionId: string) => void;
+  onTransitionUpdate: (transitionId: string, settings: CompositionTransitionUpdateSettings) => void;
   onTrim: (clip: CompositionClip, startSeconds: number, durationSeconds: number, sourceOffsetSeconds: number) => void;
+  onUngroup: (groupId: string) => void;
   recoveringHistoricalAssets: boolean;
   refreshingProductionAssets: boolean;
   saving: boolean;
@@ -45,7 +53,7 @@ interface CompositionTimelineWorkspaceProps {
   trimToolEnabled: boolean;
 }
 
-export function CompositionTimelineWorkspace({ assetLabels, brandingAvailability, currentTime, document, durationSourceLabel, estimatedClipCount, onAnimationSelect, onAnimationTimingChange, onAudioMixUpdate, onClearSelection, onDurationChange, onMove, onOrganize, onOutroChange, onRecalculateDuration, onRecoverHistoricalAssets, onRefreshProductionAssets, onSeek, onSelect, onTrackUpdate, onTrim, recoveringHistoricalAssets, refreshingProductionAssets, saving, selectedAnimationId, selectedHfId, snapEnabled, trimToolEnabled }: CompositionTimelineWorkspaceProps) {
+export function CompositionTimelineWorkspace({ assetLabels, brandingAvailability, currentTime, document, durationSourceLabel, estimatedClipCount, onAnimationSelect, onAnimationTimingChange, onAudioMixUpdate, onClearSelection, onCreateGroup, onDurationChange, onMove, onMoveGroup, onOrganize, onOutroChange, onRecalculateDuration, onRecoverHistoricalAssets, onRefreshProductionAssets, onSeek, onSelect, onTrackUpdate, onTransitionAdd, onTransitionRemove, onTransitionUpdate, onTrim, onUngroup, recoveringHistoricalAssets, refreshingProductionAssets, saving, selectedAnimationId, selectedHfId, snapEnabled, trimToolEnabled }: CompositionTimelineWorkspaceProps) {
   const duration = document.canvas.durationSeconds;
   return <section className={styles.timelinePanel}>
     <div className={styles.timelineScroll}>
@@ -60,7 +68,7 @@ export function CompositionTimelineWorkspace({ assetLabels, brandingAvailability
         </div>
       </div>
       <AudioMixControls audioMix={document.audioMix} disabled={saving} onUpdate={onAudioMixUpdate} />
-      <CompositionTimeline assetLabels={assetLabels} document={document} currentTime={currentTime} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={onAnimationSelect} onAnimationTimingChange={onAnimationTimingChange} onClearSelection={onClearSelection} onDurationChange={onDurationChange} onMove={onMove} onSeek={onSeek} onSelect={onSelect} onTrackUpdate={onTrackUpdate} onTrim={onTrim} />
+      <CompositionTimeline assetLabels={assetLabels} document={document} currentTime={currentTime} saving={saving} selectedAnimationId={selectedAnimationId} selectedHfId={selectedHfId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={onAnimationSelect} onAnimationTimingChange={onAnimationTimingChange} onClearSelection={onClearSelection} onCreateGroup={onCreateGroup} onDurationChange={onDurationChange} onMove={onMove} onMoveGroup={onMoveGroup} onSeek={onSeek} onSelect={onSelect} onTrackUpdate={onTrackUpdate} onTransitionAdd={onTransitionAdd} onTransitionRemove={onTransitionRemove} onTransitionUpdate={onTransitionUpdate} onTrim={onTrim} onUngroup={onUngroup} />
       {estimatedClipCount > 0 && <p className={styles.estimatedWarning}><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
     </div>
   </section>;

@@ -4,6 +4,7 @@ import { createInitialCompositionDocument } from "../composition-document.factor
 import {
   applyAndAppendCompositionDocumentPatches,
   getCurrentCompositionDocument,
+  hashCompositionDocument,
   normalizeCompositionPersistenceError,
 } from "../composition-document.service";
 import { normalizeCompositionDocumentLayerDepths } from "../composition-layer-depth";
@@ -153,6 +154,93 @@ test("appends the complete accumulated document when saving a new version", asyn
   assert.equal(appendedDocument.tracks[0]?.hidden, true);
   assert.equal(saved.documentHash, nextHash);
   assert.equal(saved.version, 5);
+});
+
+test("persiste y recarga grupos como parte del documento versionado", async () => {
+  const storedHash = "a".repeat(64);
+  const document = createInitialCompositionDocument({
+    animatedDeck: {
+      css: "",
+      fonts: [],
+      height: 1080,
+      slides: [
+        { animationCount: 0, classes: "slide", html: "<section>Uno</section>", index: 0, label: "Uno" },
+        { animationCount: 0, classes: "slide", html: "<section>Dos</section>", index: 1, label: "Dos" },
+      ],
+      width: 1920,
+    },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Round-trip de grupos" },
+  });
+  const clipIds = document.clips.map((clip) => clip.id);
+  const documentQuery = {
+    eq: () => documentQuery,
+    limit: () => documentQuery,
+    maybeSingle: async () => ({ data: { document, document_hash: storedHash, version: 1 }, error: null }),
+    order: () => documentQuery,
+    select: () => documentQuery,
+  };
+  const assetLinksQuery = {
+    eq: () => assetLinksQuery,
+    select: () => assetLinksQuery,
+    then: (resolve: (value: unknown) => unknown) => resolve({ data: [], error: null }),
+  };
+  let appendedDocument: typeof document | undefined;
+  let appendedMetadata: Record<string, unknown> | undefined;
+  const saveClient = {
+    from: (table: string) => table === "video_composition_draft_assets" ? assetLinksQuery : documentQuery,
+    rpc: (_name: string, params: { p_document: typeof document; p_metadata: Record<string, unknown> }) => {
+      appendedDocument = structuredClone(params.p_document);
+      appendedMetadata = params.p_metadata;
+      return {
+        retry: () => ({
+          data: [{ document_hash: hashCompositionDocument(params.p_document), outcome: "APPENDED", version: 2 }],
+          error: null,
+        }),
+      };
+    },
+  };
+
+  const saved = await applyAndAppendCompositionDocumentPatches({
+    draftId: DRAFT_ID,
+    expectedDocumentHash: storedHash,
+    organizationId: ORGANIZATION_ID,
+    patch: {
+      operations: [{ clipIds, groupId: "group-round-trip", label: "Escena", type: "group.create" }],
+      source: "USER",
+      summary: "Agrupó dos diapositivas.",
+    },
+    supabase: saveClient as never,
+    userId: "00000000-0000-4000-8000-000000000001",
+  });
+
+  assert.deepEqual(saved.document.groups, [{ clipIds, id: "group-round-trip", label: "Escena", order: 0 }]);
+  assert.deepEqual(appendedDocument?.groups, saved.document.groups);
+  assert.equal(appendedMetadata?.groupCount, 1);
+  assert.deepEqual(appendedMetadata?.operations, ["group.create"]);
+
+  const reloadDocumentQuery = {
+    eq: () => reloadDocumentQuery,
+    limit: () => reloadDocumentQuery,
+    maybeSingle: async () => ({
+      data: { document: appendedDocument, document_hash: saved.documentHash, version: saved.version },
+      error: null,
+    }),
+    order: () => reloadDocumentQuery,
+    select: () => reloadDocumentQuery,
+  };
+  const reloadClient = {
+    from: (table: string) => table === "video_composition_draft_assets" ? assetLinksQuery : reloadDocumentQuery,
+  };
+  const reloaded = await getCurrentCompositionDocument({
+    draftId: DRAFT_ID,
+    organizationId: ORGANIZATION_ID,
+    supabase: reloadClient as never,
+  });
+
+  assert.deepEqual(reloaded.document.groups, saved.document.groups);
+  assert.equal(reloaded.documentHash, saved.documentHash);
+  assert.equal(reloaded.version, 2);
 });
 
 test("allows trusted system reconciliation to add a clip without weakening the agent policy", async () => {

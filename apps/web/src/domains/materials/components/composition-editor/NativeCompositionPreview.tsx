@@ -2213,8 +2213,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)}
           onAudioMixUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)}
           onClearSelection={clearSelection}
+          onCreateGroup={(clipIds, groupId) => void savePatch([{ clipIds, groupId, type: "group.create" }], `Agrupó ${clipIds.length} clips del timeline.`)}
           onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)}
           onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)}
+          onMoveGroup={(groupId, startSeconds) => void savePatch([{ groupId, startSeconds, type: "group.move" }], `Movió el grupo a ${formatSeconds(startSeconds)}.`)}
           onOrganize={() => void organizeTimeline()}
           onOutroChange={(outroId) => void placeAssemblyBranding(outroId)}
           onRecalculateDuration={() => void recalculateDuration()}
@@ -2223,7 +2225,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           onSeek={seek}
           onSelect={selectClip}
           onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)}
+          onTransitionAdd={(transition) => void savePatch([{ transition, type: "transition.add" }], `Añadió ${transition.type} entre dos clips.`)}
+          onTransitionRemove={(transitionId) => void savePatch([{ transitionId, type: "transition.remove" }], "Quitó una transición entre clips.")}
+          onTransitionUpdate={(transitionId, settings) => void savePatch([{ settings, transitionId, type: "transition.update" }], "Ajustó una transición entre clips.")}
           onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Ajustó el inicio de ${clip.label} desde la timeline.`)}
+          onUngroup={(groupId) => void savePatch([{ groupId, type: "group.ungroup" }], "Desagrupó los clips seleccionados.")}
           recoveringHistoricalAssets={recoveringHistoricalAssets}
           refreshingProductionAssets={refreshingProductionAssets}
           saving={saving}

@@ -6,15 +6,39 @@ import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 
 const execFileAsync = promisify(execFile);
-const smokeMarker = 'data-runtime-patch-smoke="passed"';
+const smokeFixtures = [
+  {
+    marker: 'data-runtime-patch-smoke="passed"',
+    path: ".tmp/composition-preview-qa-interactive/index.html",
+    result: "runtimePatchSmoke",
+  },
+  {
+    marker: 'data-transition-runtime-smoke="passed"',
+    path: ".tmp/composition-transition-qa-interactive/index.html",
+    result: "transitionRuntimeSmoke",
+  },
+] as const;
 
 async function main() {
   const browserPath = await resolveChromePath();
-  const fixturePath = resolve(process.cwd(), ".tmp/composition-preview-qa-interactive/index.html");
-  await access(fixturePath);
+  const results: Record<string, string> = { browserPath };
+  for (const fixture of smokeFixtures) {
+    const fixturePath = resolve(process.cwd(), fixture.path);
+    await access(fixturePath);
+    await runSmokeFixture({ browserPath, fixturePath, marker: fixture.marker });
+    results[fixture.result] = "passed";
+  }
+  process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);
+}
+
+async function runSmokeFixture(params: {
+  browserPath: string;
+  fixturePath: string;
+  marker: string;
+}) {
   const profilePath = await mkdtemp(join(tmpdir(), "courseforge-preview-smoke-"));
   try {
-    const { stdout } = await execFileAsync(browserPath, [
+    const { stdout } = await execFileAsync(params.browserPath, [
       "--headless=new",
       "--disable-background-networking",
       "--disable-default-apps",
@@ -26,16 +50,15 @@ async function main() {
       "--virtual-time-budget=5000",
       `--user-data-dir=${profilePath}`,
       "--dump-dom",
-      pathToFileURL(fixturePath).href,
+      pathToFileURL(params.fixturePath).href,
     ], {
       maxBuffer: 24 * 1024 * 1024,
       timeout: 20_000,
       windowsHide: true,
     });
-    if (!stdout.includes(smokeMarker)) {
-      throw new Error("El runtime incremental no alcanzó el marcador QA esperado.");
+    if (!stdout.includes(params.marker)) {
+      throw new Error(`El fixture ${params.fixturePath} no alcanzó el marcador QA esperado.`);
     }
-    process.stdout.write(`${JSON.stringify({ browserPath, fixturePath, runtimePatchSmoke: "passed" }, null, 2)}\n`);
   } finally {
     await rm(profilePath, { force: true, recursive: true });
   }

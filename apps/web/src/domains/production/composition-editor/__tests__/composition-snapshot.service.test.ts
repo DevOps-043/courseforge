@@ -42,6 +42,18 @@ test("rejects legacy documents before creating a paid render snapshot", () => {
   assert.throws(() => assertCompositionSnapshotRenderContract(document), /metadatos de audio/);
 });
 
+test("incluye la correcciÃ³n por clip en el hash persistido por snapshots", () => {
+  const document = createDocument();
+  const originalHash = hashCompositionDocument(document);
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.colorGrading = {
+    adjust: { contrast: 0.2, exposure: 0.4, saturation: -0.1 },
+  };
+
+  assert.notEqual(hashCompositionDocument(document), originalHash);
+  assert.match(JSON.stringify(document), /"colorGrading"/);
+});
+
 test("lists persisted snapshots and identifies the active revision", async () => {
   const document = createDocument();
   const currentDocumentHash = hashCompositionDocument(document);
@@ -113,6 +125,22 @@ test("lists persisted snapshots and identifies the active revision", async () =>
 
 test("restores a snapshot into the editable timeline and revokes approval", async () => {
   const document = createDocument();
+  const sourceClip = document.clips[0]!;
+  const companionClip = {
+    ...structuredClone(sourceClip),
+    durationSeconds: 8,
+    hfId: `${sourceClip.hfId}-companion`,
+    id: `${sourceClip.id}-companion`,
+    label: "Compañero de snapshot",
+    startSeconds: 2,
+  };
+  document.clips.push(companionClip);
+  document.groups = [{
+    clipIds: [sourceClip.id, companionClip.id],
+    id: "group-snapshot",
+    label: "Grupo histórico",
+    order: 0,
+  }];
   const documentHash = hashCompositionDocument(document);
   const revisionQuery = chain({
     created_at: "2026-08-21T17:00:00.000Z",
@@ -151,6 +179,7 @@ test("restores a snapshot into the editable timeline and revokes approval", asyn
   assert.equal(restored.restoredVersion, 9);
   assert.equal(restored.documentHash, documentHash);
   assert.deepEqual(restored.document, document);
+  assert.deepEqual(restored.document.groups, document.groups);
   assert.equal(restored.isCurrentDocument, true);
   assert.equal(rpcCalls.length, 1);
   assert.equal(rpcCalls[0]?.name, "restore_video_composition_snapshot_to_editor");

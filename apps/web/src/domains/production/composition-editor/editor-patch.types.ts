@@ -9,7 +9,15 @@ import {
   compositionTrackSchema,
   compositionVisualCropSchema,
 } from "./composition-document.types";
+import { compositionColorGradingSchema } from "./composition-color-grading.types";
 import { COMPOSITION_MOTION_EASES, COMPOSITION_MOTION_PRESET_IDS, compositionMotionValuesSchema } from "./composition-motion.types";
+import {
+  COMPOSITION_TRANSITION_ALIGNMENTS,
+  COMPOSITION_TRANSITION_EASES,
+  COMPOSITION_TRANSITION_TYPES,
+  compositionTransitionParametersSchema,
+  compositionTransitionSchema,
+} from "./composition-transition.types";
 
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
 const boundedSecondsSchema = z.number().finite().min(0).max(COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS);
@@ -142,6 +150,55 @@ const trackUpdateOperationSchema = z.object({
   type: z.literal("track.update"),
 }).strict();
 
+const clipColorGradingOperationSchema = z.object({
+  clipId: editorIdSchema,
+  colorGrading: compositionColorGradingSchema.nullable(),
+  type: z.literal("clip.color-grading"),
+}).strict();
+
+const groupCreateOperationSchema = z.object({
+  clipIds: z.array(editorIdSchema).min(2).max(500),
+  groupId: editorIdSchema,
+  label: z.string().trim().min(1).max(120).optional(),
+  type: z.literal("group.create"),
+}).strict().superRefine((operation, context) => {
+  if (new Set(operation.clipIds).size !== operation.clipIds.length) {
+    context.addIssue({ code: "custom", message: "No puedes agrupar el mismo clip más de una vez." });
+  }
+});
+
+const groupUngroupOperationSchema = z.object({
+  groupId: editorIdSchema,
+  type: z.literal("group.ungroup"),
+}).strict();
+
+const groupAddClipsOperationSchema = z.object({
+  clipIds: z.array(editorIdSchema).min(1).max(499),
+  groupId: editorIdSchema,
+  type: z.literal("group.add-clips"),
+}).strict().superRefine((operation, context) => {
+  if (new Set(operation.clipIds).size !== operation.clipIds.length) {
+    context.addIssue({ code: "custom", message: "No puedes añadir el mismo clip más de una vez." });
+  }
+});
+
+const groupRemoveClipsOperationSchema = z.object({
+  clipIds: z.array(editorIdSchema).min(1).max(500),
+  groupId: editorIdSchema,
+  type: z.literal("group.remove-clips"),
+}).strict().superRefine((operation, context) => {
+  if (new Set(operation.clipIds).size !== operation.clipIds.length) {
+    context.addIssue({ code: "custom", message: "No puedes retirar el mismo clip más de una vez." });
+  }
+});
+
+/** Moves the logical group so its earliest member starts at startSeconds. */
+const groupMoveOperationSchema = z.object({
+  groupId: editorIdSchema,
+  startSeconds: boundedSecondsSchema,
+  type: z.literal("group.move"),
+}).strict();
+
 const audioMixUpdateOperationSchema = z.object({
   settings: z.object({
     attackSeconds: z.number().finite().min(0).max(5).optional(),
@@ -206,6 +263,29 @@ const animationUpdateKeyframeOperationSchema = z.object({
   type: z.literal("animation.update-keyframe"),
 }).strict().refine((operation) => operation.values !== undefined || operation.ease !== undefined, "Debes modificar valores o easing.");
 
+const transitionAddOperationSchema = z.object({
+  transition: compositionTransitionSchema,
+  type: z.literal("transition.add"),
+}).strict();
+
+const transitionUpdateOperationSchema = z.object({
+  settings: z.object({
+    alignment: z.enum(COMPOSITION_TRANSITION_ALIGNMENTS).optional(),
+    audioMode: z.enum(["CUT", "CROSSFADE"]).optional(),
+    durationSeconds: z.number().finite().positive().max(2).optional(),
+    easing: z.enum(COMPOSITION_TRANSITION_EASES).optional(),
+    parameters: compositionTransitionParametersSchema.nullable().optional(),
+    type: z.enum(COMPOSITION_TRANSITION_TYPES).optional(),
+  }).strict().refine((settings) => Object.keys(settings).length > 0, "Debes indicar al menos un ajuste de transición."),
+  transitionId: editorIdSchema,
+  type: z.literal("transition.update"),
+}).strict();
+
+const transitionRemoveOperationSchema = z.object({
+  transitionId: editorIdSchema,
+  type: z.literal("transition.remove"),
+}).strict();
+
 const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipAddOperationSchema,
   canvasDurationOperationSchema,
@@ -234,7 +314,16 @@ export const compositionEditorPatchOperationSchema = z.union([
   animationRemoveOperationSchema,
   animationUpdateKeyframeOperationSchema,
   animationUpdateTimingOperationSchema,
+  transitionAddOperationSchema,
+  transitionRemoveOperationSchema,
+  transitionUpdateOperationSchema,
+  clipColorGradingOperationSchema,
   clipPatchOperationSchema,
+  groupAddClipsOperationSchema,
+  groupCreateOperationSchema,
+  groupMoveOperationSchema,
+  groupRemoveClipsOperationSchema,
+  groupUngroupOperationSchema,
   trackUpdateOperationSchema,
 ]);
 

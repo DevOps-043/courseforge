@@ -25,6 +25,8 @@ import { DEFAULT_COMPOSITION_RENDER_FPS } from "./composition-document.types.con
 import type { CompositionNarrativeScene } from "./composition-narrative.types";
 import { compositionSlideKey, narrativeFingerprint } from "./composition-narrative-source.service";
 import { isCompositionClipExcluded } from "./composition-source-selection";
+import { normalizeCompositionGroups } from "./composition-group.service";
+import { resolveCompositionTransitionEligibility } from "./composition-transition.service";
 
 /**
  * Creates the first editable document from internal Production sources.
@@ -69,6 +71,7 @@ export function createInitialCompositionDocument(params: {
       fontUrls: params.animatedDeck.fonts.map((font) => font.href),
     } : null,
     format: COMPOSITION_DOCUMENT_FORMAT,
+    transitions: { items: [], schemaVersion: 1 },
     tracks,
     variables: { accent: params.plan.accentColor, subtitle: params.plan.subtitle, title: params.plan.title },
   });
@@ -301,7 +304,17 @@ export function reconcileCompositionDocument(params: {
     synchronizedClipIds.has(animation.target.clipId)
   ));
   const removedOrphanAnimationCount = params.document.motion.animations.length - synchronizedAnimations.length;
+  const synchronizedTransitions = params.document.transitions ? {
+    ...params.document.transitions,
+    items: params.document.transitions.items.filter((transition) => (
+      synchronizedClipIds.has(transition.fromClipId)
+      && synchronizedClipIds.has(transition.toClipId)
+    )),
+  } : undefined;
+  const removedOrphanTransitionCount = (params.document.transitions?.items.length || 0)
+    - (synchronizedTransitions?.items.length || 0);
   const nextDurationSource = automaticDuration?.source || params.document.canvas.durationSource;
+  const synchronizedGroups = normalizeCompositionGroups(params.document.groups, deckReconciliation.clips);
   const documentWithoutDeckDependencies = compositionEditorDocumentSchema.parse({
     ...params.document,
     ...(params.narrativeScenes !== undefined ? { narrativeScenes: params.narrativeScenes } : {}),
@@ -311,10 +324,12 @@ export function reconcileCompositionDocument(params: {
       css: params.animatedDeck.css,
       fontUrls: params.animatedDeck.fonts.map((font) => font.href),
     } : params.document.deckStyles,
+    ...(synchronizedGroups !== undefined ? { groups: synchronizedGroups } : {}),
     motion: {
       ...params.document.motion,
       animations: synchronizedAnimations,
     },
+    ...(synchronizedTransitions ? { transitions: synchronizedTransitions } : {}),
     tracks: synchronizedTracks.filter((track) => (
       track.kind === "DECK" || synchronizedClips.some((clip) => clip.trackId === track.id)
     )),
@@ -324,22 +339,45 @@ export function reconcileCompositionDocument(params: {
     productionAssets,
     params.document.canvas.durationSeconds,
   );
+  const validTransitions = appended.document.transitions ? {
+    ...appended.document.transitions,
+    items: appended.document.transitions.items.filter((transition) => (
+      resolveCompositionTransitionEligibility({
+        document: appended.document,
+        excludeTransitionId: transition.id,
+        transition,
+      }).available
+    )),
+  } : undefined;
+  const removedInvalidTransitionCount = (appended.document.transitions?.items.length || 0)
+    - (validTransitions?.items.length || 0);
+  const reconciledDocument = removedInvalidTransitionCount > 0
+    ? compositionEditorDocumentSchema.parse({
+        ...appended.document,
+        transitions: validTransitions,
+      })
+    : appended.document;
   return {
     addedProductionAssetCount: appended.document.clips.length - documentWithoutDeckDependencies.clips.length,
     changed: (params.narrativeScenes !== undefined && JSON.stringify(params.narrativeScenes) !== JSON.stringify(params.document.narrativeScenes))
       || removedDeckDependencyCount > 0
       || removedInactiveProductionAssetCount > 0
       || removedOrphanAnimationCount > 0
+      || removedOrphanTransitionCount > 0
+      || removedInvalidTransitionCount > 0
+      || JSON.stringify(synchronizedGroups) !== JSON.stringify(params.document.groups)
       || clipSynchronizationChanged
       || deckReconciliation.changed
       || canvasDurationSeconds !== params.document.canvas.durationSeconds
       || nextDurationSource !== params.document.canvas.durationSource
       || params.document.canvas.fps !== DEFAULT_COMPOSITION_RENDER_FPS
       || appended.changed,
-    document: appended.document,
+    document: reconciledDocument,
     removedDeckDependencyCount,
     removedInactiveProductionAssetCount,
     removedOrphanAnimationCount,
+    removedOrphanTransitionCount,
+    removedInvalidTransitionCount,
   };
 }
 

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { getCompositionClipMediaAssetId, type CompositionClip, type CompositionEditorDocument, type CompositionTrack } from "./composition-document.types";
+import { normalizeCompositionColorGrading, type CompositionColorGrading } from "./composition-color-grading.types";
 import { buildCompositionMotionRuntime } from "./composition-motion-runtime";
 import {
   buildCompositionVolumeAutomations,
@@ -12,6 +13,11 @@ import {
   resolveCompositionClipAudioVolume,
 } from "./composition-clip-audio.service";
 import { buildCompositionTimelineLayout } from "./composition-timeline-layout.service";
+import {
+  buildCompositionTransitionRuntime,
+  type CompositionTransitionRuntimeClipWindow,
+  type CompositionTransitionRuntimeItem,
+} from "./composition-transition-runtime";
 import { COMPOSITION_PREVIEW_PROTOCOL_VERSION } from "./composition-preview-protocol";
 import {
   resolveCompositionPreviewAspectAnchor,
@@ -40,6 +46,22 @@ export const COMPOSITION_PREVIEW_MEDIA_CONFIG = {
   seekToleranceSeconds: 0.35,
 } as const;
 
+type HfColorGradingSerializer = (grading: CompositionColorGrading) => string;
+let hfColorGradingSerializerPromise: Promise<HfColorGradingSerializer> | null = null;
+const importEsmModule = new Function("specifier", "return import(specifier)") as (
+  specifier: string,
+) => Promise<{ serializeHfColorGrading: HfColorGradingSerializer }>;
+
+function loadHfColorGradingSerializer() {
+  // The application build preserves the analyzable import below. The focused
+  // test build emits CommonJS, while HyperFrames exposes this subpath as ESM
+  // only, so its fallback keeps the same real package implementation in tests.
+  hfColorGradingSerializerPromise ||= import("@hyperframes/core/color-grading")
+    .catch(() => importEsmModule("@hyperframes/core/color-grading"))
+    .then(({ serializeHfColorGrading }) => serializeHfColorGrading);
+  return hfColorGradingSerializerPromise;
+}
+
 /**
  * Compiles the native document into an isolated, seekable review document.
  * The document is not persisted and never becomes the editable source of truth.
@@ -57,10 +79,26 @@ export async function compileCompositionPreview(params: {
   const viewportBackground = isInteractivePreview ? "transparent" : "#020617";
   const animationRuntime = isInteractivePreview ? await readCompositionAnimationRuntime() : null;
   const { document } = params;
+  const serializeColorGrading = document.clips.some((clip) => normalizeCompositionColorGrading(clip.colorGrading))
+    ? await loadHfColorGradingSerializer()
+    : null;
   const tracksById = new Map(document.tracks.map((track) => [track.id, track]));
+  let transitionRuntime: ReturnType<typeof buildCompositionTransitionRuntime>;
+  try {
+    transitionRuntime = buildCompositionTransitionRuntime(document);
+  } catch (error) {
+    throw new CompositionPreviewCompilerError(
+      error instanceof Error ? error.message : "No se pudieron compilar las transiciones.",
+    );
+  }
   const timelineLayout = buildCompositionTimelineLayout(document);
   const volumeAutomations = buildCompositionVolumeAutomations(document);
   const automatedClipIds = new Set(volumeAutomations.map((automation) => automation.targetClipId));
+  for (const transition of transitionRuntime.items) {
+    if (transition.audioMode !== "CROSSFADE") continue;
+    automatedClipIds.add(transition.fromClipId);
+    automatedClipIds.add(transition.toClipId);
+  }
   const deckStyles = document.deckStyles
     ? `${document.deckStyles.fontUrls.map((url) => `@import url(${JSON.stringify(replaceUrls(url, params.deckAssetUrls))});`).join("\n")}\n${replaceUrls(repairLegacyAnimatedDeckAppearanceSelectors(document.deckStyles.css), params.deckAssetUrls)}`
     : "";
@@ -80,8 +118,12 @@ export async function compileCompositionPreview(params: {
       requireRuntimeTrackIndex(timelineLayout.trackIndexByClipId, clip.id),
       timelineLayout.audioTrackIndexByClipId.get(clip.id),
       automatedClipIds.has(clip.id),
+      transitionRuntime.clipWindowsById.get(clip.id),
+      transitionRuntime.audioWindowsByClipId.get(clip.id),
+      serializeColorGrading,
     ))
     .join("\n");
+  const transitionOverlays = renderTransitionOverlays(transitionRuntime.items);
   const hasAudibleMedia = document.clips.some((clip) => {
     const track = tracksById.get(clip.trackId);
     return !clip.hidden && !track?.hidden && !track?.muted
@@ -117,6 +159,7 @@ export async function compileCompositionPreview(params: {
     .composition-media { width: 100%; height: 100%; object-fit: cover; display: block; }
     .clip-content[data-media-fit="CONTAIN"] .composition-media { object-fit: contain; }
     .composition-audio { display: none; }
+    .composition-transition-overlay { position: absolute; inset: 0; z-index: 100000; visibility: hidden; opacity: 0; pointer-events: none; }
     ${isInteractivePreview ? `.composition-audio-unlock { position: absolute; left: 50%; bottom: 28px; z-index: 2147483647; display: none; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: rgba(2,6,23,.92); color: #fff; padding: 12px 18px; font: 700 16px/1 system-ui, sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,.4); cursor: pointer; }
     .composition-audio-unlock[data-visible="true"] { display: block; }` : ""}
     .deck-content { overflow: hidden; }
@@ -128,12 +171,13 @@ export async function compileCompositionPreview(params: {
   <div id="composition-viewport" data-composition-id="courseforge-composition" data-start="0" data-width="${document.canvas.width}" data-height="${document.canvas.height}" data-duration="${document.canvas.durationSeconds}" data-fps="${document.canvas.fps}">
     <div id="composition-root">
       ${clips}
+      ${transitionOverlays}
       ${isInteractivePreview ? '<div id="composition-editor-grid" class="composition-editor-grid" aria-hidden="true"></div>' : ""}
     </div>
     ${isInteractivePreview && hasAudibleMedia ? '<button id="composition-audio-unlock" class="composition-audio-unlock" type="button">Activar audio y reproducir</button>' : ""}
   </div>
   ${animationRuntime ? `<script>${animationRuntime}</script>` : '<script src="assets/gsap.min.js"></script>'}
-  ${renderTimelineInitializer(document, volumeAutomations)}
+  ${renderTimelineInitializer(document, volumeAutomations, transitionRuntime)}
   ${isInteractivePreview ? renderInteractivePreviewController(document, params.documentHash) : ""}
 </body>
 </html>`;
@@ -151,6 +195,9 @@ function renderClip(
   runtimeTrackIndex: number,
   runtimeAudioTrackIndex: number | undefined,
   hasVolumeAutomation: boolean,
+  runtimeWindow: CompositionTransitionRuntimeClipWindow | undefined,
+  audioRuntimeWindow: CompositionTransitionRuntimeClipWindow | undefined,
+  serializeColorGrading: HfColorGradingSerializer | null,
 ) {
   const isHyperframesRender = target === COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER;
   const layout = `left:${clip.layout.x}px;top:${clip.layout.y}px;width:${clip.layout.width}px;height:${clip.layout.height}px;opacity:${clip.layout.opacity};z-index:${clip.layout.zIndex};transform:rotate(${clip.layout.rotation}deg);`;
@@ -161,16 +208,33 @@ function renderClip(
   const cropStyle = renderVisualCropStyle(crop);
   const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}" data-croppable="true" data-layout-opacity="${clip.layout.opacity}" data-media-fit="${mediaFit}"${cropData}${aspectAnchor ? ` data-preserve-aspect="${aspectAnchor}"` : ""} style="${layout}"`;
   const motionId = `${escapeAttribute(clip.id)}-motion`;
-  const timing = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${runtimeTrackIndex}"`;
-  const mediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
+  const visualWindow = runtimeWindow || {
+    durationSeconds: clip.durationSeconds,
+    endSeconds: clip.startSeconds + clip.durationSeconds,
+    sourceOffsetSeconds: clip.sourceOffsetSeconds || 0,
+    startSeconds: clip.startSeconds,
+  };
+  const visualTiming = `data-start="${visualWindow.startSeconds}" data-duration="${visualWindow.durationSeconds}" data-track-index="${runtimeTrackIndex}"`;
+  const canonicalTiming = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}"`;
+  const visualMediaOffset = `data-source-offset="${visualWindow.sourceOffsetSeconds}"${isHyperframesRender ? ` data-media-start="${visualWindow.sourceOffsetSeconds}"` : ""}`;
+  const canonicalMediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
+  const audioWindow = audioRuntimeWindow || {
+    durationSeconds: clip.durationSeconds,
+    endSeconds: clip.startSeconds + clip.durationSeconds,
+    sourceOffsetSeconds: clip.sourceOffsetSeconds || 0,
+    startSeconds: clip.startSeconds,
+  };
+  const audioTiming = `data-start="${audioWindow.startSeconds}" data-duration="${audioWindow.durationSeconds}"`;
+  const audioMediaOffset = `data-source-offset="${audioWindow.sourceOffsetSeconds}"${isHyperframesRender ? ` data-media-start="${audioWindow.sourceOffsetSeconds}"` : ""}`;
   const hidden = clip.hidden || track?.hidden ? (isHyperframesRender ? ' data-hidden="true"' : ' data-clip-hidden="true"') : "";
   const volumeAutomation = hasVolumeAutomation ? ' data-volume-automated="true"' : "";
   const volume = resolveCompositionPreviewClipVolume(clip, track);
+  const colorGrading = renderColorGradingAttribute(clip, serializeColorGrading);
   const hasSynchronizedVideoAudio = clip.kind === "VIDEO"
     && compositionClipHasConfigurableAudio(clip, track);
   if (clip.source.type === "DECK_SLIDE") {
     const deckContainStyle = renderDeckContainStyle(clip, canvas);
-    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope" data-appearance="${deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
+    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope" data-appearance="${deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
   const mediaAssetId = getCompositionClipMediaAssetId(clip);
   if (!mediaAssetId) throw new CompositionPreviewCompilerError(`El clip ${clip.id} no tiene un asset multimedia válido.`);
@@ -181,19 +245,28 @@ function renderClip(
   if (!sourceUrl && !variableName) throw new CompositionPreviewCompilerError(`No existe URL de preview para el asset ${mediaAssetId}.`);
   const mediaSource = renderMediaSourceAttribute(sourceUrl, variableName);
   if (clip.kind === "AUDIO") {
-    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${hidden}${volumeAutomation} ${mediaOffset} data-volume="${volume}" ${mediaSource} preload="metadata" ${timing}></audio>`;
+    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${hidden}${volumeAutomation} ${canonicalMediaOffset} data-volume="${volume}" ${mediaSource} preload="metadata" ${canonicalTiming} data-track-index="${runtimeTrackIndex}"></audio>`;
   }
   if (clip.kind === "VIDEO" && isHyperframesRender) {
-    const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" ${mediaSource} muted playsinline loop preload="metadata" ${mediaOffset}${hidden} ${timing}></video>`;
+    const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" crossorigin="anonymous" ${mediaSource}${colorGrading} muted playsinline loop preload="metadata" ${visualMediaOffset}${hidden} ${visualTiming}></video>`;
     const audio = hasSynchronizedVideoAudio
-      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" ${mediaSource} loop preload="metadata" ${mediaOffset}${hidden} data-volume="${volume}" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-track-index="${requireRuntimeAudioTrackIndex(runtimeAudioTrackIndex, clip.id)}"></audio>`
+      ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" ${mediaSource} loop preload="metadata" ${audioMediaOffset}${hidden}${volumeAutomation} data-volume="${volume}" ${audioTiming} data-track-index="${requireRuntimeAudioTrackIndex(runtimeAudioTrackIndex, clip.id)}"></audio>`
       : "";
     return `<div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${video}</div></div>${audio}`;
   }
   const media = clip.kind === "VIDEO"
-    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" ${mediaSource} muted playsinline loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset}${hidden}></video>${hasSynchronizedVideoAudio ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden} ${mediaSource} loop preload="metadata" data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" ${mediaOffset} data-volume="${volume}"></audio>` : ""}`
-    : `<img class="composition-media" ${mediaSource} alt="" />`;
-  return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${timing}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${media}</div></div></section>`;
+    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" crossorigin="anonymous" ${mediaSource}${colorGrading} muted playsinline loop preload="metadata" ${visualTiming} ${visualMediaOffset}${hidden}></video>${hasSynchronizedVideoAudio ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden}${volumeAutomation} ${mediaSource} loop preload="metadata" ${audioTiming} ${audioMediaOffset} data-volume="${volume}"></audio>` : ""}`
+    : `<img id="${escapeAttribute(clip.id)}-media" class="composition-media" crossorigin="anonymous" ${mediaSource}${colorGrading} alt="" />`;
+  return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${media}</div></div></section>`;
+}
+
+function renderTransitionOverlays(transitions: CompositionTransitionRuntimeItem[]) {
+  return transitions
+    .filter((transition) => transition.type === "DIP_TO_COLOR" && transition.overlayId && transition.overlayColor)
+    .map((transition) => (
+      `<div id="${escapeAttribute(transition.overlayId!)}" class="composition-transition-overlay" style="background:${escapeAttribute(transition.overlayColor!)}"></div>`
+    ))
+    .join("\n");
 }
 
 /**
@@ -221,6 +294,18 @@ function renderMediaSourceAttribute(sourceUrl: string | undefined, variableName:
   if (variableName) return `data-var-src="${escapeAttribute(variableName)}"`;
   if (sourceUrl) return `src="${escapeAttribute(sourceUrl)}"`;
   throw new CompositionPreviewCompilerError("No se pudo resolver la fuente de un medio.");
+}
+
+function renderColorGradingAttribute(
+  clip: CompositionClip,
+  serializeColorGrading: HfColorGradingSerializer | null,
+) {
+  const colorGrading = normalizeCompositionColorGrading(clip.colorGrading);
+  if (!colorGrading) return "";
+  if (!serializeColorGrading) {
+    throw new CompositionPreviewCompilerError("No se pudo cargar el serializador de correcciÃ³n de color de HyperFrames.");
+  }
+  return ` data-color-grading='${escapeAttribute(serializeColorGrading(colorGrading))}'`;
 }
 
 function renderHyperframesCompositionVariables(
@@ -253,21 +338,29 @@ function replaceUrls(value: string, replacements?: Map<string, string>) {
 function renderTimelineInitializer(
   document: CompositionEditorDocument,
   volumeAutomations: CompositionClipVolumeAutomation[],
+  transitionRuntime: ReturnType<typeof buildCompositionTransitionRuntime>,
 ) {
   const tracksById = new Map(document.tracks.map((track) => [track.id, track]));
-  const clipMetadata = document.clips.map((clip) => ({
+  const clipMetadata = document.clips.map((clip) => {
+    const runtimeWindow = transitionRuntime.clipWindowsById.get(clip.id);
+    return {
     duration: clip.durationSeconds,
     hfId: clip.hfId,
     hidden: clip.hidden || Boolean(tracksById.get(clip.trackId)?.hidden),
     id: clip.id,
     kind: clip.kind,
+    layoutOpacity: clip.layout.opacity,
+    runtimeDuration: runtimeWindow?.durationSeconds || clip.durationSeconds,
+    runtimeStart: runtimeWindow?.startSeconds ?? clip.startSeconds,
     start: clip.startSeconds,
-  }));
+  };
+  });
   const motionAnimations = buildCompositionMotionRuntime(document);
   return `<script>
     (() => {
       const clips = ${JSON.stringify(clipMetadata)};
       const motionAnimations = ${JSON.stringify(motionAnimations)};
+      const transitionEffects = ${JSON.stringify(transitionRuntime.items)};
       const volumeAutomations = ${JSON.stringify(volumeAutomations)};
       const timeline = gsap.timeline({ paused: true });
       for (const clip of clips) {
@@ -275,7 +368,7 @@ function renderTimelineInitializer(
         const element = document.getElementById(clip.id);
         if (!element) continue;
         if (clip.hidden) { timeline.set(element, { autoAlpha: 0 }, 0); continue; }
-        timeline.set(element, { autoAlpha: 1 }, clip.start);
+        timeline.set(element, { autoAlpha: clip.layoutOpacity }, clip.runtimeStart);
         if (clip.kind === "DECK_SLIDE") {
           const deckScope = element.querySelector(".deck-scope");
           if (deckScope) {
@@ -287,8 +380,85 @@ function renderTimelineInitializer(
             );
           }
         }
-        timeline.set(element, { autoAlpha: 0 }, clip.start + clip.duration + 0.0001);
+        timeline.set(element, { autoAlpha: 0 }, clip.runtimeStart + clip.runtimeDuration + 0.0001);
       }
+      function addTransitions(targetTimeline, transitions) {
+        const pushVectors = {
+          DOWN: { from: { yPercent: 100 }, to: { yPercent: -100 } },
+          LEFT: { from: { xPercent: -100 }, to: { xPercent: 100 } },
+          RIGHT: { from: { xPercent: 100 }, to: { xPercent: -100 } },
+          UP: { from: { yPercent: -100 }, to: { yPercent: 100 } },
+        };
+        const wipeInsets = {
+          DOWN: "inset(100% 0 0 0)",
+          LEFT: "inset(0 0 0 100%)",
+          RIGHT: "inset(0 100% 0 0)",
+          UP: "inset(0 0 100% 0)",
+        };
+        for (const transition of transitions) {
+          const from = document.getElementById(transition.fromClipId);
+          const to = document.getElementById(transition.toClipId);
+          if (!from || !to) continue;
+          const common = {
+            duration: transition.durationSeconds,
+            ease: transition.easing,
+            immediateRender: false,
+          };
+          if (transition.audioMode === "CROSSFADE") {
+            const fromAudio = document.getElementById(transition.fromAudioTargetId);
+            const toAudio = document.getElementById(transition.toAudioTargetId);
+            if (fromAudio && toAudio) {
+              targetTimeline.fromTo(
+                fromAudio,
+                { volume: transition.fromAudioVolume },
+                { volume: 0, duration: transition.durationSeconds, ease: transition.easing, immediateRender: false },
+                transition.startSeconds,
+              );
+              targetTimeline.fromTo(
+                toAudio,
+                { volume: 0 },
+                { volume: transition.toAudioVolume, duration: transition.durationSeconds, ease: transition.easing, immediateRender: false },
+                transition.startSeconds,
+              );
+            }
+          }
+          if (transition.type === "CROSS_DISSOLVE") {
+            targetTimeline.fromTo(from, { autoAlpha: transition.fromOpacity }, { ...common, autoAlpha: 0 }, transition.startSeconds);
+            targetTimeline.fromTo(to, { autoAlpha: 0 }, { ...common, autoAlpha: transition.toOpacity }, transition.startSeconds);
+            continue;
+          }
+          if (transition.type === "BLUR_DISSOLVE") {
+            const blur = Math.max(0, Math.min(40, transition.blurPixels || 0));
+            targetTimeline.fromTo(from, { autoAlpha: transition.fromOpacity, filter: "blur(0px)" }, { ...common, autoAlpha: 0, filter: "blur(" + blur + "px)" }, transition.startSeconds);
+            targetTimeline.fromTo(to, { autoAlpha: 0, filter: "blur(" + blur + "px)" }, { ...common, autoAlpha: transition.toOpacity, filter: "blur(0px)" }, transition.startSeconds);
+            continue;
+          }
+          if (transition.type === "PUSH") {
+            const vector = pushVectors[transition.direction] || pushVectors.LEFT;
+            targetTimeline.fromTo(from, { autoAlpha: transition.fromOpacity, xPercent: 0, yPercent: 0 }, { ...common, ...vector.from, autoAlpha: transition.fromOpacity }, transition.startSeconds);
+            targetTimeline.fromTo(to, { ...vector.to, autoAlpha: transition.toOpacity }, { ...common, autoAlpha: transition.toOpacity, xPercent: 0, yPercent: 0 }, transition.startSeconds);
+            continue;
+          }
+          if (transition.type === "SOFT_WIPE") {
+            const inset = wipeInsets[transition.direction] || wipeInsets.LEFT;
+            targetTimeline.fromTo(from, { autoAlpha: transition.fromOpacity }, { ...common, autoAlpha: 0 }, transition.startSeconds);
+            targetTimeline.fromTo(to, { autoAlpha: transition.toOpacity * 0.35, clipPath: inset }, { ...common, autoAlpha: transition.toOpacity, clipPath: "inset(0% 0% 0% 0%)" }, transition.startSeconds);
+            continue;
+          }
+          if (transition.type === "DIP_TO_COLOR") {
+            const overlay = transition.overlayId ? document.getElementById(transition.overlayId) : null;
+            if (!overlay) continue;
+            const halfDuration = transition.durationSeconds / 2;
+            const midpoint = transition.startSeconds + halfDuration;
+            targetTimeline.set(to, { autoAlpha: 0 }, transition.startSeconds);
+            targetTimeline.to(overlay, { autoAlpha: 1, duration: halfDuration, ease: transition.easing }, transition.startSeconds);
+            targetTimeline.set(from, { autoAlpha: 0 }, midpoint);
+            targetTimeline.set(to, { autoAlpha: transition.toOpacity }, midpoint);
+            targetTimeline.to(overlay, { autoAlpha: 0, duration: halfDuration, ease: transition.easing }, midpoint);
+          }
+        }
+      }
+      addTransitions(timeline, transitionEffects);
       for (const automation of volumeAutomations) {
         const media = document.getElementById(automation.targetClipId);
         if (!media || automation.points.length === 0) continue;
