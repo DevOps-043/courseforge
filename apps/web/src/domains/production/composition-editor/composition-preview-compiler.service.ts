@@ -1,5 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import {
+  COMPOSITION_COLOR_GRADING_RUNTIME_ARTIFACT,
+  COMPOSITION_COLOR_GRADING_RUNTIME_CONTRACT,
+  validateCompositionColorGradingRuntimeArtifact,
+} from "./composition-color-grading-runtime.service";
 import { getCompositionClipMediaAssetId, type CompositionClip, type CompositionEditorDocument, type CompositionTrack } from "./composition-document.types";
 import { normalizeCompositionColorGrading, type CompositionColorGrading } from "./composition-color-grading.types";
 import { buildCompositionMotionRuntime } from "./composition-motion-runtime";
@@ -79,6 +84,9 @@ export async function compileCompositionPreview(params: {
   const viewportBackground = isInteractivePreview ? "transparent" : "#020617";
   const animationRuntime = isInteractivePreview ? await readCompositionAnimationRuntime() : null;
   const { document } = params;
+  const colorGradingRuntime = isInteractivePreview && document.clips.some((clip) => clip.kind === "VIDEO" || clip.kind === "IMAGE")
+    ? await readCompositionColorGradingRuntime()
+    : null;
   const serializeColorGrading = document.clips.some((clip) => normalizeCompositionColorGrading(clip.colorGrading))
     ? await loadHfColorGradingSerializer()
     : null;
@@ -177,6 +185,7 @@ export async function compileCompositionPreview(params: {
     ${isInteractivePreview && hasAudibleMedia ? '<button id="composition-audio-unlock" class="composition-audio-unlock" type="button">Activar audio y reproducir</button>' : ""}
   </div>
   ${animationRuntime ? `<script>${animationRuntime}</script>` : '<script src="assets/gsap.min.js"></script>'}
+  ${colorGradingRuntime ? `<script>${colorGradingRuntime}</script>` : ""}
   ${renderTimelineInitializer(document, volumeAutomations, transitionRuntime)}
   ${isInteractivePreview ? renderInteractivePreviewController(document, params.documentHash) : ""}
 </body>
@@ -1248,6 +1257,53 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           else delete media.dataset.clipHidden;
         });
       };
+      const isBasicColorGrading = (value) => {
+        if (value === null) return true;
+        if (!value || typeof value !== "object" || Object.keys(value).length !== 1) return false;
+        const adjust = value.adjust;
+        if (!adjust || typeof adjust !== "object" || Object.keys(adjust).sort().join(",") !== "contrast,exposure,saturation") return false;
+        return Number.isFinite(adjust.exposure) && adjust.exposure >= -2 && adjust.exposure <= 2
+          && Number.isFinite(adjust.contrast) && adjust.contrast >= -1 && adjust.contrast <= 1
+          && Number.isFinite(adjust.saturation) && adjust.saturation >= -1 && adjust.saturation <= 1;
+      };
+      const getColorGradingRuntime = () => (
+        window.__hfColorGradingRuntimeContractVersion === ${COMPOSITION_COLOR_GRADING_RUNTIME_CONTRACT.version}
+          ? window.__hf?.colorGrading
+          : null
+      );
+      const reportColorGradingStatus = (target, media) => {
+        const runtime = getColorGradingRuntime();
+        const hfId = target?.dataset?.hfId;
+        if (!hfId || !media) return;
+        if (!runtime) {
+          postParentMessage({
+            hfId,
+            message: "HyperFrames color runtime contract unavailable",
+            state: "unavailable",
+            type: "courseforge-composition-color-grading-status",
+          });
+          return;
+        }
+        const status = runtime.getStatus(media);
+        postParentMessage({
+          hfId,
+          message: String(status.message || "Color grading status unavailable").slice(0, 500),
+          state: status.state,
+          type: "courseforge-composition-color-grading-status",
+        });
+      };
+      const applyColorGrading = (target, colorGrading) => {
+        if (!isBasicColorGrading(colorGrading)) return false;
+        const runtime = getColorGradingRuntime();
+        const media = target?.querySelector?.("video, img") || (target?.id ? document.getElementById(target.id + "-media") : null);
+        if (!runtime || !(media instanceof HTMLVideoElement || media instanceof HTMLImageElement)) return false;
+        if (colorGrading === null) media.removeAttribute("data-color-grading");
+        else media.setAttribute("data-color-grading", JSON.stringify(colorGrading));
+        runtime.setGrading(media, colorGrading);
+        reportColorGradingStatus(target, media);
+        window.setTimeout(() => reportColorGradingStatus(target, media), 250);
+        return true;
+      };
       const applyVisualPatch = (message) => {
         const startedAt = performance.now();
         const finish = (applied, code) => postParentMessage({
@@ -1288,6 +1344,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
               });
             }
             if (change.cropInsets) applyCrop(target, change.cropInsets);
+            if (Object.prototype.hasOwnProperty.call(change, "colorGrading") && !applyColorGrading(target, change.colorGrading)) {
+              throw new Error("COLOR_GRADING_RUNTIME_UNAVAILABLE");
+            }
             if (change.mediaFit === "CONTAIN" || change.mediaFit === "COVER") {
               target.dataset.mediaFit = change.mediaFit;
               if (change.aspectAnchor) target.dataset.preserveAspect = change.aspectAnchor;
@@ -1339,6 +1398,12 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           const target = document.querySelector('[data-hf-id="' + CSS.escape(message.hfId) + '"]');
           if (target instanceof HTMLElement) applyCrop(target, message.crop || {});
         }
+        if (message.type === "courseforge-composition-preview-color-grading" && typeof message.hfId === "string") {
+          const target = document.querySelector('[data-hf-id="' + CSS.escape(message.hfId) + '"]');
+          if (target instanceof HTMLElement && isBasicColorGrading(message.colorGrading)) {
+            applyColorGrading(target, message.colorGrading);
+          }
+        }
         if (message.type === "courseforge-composition-select") {
           if (message.hfId === null) {
             clearTarget();
@@ -1353,6 +1418,12 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
       primeMediaForTime(0, true);
       seek(0);
       announceInitialReadyIfPossible();
+      window.setTimeout(() => {
+        document.querySelectorAll("video[data-color-grading], img[data-color-grading]").forEach((media) => {
+          const target = media.closest("[data-hf-id]");
+          if (target instanceof HTMLElement) reportColorGradingStatus(target, media);
+        });
+      }, 250);
     })();
   </script>`;
 }
@@ -1382,6 +1453,41 @@ export async function readCompositionAnimationRuntime() {
     }
   }
   throw new CompositionPreviewCompilerError("No se encontró el runtime de animación del preview.");
+}
+
+export async function readCompositionColorGradingRuntime() {
+  const candidates = [
+    resolve(process.cwd(), "node_modules/@hyperframes/core/dist"),
+    resolve(process.cwd(), "../node_modules/@hyperframes/core/dist"),
+    resolve(process.cwd(), "../../node_modules/@hyperframes/core/dist"),
+    // Development bridge while the sibling HyperFrames release is prepared.
+    resolve(process.cwd(), "../hyperframes/packages/core/dist"),
+    resolve(process.cwd(), "../../../hyperframes/packages/core/dist"),
+  ];
+  for (const directoryPath of candidates) {
+    const artifactPath = resolve(directoryPath, COMPOSITION_COLOR_GRADING_RUNTIME_ARTIFACT);
+    let source: string;
+    try {
+      source = await readFile(artifactPath, "utf8");
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
+      throw error;
+    }
+    try {
+      const manifestRaw = await readFile(
+        resolve(directoryPath, "hyperframe.manifest.json"),
+        "utf8",
+      );
+      return validateCompositionColorGradingRuntimeArtifact({ manifestRaw, source }).source;
+    } catch (error) {
+      throw new CompositionPreviewCompilerError(
+        `El runtime autónomo de color de HyperFrames no superó la validación: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  throw new CompositionPreviewCompilerError(
+    "No se encontró el runtime autónomo de corrección de color de HyperFrames. Actualiza @hyperframes/core antes de abrir el preview.",
+  );
 }
 
 function escapeAttribute(value: string) {

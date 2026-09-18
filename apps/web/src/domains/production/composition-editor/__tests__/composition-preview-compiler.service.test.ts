@@ -103,6 +103,10 @@ test("serializa la correcciÃ³n bÃ¡sica en el medio real para preview y rende
     assert.equal(payload.adjust.contrast, 0.25);
     assert.equal(payload.adjust.saturation, -0.2);
   }
+  assert.match(previewHtml, /__hfColorGradingRuntimeInstalled/);
+  assert.match(previewHtml, /courseforge-composition-preview-color-grading/);
+  assert.match(previewHtml, /courseforge-composition-color-grading-status/);
+  assert.doesNotMatch(renderHtml, /__hfColorGradingRuntimeInstalled/);
 });
 
 test("omite el atributo neutro y conserva el contrato en imÃ¡genes", async () => {

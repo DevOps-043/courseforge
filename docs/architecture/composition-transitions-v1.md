@@ -4,9 +4,10 @@
 
 Aceptado para implementación — 2026-09-17.
 
-Alcance de este documento: fases 0 a 5 del trabajo de transiciones. El runtime
+Alcance de este documento: fases 0 a 7 del trabajo de transiciones. El runtime
 visual compartido por preview/render se añadió en las fases 2 y 3; las fases 4
-y 5 incorporan la autoría en timeline y el crossfade de audio.
+y 5 incorporan la autoría en timeline y el crossfade de audio; las fases 6 y
+7 cierran persistencia, snapshots y contrato local/cloud.
 
 ## Problema
 
@@ -196,3 +197,46 @@ datos declarativos que pueden eliminarse mediante `transition.remove`.
 - Crossfade condicionado a audio confirmado y paridad preview/render.
 - Tests de edit points, elegibilidad de audio, ventanas runtime, lanes y
   compilación de envolventes.
+
+## Implementación de fases 6 y 7
+
+### Persistencia, historial y snapshots
+
+- El subcontrato `transitions` atraviesa el round-trip JSON del documento v2;
+  los documentos previos continúan siendo válidos con la colección vacía.
+- El hash semántico cambia al añadir o modificar una transición y permanece
+  estable después de serializar y volver a validar el mismo documento.
+- Las operaciones atraviesan la cola versionada existente. La metadata de cada
+  versión registra `transitionCount` y los tipos de operación, sin persistir
+  URLs, selectores ni estado del panel.
+- `document.restore` y la restauración RPC de snapshots recuperan exactamente
+  la relación aprobada, creando una nueva versión editable y sin mutar el
+  histórico.
+- El ZIP inmutable incluye `composition-document.json`; por ello una revisión
+  puede restaurar los parámetros visuales, la alineación y el modo de audio.
+
+### Contrato local/cloud
+
+- El snapshot conserva `format: hyperframes-html-v1`, 25 FPS y el perfil de
+  render aprobado e inmutable.
+- Los medios siguen representados mediante variables remotas versionadas; el
+  HTML no contiene rutas de Storage ni URLs firmadas.
+- El video permanece silenciado y cada fuente audible se compila como elemento
+  `<audio>` separado. Un crossfade reserva lanes distintos solo durante su
+  ventana runtime.
+- El preflight valida tamaño del ZIP, manifiesto, entrega remota, duración y
+  presupuesto antes de contactar al proveedor.
+- La suite automatizada construye y abre un ZIP representativo, valida el
+  documento editable, el HTML y el perfil. No inicia un render cloud real:
+  esa operación consume recursos y requiere aprobación explícita del preview.
+
+## Definition of Done de fases 6 y 7
+
+- Guardar, recargar, restaurar historial y restaurar snapshot conservan la
+  transición completa.
+- Auditoría versionada registra el recuento y la operación aplicada.
+- El archivo aprobado contiene HTML determinista y documento fuente válido.
+- El preflight cloud pasa con variables remotas y perfil durable a 25 FPS.
+- Cambiar el perfil después de aprobar el snapshot se rechaza.
+- Las pruebas focalizadas de dominio, persistencia y cloud pasan; el único paso
+  externo pendiente es un render real autorizado después de revisión visual.

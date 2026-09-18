@@ -162,6 +162,12 @@ function createRuntimeSmokeScenario(animatedDeck: Parameters<typeof createInitia
     { clipId: clip.id, mediaFit: "CONTAIN", type: "clip.media-fit" },
   ];
   const geometryDocument = applyCompositionEditorPatches(document, geometryOperations, "USER");
+  const colorOperations: CompositionEditorPatchOperation[] = [{
+    clipId: clip.id,
+    colorGrading: { adjust: { contrast: 0.2, exposure: 0.5, saturation: -0.25 } },
+    type: "clip.color-grading",
+  }];
+  const colorDocument = applyCompositionEditorPatches(geometryDocument, colorOperations, "USER");
   const hideOperations: CompositionEditorPatchOperation[] = [{ clipId: clip.id, hidden: true, type: "clip.visibility" }];
   const hiddenDocument = applyCompositionEditorPatches(geometryDocument, hideOperations, "USER");
   const showOperations: CompositionEditorPatchOperation[] = [{ clipId: clip.id, hidden: false, type: "clip.visibility" }];
@@ -177,11 +183,12 @@ function createRuntimeSmokeScenario(animatedDeck: Parameters<typeof createInitia
   return {
     document,
     documentHash: hashCompositionDocument(document),
+    colorPatch: requireVisualPatch(colorDocument, colorOperations),
     geometryPatch: requireVisualPatch(geometryDocument, geometryOperations),
     hfId: clip.hfId,
     hidePatch: requireVisualPatch(hiddenDocument, hideOperations),
     motionPatch: requireVisualPatch(motionDocument, motionOperations),
-    operationTypes: [...geometryOperations, ...hideOperations, ...showOperations, ...motionOperations].map((operation) => operation.type),
+    operationTypes: [...geometryOperations, ...colorOperations, ...hideOperations, ...showOperations, ...motionOperations].map((operation) => operation.type),
     showPatch: requireVisualPatch(shownDocument, showOperations),
   };
 }
@@ -240,6 +247,7 @@ function requireVisualPatch(
 }
 
 function renderRuntimeSmokeHarness(params: {
+  colorPatch: CompositionPreviewVisualPatch;
   documentHash: string;
   geometryPatch: CompositionPreviewVisualPatch;
   hfId: string;
@@ -308,6 +316,24 @@ function renderRuntimeSmokeHarness(params: {
       };
       const run = async () => {
         await seekTo(2.5);
+        const colorResult = await dispatchPatch(${JSON.stringify(params.colorPatch)});
+        assert(colorResult.applied === true && colorResult.code === "APPLIED", "color patch was not applied");
+        document.documentElement.dataset.colorPatchDurationMs = String(colorResult.durationMs);
+        const colorTarget = document.querySelector('[data-hf-id="' + CSS.escape(hfId) + '"]');
+        assert(colorTarget instanceof HTMLElement, "color target was not found after acknowledgement");
+        const colorMedia = document.getElementById(colorTarget.id + "-media");
+        const colorRuntime = window.__hf?.colorGrading;
+        assert(colorMedia instanceof HTMLImageElement && colorRuntime, "standalone color runtime was not installed");
+        assert(window.__hfColorGradingRuntimeContractVersion === 1, "standalone color runtime contract diverged");
+        const colorPayload = JSON.parse(colorMedia.getAttribute("data-color-grading") || "null");
+        assert(colorPayload?.adjust?.exposure === 0.5, "color attribute diverged");
+        const colorStatus = colorRuntime.getStatus(colorMedia);
+        assert(["active", "pending", "unavailable"].includes(colorStatus.state), "color runtime status diverged");
+        document.documentElement.dataset.colorRuntimeState = colorStatus.state;
+        if (colorStatus.state === "unavailable") {
+          assert(!colorMedia.hasAttribute("data-hf-color-grading-source-hidden"), "unavailable grading hid the source media");
+        }
+
         const geometryResult = await dispatchPatch(${JSON.stringify(params.geometryPatch)});
         assert(geometryResult.applied === true && geometryResult.code === "APPLIED", "geometry patch was not applied");
         const target = document.querySelector('[data-hf-id="' + CSS.escape(hfId) + '"]');
@@ -391,7 +417,10 @@ function renderTransitionRuntimeSmokeHarness(params: {
       const start = () => {
         if (started) return;
         started = true;
-        void run().catch((error) => setTimeout(() => { throw error; }));
+        void run().catch((error) => {
+          document.documentElement.dataset.runtimePatchSmoke = "failed";
+          document.documentElement.dataset.runtimePatchError = error instanceof Error ? error.message : String(error);
+        });
       };
       const run = async () => {
         const from = document.getElementById(fromClipId);

@@ -17,7 +17,7 @@ const OPERATION_STRATEGIES: Record<CompositionEditorPatchOperation["type"], Comp
   "audio-mix.update": "LIVE_TIMELINE",
   "clip.add": "FULL_RELOAD",
   "clip.crop": "LIVE_DOM",
-  "clip.color-grading": "FULL_RELOAD",
+  "clip.color-grading": "LIVE_DOM",
   "clip.duration": "LIVE_TIMELINE",
   "clip.estimated-timing": "LIVE_TIMELINE",
   "clip.layout": "LIVE_DOM",

@@ -71,3 +71,33 @@ test("validates visual patches and their correlated acknowledgements", () => {
     type: "courseforge-composition-visual-patch",
   }), null);
 });
+
+test("valida preview efímero y estados del runtime de color", () => {
+  assert.deepEqual(createCompositionPreviewParentCommand({
+    colorGrading: { adjust: { contrast: 0.2, exposure: 0.5, saturation: -0.3 } },
+    hfId: "clip-1",
+    type: "courseforge-composition-preview-color-grading",
+  }), {
+    colorGrading: { adjust: { contrast: 0.2, exposure: 0.5, saturation: -0.3 } },
+    hfId: "clip-1",
+    protocolVersion: COMPOSITION_PREVIEW_PROTOCOL_VERSION,
+    type: "courseforge-composition-preview-color-grading",
+  });
+  assert.equal(createCompositionPreviewParentCommand({
+    colorGrading: { adjust: { contrast: 0, exposure: 3, saturation: 0 } },
+    hfId: "clip-1",
+    type: "courseforge-composition-preview-color-grading",
+  }), null);
+  assert.deepEqual(parseCompositionPreviewIframeMessage({
+    hfId: "clip-1",
+    message: "WebGL unavailable",
+    state: "unavailable",
+    type: "courseforge-composition-color-grading-status",
+  }), {
+    hfId: "clip-1",
+    message: "WebGL unavailable",
+    protocolVersion: COMPOSITION_PREVIEW_PROTOCOL_VERSION,
+    state: "unavailable",
+    type: "courseforge-composition-color-grading-status",
+  });
+});

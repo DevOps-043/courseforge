@@ -4,9 +4,10 @@
 
 Aceptado para implementación — 2026-09-17.
 
-Alcance de este documento: fases 0 y 1. El contrato de composición, el
-compilador de preview/render y el inspector se implementan en los siguientes
-lotes.
+Implementación local completada para las fases 0 a 7. El único gate externo
+pendiente es publicar una nueva versión de `@hyperframes/core` y actualizar la
+dependencia exacta de Courseforge; `0.7.106` no contiene estos artefactos en el
+paquete publicado.
 
 ## Problema
 

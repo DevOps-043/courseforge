@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { CompositionEditorDocument } from "./composition-document.types";
 import type { CompositionEditorPatchOperation } from "./editor-patch.types";
+import { compositionColorGradingSchema, normalizeCompositionColorGrading } from "./composition-color-grading.types";
 import { buildCompositionMotionRuntime, compositionMotionRuntimeSchema } from "./composition-motion-runtime";
 import { resolveCompositionCropInsets } from "./composition-visual-crop.service";
 import {
@@ -27,6 +28,7 @@ const runtimeLayoutSchema = z.object({
 
 export const compositionPreviewVisualChangeSchema = z.object({
   aspectAnchor: z.enum(["BOTTOM_RIGHT", "CENTER"]).nullable().optional(),
+  colorGrading: compositionColorGradingSchema.nullable().optional(),
   cropInsets: cropInsetsSchema.optional(),
   hfId: hfIdSchema,
   hidden: z.boolean().optional(),
@@ -79,6 +81,9 @@ export function buildCompositionPreviewVisualPatch(params: {
       if (clip.kind !== "IMAGE" && clip.kind !== "VIDEO") return null;
       current.mediaFit = resolveCompositionPreviewMediaFit(clip, track);
       current.aspectAnchor = resolveCompositionPreviewAspectAnchor(current.mediaFit, track);
+    } else if (operation.type === "clip.color-grading") {
+      if (clip.kind !== "IMAGE" && clip.kind !== "VIDEO") return null;
+      current.colorGrading = normalizeCompositionColorGrading(clip.colorGrading) || null;
     } else if (operation.type === "clip.visibility") {
       current.hidden = clip.hidden || Boolean(track?.hidden);
     } else if (operation.type === "clip.volume") {
