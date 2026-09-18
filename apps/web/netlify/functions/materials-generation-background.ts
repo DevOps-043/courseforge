@@ -1,5 +1,6 @@
 import { Handler } from "@netlify/functions";
 import { generationFailureMessage } from "../../src/lib/pipeline-generation-policy";
+import { markMaterialsGenerationFailed } from "../../src/domains/materials/services/materials-generation-recovery";
 import { signBackgroundPayload } from "../../src/lib/server/background-payload-signature";
 import {
   createServiceRoleClient,
@@ -72,6 +73,7 @@ async function triggerNextLessonWithLocalFallback(
     materialsId,
     artifactId,
     logPrefix,
+    version,
     async (signedBody) => {
       const response = await Promise.resolve(handler(
         {
@@ -94,7 +96,6 @@ async function triggerNextLessonWithLocalFallback(
         throw new Error(responseMessage);
       }
     },
-    version,
   );
 }
 
@@ -525,9 +526,7 @@ export const handler: Handler = async (event) => {
           p_iteration: body.iterationNumber, p_rows: [], p_success: false, p_error: generationFailureMessage(error),
         });
       }
-      await supabase.from("materials").update({ state: "PHASE3_NEEDS_FIX",
-        updated_at: new Date().toISOString(), qa_decision: { decision: "REJECTED", notes: generationFailureMessage(error), reviewed_by: "system", reviewed_at: new Date().toISOString() } })
-        .eq("id", body.materialsId).eq("version", body.version).in("state", ["PHASE3_GENERATING", "PHASE3_VALIDATING"]);
+      await markMaterialsGenerationFailed(supabase, body.materialsId, body.version, error);
     }
     return {
       statusCode: 500,

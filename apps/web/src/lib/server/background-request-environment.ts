@@ -21,13 +21,15 @@ export function buildLocalBackgroundHandlerUrl(functionName: string) {
  * Next development runs background handlers inside the web process. In that
  * environment there is no Netlify Functions listener on port 8888 to receive
  * chained jobs, so the next invocation must stay in-process as well.
+ * Missing build flags in a deployed function are not evidence of development:
+ * a timer scheduled after its response may never execute.
  */
 export function shouldDispatchBackgroundInProcess(
   environment: LocalBackgroundDispatchEnvironment,
 ) {
   return (
     environment.hasLocalHandler &&
-    environment.nodeEnv !== "production" &&
+    environment.nodeEnv === "development" &&
     environment.netlify !== "true"
   );
 }
@@ -40,7 +42,7 @@ export function isLocalBackgroundInvocation(
   environment: BackgroundRequestEnvironment,
 ) {
   if (
-    environment.nodeEnv === "production" ||
+    environment.nodeEnv !== "development" ||
     environment.netlify === "true" ||
     !environment.rawUrl
   ) {

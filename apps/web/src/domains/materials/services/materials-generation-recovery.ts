@@ -1,5 +1,26 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isGenerationStale } from "../../../lib/pipeline-generation-policy";
+import { generationFailureMessage, isGenerationStale } from "../../../lib/pipeline-generation-policy";
+
+export async function markMaterialsGenerationFailed(
+  database: SupabaseClient,
+  materialsId: string,
+  version: number,
+  failure: unknown,
+) {
+  const now = new Date().toISOString();
+  const { error } = await database.from("materials").update({
+    state: "PHASE3_NEEDS_FIX",
+    updated_at: now,
+    qa_decision: {
+      decision: "REJECTED",
+      notes: generationFailureMessage(failure),
+      reviewed_by: "system",
+      reviewed_at: now,
+    },
+  }).eq("id", materialsId).eq("version", version)
+    .in("state", ["PHASE3_GENERATING", "PHASE3_VALIDATING"]);
+  if (error) throw error;
+}
 
 export interface RecoverableMaterialLesson {
   id: string;

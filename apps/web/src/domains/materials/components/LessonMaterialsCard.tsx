@@ -203,8 +203,8 @@ export function LessonMaterialsCard({ lesson, onIterationStart, onValidateLesson
 
                     {/* Action Buttons */}
                     <div className="flex gap-2 pt-2 border-t dark:border-white/10">
-                        {/* Validate Button - show when GENERATED or PENDING */}
-                        {(lesson.state === 'GENERATED' || lesson.state === 'PENDING') && onValidateLesson && (
+                        {/* Only generated content can be validated. */}
+                        {lesson.state === 'GENERATED' && onValidateLesson && (
                             <button
                                 onClick={handleValidate}
                                 disabled={isValidating}

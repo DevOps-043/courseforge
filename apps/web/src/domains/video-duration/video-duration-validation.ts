@@ -136,13 +136,16 @@ export function validateVideoDurationContent(
     5,
     Math.round(contract.targetDurationSeconds * VIDEO_NARRATION_TARGET_TOLERANCE_RATIO),
   );
+  const minimumTargetDuration = Math.max(contract.minimumDurationSeconds,
+    contract.targetDurationSeconds - targetDurationToleranceSeconds);
+  const maximumTargetDuration = Math.min(contract.maximumDurationSeconds,
+    contract.targetDurationSeconds + (contract.targetOverrunSeconds ?? targetDurationToleranceSeconds));
   if (
-    Math.abs(scriptDurationSeconds - contract.targetDurationSeconds)
-      > targetDurationToleranceSeconds
+    scriptDurationSeconds < minimumTargetDuration || scriptDurationSeconds > maximumTargetDuration
   ) {
     issues.push({
       code: "SCRIPT_TARGET_DURATION_MISMATCH",
-      message: `Las secciones suman ${scriptDurationSeconds}s; deben aproximarse al objetivo de ${contract.targetDurationSeconds}s con tolerancia de ${targetDurationToleranceSeconds}s, derivada del presupuesto editorial.`,
+      message: `Las secciones suman ${scriptDurationSeconds}s; el objetivo es ${contract.targetDurationSeconds}s y el rango permitido es ${minimumTargetDuration}-${maximumTargetDuration}s.`,
     });
   }
 
@@ -174,7 +177,7 @@ export function validateVideoDurationContent(
   ) {
     issues.push({
       code: "NARRATION_TARGET_MISMATCH",
-      message: `La narración contiene ${narrationCharacterCount} caracteres editoriales; debe aproximarse al objetivo de ${characterBudget.target} caracteres dentro del rango ${characterBudget.targetMinimum}-${characterBudget.targetMaximum} (±${Math.round(VIDEO_NARRATION_TARGET_TOLERANCE_RATIO * 100)}%).`,
+      message: `La narración contiene ${narrationCharacterCount} caracteres editoriales; debe aproximarse al objetivo de ${characterBudget.target} caracteres dentro del rango permitido ${characterBudget.targetMinimum}-${characterBudget.targetMaximum}.`,
     });
   }
 
