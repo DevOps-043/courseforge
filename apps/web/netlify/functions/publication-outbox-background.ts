@@ -3,15 +3,15 @@ import { publicationOutboxRequestSchema } from "../../src/domains/publication/pu
 import { PublicationOutboxService } from "../../src/domains/publication/publication-outbox.service";
 import { createOperationalLogger, resolveCorrelationId } from "../../src/lib/server/operational-logger";
 import { createServiceRoleClient } from "./shared/bootstrap";
-import { jsonResponse, methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from "./shared/http";
+import { backgroundGuardFailureResponse, jsonResponse, methodNotAllowedResponse, parseVerifiedBackgroundBody } from "./shared/http";
 
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== "POST") return methodNotAllowedResponse();
   let body: unknown;
   try {
     body = await parseVerifiedBackgroundBody(event);
-  } catch {
-    return unauthorizedBackgroundResponse();
+  } catch (error) {
+    return backgroundGuardFailureResponse(error);
   }
   const parsed = publicationOutboxRequestSchema.safeParse(body);
   if (!parsed.success) return jsonResponse({ error: "Invalid publication request" }, 400);

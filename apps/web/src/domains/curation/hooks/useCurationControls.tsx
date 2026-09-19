@@ -107,10 +107,13 @@ export function useCurationControls({
       onConfirm: async () => {
         setIsLoadingModal(true);
         toast.info("Solicitando pausa...");
-        await updateCurationStatusAction(
+        const result = await updateCurationStatusAction(
           artifactId,
           CURATION_STATES.PAUSED_REQUESTED,
         );
+        if (!result.success) {
+          toast.error(result.error || "No se pudo pausar la curaduria.");
+        }
         await refresh();
         setIsLoadingModal(false);
         closeModal();
@@ -137,7 +140,13 @@ export function useCurationControls({
         confirmText: "Si, Forzar Detencion",
         onConfirm: async () => {
           setIsLoadingModal(true);
-          await updateCurationStatusAction(artifactId, CURATION_STATES.STOPPED);
+          const result = await updateCurationStatusAction(
+            artifactId,
+            CURATION_STATES.STOPPED,
+          );
+          if (!result.success) {
+            toast.error(result.error || "No se pudo detener la curaduria.");
+          }
           await refresh();
           setIsLoadingModal(false);
           closeModal();
@@ -164,10 +173,13 @@ export function useCurationControls({
       onConfirm: async () => {
         setIsLoadingModal(true);
         toast.info("Deteniendo proceso...");
-        await updateCurationStatusAction(
+        const result = await updateCurationStatusAction(
           artifactId,
           CURATION_STATES.STOPPED_REQUESTED,
         );
+        if (!result.success) {
+          toast.error(result.error || "No se pudo detener la curaduria.");
+        }
         await refresh();
         setIsLoadingModal(false);
         closeModal();

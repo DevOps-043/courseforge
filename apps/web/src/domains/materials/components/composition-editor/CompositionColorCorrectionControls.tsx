@@ -1,0 +1,118 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { RotateCcw, Save } from "lucide-react";
+import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
+import type { CompositionColorGrading } from "@/domains/production/composition-editor/composition-color-grading.types";
+import {
+  fromCompositionColorGradingControlValues,
+  NEUTRAL_COMPOSITION_COLOR_GRADING_CONTROLS,
+  toCompositionColorGradingControlValues,
+  type CompositionColorGradingControlValues,
+} from "@/domains/production/composition-editor/composition-color-grading.controls";
+import type { CompositionColorGradingRuntimeStatus } from "@/domains/production/composition-editor/composition-preview-protocol";
+import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
+
+type PatchHandler = (
+  operations: CompositionEditorPatchOperation[],
+  summary: string,
+) => Promise<boolean>;
+
+interface CompositionColorCorrectionControlsProps {
+  clip: CompositionClip;
+  disabled: boolean;
+  onPatch: PatchHandler;
+  onPreview: (hfId: string, colorGrading: CompositionColorGrading | null) => void;
+  runtimeStatus: CompositionColorGradingRuntimeStatus | null;
+}
+
+const CONTROL_FIELDS: Array<{
+  key: keyof CompositionColorGradingControlValues;
+  label: string;
+}> = [
+  { key: "brightness", label: "Brillo (exposición)" },
+  { key: "contrast", label: "Contraste" },
+  { key: "saturation", label: "Saturación" },
+];
+
+export function CompositionColorCorrectionControls({
+  clip,
+  disabled,
+  onPatch,
+  onPreview,
+  runtimeStatus,
+}: CompositionColorCorrectionControlsProps) {
+  const [values, setValues] = useState(() => toCompositionColorGradingControlValues(clip.colorGrading));
+
+  useEffect(() => {
+    setValues(toCompositionColorGradingControlValues(clip.colorGrading));
+  }, [clip.id, clip.colorGrading]);
+
+  const preview = (next: CompositionColorGradingControlValues) => {
+    setValues(next);
+    onPreview(clip.hfId, fromCompositionColorGradingControlValues(next) || null);
+  };
+  const save = () => onPatch([{
+    clipId: clip.id,
+    colorGrading: fromCompositionColorGradingControlValues(values) || null,
+    type: "clip.color-grading",
+  }], `Ajustó brillo, contraste y saturación de ${clip.label}.`);
+  const reset = () => {
+    preview(NEUTRAL_COMPOSITION_COLOR_GRADING_CONTROLS);
+    return onPatch([{
+      clipId: clip.id,
+      colorGrading: null,
+      type: "clip.color-grading",
+    }], `Restableció la corrección de color de ${clip.label}.`);
+  };
+  const statusMessage = resolveStatusMessage(runtimeStatus);
+
+  return <section className="border-t border-slate-200 pt-3 dark:border-white/10">
+    <div className="flex items-center justify-between gap-2">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Corrección de color</p>
+      <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${clip.colorGrading ? "bg-cyan-100 text-cyan-800 dark:bg-cyan-400/10 dark:text-cyan-200" : "bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-gray-400"}`}>
+        {clip.colorGrading ? "Ajustado" : "Neutro"}
+      </span>
+    </div>
+    <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Ajustes no destructivos por clip. Los tres controles usan una escala editorial de −100 a 100.</p>
+    <div className="mt-3 space-y-3">
+      {CONTROL_FIELDS.map((field) => <ColorControl
+        key={field.key}
+        disabled={disabled}
+        label={field.label}
+        onChange={(value) => preview({ ...values, [field.key]: value })}
+        value={values[field.key]}
+      />)}
+    </div>
+    {statusMessage && <p role={runtimeStatus?.state === "unavailable" ? "alert" : undefined} className={`mt-2 rounded-md px-2 py-1.5 text-[10px] leading-4 ${runtimeStatus?.state === "unavailable" ? "bg-amber-50 text-amber-800 dark:bg-amber-400/10 dark:text-amber-200" : "bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-gray-400"}`}>{statusMessage}</p>}
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      <button type="button" disabled={disabled} onClick={() => void save()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={12} /> Guardar color</button>
+      <button type="button" disabled={disabled} onClick={() => void reset()} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-600 disabled:opacity-50 dark:border-white/15 dark:text-gray-300"><RotateCcw size={12} /> Restablecer</button>
+    </div>
+    {disabled && <p className="mt-2 text-[10px] text-slate-500 dark:text-gray-400">Desbloquea la pista para modificar el color.</p>}
+  </section>;
+}
+
+function ColorControl({ disabled, label, onChange, value }: {
+  disabled: boolean;
+  label: string;
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  return <label className="block text-[10px] font-medium text-slate-600 dark:text-gray-300">
+    <span className="flex items-center justify-between gap-2"><span>{label}</span><span className="font-mono tabular-nums">{value}</span></span>
+    <div className="mt-1 flex items-center gap-2">
+      <input aria-label={label} type="range" min="-100" max="100" step="1" value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} className="min-w-0 flex-1 accent-cyan-500" />
+      <input aria-label={`${label}, valor`} type="number" min="-100" max="100" step="1" value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} className="w-16 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-right font-mono text-[10px] text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white" />
+    </div>
+  </label>;
+}
+
+function resolveStatusMessage(status: CompositionColorGradingRuntimeStatus | null) {
+  if (!status || status.state === "active" || status.state === "inactive") return null;
+  if (status.state === "unavailable") {
+    return "El navegador no pudo activar la corrección en vivo. Se muestra el medio original; el ajuste guardado seguirá disponible para render.";
+  }
+  if (status.state === "pending") return "Preparando la corrección de color del medio…";
+  return "No se encontró el medio visual para aplicar la corrección.";
+}

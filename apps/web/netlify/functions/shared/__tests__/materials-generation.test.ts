@@ -5,9 +5,9 @@ import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
 import { requestGeminiJson, requestOpenAiJson } from "../materials-model-client";
 import { commitGeneratedLesson } from "../material-components.repository";
-import { generateLessonMaterials, loadAptaSources, processGenerationResult } from "../materials-generation-runtime";
+import { generateLessonMaterials, loadAptaSources, processGenerationResult, triggerNextLesson } from "../materials-generation-runtime";
 import { resolveVideoDurationPolicy } from "../../../../src/domains/video-duration/video-duration-policy";
-import { generateWithRetry, matchesLesson } from "../materials-generation-helpers";
+import { generateWithRetry, matchesLesson, parseAndValidateMaterialsOutput } from "../materials-generation-helpers";
 import { generationFailureMessage, isGenerationStale, isPermanentProviderFailure } from "../../../../src/lib/pipeline-generation-policy";
 import { markArtifactGenerationFailed } from "../../../../src/domains/artifacts/lib/artifact-generation-failure";
 import type { MaterialsGenerationInput, MaterialsGenerationOutput } from "../../../../src/domains/materials/types/materials.types";
@@ -16,6 +16,47 @@ const content: MaterialsGenerationOutput = { components: { EXERCISE: { title: "P
 const runtime = { temperature: 0.7, thinkingLevel: "medium" };
 
 const execution = { materialsId: "materials-1", version: 3 };
+
+test("chained jobs await HTTP acceptance when Netlify build flags are absent", async (context) => {
+  const keys = ["NODE_ENV", "NETLIFY", "URL", "NEXT_PUBLIC_SUPABASE_URL", "BACKGROUND_FUNCTION_SECRET"] as const;
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  const originalFetch = globalThis.fetch;
+  Reflect.deleteProperty(process.env, "NODE_ENV");
+  delete process.env.NETLIFY;
+  process.env.URL = "https://courseforge.example.com";
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
+  process.env.BACKGROUND_FUNCTION_SECRET = "test-background-secret-at-least-32-characters";
+  context.after(() => {
+    globalThis.fetch = originalFetch;
+    for (const key of keys) {
+      if (previous[key] === undefined) Reflect.deleteProperty(process.env, key);
+      else Reflect.set(process.env, key, previous[key]);
+    }
+  });
+  let localCalls = 0;
+  let remoteCalls = 0;
+  const fallback = async () => { localCalls++; };
+  globalThis.fetch = async (url, options) => {
+    remoteCalls++;
+    assert.equal(url, "https://courseforge.example.com/.netlify/functions/materials-generation-background");
+    const signed = JSON.parse(String(options?.body)) as { payload: string; signature: string };
+    const envelope = JSON.parse(Buffer.from(signed.payload, "base64url").toString("utf8"));
+    assert.deepEqual(envelope.value, { materialsId: "materials-1", artifactId: "artifact-1", version: 3, mode: "process-next" });
+    assert.ok(signed.signature);
+    return new Response(null, { status: 202 });
+  };
+  await triggerNextLesson("materials-1", "artifact-1", "[test]", 3, fallback);
+  assert.equal(remoteCalls, 1);
+  assert.equal(localCalls, 0);
+
+  globalThis.fetch = async () => { throw new TypeError("fetch failed"); };
+  await assert.rejects(triggerNextLesson("materials-1", "artifact-1", "[test]", 3, fallback), /fetch failed/);
+  globalThis.fetch = async () => new Response(null, { status: 503 });
+  await assert.rejects(triggerNextLesson("materials-1", "artifact-1", "[test]", 3, fallback), /HTTP 503/);
+  // An HTTP failure must never be reported as a successful timer-based dispatch.
+  assert.equal(localCalls, 0);
+});
+
 function databaseStub(writeError: { message: string } | null = null, accepted = true) {
   const writes: Array<Record<string, unknown>> = [];
   const database = { rpc: async (name: string, payload: Record<string, unknown>) => {
@@ -104,6 +145,28 @@ test("source-required lessons fail before spending provider tokens when coverage
   assert.equal(result.success, false);
   assert.match(String(writes[0].p_error), /Fuentes insuficientes/);
   assert.deepEqual(writes[0].p_rows, []);
+});
+
+test("source-required model output must cite the required validated sources", () => {
+  const input = {
+    lesson: { lesson_id: "lesson-1", lesson_title: "Lesson", module_id: "module-1", module_title: "Module", oa_text: "Apply", components: [{ type: "EXERCISE", summary: "Practice" }], quiz_spec: null, requires_demo_guide: false },
+    sources: [
+      { id: "source-1", source_title: "One", source_ref: "https://example.test/1", cobertura_completa: true },
+      { id: "source-2", source_title: "Two", source_ref: "https://example.test/2", cobertura_completa: true },
+    ],
+    requires_sources: true,
+    required_source_count: 2,
+    iteration_number: 1,
+  } as MaterialsGenerationInput;
+  const response = { components: { EXERCISE: { title: "Practice" } }, source_refs_used: ["source-1"] };
+  assert.throws(
+    () => parseAndValidateMaterialsOutput(input, response),
+    /INSUFFICIENT_SOURCE_USAGE/,
+  );
+  assert.doesNotThrow(() => parseAndValidateMaterialsOutput(input, {
+    ...response,
+    source_refs_used: ["source-1", "source-2"],
+  }));
 });
 
 test("provider failures are actionable without leaking response bodies", () => {

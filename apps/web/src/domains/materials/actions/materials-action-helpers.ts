@@ -7,6 +7,7 @@ import {
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
 import type { Esp05StepState } from "../types/materials.types";
+import { markMaterialsGenerationFailed } from "../services/materials-generation-recovery";
 
 interface MaterialsAdminRow {
   artifact_id: string;
@@ -131,8 +132,9 @@ export async function callMaterialsNetlifyFunction<
             p_iteration: payload.iterationNumber, p_rows: [], p_success: false, p_error: generationFailureMessage(error),
           });
         }
-        await admin.from("materials").update({ state: "PHASE3_NEEDS_FIX", updated_at: new Date().toISOString() })
-          .eq("id", payload.materialsId).eq("version", payload.version).eq("state", "PHASE3_GENERATING");
+        if (typeof payload.materialsId === "string" && typeof payload.version === "number") {
+          await markMaterialsGenerationFailed(admin, payload.materialsId, payload.version, error);
+        }
       },
     });
     return {} as TData;

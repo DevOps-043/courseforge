@@ -169,9 +169,11 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
     p_expected_document_hash: params.expectedDocumentHash,
     p_format: nextDocument.format,
     p_metadata: {
+      groupCount: nextDocument.groups?.length || 0,
       motionAnimationCount: nextDocument.motion.animations.length,
       motionKeyframeCount: nextDocument.motion.animations.reduce((total, animation) => total + animation.keyframes.length, 0),
       operations: params.patch.operations.map((operation) => operation.type),
+      transitionCount: nextDocument.transitions?.items.length || 0,
     },
     p_organization_id: params.organizationId,
     p_source: params.auditSource || params.patch.source,

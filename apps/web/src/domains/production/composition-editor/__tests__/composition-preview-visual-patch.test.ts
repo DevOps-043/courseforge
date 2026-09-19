@@ -56,6 +56,33 @@ test("resolves media fit, visibility and effective B-roll volume", () => {
   });
 });
 
+test("resuelve corrección de color y el estado neutro para el runtime", () => {
+  const document = createBrollDocument();
+  const clip = document.clips.find((candidate) => candidate.kind === "VIDEO")!;
+  const operation: CompositionEditorPatchOperation = {
+    clipId: clip.id,
+    colorGrading: { adjust: { contrast: 0.2, exposure: 0.5, saturation: -0.3 } },
+    type: "clip.color-grading",
+  };
+  const graded = applyCompositionEditorPatches(document, [operation], "USER");
+  assert.deepEqual(buildCompositionPreviewVisualPatch({ document: graded, operations: [operation] }), {
+    changes: [{
+      colorGrading: { adjust: { contrast: 0.2, exposure: 0.5, saturation: -0.3 } },
+      hfId: clip.hfId,
+    }],
+  });
+
+  const resetOperation: CompositionEditorPatchOperation = {
+    clipId: clip.id,
+    colorGrading: null,
+    type: "clip.color-grading",
+  };
+  const neutral = applyCompositionEditorPatches(graded, [resetOperation], "USER");
+  assert.deepEqual(buildCompositionPreviewVisualPatch({ document: neutral, operations: [resetOperation] }), {
+    changes: [{ colorGrading: null, hfId: clip.hfId }],
+  });
+});
+
 test("fails closed for opacity and non-visual batches", () => {
   const document = createBrollDocument();
   const clip = document.clips.find((candidate) => candidate.kind === "VIDEO")!;

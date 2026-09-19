@@ -43,6 +43,7 @@ import { COMPOSITION_PREVIEW_SYNC_V2_ENABLED } from "@/domains/production/compos
 import {
   createCompositionPreviewParentCommand,
   parseCompositionPreviewIframeMessage,
+  type CompositionColorGradingRuntimeStatus,
   type CompositionPreviewParentCommandInput,
 } from "@/domains/production/composition-editor/composition-preview-protocol";
 import {
@@ -218,6 +219,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const [previewDocumentHash, setPreviewDocumentHash] = useState<string | null>(null);
   const [previewDirty, setPreviewDirty] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [colorGradingStatuses, setColorGradingStatuses] = useState<Record<string, CompositionColorGradingRuntimeStatus>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [separatingAudio, setSeparatingAudio] = useState(false);
@@ -600,6 +602,12 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         }
         setPlaybackError(`No se pudo reproducir ${message.mediaId}: ${message.message}`);
       }
+      if (message.type === "courseforge-composition-color-grading-status") {
+        setColorGradingStatuses((current) => ({
+          ...current,
+          [message.hfId]: { message: message.message, state: message.state },
+        }));
+      }
       if (message.type === "courseforge-composition-selection") {
         setSelectedHfId(message.hfId);
         setSelectedAnimationId(null);
@@ -648,6 +656,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     setPreviewReady(false);
     setPreviewMediaState("PREPARING");
     setPendingPreviewMediaIds([]);
+    setColorGradingStatuses({});
   }, [previewUrl]);
   useEffect(() => {
     mediaRecoveryHashRef.current = null;
@@ -2213,8 +2222,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)}
           onAudioMixUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)}
           onClearSelection={clearSelection}
+          onCreateGroup={(clipIds, groupId) => void savePatch([{ clipIds, groupId, type: "group.create" }], `Agrupó ${clipIds.length} clips del timeline.`)}
           onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)}
           onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)}
+          onMoveGroup={(groupId, startSeconds) => void savePatch([{ groupId, startSeconds, type: "group.move" }], `Movió el grupo a ${formatSeconds(startSeconds)}.`)}
           onOrganize={() => void organizeTimeline()}
           onOutroChange={(outroId) => void placeAssemblyBranding(outroId)}
           onRecalculateDuration={() => void recalculateDuration()}
@@ -2223,7 +2234,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           onSeek={seek}
           onSelect={selectClip}
           onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)}
+          onTransitionAdd={(transition) => void savePatch([{ transition, type: "transition.add" }], `Añadió ${transition.type} entre dos clips.`)}
+          onTransitionRemove={(transitionId) => void savePatch([{ transitionId, type: "transition.remove" }], "Quitó una transición entre clips.")}
+          onTransitionUpdate={(transitionId, settings) => void savePatch([{ settings, transitionId, type: "transition.update" }], "Ajustó una transición entre clips.")}
           onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Ajustó el inicio de ${clip.label} desde la timeline.`)}
+          onUngroup={(groupId) => void savePatch([{ groupId, type: "group.ungroup" }], "Desagrupó los clips seleccionados.")}
           recoveringHistoricalAssets={recoveringHistoricalAssets}
           refreshingProductionAssets={refreshingProductionAssets}
           saving={saving}
@@ -2235,7 +2250,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
         {inspectorOpen && <aside className={styles.inspector}>
           <div className={styles.inspectorHeader}><div className={styles.inspectorTabs}><button type="button" onClick={() => setInspectorTab("properties")} className={`${styles.inspectorTab} ${inspectorTab === "properties" ? styles.inspectorTabActive : ""}`}>Propiedades</button><button type="button" onClick={() => setInspectorTab("assistant")} className={`${styles.inspectorTab} ${inspectorTab === "assistant" ? styles.inspectorTabActive : ""}`}>SofLIA</button></div><button type="button" onClick={clearSelection} className={styles.inspectorClose} title="Cerrar inspector" aria-label="Cerrar inspector"><X size={15} /></button></div>
-          <div className={styles.inspectorBody}>{inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} selectedAnimationId={selectedAnimationId} onAnimationSelect={(id) => { if (id && selectedClip) selectAnimation(id, selectedClip.hfId); else setSelectedAnimationId(null); }} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} /> : <CompositionAgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={(instruction) => requestAgentProposal(instruction, Boolean(presetPreview))} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}</div>
+          <div className={styles.inspectorBody}>{inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} colorGradingStatus={selectedHfId ? colorGradingStatuses[selectedHfId] || null : null} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} selectedAnimationId={selectedAnimationId} onAnimationSelect={(id) => { if (id && selectedClip) selectAnimation(id, selectedClip.hfId); else setSelectedAnimationId(null); }} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewColorGrading={(hfId, colorGrading) => postPreviewMessage({ type: "courseforge-composition-preview-color-grading", hfId, colorGrading })} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} /> : <CompositionAgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={(instruction) => requestAgentProposal(instruction, Boolean(presetPreview))} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}</div>
         </aside>}
       </div>
     </section>

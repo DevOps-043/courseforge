@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { compositionVisualCropSchema } from "./composition-document.types";
+import { compositionColorGradingSchema } from "./composition-color-grading.types";
 import { compositionPreviewMetricSchema } from "./composition-preview-telemetry";
 import { compositionPreviewVisualPatchSchema } from "./composition-preview-visual-patch";
 
@@ -24,6 +25,13 @@ export const compositionPreviewIframeMessageSchema = z.discriminatedUnion("type"
   z.object({ ...iframeMessageBase, pendingMediaIds: z.array(hfIdSchema).max(32), state: z.enum(["BUFFERING", "PLAYING", "PREPARING", "READY"]), type: z.literal("courseforge-composition-media-state") }).strict(),
   z.object({ ...iframeMessageBase, metric: compositionPreviewMetricSchema, type: z.literal("courseforge-composition-media-metric") }).strict(),
   z.object({ ...iframeMessageBase, code: z.string().trim().min(1).max(80), mediaId: hfIdSchema, message: z.string().trim().min(1).max(500), type: z.literal("courseforge-composition-media-error") }).strict(),
+  z.object({
+    ...iframeMessageBase,
+    hfId: hfIdSchema,
+    message: z.string().trim().min(1).max(500),
+    state: z.enum(["active", "inactive", "missing", "pending", "unavailable"]),
+    type: z.literal("courseforge-composition-color-grading-status"),
+  }).strict(),
   z.object({
     ...iframeMessageBase,
     bounds: z.object({ height: z.number().finite(), width: z.number().finite(), x: z.number().finite(), y: z.number().finite() }).strict().optional(),
@@ -57,6 +65,7 @@ export const compositionPreviewParentCommandSchema = z.discriminatedUnion("type"
   }).strict(),
   z.object({ protocolVersion: protocolVersionSchema, scale: z.number().finite().min(0.5).max(2), type: z.literal("courseforge-composition-preview-zoom") }).strict(),
   z.object({ crop: compositionVisualCropSchema, hfId: hfIdSchema, protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-preview-crop") }).strict(),
+  z.object({ colorGrading: compositionColorGradingSchema.nullable(), hfId: hfIdSchema, protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-preview-color-grading") }).strict(),
   z.object({ hfId: hfIdSchema.nullable(), protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-select") }).strict(),
   z.object({
     baseDocumentHash: z.string().regex(/^[a-f0-9]{64}$/i),
@@ -69,6 +78,7 @@ export const compositionPreviewParentCommandSchema = z.discriminatedUnion("type"
 
 export type CompositionPreviewIframeMessage = z.output<typeof compositionPreviewIframeMessageSchema>;
 export type CompositionPreviewVisualPatchResult = Extract<CompositionPreviewIframeMessage, { type: "courseforge-composition-visual-patch-result" }>;
+export type CompositionColorGradingRuntimeStatus = Pick<Extract<CompositionPreviewIframeMessage, { type: "courseforge-composition-color-grading-status" }>, "message" | "state">;
 export type CompositionPreviewParentCommandInput = z.input<typeof compositionPreviewParentCommandSchema>;
 
 export function parseCompositionPreviewIframeMessage(candidate: unknown) {

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { GeneratedInstructionalPlanSchema } from "../instructional-plan-generation.schema";
 import { buildInstructionalPlanContextPrompt } from "../instructional-plan-prompt";
 import { resolveInstructionalPlanAudience } from "../instructional-plan-validation-context";
+import { getInstructionalPlanCompletenessIssues } from "../plan-completeness";
 
 interface JsonSchemaObject {
   additionalProperties?: boolean;
@@ -67,6 +68,23 @@ test("accepts nullable pedagogical fields while keeping every key present", () =
 
   assert.equal(parsed.lesson_plans[0]?.oa_bloom_verb, null);
   assert.deepEqual(parsed.blockers, []);
+});
+
+test("requires a one-to-one lesson mapping between syllabus and plan", () => {
+  const modules = [{ lessons: [{ id: "lesson-1" }, { id: "lesson-2" }] }];
+  assert.deepEqual(
+    getInstructionalPlanCompletenessIssues(modules, [
+      { lesson_id: "lesson-1" },
+      { lesson_id: "lesson-2" },
+    ]),
+    [],
+  );
+  const issues = getInstructionalPlanCompletenessIssues(modules, [
+    { lesson_id: "lesson-1" },
+    { lesson_id: "lesson-1" },
+  ]);
+  assert.ok(issues.some((issue) => issue.includes("Faltan lecciones")));
+  assert.ok(issues.some((issue) => issue.includes("repite identificadores")));
 });
 
 test("uses the company prompt until an explicit per-generation edit is enabled", () => {

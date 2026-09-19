@@ -1,7 +1,7 @@
 import { Handler } from '@netlify/functions';
 import { createServiceRoleClient } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
-import { methodNotAllowedResponse, parseVerifiedBackgroundBody, unauthorizedBackgroundResponse } from './shared/http';
+import { backgroundGuardFailureResponse, methodNotAllowedResponse, parseVerifiedBackgroundBody } from './shared/http';
 import { selectLatestComponentsByType } from '../../src/domains/materials/lib/material-component-versions';
 import {
     hasSubstantiveQuizOptionText,
@@ -9,6 +9,7 @@ import {
     stripQuizOptionPrefix,
 } from '../../src/domains/materials/lib/quiz-option-format';
 import { collectMaterialVideoValidationErrors } from '../../src/domains/materials/validators/material-video.validators';
+import { buildLessonsToProcess } from './shared/unified-curation-helpers';
 
 interface LessonDod {
     control3_consistency: 'PASS' | 'FAIL' | 'PENDING';
@@ -18,6 +19,7 @@ interface LessonDod {
 }
 
 interface MaterialsRecord {
+    artifact_id: string;
     id: string;
     version: number;
 }
@@ -30,6 +32,7 @@ interface MaterialLessonRecord {
     iteration_count?: number;
     expected_components?: string[] | null;
     id: string;
+    lesson_id: string;
     lesson_title?: string | null;
     materials_id: string;
     quiz_spec?: LessonQuizSpec | null;
@@ -47,10 +50,17 @@ interface MaterialComponentRecord {
     assets?: Record<string, unknown> | null;
     content?: Record<string, unknown> | null;
     id: string;
+    source_refs?: string[] | null;
     iteration_number?: number | null;
     type: string;
     validation_errors?: string[] | null;
     validation_status?: string | null;
+}
+
+interface MaterialSourceValidationContext {
+    requiredSourcesByLesson: Map<string, number>;
+    requiresSources: boolean;
+    validSourceIdsByLesson: Map<string, Set<string>>;
 }
 
 const STABLE_ID_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
@@ -77,6 +87,64 @@ function getStringArray(value: unknown) {
         : [];
 }
 
+function normalizeLessonKey(value: string | null | undefined) {
+    return (value || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ');
+}
+
+async function loadMaterialSourceValidationContext(
+    supabase: ReturnType<typeof createServiceRoleClient>,
+    artifactId: string,
+): Promise<MaterialSourceValidationContext> {
+    const [syllabusResult, planResult, curationResult] = await Promise.all([
+        supabase.from('syllabus').select('route').eq('artifact_id', artifactId).single(),
+        supabase.from('instructional_plans').select('lesson_plans').eq('artifact_id', artifactId).single(),
+        supabase.from('curation').select('id').eq('artifact_id', artifactId).maybeSingle(),
+    ]);
+    if (syllabusResult.error) throw syllabusResult.error;
+    if (planResult.error) throw planResult.error;
+    if (curationResult.error) throw curationResult.error;
+
+    const lessons = buildLessonsToProcess(planResult.data.lesson_plans);
+    const requiredSourcesByLesson = new Map(
+        lessons.map((lesson) => [lesson.lesson_id, lesson.required_sources]),
+    );
+    const validSourceIdsByLesson = new Map<string, Set<string>>();
+    const requiresSources = syllabusResult.data.route !== 'B_NO_SOURCE';
+    if (!requiresSources || !curationResult.data?.id) {
+        return { requiredSourcesByLesson, requiresSources, validSourceIdsByLesson };
+    }
+
+    const lessonIdByTitle = new Map(
+        lessons.map((lesson) => [normalizeLessonKey(lesson.lesson_title), lesson.lesson_id]),
+    );
+    const knownLessonIds = new Set(lessons.map((lesson) => lesson.lesson_id));
+    const { data: rows, error: rowsError } = await supabase
+        .from('curation_rows')
+        .select('id, lesson_id, lesson_title, apta, validation_report')
+        .eq('curation_id', curationResult.data.id)
+        .eq('apta', true);
+    if (rowsError) throw rowsError;
+
+    for (const row of rows || []) {
+        const report = row.validation_report as { status?: string } | null;
+        if (report?.status && report.status !== 'valid') continue;
+        const lessonId = knownLessonIds.has(row.lesson_id)
+            ? row.lesson_id
+            : lessonIdByTitle.get(normalizeLessonKey(row.lesson_title));
+        if (!lessonId) continue;
+        const ids = validSourceIdsByLesson.get(lessonId) || new Set<string>();
+        ids.add(row.id);
+        validSourceIdsByLesson.set(lessonId, ids);
+    }
+
+    return { requiredSourcesByLesson, requiresSources, validSourceIdsByLesson };
+}
+
 export const handler: Handler = async (event) => {
     if (event.httpMethod !== 'POST') {
         return methodNotAllowedResponse();
@@ -97,8 +165,8 @@ export const handler: Handler = async (event) => {
             lessonId?: string;
             markForFix?: boolean;
         }>(event);
-    } catch {
-        return unauthorizedBackgroundResponse();
+    } catch (error) {
+        return backgroundGuardFailureResponse(error);
     }
 
     try {
@@ -124,7 +192,7 @@ export const handler: Handler = async (event) => {
         if (materialsId) {
             const { data, error } = await supabase
                 .from('materials')
-                .select('id, version')
+                .select('id, artifact_id, version')
                 .eq('id', materialsId)
                 .single();
             if (error) throw new Error(`Materials not found: ${error.message}`);
@@ -132,7 +200,7 @@ export const handler: Handler = async (event) => {
         } else {
             const { data, error } = await supabase
                 .from('materials')
-                .select('id, version')
+                .select('id, artifact_id, version')
                 .eq('artifact_id', artifactId)
                 .single();
             if (error) throw new Error(`Materials not found: ${error.message}`);
@@ -142,10 +210,14 @@ export const handler: Handler = async (event) => {
         if (body.version !== undefined && materials.version !== body.version) {
             return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
         }
+        const sourceValidationContext = await loadMaterialSourceValidationContext(
+            supabase,
+            materials.artifact_id,
+        );
         // 2. Get all lessons for this materials record
         const { data: lessons, error: lessonsError } = await supabase
             .from('material_lessons')
-            .select('id, materials_id, lesson_title, expected_components, quiz_spec, state, iteration_count')
+            .select('id, materials_id, lesson_id, lesson_title, expected_components, quiz_spec, state, iteration_count')
             .eq('materials_id', materials.id);
 
         if (lessonsError) throw new Error(`Error fetching lessons: ${lessonsError.message}`);
@@ -155,21 +227,19 @@ export const handler: Handler = async (event) => {
         // 3. Validate each lesson
         let allApprovable = Boolean(lessons?.length);
         let validatedCount = 0;
-        let skippedCount = 0;
 
         for (const lesson of ((lessons || []) as MaterialLessonRecord[])) {
             // Skip lessons already marked as NEEDS_FIX (preserve user's manual marking)
             if (!["GENERATED", "APPROVABLE"].includes(lesson.state || "")) {
                 console.log(`[Validate Materials] Skipping ${lesson.lesson_title} - already NEEDS_FIX`);
                 allApprovable = false;
-                skippedCount++;
                 continue;
             }
 
             // Get components for this lesson
             const { data: components, error: componentsError } = await supabase
                 .from('material_components')
-                .select('id, type, content, assets, validation_status, validation_errors, iteration_number')
+                .select('id, type, content, source_refs, assets, validation_status, validation_errors, iteration_number')
                 .eq('material_lesson_id', lesson.id);
             if (componentsError) throw componentsError;
 
@@ -181,6 +251,7 @@ export const handler: Handler = async (event) => {
             const dod = runInlineValidation(
                 lesson,
                 activeComponents,
+                sourceValidationContext,
             );
 
             // Determine new state
@@ -244,6 +315,7 @@ export const handler: Handler = async (event) => {
 function runInlineValidation(
     lesson: MaterialLessonRecord,
     components: MaterialComponentRecord[],
+    sourceContext: MaterialSourceValidationContext,
 ): LessonDod {
     const errors: string[] = [];
 
@@ -256,7 +328,36 @@ function runInlineValidation(
         errors.push(`Faltan componentes: ${missing.join(', ')}`);
     }
 
-    // Control 4: Sources Usage (simplified - just check if any sources used)
+    // Control 4: every source-required lesson must cite enough currently valid
+    // curation rows belonging to that same lesson.
+    const sourceErrors: string[] = [];
+    if (sourceContext.requiresSources) {
+        const requiredSources = Math.max(
+            1,
+            sourceContext.requiredSourcesByLesson.get(lesson.lesson_id) || 0,
+        );
+        const validSourceIds =
+            sourceContext.validSourceIdsByLesson.get(lesson.lesson_id) ||
+            new Set<string>();
+        const usedSourceIds = new Set(
+            components.flatMap((component) => component.source_refs || []),
+        );
+        const unknownSourceIds = [...usedSourceIds].filter(
+            (sourceId) => !validSourceIds.has(sourceId),
+        );
+        if (usedSourceIds.size < requiredSources) {
+            sourceErrors.push(
+                `La lección utiliza ${usedSourceIds.size}/${requiredSources} fuentes validadas requeridas`,
+            );
+        }
+        if (unknownSourceIds.length > 0) {
+            sourceErrors.push(
+                `${unknownSourceIds.length} referencia(s) no pertenecen a las fuentes válidas de la lección`,
+            );
+        }
+    }
+    errors.push(...sourceErrors);
+
     // Control 5: Quiz Validation (if expected)
     const quizComponent = components.find((component) => component.type === 'QUIZ');
     const expectsQuiz = expectedTypes.includes('QUIZ');
@@ -319,7 +420,7 @@ function runInlineValidation(
 
     // Determine control states
     const hasCtrl3Error = missing.length > 0 || dialogueErrors.length > 0 || videoErrors.length > 0;
-    const hasCtrl4Error = false; // Lenient for now
+    const hasCtrl4Error = sourceErrors.length > 0;
     const hasCtrl5Error = errors.some(e => e.includes('Quiz') || e.includes('QUIZ') || e.includes('pregunta'));
 
     return {
@@ -474,7 +575,7 @@ async function validateSingleLesson(lessonId: string) {
         // Fetch lesson
         const { data: lesson, error: lessonError } = await supabase
             .from('material_lessons')
-            .select('id, materials_id, lesson_title, expected_components, quiz_spec, state')
+            .select('id, materials_id, lesson_id, lesson_title, expected_components, quiz_spec, state')
             .eq('id', lessonId)
             .single();
 
@@ -485,10 +586,23 @@ async function validateSingleLesson(lessonId: string) {
             };
         }
 
+        const { data: materials, error: materialsError } = await supabase
+            .from('materials')
+            .select('artifact_id')
+            .eq('id', lesson.materials_id)
+            .single();
+        if (materialsError || !materials?.artifact_id) {
+            throw new Error(materialsError?.message || 'Materials not found');
+        }
+        const sourceValidationContext = await loadMaterialSourceValidationContext(
+            supabase,
+            materials.artifact_id,
+        );
+
         // Fetch components
         const { data: components } = await supabase
             .from('material_components')
-            .select('id, type, content, assets, validation_status, validation_errors, iteration_number')
+            .select('id, type, content, source_refs, assets, validation_status, validation_errors, iteration_number')
             .eq('material_lesson_id', lessonId);
 
         const activeComponents = selectLatestComponentsByType(
@@ -499,6 +613,7 @@ async function validateSingleLesson(lessonId: string) {
         const dod = runInlineValidation(
             lesson as MaterialLessonRecord,
             activeComponents,
+            sourceValidationContext,
         );
         const hasErrors = dod.errors.length > 0;
         const newState = hasErrors ? 'NEEDS_FIX' : 'APPROVABLE';

@@ -737,15 +737,24 @@ test("removes only deck-owned raster assets from an existing timeline", () => {
     ],
     plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Deck" },
   });
+  const groupedAssetIds = document.clips.filter((clip) => (
+    clip.source.type === "PRODUCTION_ASSET"
+  )).map((clip) => clip.id);
+  const grouped = applyCompositionEditorPatches(document, [{
+    clipIds: groupedAssetIds,
+    groupId: "group-reconciled-assets",
+    type: "group.create",
+  }]);
   const reconciled = reconcileCompositionDocument({
     deckDependencyAssetIds: new Set([deckAssetId]),
-    document,
+    document: grouped,
     productionAssets: [{ checksum: "f".repeat(64), fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: avatarAssetId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR" }],
   });
 
   assert.equal(reconciled.removedDeckDependencyCount, 1);
   assert.equal(reconciled.document.clips.some((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === deckAssetId), false);
   assert.equal(reconciled.document.clips.some((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === avatarAssetId && clip.trackId === "avatar"), true);
+  assert.deepEqual(reconciled.document.groups, []);
 });
 
 test("preserves retained clip bounds and removes orphan animations when production assets change", () => {

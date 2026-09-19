@@ -28,7 +28,17 @@ export async function generateAndTraceMaterialVideo(params: {
     result = await generateVideoInStages({
       ...params,
       prompts,
-      request: createMaterialsModelRequest(params.modelRuntimeConfig),
+      request: createMaterialsModelRequest(params.modelRuntimeConfig, {
+        supabase: params.supabase,
+        context: {
+          artifactId: params.artifactId,
+          attempt: params.input.iteration_number,
+          lessonId: params.lessonId,
+          operation: `generate_${params.componentType.toLowerCase()}`,
+          organizationId: params.organizationId,
+          pipelineStep: "MATERIALS",
+        },
+      }),
     });
   } catch (error) {
     logger.error("generation_failed", error);

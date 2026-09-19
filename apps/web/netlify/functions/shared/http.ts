@@ -32,6 +32,27 @@ export function unauthorizedBackgroundResponse(): HandlerResponse {
   return jsonResponse({ error: "Unauthorized background request" }, 401);
 }
 
+export class BackgroundGuardDependencyUnavailableError extends Error {
+  constructor(message = "No se pudo verificar la solicitud de background.") {
+    super(message);
+    this.name = "BackgroundGuardDependencyUnavailableError";
+  }
+}
+
+export function backgroundGuardFailureResponse(error: unknown): HandlerResponse {
+  if (error instanceof BackgroundGuardDependencyUnavailableError) {
+    return jsonResponse(
+      {
+        error: "Background request verification temporarily unavailable",
+        retryable: true,
+      },
+      503,
+    );
+  }
+
+  return unauthorizedBackgroundResponse();
+}
+
 export function parseJsonBody<TData>(event: HandlerEvent): TData {
   try {
     return JSON.parse(event.body || "{}") as TData;
@@ -78,7 +99,7 @@ export async function parseVerifiedBackgroundBody<TData>(event: HandlerEvent): P
     // Fallo de infraestructura (credenciales, RPC ausente, base inalcanzable): no es un
     // rechazo de seguridad y debe quedar registrado, porque el llamador ya recibio 202.
     logger.error("background.guard_dependency_unavailable", error);
-    throw new Error("No se pudo verificar la solicitud de background.");
+    throw new BackgroundGuardDependencyUnavailableError();
   }
 
   if (accepted !== true) {

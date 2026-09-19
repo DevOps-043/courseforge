@@ -8,7 +8,7 @@ import {
   jsonResponse,
   methodNotAllowedResponse,
   parseVerifiedBackgroundBody,
-  unauthorizedBackgroundResponse,
+  backgroundGuardFailureResponse,
 } from "./shared/http";
 import { syncBrollPromptsToMaterialComponent } from "../../src/domains/production/assets/production-asset-sync.service";
 import {
@@ -74,8 +74,8 @@ export const handler: Handler = async (event) => {
 
   try {
     requestBody = await parseVerifiedBackgroundBody<VideoPromptsRequestBody>(event);
-  } catch {
-    return unauthorizedBackgroundResponse();
+  } catch (error) {
+    return backgroundGuardFailureResponse(error);
   }
 
   try {

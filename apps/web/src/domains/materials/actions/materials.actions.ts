@@ -12,6 +12,7 @@ import {
 } from "@/domains/video-duration/video-duration-policy";
 import { applyVideoDurationContractToPlanComponent } from "@/domains/video-duration/video-duration-plan";
 import type { Esp05StepState, QADecision } from "../types/materials.types";
+import { markMaterialsGenerationFailed } from "../services/materials-generation-recovery";
 import {
   createMaterialsActionError,
   getAuthorizedArtifactMaterialsContext,
@@ -163,8 +164,7 @@ export async function startMaterialsGenerationAction(artifactId: string) {
 
       return { success: true as const };
     } catch (error) {
-      await context.admin.from("materials").update({ state: "PHASE3_NEEDS_FIX" })
-        .eq("id", materials.id).eq("version", materials.version).eq("state", "PHASE3_GENERATING");
+      await markMaterialsGenerationFailed(context.admin, materials.id, materials.version, error);
       console.error("[MaterialsActions] Error triggering generation:", error);
       return createMaterialsActionError(getErrorMessage(error));
     }
@@ -418,6 +418,26 @@ export async function applyMaterialsQaDecisionAction(
   const context = await getAuthorizedMaterialsReviewerContext(materialsId);
   if (!context.ok) {
     return context.errorResult;
+  }
+
+  if (decision === "APPROVED") {
+    if (context.materials.state !== "PHASE3_READY_FOR_QA") {
+      return createMaterialsActionError(
+        "No se pueden aprobar materiales que todavía no están listos para QA.",
+      );
+    }
+    const { count, error: countError } = await countNonApprovableLessons(
+      context.admin,
+      materialsId,
+    );
+    if (countError) {
+      return createMaterialsActionError(countError.message);
+    }
+    if (count > 0) {
+      return createMaterialsActionError(
+        `${count} lecciones todavía no cumplen todos los controles de completitud.`,
+      );
+    }
   }
 
   const qaDecision: QADecision = {

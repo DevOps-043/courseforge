@@ -4,6 +4,7 @@ import type {
   CompositionTrack,
 } from "./composition-document.types";
 import { compositionClipHasConfigurableAudio } from "./composition-clip-audio.service";
+import { buildCompositionTransitionRuntime } from "./composition-transition-runtime";
 
 export interface CompositionTimelineLane {
   clips: CompositionClip[];
@@ -33,6 +34,7 @@ export interface CompositionTimelineLayout {
 export function buildCompositionTimelineLayout(
   document: CompositionEditorDocument,
 ): CompositionTimelineLayout {
+  const transitionRuntime = buildCompositionTransitionRuntime(document);
   const clipsByTrack = groupClipsByTrack(document.clips);
   const visualGroups: CompositionTimelineDisplayGroup[] = [];
   const audioGroups: CompositionTimelineDisplayGroup[] = [];
@@ -51,7 +53,13 @@ export function buildCompositionTimelineLayout(
       clipsByDepth.set(clip.layout.zIndex, depthClips);
     }
     for (const [zIndex, depthClips] of [...clipsByDepth.entries()].sort(([left], [right]) => right - left)) {
-      visualGroups.push(buildGroup(track, depthClips, "VISUAL", zIndex));
+      visualGroups.push(buildGroup(
+        track,
+        depthClips,
+        "VISUAL",
+        zIndex,
+        (clip) => transitionRuntime.clipWindowsById.get(clip.id),
+      ));
     }
   }
 
@@ -78,7 +86,11 @@ export function buildCompositionTimelineLayout(
     clip.kind === "VIDEO" && compositionClipHasConfigurableAudio(clip, tracksById.get(clip.trackId))
   ));
   const audioTrackIndexByClipId = new Map<string, number>();
-  for (const lane of packTimelineClips(synchronizedVideoClips, "synchronized-audio")) {
+  for (const lane of packTimelineClips(
+    synchronizedVideoClips,
+    "synchronized-audio",
+    (clip) => transitionRuntime.audioWindowsByClipId.get(clip.id),
+  )) {
     for (const clip of lane.clips) audioTrackIndexByClipId.set(clip.id, nextTrackIndex);
     nextTrackIndex += 1;
   }
@@ -89,22 +101,26 @@ export function buildCompositionTimelineLayout(
 export function packTimelineClips(
   clips: readonly CompositionClip[],
   laneIdPrefix: string,
+  resolveWindow: (clip: CompositionClip) => { endSeconds: number; startSeconds: number } | undefined
+    = (clip) => ({ endSeconds: clip.startSeconds + clip.durationSeconds, startSeconds: clip.startSeconds }),
 ): CompositionTimelineLane[] {
   const lanes: Array<CompositionTimelineLane & { endSeconds: number }> = [];
   const sorted = clips.slice().sort(compareClips);
 
   for (const clip of sorted) {
+    const window = resolveWindow(clip)
+      || { endSeconds: clip.startSeconds + clip.durationSeconds, startSeconds: clip.startSeconds };
     const available = lanes
-      .filter((lane) => lane.endSeconds <= clip.startSeconds)
+      .filter((lane) => lane.endSeconds <= window.startSeconds)
       .sort((left, right) => left.endSeconds - right.endSeconds || left.id.localeCompare(right.id))[0];
     if (available) {
       available.clips.push(clip);
-      available.endSeconds = clip.startSeconds + clip.durationSeconds;
+      available.endSeconds = window.endSeconds;
       continue;
     }
     lanes.push({
       clips: [clip],
-      endSeconds: clip.startSeconds + clip.durationSeconds,
+      endSeconds: window.endSeconds,
       id: `${laneIdPrefix}:lane-${lanes.length}`,
     });
   }
@@ -117,13 +133,14 @@ function buildGroup(
   clips: CompositionClip[],
   kind: CompositionTimelineDisplayGroup["kind"],
   zIndex?: number,
+  resolveWindow?: (clip: CompositionClip) => { endSeconds: number; startSeconds: number } | undefined,
 ): CompositionTimelineDisplayGroup {
   const id = zIndex === undefined ? `audio:${track.id}` : `visual:${zIndex}:${track.id}`;
   return {
     clips: clips.slice().sort(compareClips),
     id,
     kind,
-    lanes: packTimelineClips(clips, id),
+    lanes: packTimelineClips(clips, id, resolveWindow),
     track,
     ...(zIndex === undefined ? {} : { zIndex }),
   };

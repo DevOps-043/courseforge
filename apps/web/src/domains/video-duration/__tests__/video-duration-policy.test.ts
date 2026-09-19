@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildVideoDurationContract,
+  buildVideoNarrationCharacterBudget,
   DEFAULT_VIDEO_DURATION_POLICY,
   resolveArtifactVideoDurationPolicy,
   resolveVideoDurationPolicy,
@@ -38,6 +39,35 @@ test("accepts a safe custom duration policy", () => {
 
   assert.equal(custom.targetDurationSeconds, 540);
   assert.equal(buildVideoDurationContract(custom).minimumStoryboardTakes, 18);
+});
+
+test("an explicit upper margin accepts 8:30 while retaining the 7-minute target and lower bound", () => {
+  const contract = buildVideoDurationContract({
+    ...DEFAULT_VIDEO_DURATION_POLICY, maximumDurationSeconds: 510, targetOverrunSeconds: 90,
+  }, "VIDEO_DEMO");
+  const budget = buildVideoNarrationCharacterBudget(contract);
+  assert.equal(contract.targetDurationSeconds, 420);
+  assert.equal(budget.target, 6300);
+  assert.equal(budget.targetMaximum, 7650);
+  assert.equal(budget.targetMinimum, 5985);
+  const validate = (characters: number, currentContract = contract) => {
+    const firstLength = Math.floor(characters / 2);
+    const content = normalizeVideoDurationContent({ script: { sections: [
+      { narration_text: "a".repeat(firstLength), on_screen_text: "1\n2\n3" },
+      { narration_text: "a".repeat(characters - firstLength - 1), on_screen_text: "4\n5\n6" },
+    ] } }, currentContract);
+    return validateVideoDurationContent(content, currentContract, "script");
+  };
+  for (const characters of [6875, 7452, 7650]) {
+    assert.equal(validate(characters).valid, true, `${characters} characters should be allowed`);
+  }
+  assert.equal(validate(7651).valid, false, "character limit still rejects rounded 8:30 overflow");
+  assert.equal(validate(7665).valid, false, "8:31 remains outside the limit");
+  assert.equal(validate(5984).valid, false, "lower tolerance is unchanged");
+  assert.equal(validate(6875, buildVideoDurationContract(null, "VIDEO_DEMO")).valid, false,
+    "other courses keep the existing 5% tolerance");
+  assert.equal(buildVideoNarrationCharacterBudget({ ...contract, targetOverrunSeconds: 600 }).targetMaximum, 7650,
+    "the explicit margin cannot exceed the absolute maximum");
 });
 
 test("requires the target duration to stay between the minimum and maximum", () => {

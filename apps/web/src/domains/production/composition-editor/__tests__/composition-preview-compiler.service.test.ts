@@ -17,6 +17,25 @@ import {
 } from "../composition-preview-assets.service";
 import type { CompositionPreviewAssetDiagnostics } from "../composition-preview-performance";
 
+function readColorGradingPayload(html: string, clipId: string) {
+  const mediaStart = html.indexOf(`id="${clipId}-media"`);
+  assert.notEqual(mediaStart, -1, `No se encontrÃ³ el medio del clip ${clipId}.`);
+  const attributeStart = html.indexOf("data-color-grading='", mediaStart);
+  assert.notEqual(attributeStart, -1, `No se encontrÃ³ la correcciÃ³n de color de ${clipId}.`);
+  const valueStart = attributeStart + "data-color-grading='".length;
+  const valueEnd = html.indexOf("'", valueStart);
+  assert.notEqual(valueEnd, -1, `El atributo de color de ${clipId} estÃ¡ incompleto.`);
+  const serialized = html.slice(valueStart, valueEnd)
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+  return JSON.parse(serialized) as {
+    adjust: { contrast: number; exposure: number; saturation: number };
+  };
+}
+
 test("uses stable public URLs and scoped signatures without iframe authentication", () => {
   assert.equal(COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS, 60 * 60);
   assert.equal(COMPOSITION_PREVIEW_SIGNING_CONCURRENCY, 6);
@@ -55,6 +74,110 @@ test("compiles HyperFrames media as provider variables instead of ZIP paths", as
     new RegExp(`<html lang="es" data-composition-variables='\\[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;${variableName}&quot;,&quot;label&quot;:&quot;SofLIA - Engine remote asset&quot;,&quot;type&quot;:&quot;string&quot;}\\]'`),
   );
   assert.doesNotMatch(html, /src="https:\/\/project\.supabase\.co\/avatar\.mp4"/);
+});
+
+test("serializa la correcciÃ³n bÃ¡sica en el medio real para preview y render", async () => {
+  const assetId = "00000000-0000-4000-8000-000000000098";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "8".repeat(64), durationSeconds: 8, fileSizeBytes: 8, mimeType: "video/mp4", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/graded.mp4", timelineRole: "BROLL" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Color" },
+  });
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  video.colorGrading = {
+    adjust: { contrast: 0.25, exposure: 0.5, saturation: -0.2 },
+  };
+  const params = {
+    assetUrls: new Map([[assetId, "https://storage.test/graded.mp4"]]),
+    document,
+  };
+  const [previewHtml, renderHtml] = await Promise.all([
+    compileCompositionPreview({ ...params, target: COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW }),
+    compileCompositionPreview({ ...params, target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER }),
+  ]);
+
+  for (const html of [previewHtml, renderHtml]) {
+    assert.match(html, new RegExp(`<video id="${video.id}-media"[^>]+crossorigin="anonymous"`));
+    const payload = readColorGradingPayload(html, video.id);
+    assert.equal(payload.adjust.exposure, 0.5);
+    assert.equal(payload.adjust.contrast, 0.25);
+    assert.equal(payload.adjust.saturation, -0.2);
+  }
+  assert.match(previewHtml, /__hfColorGradingRuntimeInstalled/);
+  assert.match(previewHtml, /courseforge-composition-preview-color-grading/);
+  assert.match(previewHtml, /courseforge-composition-color-grading-status/);
+  assert.doesNotMatch(renderHtml, /__hfColorGradingRuntimeInstalled/);
+});
+
+test("omite el atributo neutro y conserva el contrato en imÃ¡genes", async () => {
+  const assetId = "00000000-0000-4000-8000-000000000097";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "7".repeat(64), durationSeconds: 5, fileSizeBytes: 7, mimeType: "image/png", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/still.png", timelineRole: "BROLL" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Imagen" },
+  });
+  const image = document.clips.find((clip) => clip.kind === "IMAGE")!;
+  image.colorGrading = { adjust: { contrast: 0, exposure: 0, saturation: 0 } };
+  const neutralHtml = await compileCompositionPreview({
+    assetUrls: new Map([[assetId, "https://storage.test/still.png"]]),
+    document,
+  });
+  assert.match(neutralHtml, new RegExp(`<img id="${image.id}-media"[^>]+crossorigin="anonymous"`));
+  assert.doesNotMatch(neutralHtml, /data-color-grading=/);
+
+  image.colorGrading = { adjust: { contrast: -0.4, exposure: -0.25, saturation: 0.6 } };
+  const gradedHtml = await compileCompositionPreview({
+    assetUrls: new Map([[assetId, "https://storage.test/still.png"]]),
+    document,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+  const payload = readColorGradingPayload(gradedHtml, image.id);
+  assert.equal(payload.adjust.exposure, -0.25);
+  assert.equal(payload.adjust.contrast, -0.4);
+  assert.equal(payload.adjust.saturation, 0.6);
+});
+
+test("el agrupamiento editorial no altera el HTML enviado a HyperFrames", async () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: {
+      appearance: "light",
+      css: ".slide { color: black; }",
+      fonts: [],
+      height: 1080,
+      slides: [
+        { animationCount: 0, classes: "slide", html: "<h1>Uno</h1>", index: 0, label: "Uno" },
+        { animationCount: 0, classes: "slide", html: "<h1>Dos</h1>", index: 1, label: "Dos" },
+      ],
+      width: 1920,
+    },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Grupos" },
+  });
+  const grouped = compositionEditorDocumentSchema.parse({
+    ...document,
+    groups: [{
+      clipIds: document.clips.map((clip) => clip.id),
+      id: "group-deck",
+      label: "Deck",
+      order: 0,
+    }],
+  });
+
+  const [plainHtml, groupedHtml] = await Promise.all([
+    compileCompositionPreview({
+      assetUrls: new Map(),
+      document,
+      target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+    }),
+    compileCompositionPreview({
+      assetUrls: new Map(),
+      document: grouped,
+      target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+    }),
+  ]);
+
+  assert.equal(groupedHtml, plainHtml);
+  assert.doesNotMatch(groupedHtml, /group-deck/);
 });
 
 test("embeds a stable Storage URL for public production media", async () => {
@@ -587,6 +710,142 @@ test("compiles derived video clips with the same source and their distinct media
   assert.match(html, /id="avatar-second-cut-audio"[^>]+data-volume="0\.6"/);
   assert.match(html, /id="avatar-second-cut-media"[\s\S]*data-media-start="12"/);
   assert.match(html, /id="avatar-second-cut-audio"[\s\S]*data-media-start="12"/);
+});
+
+test("compila la misma transición real y sus handles en preview y render", async () => {
+  const fromAssetId = "00000000-0000-4000-8000-000000000051";
+  const toAssetId = "00000000-0000-4000-8000-000000000052";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [fromAssetId, toAssetId].map((productionAssetId, index) => ({
+      checksum: String(index + 1).repeat(64),
+      durationSeconds: 10,
+      fileSizeBytes: 4,
+      hasAudio: true,
+      mimeType: "video/mp4",
+      productionAssetId,
+      publicUrl: null,
+      storageBucket: "production-assets",
+      storagePath: `production-assets/transition-${index}.mp4`,
+      timelineRole: "BROLL" as const,
+    })),
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Transición" },
+  });
+  const [fromClip, toClip] = document.clips;
+  assert.ok(fromClip);
+  assert.ok(toClip);
+  document.canvas.durationSeconds = 8;
+  fromClip.durationSeconds = 4;
+  fromClip.sourceOffsetSeconds = 1;
+  fromClip.startSeconds = 0;
+  toClip.durationSeconds = 4;
+  toClip.sourceOffsetSeconds = 1;
+  toClip.startSeconds = 4;
+  const edited = applyCompositionEditorPatches(document, [{
+    transition: {
+      alignment: "CENTER_AT_CUT",
+      audioMode: "CUT",
+      durationSeconds: 0.4,
+      easing: "sine.inOut",
+      fromClipId: fromClip.id,
+      id: "transition-preview-render",
+      origin: "USER",
+      toClipId: toClip.id,
+      type: "CROSS_DISSOLVE",
+    },
+    type: "transition.add",
+  }]);
+  const assetUrls = new Map([
+    [fromAssetId, "assets/from.mp4"],
+    [toAssetId, "assets/to.mp4"],
+  ]);
+  const previewHtml = await compileCompositionPreview({ assetUrls, document: edited });
+  const renderHtml = await compileCompositionPreview({
+    assetUrls,
+    document: edited,
+    target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+
+  for (const html of [previewHtml, renderHtml]) {
+    assert.match(html, /const transitionEffects = \[/);
+    assert.match(html, /"id":"transition-preview-render"/);
+    assert.match(html, /transition\.type === "CROSS_DISSOLVE"/);
+    assert.match(html, /transition\.type === "DIP_TO_COLOR"/);
+    assert.match(html, /transition\.type === "PUSH"/);
+    assert.match(html, /transition\.type === "SOFT_WIPE"/);
+    assert.match(html, /transition\.type === "BLUR_DISSOLVE"/);
+    assert.match(html, new RegExp(`id="${toClip.id}-media"[\\s\\S]*?data-source-offset="0\\.8"`));
+    for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+      assert.doesNotThrow(() => new Script(match[1]));
+    }
+  }
+  assert.match(previewHtml, new RegExp(`id="${fromClip.id}-timeline" class="clip" data-start="0" data-duration="4\\.2"`));
+  assert.match(previewHtml, new RegExp(`id="${toClip.id}-timeline" class="clip" data-start="3\\.8" data-duration="4\\.2"`));
+  assert.match(renderHtml, new RegExp(`id="${fromClip.id}-media" class="composition-media clip"[\\s\\S]*?data-start="0" data-duration="4\\.2"`));
+  assert.match(renderHtml, new RegExp(`id="${toClip.id}-media" class="composition-media clip"[\\s\\S]*?data-start="3\\.8" data-duration="4\\.2"`));
+  const previewPayload = previewHtml.match(/const transitionEffects = (\[[^;]+\]);/)?.[1];
+  const renderPayload = renderHtml.match(/const transitionEffects = (\[[^;]+\]);/)?.[1];
+  assert.ok(previewPayload);
+  assert.equal(renderPayload, previewPayload);
+  assert.equal(edited.clips[0]!.durationSeconds, 4);
+  assert.equal(edited.clips[1]!.startSeconds, 4);
+
+  const withAudioCrossfade = applyCompositionEditorPatches(edited, [
+    { clipId: fromClip.id, type: "clip.volume", volume: 0.8 },
+    { clipId: toClip.id, type: "clip.volume", volume: 0.6 },
+    {
+      settings: { audioMode: "CROSSFADE" },
+      transitionId: "transition-preview-render",
+      type: "transition.update",
+    },
+  ]);
+  const crossfadeHtml = await compileCompositionPreview({ assetUrls, document: withAudioCrossfade });
+  assert.match(crossfadeHtml, new RegExp(`id="${fromClip.id}-audio"[^>]+data-volume-automated="true"[^>]+data-start="0" data-duration="4\\.2"`));
+  assert.match(crossfadeHtml, new RegExp(`id="${toClip.id}-audio"[^>]+data-volume-automated="true"[^>]+data-start="3\\.8" data-duration="4\\.2"[^>]+data-source-offset="0\\.8"`));
+  assert.match(crossfadeHtml, /"audioMode":"CROSSFADE"/);
+  assert.match(crossfadeHtml, new RegExp(`"fromAudioTargetId":"${fromClip.id}-audio"`));
+  assert.match(crossfadeHtml, /targetTimeline\.fromTo\(\s*fromAudio,[\s\S]*?volume: 0/);
+  assert.match(crossfadeHtml, /targetTimeline\.fromTo\(\s*toAudio,[\s\S]*?volume: transition\.toAudioVolume/);
+});
+
+test("compila dip to color como overlay determinista dentro del timeline", async () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: {
+      css: "",
+      fonts: [],
+      height: 1080,
+      slides: [
+        { animationCount: 0, classes: "slide", html: "<h1>Uno</h1>", index: 0, label: "Uno" },
+        { animationCount: 0, classes: "slide", html: "<h1>Dos</h1>", index: 1, label: "Dos" },
+      ],
+      width: 1920,
+    },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Dip" },
+  });
+  const [fromClip, toClip] = document.clips;
+  assert.ok(fromClip);
+  assert.ok(toClip);
+  const edited = applyCompositionEditorPatches(document, [{
+    transition: {
+      alignment: "CENTER_AT_CUT",
+      audioMode: "CUT",
+      durationSeconds: 0.4,
+      easing: "power1.inOut",
+      fromClipId: fromClip.id,
+      id: "transition-dip",
+      origin: "USER",
+      parameters: { color: "#0F172A" },
+      toClipId: toClip.id,
+      type: "DIP_TO_COLOR",
+    },
+    type: "transition.add",
+  }]);
+  const html = await compileCompositionPreview({ assetUrls: new Map(), document: edited });
+
+  assert.match(html, /id="transition-dip-overlay" class="composition-transition-overlay" style="background:#0F172A"/);
+  assert.match(html, /const halfDuration = transition\.durationSeconds \/ 2/);
+  assert.match(html, /targetTimeline\.to\(overlay, \{ autoAlpha: 1/);
 });
 
 test("mantiene preview y render en paridad para dividir a 01:30 y eliminar un intervalo intermedio", async () => {

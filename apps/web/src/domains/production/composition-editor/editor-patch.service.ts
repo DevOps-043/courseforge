@@ -21,7 +21,25 @@ import {
 } from "./composition-visual-crop.service";
 import { compositionClipHasConfigurableAudio } from "./composition-clip-audio.service";
 import { compositionClipExclusionKey } from "./composition-source-selection";
-import { resolveLinkedAvatarAudioClip } from "./composition-avatar-audio-link.service";
+import { resolveAvatarAudioLink } from "./composition-avatar-audio-link.service";
+import {
+  appendDerivedClipToCompositionGroup,
+  findCompositionGroupForClip,
+  normalizeCompositionGroups,
+  resolveCompositionGroupBounds,
+} from "./composition-group.service";
+import {
+  assertCompositionTransitionsValid,
+  removeTransitionsConnectedToClips,
+  resolveCompositionTransitionEligibility,
+  transferOutgoingTransitionsToDerivedClip,
+} from "./composition-transition.service";
+import {
+  COMPOSITION_TRANSITION_SCHEMA_VERSION,
+  compositionTransitionSchema,
+  type CompositionTransition,
+} from "./composition-transition.types";
+import { normalizeCompositionColorGrading } from "./composition-color-grading.types";
 
 export class CompositionEditorPatchError extends Error {
   constructor(message: string) {
@@ -30,6 +48,98 @@ export class CompositionEditorPatchError extends Error {
 }
 
 const CLIP_BOUNDARY_EPSILON_SECONDS = 0.001;
+
+function resolveLinkedAvatarAudioClipForMove(
+  document: CompositionEditorDocument,
+  clipId: string,
+) {
+  const resolution = resolveAvatarAudioLink(document, clipId);
+  if (resolution.status === "AMBIGUOUS") {
+    throw new CompositionEditorPatchError(
+      `La escena ${resolution.sceneId} contiene varios clips de avatar o voz. Resuelve esa relación antes de moverla.`,
+    );
+  }
+  if (resolution.status !== "LINKED") return null;
+  if (resolution.avatar.id === clipId) return resolution.voice;
+  if (resolution.voice.id === clipId) return resolution.avatar;
+  return null;
+}
+
+function findCompositionGroupOrThrow(document: CompositionEditorDocument, groupId: string) {
+  const group = document.groups?.find((candidate) => candidate.id === groupId);
+  if (!group) throw new CompositionEditorPatchError("El grupo que intentas editar ya no existe.");
+  return group;
+}
+
+function resolveGroupMoveClipIdsOrThrow(
+  document: CompositionEditorDocument,
+  groupId: string,
+) {
+  const group = findCompositionGroupOrThrow(document, groupId);
+  const affectedClipIds = new Set(group.clipIds);
+  for (const clipId of group.clipIds) {
+    const resolution = resolveAvatarAudioLink(document, clipId);
+    if (resolution.status === "AMBIGUOUS") {
+      throw new CompositionEditorPatchError(
+        `La escena ${resolution.sceneId} contiene varios clips de avatar o voz. Resuelve esa relación antes de mover el grupo.`,
+      );
+    }
+    if (resolution.status !== "LINKED") continue;
+    const counterpartId = resolution.avatar.id === clipId
+      ? resolution.voice.id
+      : resolution.avatar.id;
+    const counterpartGroup = findCompositionGroupForClip(document, counterpartId);
+    if (counterpartGroup && counterpartGroup.id !== group.id) {
+      throw new CompositionEditorPatchError(
+        "El vínculo avatar-voz atraviesa dos grupos distintos. Agrupa ambos clips juntos o retira uno de su grupo.",
+      );
+    }
+    affectedClipIds.add(counterpartId);
+  }
+  return affectedClipIds;
+}
+
+function normalizeDocumentGroups(document: CompositionEditorDocument) {
+  const normalized = normalizeCompositionGroups(document.groups, document.clips);
+  if (normalized !== undefined) document.groups = normalized;
+}
+
+function assertTransitionEligibleOrThrow(
+  document: CompositionEditorDocument,
+  transition: CompositionTransition,
+  excludeTransitionId?: string,
+) {
+  const eligibility = resolveCompositionTransitionEligibility({
+    document,
+    excludeTransitionId,
+    transition,
+  });
+  if (!eligibility.available) {
+    throw new CompositionEditorPatchError(
+      eligibility.issues[0]?.message || "La transición no cumple las condiciones de uso.",
+    );
+  }
+}
+
+function parseTransitionOrThrow(input: unknown) {
+  const parsed = compositionTransitionSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new CompositionEditorPatchError(
+      parsed.error.issues[0]?.message || "La configuración de la transición no es válida.",
+    );
+  }
+  return parsed.data;
+}
+
+function assertDocumentTransitionsOrThrow(document: CompositionEditorDocument) {
+  try {
+    assertCompositionTransitionsValid(document);
+  } catch (error) {
+    throw new CompositionEditorPatchError(
+      error instanceof Error ? error.message : "El documento contiene una transición inválida.",
+    );
+  }
+}
 
 function assertDerivableMediaClip(clip: CompositionEditorDocument["clips"][number]) {
   if (clip.source.type !== "PRODUCTION_ASSET" || (clip.kind !== "VIDEO" && clip.kind !== "AUDIO")) {
@@ -77,6 +187,20 @@ function removeClipOrThrow(document: CompositionEditorDocument, clipId: string) 
   document.motion.animations = document.motion.animations.filter(
     (animation) => animation.target.clipId !== clipId,
   );
+  removeTransitionsConnectedToClips(document.transitions, new Set([clipId]));
+  normalizeDocumentGroups(document);
+}
+
+function assertClipCanCreateDerivedFragment(
+  document: CompositionEditorDocument,
+  clipId: string,
+) {
+  const resolution = resolveAvatarAudioLink(document, clipId);
+  if (resolution.status !== "NONE") {
+    throw new CompositionEditorPatchError(
+      "Divide primero la relación avatar-voz mediante una operación sincronizada; un fragmento individual volvería ambiguo el vínculo.",
+    );
+  }
 }
 
 /**
@@ -96,21 +220,77 @@ export function ensureCanvasDurationForClipPatches(
     durationSeconds: clip.durationSeconds,
     startSeconds: clip.startSeconds,
   }]));
+  let groups = structuredClone(document.groups || []);
 
   for (const operation of operations) {
-    if (operation.type === "clip.add") {
+    if (operation.type === "group.create") {
+      groups.push({
+        clipIds: [...operation.clipIds],
+        id: operation.groupId,
+        ...(operation.label ? { label: operation.label } : {}),
+        order: groups.reduce((maximum, group) => Math.max(maximum, group.order), -1) + 1,
+      });
+    } else if (operation.type === "group.ungroup") {
+      groups = groups.filter((group) => group.id !== operation.groupId);
+    } else if (operation.type === "group.add-clips") {
+      const group = groups.find((candidate) => candidate.id === operation.groupId);
+      if (group) group.clipIds.push(...operation.clipIds);
+    } else if (operation.type === "group.remove-clips") {
+      const group = groups.find((candidate) => candidate.id === operation.groupId);
+      if (group) {
+        const removedIds = new Set(operation.clipIds);
+        group.clipIds = group.clipIds.filter((clipId) => !removedIds.has(clipId));
+        if (group.clipIds.length < 2) groups = groups.filter((candidate) => candidate.id !== group.id);
+      }
+    } else if (operation.type === "group.move") {
+      const group = groups.find((candidate) => candidate.id === operation.groupId);
+      const memberTimings = group?.clipIds.flatMap((clipId) => {
+        const timing = timings.get(clipId);
+        return timing ? [{ clipId, timing }] : [];
+      }) || [];
+      if (memberTimings.length === 0) continue;
+      const previousStartSeconds = Math.min(...memberTimings.map(({ timing }) => timing.startSeconds));
+      const deltaSeconds = operation.startSeconds - previousStartSeconds;
+      const affectedClipIds = new Set(memberTimings.map(({ clipId }) => clipId));
+      for (const { clipId } of memberTimings) {
+        const resolution = resolveAvatarAudioLink(document, clipId);
+        if (resolution.status === "AMBIGUOUS") {
+          throw new CompositionEditorPatchError(
+            `La escena ${resolution.sceneId} contiene varios clips de avatar o voz. Resuelve esa relación antes de mover el grupo.`,
+          );
+        }
+        if (resolution.status === "LINKED") {
+          affectedClipIds.add(resolution.avatar.id);
+          affectedClipIds.add(resolution.voice.id);
+        }
+      }
+      for (const clipId of affectedClipIds) {
+        const timing = timings.get(clipId);
+        if (timing) timing.startSeconds += deltaSeconds;
+      }
+    } else if (operation.type === "clip.add") {
       timings.set(operation.clip.id, {
         durationSeconds: operation.clip.durationSeconds,
         startSeconds: operation.clip.startSeconds,
       });
     } else if (operation.type === "clip.remove") {
       timings.delete(operation.clipId);
+      groups = groups.flatMap((group) => {
+        const clipIds = group.clipIds.filter((clipId) => clipId !== operation.clipId);
+        return clipIds.length >= 2 ? [{ ...group, clipIds }] : [];
+      });
     } else if (operation.type === "clip.move") {
       const timing = timings.get(operation.clipId);
+      const previousStartSeconds = timing?.startSeconds;
       if (timing) timing.startSeconds = operation.startSeconds;
-      const linkedClip = resolveLinkedAvatarAudioClip(document, operation.clipId);
+      const link = resolveAvatarAudioLink(document, operation.clipId);
+      const linkedClip = link.status === "LINKED"
+        ? link.avatar.id === operation.clipId ? link.voice : link.avatar
+        : null;
       const linkedTiming = linkedClip ? timings.get(linkedClip.id) : null;
-      if (linkedTiming) linkedTiming.startSeconds = operation.startSeconds;
+      if (linkedTiming && previousStartSeconds !== undefined) {
+        linkedTiming.startSeconds += operation.startSeconds - previousStartSeconds;
+      }
     } else if (operation.type === "clip.duration") {
       const timing = timings.get(operation.clipId);
       if (timing) timing.durationSeconds = operation.durationSeconds;
@@ -163,6 +343,51 @@ export function applyCompositionEditorPatches(
       }
       next = structuredClone(operation.document);
       next.format = COMPOSITION_DOCUMENT_FORMAT;
+      continue;
+    }
+    if (operation.type === "transition.add") {
+      next.transitions ||= { items: [], schemaVersion: COMPOSITION_TRANSITION_SCHEMA_VERSION };
+      if (next.transitions.items.some((transition) => transition.id === operation.transition.id)) {
+        throw new CompositionEditorPatchError("El identificador de transición ya existe.");
+      }
+      if (next.transitions.items.length >= 499) {
+        throw new CompositionEditorPatchError("La composición alcanzó el máximo de transiciones permitido.");
+      }
+      const transition = parseTransitionOrThrow({
+        ...operation.transition,
+        origin: source === "AGENT" ? "AGENT" : "USER",
+      });
+      assertTransitionEligibleOrThrow(next, transition);
+      next.transitions.items.push(transition);
+      continue;
+    }
+    if (operation.type === "transition.update") {
+      const transitionIndex = next.transitions?.items.findIndex(
+        (candidate) => candidate.id === operation.transitionId,
+      ) ?? -1;
+      if (transitionIndex < 0 || !next.transitions) {
+        throw new CompositionEditorPatchError("La transición que intentas editar ya no existe.");
+      }
+      const current = next.transitions.items[transitionIndex]!;
+      const candidateInput: Record<string, unknown> = {
+        ...current,
+        ...operation.settings,
+        origin: source === "AGENT" ? "AGENT" : "USER",
+      };
+      if (operation.settings.parameters === null) delete candidateInput.parameters;
+      const candidate = parseTransitionOrThrow(candidateInput);
+      assertTransitionEligibleOrThrow(next, candidate, current.id);
+      next.transitions.items[transitionIndex] = candidate;
+      continue;
+    }
+    if (operation.type === "transition.remove") {
+      const transitionIndex = next.transitions?.items.findIndex(
+        (candidate) => candidate.id === operation.transitionId,
+      ) ?? -1;
+      if (transitionIndex < 0 || !next.transitions) {
+        throw new CompositionEditorPatchError("La transición que intentas quitar ya no existe.");
+      }
+      next.transitions.items.splice(transitionIndex, 1);
       continue;
     }
     if (operation.type === "animation.add-preset") {
@@ -273,6 +498,92 @@ export function applyCompositionEditorPatches(
       continue;
     }
 
+    if (operation.type.startsWith("group.") && source !== "USER") {
+      throw new CompositionEditorPatchError("La edición de grupos requiere una acción explícita del usuario.");
+    }
+    if (operation.type === "group.create") {
+      next.groups ||= [];
+      if (next.groups.some((group) => group.id === operation.groupId)) {
+        throw new CompositionEditorPatchError("El identificador del grupo ya existe.");
+      }
+      const selectedClipIds = new Set(operation.clipIds);
+      if (selectedClipIds.size < 2 || operation.clipIds.some((clipId) => !next.clips.some((clip) => clip.id === clipId))) {
+        throw new CompositionEditorPatchError("Un grupo requiere al menos dos clips existentes.");
+      }
+      const alreadyGrouped = operation.clipIds.find((clipId) => findCompositionGroupForClip(next, clipId));
+      if (alreadyGrouped) {
+        throw new CompositionEditorPatchError("Cada clip solo puede pertenecer a un grupo.");
+      }
+      next.groups.push({
+        clipIds: [...operation.clipIds],
+        id: operation.groupId,
+        ...(operation.label ? { label: operation.label } : {}),
+        order: next.groups.reduce((maximum, group) => Math.max(maximum, group.order), -1) + 1,
+      });
+      continue;
+    }
+    if (operation.type === "group.ungroup") {
+      findCompositionGroupOrThrow(next, operation.groupId);
+      next.groups = next.groups!.filter((group) => group.id !== operation.groupId);
+      continue;
+    }
+    if (operation.type === "group.add-clips") {
+      const group = findCompositionGroupOrThrow(next, operation.groupId);
+      if (group.clipIds.length + operation.clipIds.length > 500) {
+        throw new CompositionEditorPatchError("Un grupo no puede contener más de 500 clips.");
+      }
+      for (const clipId of operation.clipIds) {
+        if (!next.clips.some((clip) => clip.id === clipId)) {
+          throw new CompositionEditorPatchError("No puedes añadir al grupo un clip inexistente.");
+        }
+        if (findCompositionGroupForClip(next, clipId)) {
+          throw new CompositionEditorPatchError("Cada clip solo puede pertenecer a un grupo.");
+        }
+      }
+      group.clipIds.push(...operation.clipIds);
+      continue;
+    }
+    if (operation.type === "group.remove-clips") {
+      const group = findCompositionGroupOrThrow(next, operation.groupId);
+      if (operation.clipIds.some((clipId) => !group.clipIds.includes(clipId))) {
+        throw new CompositionEditorPatchError("Solo puedes retirar clips que pertenecen al grupo.");
+      }
+      const removedClipIds = new Set(operation.clipIds);
+      group.clipIds = group.clipIds.filter((clipId) => !removedClipIds.has(clipId));
+      if (group.clipIds.length < 2) {
+        next.groups = next.groups!.filter((candidate) => candidate.id !== group.id);
+      }
+      continue;
+    }
+    if (operation.type === "group.move") {
+      const bounds = resolveCompositionGroupBounds(next, operation.groupId);
+      if (!bounds) throw new CompositionEditorPatchError("El grupo no contiene clips válidos suficientes.");
+      const affectedClipIds = resolveGroupMoveClipIdsOrThrow(next, operation.groupId);
+      const deltaSeconds = operation.startSeconds - bounds.startSeconds;
+      const affectedClips = next.clips.filter((clip) => affectedClipIds.has(clip.id));
+      for (const affectedClip of affectedClips) {
+        const track = next.tracks.find((candidate) => candidate.id === affectedClip.trackId);
+        if (!track || track.locked) {
+          throw new CompositionEditorPatchError("No puedes mover un grupo mientras una de sus pistas está bloqueada.");
+        }
+        const nextStartSeconds = affectedClip.startSeconds + deltaSeconds;
+        if (nextStartSeconds < 0) {
+          throw new CompositionEditorPatchError("El movimiento dejaría un clip del grupo antes del inicio del video.");
+        }
+        if (exceedsCompositionTimelineBoundary(
+          nextStartSeconds + affectedClip.durationSeconds,
+          next.canvas.durationSeconds,
+        )) {
+          throw new CompositionEditorPatchError("El grupo no puede terminar después del final del video.");
+        }
+      }
+      for (const affectedClip of affectedClips) {
+        affectedClip.startSeconds += deltaSeconds;
+        affectedClip.timingSource = "USER_EDITED";
+      }
+      continue;
+    }
+
     if (operation.type === "clip.add") {
       if (operation.clip.id !== operation.clipId) {
         throw new CompositionEditorPatchError("El identificador del nuevo clip no coincide con la operación.");
@@ -352,9 +663,12 @@ export function applyCompositionEditorPatches(
       });
       clip.mediaFit = resolveDefaultCompositionMediaFit({ clipKind: clip.kind, track: currentTrack });
       delete clip.crop;
+      delete clip.colorGrading;
       delete clip.volume;
       next.clips = next.clips.filter((candidate) => candidate.id === clip.id || !siblingIds.has(candidate.id));
       next.motion.animations = next.motion.animations.filter((animation) => !siblingIds.has(animation.target.clipId));
+      removeTransitionsConnectedToClips(next.transitions, siblingIds);
+      normalizeDocumentGroups(next);
       const requiredCanvasDuration = clip.startSeconds + clip.durationSeconds;
       if (requiredCanvasDuration > next.canvas.durationSeconds) {
         next.canvas.durationSeconds = quantizeToDocumentFrame(requiredCanvasDuration, next.canvas.fps);
@@ -366,6 +680,7 @@ export function applyCompositionEditorPatches(
     if (operation.type === "clip.split") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes dividir un clip de un track bloqueado.");
       assertDerivableMediaClip(clip);
+      assertClipCanCreateDerivedFragment(next, clip.id);
       assertNewDerivedClipIdentity(next, operation.newClipId, operation.newHfId);
       const splitAtSeconds = quantizeToDocumentFrame(operation.atSeconds, next.canvas.fps);
       const splitOffset = splitAtSeconds - clip.startSeconds;
@@ -409,6 +724,8 @@ export function applyCompositionEditorPatches(
       clip.durationSeconds = leftClipDuration;
       clip.timingSource = "USER_EDITED";
       next.clips.push(rightClip);
+      transferOutgoingTransitionsToDerivedClip(next.transitions, clip.id, rightClip.id);
+      appendDerivedClipToCompositionGroup(next.groups, clip.id, rightClip.id);
       continue;
     }
 
@@ -483,6 +800,7 @@ export function applyCompositionEditorPatches(
       if (!operation.newClipId || !operation.newHfId) {
         throw new CompositionEditorPatchError("Eliminar un segmento intermedio requiere un identificador para el clip restante.");
       }
+      assertClipCanCreateDerivedFragment(next, clip.id);
       assertNewDerivedClipIdentity(next, operation.newClipId, operation.newHfId);
       const rightClip = structuredClone(clip);
       rightClip.id = operation.newClipId;
@@ -523,6 +841,8 @@ export function applyCompositionEditorPatches(
       clip.durationSeconds = leftClipDuration;
       clip.timingSource = "USER_EDITED";
       next.clips.push(rightClip);
+      transferOutgoingTransitionsToDerivedClip(next.transitions, clip.id, rightClip.id);
+      appendDerivedClipToCompositionGroup(next.groups, clip.id, rightClip.id);
       continue;
     }
 
@@ -538,12 +858,19 @@ export function applyCompositionEditorPatches(
       if (currentTrack.locked || destinationTrack.locked) {
         throw new CompositionEditorPatchError("No puedes mover un clip desde o hacia un track bloqueado.");
       }
-      const linkedClip = resolveLinkedAvatarAudioClip(next, clip.id);
+      const linkedClip = resolveLinkedAvatarAudioClipForMove(next, clip.id);
       const linkedTrack = linkedClip
         ? next.tracks.find((track) => track.id === linkedClip.trackId)
         : null;
       if (linkedClip && (!linkedTrack || linkedTrack.locked)) {
-        throw new CompositionEditorPatchError("No puedes mover un avatar mientras su voz asociada está en un track bloqueado.");
+        throw new CompositionEditorPatchError("No puedes mover clips vinculados mientras una de sus pistas está bloqueada.");
+      }
+      const moveDeltaSeconds = operation.startSeconds - clip.startSeconds;
+      const linkedStartSeconds = linkedClip
+        ? linkedClip.startSeconds + moveDeltaSeconds
+        : null;
+      if (linkedStartSeconds !== null && linkedStartSeconds < 0) {
+        throw new CompositionEditorPatchError("El movimiento dejaría un clip vinculado antes del inicio del video.");
       }
       clip.startSeconds = operation.startSeconds;
       clip.trackId = destinationTrack.id;
@@ -551,7 +878,7 @@ export function applyCompositionEditorPatches(
       if (linkedClip) {
         // Keep each medium on its own semantic track. The link owns timing,
         // not track assignment, so narration remains independently mixable.
-        linkedClip.startSeconds = operation.startSeconds;
+        linkedClip.startSeconds = linkedStartSeconds!;
         linkedClip.timingSource = "USER_EDITED";
       }
     }
@@ -612,6 +939,21 @@ export function applyCompositionEditorPatches(
       clip.mediaFit = operation.mediaFit;
     }
 
+    if (operation.type === "clip.color-grading") {
+      if (source !== "USER") {
+        throw new CompositionEditorPatchError("Solo una acción explícita del usuario puede corregir el color de un clip.");
+      }
+      if (currentTrack.locked) {
+        throw new CompositionEditorPatchError("No puedes corregir el color de un track bloqueado.");
+      }
+      if (clip.kind !== "VIDEO" && clip.kind !== "IMAGE") {
+        throw new CompositionEditorPatchError("La corrección de color solo está disponible para videos e imágenes.");
+      }
+      const colorGrading = normalizeCompositionColorGrading(operation.colorGrading);
+      if (colorGrading) clip.colorGrading = colorGrading;
+      else delete clip.colorGrading;
+    }
+
     if (operation.type === "clip.visibility") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes ocultar o mostrar un clip de un track bloqueado.");
       clip.hidden = operation.hidden;
@@ -640,12 +982,14 @@ export function applyCompositionEditorPatches(
 
   // Every newly appended document uses the current motion contract, including restores.
   next.motion.schemaVersion = 2;
+  if (next.transitions) next.transitions.schemaVersion = COMPOSITION_TRANSITION_SCHEMA_VERSION;
   const parsed = compositionEditorDocumentSchema.safeParse(next);
   if (!parsed.success) {
     throw new CompositionEditorPatchError(
       parsed.error.issues[0]?.message || "El documento resultante no es válido.",
     );
   }
+  assertDocumentTransitionsOrThrow(parsed.data);
   return parsed.data;
 }
 

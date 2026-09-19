@@ -3,6 +3,7 @@ import test from "node:test";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import { resolveCompositionAssetInsertionTiming } from "../composition-asset-placement.service";
 import { buildCompositionTimelineLayout } from "../composition-timeline-layout.service";
+import { applyCompositionEditorPatches } from "../editor-patch.service";
 
 const BROLL_IDS = [
   "10000000-0000-4000-8000-000000000001",
@@ -68,6 +69,64 @@ test("separa profundidades visuales aunque sus tiempos no se solapen", () => {
 
   assert.deepEqual(brollGroups.map((group) => group.zIndex), [7, 2]);
   assert.equal(brollGroups[0]?.clips[0]?.id, document.clips[2]!.id);
+});
+
+test("reserva tracks visuales distintos durante una transición sin extender el audio", () => {
+  const document = createBrollDocument();
+  const fromClip = document.clips[0]!;
+  const toClip = document.clips[1]!;
+  fromClip.sourceDurationSeconds = 10;
+  const edited = applyCompositionEditorPatches(document, [{
+    transition: {
+      alignment: "START_AT_CUT",
+      audioMode: "CUT",
+      durationSeconds: 0.4,
+      easing: "sine.inOut",
+      fromClipId: fromClip.id,
+      id: "transition-layout",
+      origin: "USER",
+      toClipId: toClip.id,
+      type: "CROSS_DISSOLVE",
+    },
+    type: "transition.add",
+  }]);
+  const layout = buildCompositionTimelineLayout(edited);
+
+  assert.notEqual(
+    layout.trackIndexByClipId.get(fromClip.id),
+    layout.trackIndexByClipId.get(toClip.id),
+  );
+  assert.equal(
+    layout.audioTrackIndexByClipId.get(fromClip.id),
+    layout.audioTrackIndexByClipId.get(toClip.id),
+  );
+});
+
+test("reserva tracks de audio distintos cuando la transición usa crossfade", () => {
+  const document = createBrollDocument();
+  const fromClip = document.clips[0]!;
+  const toClip = document.clips[1]!;
+  fromClip.sourceDurationSeconds = 10;
+  const edited = applyCompositionEditorPatches(document, [{
+    transition: {
+      alignment: "START_AT_CUT",
+      audioMode: "CROSSFADE",
+      durationSeconds: 0.4,
+      easing: "sine.inOut",
+      fromClipId: fromClip.id,
+      id: "transition-audio-layout",
+      origin: "USER",
+      toClipId: toClip.id,
+      type: "CROSS_DISSOLVE",
+    },
+    type: "transition.add",
+  }]);
+  const layout = buildCompositionTimelineLayout(edited);
+
+  assert.notEqual(
+    layout.audioTrackIndexByClipId.get(fromClip.id),
+    layout.audioTrackIndexByClipId.get(toClip.id),
+  );
 });
 
 test("inserta en el playhead y permite solapamiento cuando la pista ya llega al final", () => {

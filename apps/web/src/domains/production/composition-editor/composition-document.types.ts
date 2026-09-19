@@ -8,9 +8,17 @@ import { compositionMotionSchema } from "./composition-motion.types";
 import { compositionNarrativeSceneSchema } from "./composition-narrative.types";
 import { resolveCompositionAnimationWindow } from "./composition-motion-scheduling.service";
 import {
+  compositionTransitionsSchema,
+  type CompositionTransitions,
+} from "./composition-transition.types";
+import {
   COMPOSITION_LAYER_MAX,
   COMPOSITION_LAYER_MIN,
 } from "./composition-layer-depth";
+import {
+  compositionColorGradingSchema,
+  type CompositionColorGrading,
+} from "./composition-color-grading.types";
 
 export const LEGACY_COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v1";
 export const COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v2";
@@ -172,6 +180,7 @@ const soundEffectAssetSourceSchema = z.object({
 }).strict();
 
 export const compositionClipSchema = z.object({
+  colorGrading: compositionColorGradingSchema.optional(),
   sceneId: z.string().min(1).max(160).optional(),
   crop: compositionVisualCropSchema.optional(),
   durationSeconds: boundedSecondsSchema.positive(),
@@ -222,6 +231,24 @@ export const compositionClipSchema = z.object({
   if (clip.source.type === "ASSEMBLY_BRAND_ASSET" && clip.kind !== "VIDEO") {
     context.addIssue({ code: "custom", message: "Intro y outro deben ser clips de video." });
   }
+  if (clip.colorGrading && clip.kind !== "VIDEO" && clip.kind !== "IMAGE") {
+    context.addIssue({ code: "custom", message: "La corrección de color solo está disponible para videos e imágenes." });
+  }
+});
+
+/**
+ * Editor-only logical grouping. Groups never become HyperFrames clips or
+ * tracks; the render compiler continues to consume the resolved clip list.
+ */
+export const compositionGroupSchema = z.object({
+  clipIds: z.array(editorIdSchema).min(2).max(500),
+  id: editorIdSchema,
+  label: z.string().trim().min(1).max(120).optional(),
+  order: z.number().int().min(0).max(499),
+}).strict().superRefine((group, context) => {
+  if (new Set(group.clipIds).size !== group.clipIds.length) {
+    context.addIssue({ code: "custom", message: `El grupo ${group.id} contiene clips duplicados.` });
+  }
 });
 
 export const compositionEditorDocumentSchema = z.object({
@@ -239,7 +266,10 @@ export const compositionEditorDocumentSchema = z.object({
   clips: z.array(compositionClipSchema).min(1).max(500),
   deckStyles: deckStylesSchema.nullable(),
   format: z.enum([LEGACY_COMPOSITION_DOCUMENT_FORMAT, COMPOSITION_DOCUMENT_FORMAT]),
+  groups: z.array(compositionGroupSchema).max(250).optional(),
   motion: compositionMotionSchema,
+  /** Optional for backward compatibility; new transition edits initialize V1. */
+  transitions: compositionTransitionsSchema.optional(),
   tracks: z.array(compositionTrackSchema).min(1).max(32),
   variables: z.object({
     accent: z.string().regex(/^#[0-9a-f]{6}$/i),
@@ -276,6 +306,28 @@ export const compositionEditorDocumentSchema = z.object({
     clipIds.add(clip.id);
     hfIds.add(clip.hfId);
   }
+  const groupIds = new Set<string>();
+  const groupedClipIds = new Set<string>();
+  const groupOrders = new Set<number>();
+  for (const group of document.groups || []) {
+    if (groupIds.has(group.id)) {
+      context.addIssue({ code: "custom", message: `El id de grupo ${group.id} está duplicado.` });
+    }
+    if (groupOrders.has(group.order)) {
+      context.addIssue({ code: "custom", message: `El orden ${group.order} está repetido entre grupos.` });
+    }
+    groupIds.add(group.id);
+    groupOrders.add(group.order);
+    for (const clipId of group.clipIds) {
+      if (!clipIds.has(clipId)) {
+        context.addIssue({ code: "custom", message: `El grupo ${group.id} apunta al clip inexistente ${clipId}.` });
+      }
+      if (groupedClipIds.has(clipId)) {
+        context.addIssue({ code: "custom", message: `El clip ${clipId} pertenece a más de un grupo.` });
+      }
+      groupedClipIds.add(clipId);
+    }
+  }
   const animationIds = new Set<string>();
   const animationsByTargetAndGroup = new Map<string, Array<{ end: number; id: string; start: number }>>();
   for (const animation of document.motion.animations) {
@@ -300,12 +352,37 @@ export const compositionEditorDocumentSchema = z.object({
     siblings.push({ end: relativeEnd, id: animation.id, start: relativeStart });
     animationsByTargetAndGroup.set(groupKey, siblings);
   }
+  const transitionIds = new Set<string>();
+  const transitionEditPoints = new Set<string>();
+  for (const transition of document.transitions?.items || []) {
+    if (transitionIds.has(transition.id)) {
+      context.addIssue({ code: "custom", message: `El id de transición ${transition.id} está duplicado.` });
+    }
+    transitionIds.add(transition.id);
+    const fromClip = document.clips.find((clip) => clip.id === transition.fromClipId);
+    const toClip = document.clips.find((clip) => clip.id === transition.toClipId);
+    if (!fromClip || !toClip) {
+      context.addIssue({ code: "custom", message: `La transición ${transition.id} apunta a un clip inexistente.` });
+      continue;
+    }
+    if (fromClip.kind === "AUDIO" || toClip.kind === "AUDIO") {
+      context.addIssue({ code: "custom", message: `La transición ${transition.id} requiere dos clips visuales.` });
+    }
+    const editPointKey = `${transition.fromClipId}:${transition.toClipId}`;
+    if (transitionEditPoints.has(editPointKey)) {
+      context.addIssue({ code: "custom", message: `Existe más de una transición entre ${fromClip.label} y ${toClip.label}.` });
+    }
+    transitionEditPoints.add(editPointKey);
+  }
 });
 
 export type CompositionClip = z.infer<typeof compositionClipSchema>;
+export type { CompositionColorGrading };
 export type CompositionVisualCrop = z.infer<typeof compositionVisualCropSchema>;
 export type CompositionAudioMix = z.infer<typeof compositionAudioMixSchema>;
 export type CompositionEditorDocument = z.infer<typeof compositionEditorDocumentSchema>;
+export type CompositionGroup = z.infer<typeof compositionGroupSchema>;
+export type { CompositionTransitions };
 export type CompositionTrack = z.infer<typeof compositionTrackSchema>;
 
 export function getCompositionClipMediaAssetId(clip: CompositionClip) {

@@ -112,8 +112,8 @@ export async function triggerNextLesson(
   materialsId: string,
   artifactId: string,
   logPrefix: string,
+  version: number,
   localFallback?: (signedBody: string) => Promise<void>,
-  version?: number,
 ) {
   const triggerTimeoutMilliseconds = 10_000;
   const signedBody = JSON.stringify(
@@ -152,30 +152,6 @@ export async function triggerNextLesson(
     }
   } catch (error: unknown) {
     console.error(`${logPrefix} Trigger failed:`, error);
-
-    const errorCode =
-      typeof error === "object" && error !== null && "code" in error
-        ? String(error.code)
-        : "";
-    const errorMessage = error instanceof Error ? error.message : "";
-
-    // Defensive fallback for development environments whose runtime flags are incomplete.
-    if (
-      process.env.NODE_ENV !== "production" &&
-      localFallback &&
-      (errorCode === "ECONNREFUSED" || errorMessage.includes("fetch failed"))
-    ) {
-      console.log(`${logPrefix} Local fallback: Running next step in-process...`);
-      setTimeout(async () => {
-        try {
-          console.log(`${logPrefix} [Fallback] Starting process-next execution...`);
-          await localFallback(signedBody);
-        } catch (fallbackErr) {
-          console.error(`${logPrefix} [Fallback] Execution failed:`, fallbackErr);
-        }
-      }, 100);
-      return;
-    }
 
     throw error;
   }
@@ -292,6 +268,10 @@ export async function generateLessonMaterials(params: {
     fixInstructions,
     videoDurationPolicy: generationContext.videoDurationPolicy,
   });
+  input.requires_sources = generationContext.requiresSources;
+  input.required_source_count = generationContext.requiresSources
+    ? requiredSources
+    : 0;
 
   const isPartial = componentTypes && componentTypes.length > 0;
   if (isPartial) {
@@ -309,6 +289,8 @@ export async function generateLessonMaterials(params: {
       standardInput, logPrefix, models, modelRuntimeConfig, supabase,
       standardInput.lesson.components.map((component) => component.type), organizationId,
       deadlineMs,
+      generationContext.artifactId,
+      lesson.id,
     ),
     generateVideo: (componentType, contract) => generateAndTraceMaterialVideo({
       supabase, input, componentType, contract, models, modelRuntimeConfig, organizationId,

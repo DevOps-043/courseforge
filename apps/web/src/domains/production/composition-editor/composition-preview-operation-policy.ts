@@ -17,6 +17,7 @@ const OPERATION_STRATEGIES: Record<CompositionEditorPatchOperation["type"], Comp
   "audio-mix.update": "LIVE_TIMELINE",
   "clip.add": "FULL_RELOAD",
   "clip.crop": "LIVE_DOM",
+  "clip.color-grading": "LIVE_DOM",
   "clip.duration": "LIVE_TIMELINE",
   "clip.estimated-timing": "LIVE_TIMELINE",
   "clip.layout": "LIVE_DOM",
@@ -33,6 +34,14 @@ const OPERATION_STRATEGIES: Record<CompositionEditorPatchOperation["type"], Comp
   "composition.canvas-duration": "LIVE_TIMELINE",
   "document.reconcile": "FULL_RELOAD",
   "document.restore": "FULL_RELOAD",
+  "group.add-clips": "FULL_RELOAD",
+  "group.create": "FULL_RELOAD",
+  "group.move": "LIVE_TIMELINE",
+  "group.remove-clips": "FULL_RELOAD",
+  "group.ungroup": "FULL_RELOAD",
+  "transition.add": "FULL_RELOAD",
+  "transition.remove": "FULL_RELOAD",
+  "transition.update": "FULL_RELOAD",
   "track.update": "FULL_RELOAD",
 };
 

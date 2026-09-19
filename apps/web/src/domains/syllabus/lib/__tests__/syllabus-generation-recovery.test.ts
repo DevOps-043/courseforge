@@ -17,6 +17,7 @@ function buildSyllabus(overrides: Partial<SyllabusRow> = {}): SyllabusRow {
     route: "B_NO_SOURCE",
     modules: [],
     state: "STEP_GENERATING",
+    iteration_count: 2,
     updated_at: STALE_AT,
     ...overrides,
   } as SyllabusRow;
@@ -73,6 +74,7 @@ test("a stale generating syllabus is escalated with a readable reason", async ()
   assert.deepEqual(filters, [
     ["artifact_id", syllabus.artifact_id],
     ["state", "STEP_GENERATING"],
+    ["iteration_count", 2],
     ["updated_at", STALE_AT],
   ]);
 });
@@ -119,6 +121,22 @@ test("losing the guard race returns the row that was read", async () => {
   );
 
   assert.equal(result, syllabus);
+});
+
+test("database failures are propagated instead of leaving the UI generating", async () => {
+  const syllabus = buildSyllabus();
+  const databaseError = new Error("database unavailable");
+  const { database } = buildDatabase({ data: null, error: databaseError });
+
+  await assert.rejects(
+    recoverStaleSyllabusGeneration(
+      database,
+      syllabus.artifact_id,
+      syllabus,
+      NOW,
+    ),
+    databaseError,
+  );
 });
 
 test("a missing syllabus is returned as-is", async () => {

@@ -24,6 +24,7 @@ const fixtureSourcePath = resolve(
 );
 const outputDirectory = resolve(workspaceRoot, ".tmp/composition-preview-qa");
 const interactiveOutputDirectory = resolve(workspaceRoot, ".tmp/composition-preview-qa-interactive");
+const transitionOutputDirectory = resolve(workspaceRoot, ".tmp/composition-transition-qa-interactive");
 
 async function main() {
   const sourceHtml = await readFile(fixtureSourcePath, "utf8");
@@ -74,6 +75,17 @@ async function main() {
     "</body>",
     `${renderRuntimeSmokeHarness(runtimeSmoke)}</body>`,
   );
+  const transitionSmoke = createTransitionRuntimeSmokeScenario(animatedDeck);
+  const transitionPreviewHtml = await compileCompositionPreview({
+    assetUrls: new Map(),
+    deckAssetUrls: fontDataUrls,
+    document: transitionSmoke.document,
+    target: COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW,
+  });
+  const transitionRuntimeSmokeHtml = transitionPreviewHtml.replace(
+    "</body>",
+    `${renderTransitionRuntimeSmokeHarness(transitionSmoke)}</body>`,
+  );
   const animationRuntime = await readCompositionAnimationRuntime();
   const report = {
     canvas: document.canvas,
@@ -106,14 +118,16 @@ async function main() {
   await Promise.all([
     mkdir(resolve(outputDirectory, "assets"), { recursive: true }),
     mkdir(interactiveOutputDirectory, { recursive: true }),
+    mkdir(transitionOutputDirectory, { recursive: true }),
   ]);
   await Promise.all([
     writeFile(resolve(outputDirectory, "index.html"), renderHtml, "utf8"),
     writeFile(resolve(outputDirectory, "assets/gsap.min.js"), animationRuntime, "utf8"),
     writeFile(resolve(interactiveOutputDirectory, "index.html"), interactiveRuntimeSmokeHtml, "utf8"),
+    writeFile(resolve(transitionOutputDirectory, "index.html"), transitionRuntimeSmokeHtml, "utf8"),
     writeFile(resolve(outputDirectory, "qa-report.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8"),
   ]);
-  process.stdout.write(`${JSON.stringify({ interactiveOutputDirectory, outputDirectory, ...report }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ interactiveOutputDirectory, outputDirectory, transitionOutputDirectory, ...report }, null, 2)}\n`);
 }
 
 const runtimeSmokeAssetId = "00000000-0000-4000-8000-000000000042";
@@ -148,6 +162,12 @@ function createRuntimeSmokeScenario(animatedDeck: Parameters<typeof createInitia
     { clipId: clip.id, mediaFit: "CONTAIN", type: "clip.media-fit" },
   ];
   const geometryDocument = applyCompositionEditorPatches(document, geometryOperations, "USER");
+  const colorOperations: CompositionEditorPatchOperation[] = [{
+    clipId: clip.id,
+    colorGrading: { adjust: { contrast: 0.2, exposure: 0.5, saturation: -0.25 } },
+    type: "clip.color-grading",
+  }];
+  const colorDocument = applyCompositionEditorPatches(geometryDocument, colorOperations, "USER");
   const hideOperations: CompositionEditorPatchOperation[] = [{ clipId: clip.id, hidden: true, type: "clip.visibility" }];
   const hiddenDocument = applyCompositionEditorPatches(geometryDocument, hideOperations, "USER");
   const showOperations: CompositionEditorPatchOperation[] = [{ clipId: clip.id, hidden: false, type: "clip.visibility" }];
@@ -163,12 +183,57 @@ function createRuntimeSmokeScenario(animatedDeck: Parameters<typeof createInitia
   return {
     document,
     documentHash: hashCompositionDocument(document),
+    colorPatch: requireVisualPatch(colorDocument, colorOperations),
     geometryPatch: requireVisualPatch(geometryDocument, geometryOperations),
     hfId: clip.hfId,
     hidePatch: requireVisualPatch(hiddenDocument, hideOperations),
     motionPatch: requireVisualPatch(motionDocument, motionOperations),
-    operationTypes: [...geometryOperations, ...hideOperations, ...showOperations, ...motionOperations].map((operation) => operation.type),
+    operationTypes: [...geometryOperations, ...colorOperations, ...hideOperations, ...showOperations, ...motionOperations].map((operation) => operation.type),
     showPatch: requireVisualPatch(shownDocument, showOperations),
+  };
+}
+
+function createTransitionRuntimeSmokeScenario(
+  animatedDeck: Parameters<typeof createInitialCompositionDocument>[0]["animatedDeck"],
+) {
+  if (!animatedDeck || animatedDeck.slides.length < 2) {
+    throw new Error("El smoke de transiciones requiere al menos dos diapositivas.");
+  }
+  const document = createInitialCompositionDocument({
+    animatedDeck: { ...animatedDeck, slides: animatedDeck.slides.slice(0, 2) },
+    assets: [],
+    plan: {
+      accentColor: "#23AEA8",
+      durationSeconds: 10,
+      subtitle: "Runtime transition smoke test",
+      title: "SofLIA transition QA",
+    },
+  });
+  const [fromClip, toClip] = document.clips;
+  if (!fromClip || !toClip) throw new Error("No se pudieron crear los extremos de la transición QA.");
+  const durationSeconds = 1;
+  const edited = applyCompositionEditorPatches(document, [{
+    transition: {
+      alignment: "CENTER_AT_CUT",
+      audioMode: "CUT",
+      durationSeconds,
+      easing: "sine.inOut",
+      fromClipId: fromClip.id,
+      id: "transition-runtime-smoke",
+      origin: "USER",
+      toClipId: toClip.id,
+      type: "CROSS_DISSOLVE",
+    },
+    type: "transition.add",
+  }]);
+  const cutSeconds = fromClip.startSeconds + fromClip.durationSeconds;
+  return {
+    document: edited,
+    durationSeconds,
+    fromClipId: fromClip.id,
+    midpointSeconds: cutSeconds,
+    startSeconds: cutSeconds - durationSeconds / 2,
+    toClipId: toClip.id,
   };
 }
 
@@ -182,6 +247,7 @@ function requireVisualPatch(
 }
 
 function renderRuntimeSmokeHarness(params: {
+  colorPatch: CompositionPreviewVisualPatch;
   documentHash: string;
   geometryPatch: CompositionPreviewVisualPatch;
   hfId: string;
@@ -250,6 +316,24 @@ function renderRuntimeSmokeHarness(params: {
       };
       const run = async () => {
         await seekTo(2.5);
+        const colorResult = await dispatchPatch(${JSON.stringify(params.colorPatch)});
+        assert(colorResult.applied === true && colorResult.code === "APPLIED", "color patch was not applied");
+        document.documentElement.dataset.colorPatchDurationMs = String(colorResult.durationMs);
+        const colorTarget = document.querySelector('[data-hf-id="' + CSS.escape(hfId) + '"]');
+        assert(colorTarget instanceof HTMLElement, "color target was not found after acknowledgement");
+        const colorMedia = document.getElementById(colorTarget.id + "-media");
+        const colorRuntime = window.__hf?.colorGrading;
+        assert(colorMedia instanceof HTMLImageElement && colorRuntime, "standalone color runtime was not installed");
+        assert(window.__hfColorGradingRuntimeContractVersion === 1, "standalone color runtime contract diverged");
+        const colorPayload = JSON.parse(colorMedia.getAttribute("data-color-grading") || "null");
+        assert(colorPayload?.adjust?.exposure === 0.5, "color attribute diverged");
+        const colorStatus = colorRuntime.getStatus(colorMedia);
+        assert(["active", "pending", "unavailable"].includes(colorStatus.state), "color runtime status diverged");
+        document.documentElement.dataset.colorRuntimeState = colorStatus.state;
+        if (colorStatus.state === "unavailable") {
+          assert(!colorMedia.hasAttribute("data-hf-color-grading-source-hidden"), "unavailable grading hid the source media");
+        }
+
         const geometryResult = await dispatchPatch(${JSON.stringify(params.geometryPatch)});
         assert(geometryResult.applied === true && geometryResult.code === "APPLIED", "geometry patch was not applied");
         const target = document.querySelector('[data-hf-id="' + CSS.escape(hfId) + '"]');
@@ -283,6 +367,79 @@ function renderRuntimeSmokeHarness(params: {
         const finalHideResult = await dispatchPatch(${JSON.stringify(params.hidePatch)});
         assert(finalHideResult.applied === true && target.dataset.runtimeVisibility === "hidden", "final visibility state diverged");
         document.documentElement.dataset.runtimePatchSmoke = "passed";
+      };
+      if (document.getElementById("composition-root")?.dataset.previewReady === "true") queueMicrotask(start);
+    })();
+  </script>`;
+}
+
+function renderTransitionRuntimeSmokeHarness(params: {
+  document: ReturnType<typeof createInitialCompositionDocument>;
+  durationSeconds: number;
+  fromClipId: string;
+  midpointSeconds: number;
+  startSeconds: number;
+  toClipId: string;
+}) {
+  return `<script>
+    (() => {
+      const protocolVersion = ${COMPOSITION_PREVIEW_PROTOCOL_VERSION};
+      const fromClipId = ${JSON.stringify(params.fromClipId)};
+      const toClipId = ${JSON.stringify(params.toClipId)};
+      const startSeconds = ${params.startSeconds};
+      const midpointSeconds = ${params.midpointSeconds};
+      const durationSeconds = ${params.durationSeconds};
+      const pendingSeeks = [];
+      let started = false;
+      const fail = (message) => { throw new Error("TRANSITION_RUNTIME_SMOKE: " + message); };
+      const assert = (condition, message) => { if (!condition) fail(message); };
+      const approximately = (actual, expected, tolerance = 0.08) => Math.abs(Number(actual) - expected) <= tolerance;
+      const seekTo = (seconds) => new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("TRANSITION_RUNTIME_SMOKE_TIMEOUT")), 1500);
+        pendingSeeks.push({
+          resolve: (value) => { clearTimeout(timeout); resolve(value); },
+          seconds,
+        });
+        window.postMessage({ protocolVersion, seconds, type: "courseforge-composition-seek" }, "*");
+      });
+      window.addEventListener("message", (event) => {
+        if (event.source !== window || !event.data || typeof event.data.type !== "string") return;
+        const message = event.data;
+        if (message.type === "courseforge-composition-time") {
+          for (let index = pendingSeeks.length - 1; index >= 0; index -= 1) {
+            if (!approximately(message.seconds, pendingSeeks[index].seconds, 0.01)) continue;
+            pendingSeeks.splice(index, 1)[0].resolve(message);
+          }
+        }
+        if (message.type === "courseforge-composition-ready") start();
+      });
+      const readOpacity = (target) => Number.parseFloat(getComputedStyle(target).opacity || "0");
+      const start = () => {
+        if (started) return;
+        started = true;
+        void run().catch((error) => {
+          document.documentElement.dataset.runtimePatchSmoke = "failed";
+          document.documentElement.dataset.runtimePatchError = error instanceof Error ? error.message : String(error);
+        });
+      };
+      const run = async () => {
+        const from = document.getElementById(fromClipId);
+        const to = document.getElementById(toClipId);
+        assert(from instanceof HTMLElement && to instanceof HTMLElement, "transition endpoints were not found");
+        await seekTo(startSeconds - 0.04);
+        assert(approximately(readOpacity(from), 1), "outgoing clip is not fully visible before the window");
+        await seekTo(midpointSeconds);
+        const firstFromOpacity = readOpacity(from);
+        const firstToOpacity = readOpacity(to);
+        assert(approximately(firstFromOpacity, 0.5), "outgoing midpoint opacity diverged");
+        assert(approximately(firstToOpacity, 0.5), "incoming midpoint opacity diverged");
+        await seekTo(startSeconds + durationSeconds);
+        assert(approximately(readOpacity(from), 0), "outgoing clip remains visible after the window");
+        assert(approximately(readOpacity(to), 1), "incoming clip is not fully visible after the window");
+        await seekTo(midpointSeconds);
+        assert(approximately(readOpacity(from), firstFromOpacity), "backward seek changed outgoing state");
+        assert(approximately(readOpacity(to), firstToOpacity), "backward seek changed incoming state");
+        document.documentElement.dataset.transitionRuntimeSmoke = "passed";
       };
       if (document.getElementById("composition-root")?.dataset.previewReady === "true") queueMicrotask(start);
     })();

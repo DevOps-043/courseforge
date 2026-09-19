@@ -2,6 +2,8 @@ import type OpenAI from "openai";
 import { createCurationSearchResponseSchema } from "./structured-output.schemas";
 import type { CurationCandidate, CurationLesson } from "./types";
 import { PIPELINE_GENERATION_LIMITS } from "../../../../src/lib/pipeline-generation-policy";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { recordAiFailure, recordOpenAiUsage } from "../../../../src/shared/ai/usage-telemetry";
 
 function responseText(response: unknown) {
   const value = response as { output_text?: unknown };
@@ -17,6 +19,9 @@ export async function searchLessonCandidates(params: {
   systemPrompt?: string;
   reasoningEffort?: string;
   round?: number;
+  artifactId?: string;
+  organizationId?: string | null;
+  supabase?: SupabaseClient;
 }) {
   const {
     client,
@@ -38,7 +43,10 @@ export async function searchLessonCandidates(params: {
     ),
   );
   const isReasoningModel = model.toLowerCase().startsWith("gpt-5");
-  const response = await client.responses.create({
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await client.responses.create({
     model,
     input: [
       {
@@ -81,10 +89,40 @@ export async function searchLessonCandidates(params: {
         schema: createCurationSearchResponseSchema(maxCandidatesPerLesson),
       },
     },
-  } as unknown as Parameters<typeof client.responses.create>[0], {
-    timeout: PIPELINE_GENERATION_LIMITS.requestTimeoutMs,
-    maxRetries: 0,
-    signal: AbortSignal.timeout(PIPELINE_GENERATION_LIMITS.requestTimeoutMs),
+    } as unknown as Parameters<typeof client.responses.create>[0], {
+      timeout: PIPELINE_GENERATION_LIMITS.requestTimeoutMs,
+      maxRetries: 0,
+      signal: AbortSignal.timeout(PIPELINE_GENERATION_LIMITS.requestTimeoutMs),
+    });
+  } catch (error) {
+    await recordAiFailure({
+      context: {
+        artifactId: params.artifactId,
+        attempt: round,
+        operation: "search_lesson_sources",
+        organizationId: params.organizationId,
+        pipelineStep: "CURATION",
+      },
+      error,
+      model,
+      provider: "openai",
+      startedAt,
+      supabase: params.supabase,
+    });
+    throw error;
+  }
+  await recordOpenAiUsage({
+    context: {
+      artifactId: params.artifactId,
+      attempt: round,
+      operation: "search_lesson_sources",
+      organizationId: params.organizationId,
+      pipelineStep: "CURATION",
+    },
+    model,
+    response,
+    startedAt,
+    supabase: params.supabase,
   });
 
   const parsed = JSON.parse(responseText(response)) as {

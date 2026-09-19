@@ -294,12 +294,25 @@ export function InstructionalPlanGenerationContainer({
   }, [artifactId]);
 
   const handleApprove = useCallback(async () => {
-    await updateInstructionalPlanStatusAction(
+    const approval = await updateInstructionalPlanStatusAction(
       artifactId,
       PLAN_STATES.APPROVED,
       reviewNotes,
     );
-    await updateArtifactStatusAction(artifactId, "READY_FOR_QA");
+    if (!approval.success) {
+      toast.error(approval.error || "No se puede aprobar un plan incompleto.");
+      await fetchPlan();
+      return;
+    }
+    const artifactUpdate = await updateArtifactStatusAction(
+      artifactId,
+      "READY_FOR_QA",
+    );
+    if (!artifactUpdate.success) {
+      toast.error(artifactUpdate.error || "No se pudo avanzar el artefacto.");
+      await fetchPlan();
+      return;
+    }
     setExistingPlan((currentPlan) =>
       currentPlan
         ? {
@@ -310,14 +323,18 @@ export function InstructionalPlanGenerationContainer({
     );
     router.refresh();
     onNext?.();
-  }, [artifactId, onNext, reviewNotes, router]);
+  }, [artifactId, fetchPlan, onNext, reviewNotes, router]);
 
   const handleReject = useCallback(async () => {
-    await updateInstructionalPlanStatusAction(
+    const rejection = await updateInstructionalPlanStatusAction(
       artifactId,
       PLAN_STATES.REJECTED,
       reviewNotes,
     );
+    if (!rejection.success) {
+      toast.error(rejection.error || "No se pudo rechazar el plan.");
+      return;
+    }
     setExistingPlan((currentPlan) =>
       currentPlan
         ? {

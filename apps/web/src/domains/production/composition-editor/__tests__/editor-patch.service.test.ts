@@ -37,6 +37,25 @@ const baseDocument = () => createInitialCompositionDocument({
   plan: { accentColor: "#38BDF8", durationSeconds: 30, subtitle: "Prueba", title: "Video de prueba" },
 });
 
+const linkedAvatarVoiceDocument = () => createInitialCompositionDocument({
+  animatedDeck: null,
+  assets: [
+    {
+      checksum: "1".repeat(64), durationSeconds: 8, fileSizeBytes: 42, hasAudio: true,
+      mimeType: "video/mp4", productionAssetId: "11111111-1111-4111-8111-111111111121",
+      publicUrl: null, sceneClipId: "scene-avatar-1", sceneOrder: 1,
+      storageBucket: "production-assets", storagePath: "production-assets/avatar-scene-1.mp4", timelineRole: "AVATAR",
+    },
+    {
+      checksum: "2".repeat(64), durationSeconds: 8, fileSizeBytes: 42,
+      mimeType: "audio/mpeg", productionAssetId: "22222222-2222-4222-8222-222222222232",
+      publicUrl: null, sceneClipId: "scene-avatar-1", sceneOrder: 1,
+      storageBucket: "production-assets", storagePath: "production-assets/voice-scene-1.mp3", timelineRole: "VOICE",
+    },
+  ],
+  plan: { accentColor: "#38BDF8", durationSeconds: 20, subtitle: "Prueba", title: "Avatar vinculado" },
+});
+
 test("edita la lÃ­nea de tiempo sin alterar la referencia del asset", () => {
   const document = baseDocument();
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
@@ -52,25 +71,104 @@ test("edita la lÃ­nea de tiempo sin alterar la referencia del asset", () => {
   assert.deepEqual(result.source, video.source);
 });
 
+test("aplica correcciÃ³n bÃ¡sica por clip, la hereda al dividir y elimina el estado neutro", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const colorGrading = {
+    adjust: { contrast: 0.25, exposure: 0.5, saturation: -0.2 },
+  };
+  const graded = applyCompositionEditorPatches(document, [{
+    clipId: video.id,
+    colorGrading,
+    type: "clip.color-grading",
+  }]);
+  const split = applyCompositionEditorPatches(graded, [{
+    atSeconds: video.startSeconds + video.durationSeconds / 2,
+    clipId: video.id,
+    newClipId: "video-color-right",
+    newHfId: "video-color-right-hf",
+    type: "clip.split",
+  }]);
+
+  assert.deepEqual(split.clips.find((clip) => clip.id === video.id)?.colorGrading, colorGrading);
+  assert.deepEqual(split.clips.find((clip) => clip.id === "video-color-right")?.colorGrading, colorGrading);
+
+  const neutral = applyCompositionEditorPatches(graded, [{
+    clipId: video.id,
+    colorGrading: { adjust: { contrast: 0, exposure: 0, saturation: 0 } },
+    type: "clip.color-grading",
+  }]);
+  assert.equal(neutral.clips.find((clip) => clip.id === video.id)?.colorGrading, undefined);
+
+  const cleared = applyCompositionEditorPatches(graded, [{
+    clipId: video.id,
+    colorGrading: null,
+    type: "clip.color-grading",
+  }]);
+  assert.equal(cleared.clips.find((clip) => clip.id === video.id)?.colorGrading, undefined);
+});
+
+test("limita la correcciÃ³n de color al usuario, a pistas editables y a medios visuales", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const colorOperation = {
+    clipId: video.id,
+    colorGrading: { adjust: { contrast: 0.1, exposure: 0.2, saturation: 0.3 } },
+    type: "clip.color-grading" as const,
+  };
+
+  assert.throws(
+    () => applyCompositionEditorPatches(document, [colorOperation], "AGENT"),
+    CompositionEditorPatchError,
+  );
+
+  const locked = structuredClone(document);
+  locked.tracks.find((track) => track.id === video.trackId)!.locked = true;
+  assert.throws(
+    () => applyCompositionEditorPatches(locked, [colorOperation]),
+    CompositionEditorPatchError,
+  );
+
+  const deck = document.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  assert.throws(
+    () => applyCompositionEditorPatches(document, [{ ...colorOperation, clipId: deck.id }]),
+    CompositionEditorPatchError,
+  );
+});
+
+test("valida rangos y rechaza controles de color fuera del contrato v1", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const baseRequest = {
+    source: "USER" as const,
+    summary: "Ajustar color",
+  };
+
+  assert.equal(compositionEditorPatchRequestSchema.safeParse({
+    ...baseRequest,
+    operations: [{
+      clipId: video.id,
+      colorGrading: { adjust: { contrast: 0, exposure: 2.1, saturation: 0 } },
+      type: "clip.color-grading",
+    }],
+  }).success, false);
+  assert.equal(compositionEditorPatchRequestSchema.safeParse({
+    ...baseRequest,
+    operations: [{
+      clipId: video.id,
+      colorGrading: { adjust: { contrast: 0, exposure: 0, saturation: 0, temperature: 0.2 } },
+      type: "clip.color-grading",
+    }],
+  }).success, false);
+
+  const invalidDocument = structuredClone(document);
+  const deck = invalidDocument.clips.find((clip) => clip.kind === "DECK_SLIDE")!;
+  deck.colorGrading = { adjust: { contrast: 0.1, exposure: 0, saturation: 0 } };
+  assert.equal(compositionEditorDocumentSchema.safeParse(invalidDocument).success, false);
+});
+
 test("mueve en conjunto un avatar de escena y su voz asociada", () => {
-  const document = createInitialCompositionDocument({
-    animatedDeck: null,
-    assets: [
-      {
-        checksum: "1".repeat(64), durationSeconds: 8, fileSizeBytes: 42, hasAudio: true,
-        mimeType: "video/mp4", productionAssetId: "11111111-1111-4111-8111-111111111121",
-        publicUrl: null, sceneClipId: "scene-avatar-1", sceneOrder: 1,
-        storageBucket: "production-assets", storagePath: "production-assets/avatar-scene-1.mp4", timelineRole: "AVATAR",
-      },
-      {
-        checksum: "2".repeat(64), durationSeconds: 8, fileSizeBytes: 42,
-        mimeType: "audio/mpeg", productionAssetId: "22222222-2222-4222-8222-222222222232",
-        publicUrl: null, sceneClipId: "scene-avatar-1", sceneOrder: 1,
-        storageBucket: "production-assets", storagePath: "production-assets/voice-scene-1.mp3", timelineRole: "VOICE",
-      },
-    ],
-    plan: { accentColor: "#38BDF8", durationSeconds: 20, subtitle: "Prueba", title: "Avatar vinculado" },
-  });
+  const document = linkedAvatarVoiceDocument();
   document.canvas.durationSeconds = 20;
   const avatar = document.clips.find((clip) => clip.trackId === "avatar")!;
   const voice = document.clips.find((clip) => clip.trackId === "voice" && clip.sceneId === "scene-avatar-1")!;
@@ -86,6 +184,319 @@ test("mueve en conjunto un avatar de escena y su voz asociada", () => {
   }]);
   assert.equal(movedFromVoice.clips.find((clip) => clip.id === avatar.id)?.startSeconds, 7);
   assert.equal(movedFromVoice.clips.find((clip) => clip.id === voice.id)?.startSeconds, 7);
+});
+
+test("conserva el desfase interno al mover una unión avatar-voz", () => {
+  const document = linkedAvatarVoiceDocument();
+  document.canvas.durationSeconds = 20;
+  const avatar = document.clips.find((clip) => clip.trackId === "avatar")!;
+  const voice = document.clips.find((clip) => clip.trackId === "voice")!;
+  avatar.startSeconds = 1;
+  voice.startSeconds = 2;
+
+  const edited = applyCompositionEditorPatches(document, [{
+    clipId: avatar.id, startSeconds: 5, type: "clip.move",
+  }]);
+
+  assert.equal(edited.clips.find((clip) => clip.id === avatar.id)?.startSeconds, 5);
+  assert.equal(edited.clips.find((clip) => clip.id === voice.id)?.startSeconds, 6);
+});
+
+test("rechaza atómicamente el movimiento si la contraparte vinculada está bloqueada", () => {
+  const document = linkedAvatarVoiceDocument();
+  const avatar = document.clips.find((clip) => clip.trackId === "avatar")!;
+  const voiceTrack = document.tracks.find((track) => track.id === "voice")!;
+  voiceTrack.locked = true;
+
+  assert.throws(
+    () => applyCompositionEditorPatches(document, [{
+      clipId: avatar.id, startSeconds: 4, type: "clip.move",
+    }]),
+    (error: unknown) => error instanceof CompositionEditorPatchError
+      && /clips vinculados/.test(error.message),
+  );
+  assert.equal(document.clips.find((clip) => clip.id === avatar.id)?.startSeconds, 0);
+});
+
+test("amplía el canvas con el límite real de la contraparte vinculada", () => {
+  const document = linkedAvatarVoiceDocument();
+  const avatar = document.clips.find((clip) => clip.trackId === "avatar")!;
+  const voice = document.clips.find((clip) => clip.trackId === "voice")!;
+  document.canvas.durationSeconds = 10;
+  avatar.durationSeconds = 4;
+  voice.startSeconds = 2;
+  voice.durationSeconds = 8;
+
+  const operations = ensureCanvasDurationForClipPatches(document, [{
+    clipId: avatar.id, startSeconds: 5, type: "clip.move",
+  }]);
+  const canvasPatch = operations.find((operation) => operation.type === "composition.canvas-duration");
+  assert.equal(canvasPatch?.durationSeconds, 15);
+
+  const edited = applyCompositionEditorPatches(document, operations);
+  assert.equal(edited.canvas.durationSeconds, 15);
+  assert.equal(edited.clips.find((clip) => clip.id === voice.id)?.startSeconds, 7);
+});
+
+test("falla de forma segura ante una relación avatar-voz ambigua", () => {
+  const document = linkedAvatarVoiceDocument();
+  const avatar = document.clips.find((clip) => clip.trackId === "avatar")!;
+  document.clips.push({
+    ...structuredClone(avatar),
+    hfId: "asset-avatar-fragment-2",
+    id: "asset-avatar-fragment-2",
+    startSeconds: 10,
+  });
+
+  assert.throws(
+    () => applyCompositionEditorPatches(document, [{
+      clipId: avatar.id, startSeconds: 4, type: "clip.move",
+    }]),
+    (error: unknown) => error instanceof CompositionEditorPatchError
+      && /varios clips de avatar o voz/.test(error.message),
+  );
+});
+
+test("crea un grupo lógico entre capas sin crear clips sintéticos", () => {
+  const document = baseDocument();
+  const clipIds = document.clips.map((clip) => clip.id);
+  const edited = applyCompositionEditorPatches(document, [{
+    clipIds,
+    groupId: "group-intro",
+    label: "Introducción",
+    type: "group.create",
+  }]);
+
+  assert.deepEqual(edited.groups, [{
+    clipIds,
+    id: "group-intro",
+    label: "Introducción",
+    order: 0,
+  }]);
+  assert.deepEqual(edited.clips, document.clips);
+  assert.equal(edited.format, COMPOSITION_DOCUMENT_FORMAT);
+});
+
+test("impide que un clip pertenezca directamente a más de un grupo", () => {
+  const document = baseDocument();
+  const clipIds = document.clips.map((clip) => clip.id);
+  const grouped = applyCompositionEditorPatches(document, [{
+    clipIds,
+    groupId: "group-one",
+    type: "group.create",
+  }]);
+
+  assert.throws(
+    () => applyCompositionEditorPatches(grouped, [{
+      clipIds,
+      groupId: "group-two",
+      type: "group.create",
+    }]),
+    (error: unknown) => error instanceof CompositionEditorPatchError
+      && /solo puede pertenecer/.test(error.message),
+  );
+});
+
+test("rechaza grupos con miembros inexistentes y acepta documentos previos sin groups", () => {
+  const document = baseDocument();
+  assert.equal(compositionEditorDocumentSchema.safeParse(document).success, true);
+  assert.equal(compositionEditorDocumentSchema.safeParse({
+    ...document,
+    groups: [{
+      clipIds: [document.clips[0]!.id, "missing-clip"],
+      id: "invalid-group",
+      order: 0,
+    }],
+  }).success, false);
+});
+
+test("mueve un grupo entre capas conservando offsets, pistas y el vínculo avatar-voz una sola vez", () => {
+  const document = linkedAvatarVoiceDocument();
+  document.canvas.durationSeconds = 10;
+  const avatar = document.clips.find((clip) => clip.trackId === "avatar")!;
+  const voice = document.clips.find((clip) => clip.trackId === "voice")!;
+  avatar.startSeconds = 1;
+  avatar.durationSeconds = 4;
+  voice.startSeconds = 2;
+  voice.durationSeconds = 8;
+  const operations = ensureCanvasDurationForClipPatches(document, [{
+    clipIds: [avatar.id, voice.id],
+    groupId: "group-scene-one",
+    type: "group.create",
+  }, {
+    groupId: "group-scene-one",
+    startSeconds: 5,
+    type: "group.move",
+  }]);
+
+  const canvasPatch = operations.find((operation) => operation.type === "composition.canvas-duration");
+  assert.equal(canvasPatch?.durationSeconds, 14);
+  const edited = applyCompositionEditorPatches(document, operations);
+  const movedAvatar = edited.clips.find((clip) => clip.id === avatar.id)!;
+  const movedVoice = edited.clips.find((clip) => clip.id === voice.id)!;
+  assert.equal(movedAvatar.startSeconds, 5);
+  assert.equal(movedVoice.startSeconds, 6);
+  assert.equal(movedAvatar.trackId, "avatar");
+  assert.equal(movedVoice.trackId, "voice");
+});
+
+test("rechaza atómicamente mover un grupo con una pista bloqueada", () => {
+  const document = baseDocument();
+  const clipIds = document.clips.map((clip) => clip.id);
+  const grouped = applyCompositionEditorPatches(document, [{
+    clipIds,
+    groupId: "group-locked",
+    type: "group.create",
+  }]);
+  grouped.tracks.find((track) => track.id === grouped.clips[0]!.trackId)!.locked = true;
+
+  assert.throws(
+    () => applyCompositionEditorPatches(grouped, [{
+      groupId: "group-locked",
+      startSeconds: 1,
+      type: "group.move",
+    }]),
+    (error: unknown) => error instanceof CompositionEditorPatchError
+      && /pistas está bloqueada/.test(error.message),
+  );
+  assert.deepEqual(
+    grouped.clips.map((clip) => clip.startSeconds),
+    document.clips.map((clip) => clip.startSeconds),
+  );
+});
+
+test("añade y retira miembros, disolviendo el grupo cuando queda uno", () => {
+  const document = baseDocument();
+  const source = document.clips[0]!;
+  document.clips.push({
+    ...structuredClone(source),
+    durationSeconds: 1,
+    hfId: "extra-group-member",
+    id: "extra-group-member",
+    startSeconds: 1,
+  });
+  const firstTwoIds = document.clips.slice(0, 2).map((clip) => clip.id);
+  const thirdId = document.clips[2]!.id;
+  const grouped = applyCompositionEditorPatches(document, [{
+    clipIds: firstTwoIds,
+    groupId: "group-members",
+    type: "group.create",
+  }, {
+    clipIds: [thirdId],
+    groupId: "group-members",
+    type: "group.add-clips",
+  }]);
+  assert.deepEqual(grouped.groups?.[0]?.clipIds, [...firstTwoIds, thirdId]);
+
+  const dissolved = applyCompositionEditorPatches(grouped, [{
+    clipIds: [firstTwoIds[1]!, thirdId],
+    groupId: "group-members",
+    type: "group.remove-clips",
+  }]);
+  assert.deepEqual(dissolved.groups, []);
+});
+
+test("desagrupa sin modificar los clips ni la relación avatar-voz", () => {
+  const document = linkedAvatarVoiceDocument();
+  document.canvas.durationSeconds = 20;
+  const clipIds = document.clips.map((clip) => clip.id);
+  const grouped = applyCompositionEditorPatches(document, [{
+    clipIds,
+    groupId: "group-to-remove",
+    type: "group.create",
+  }]);
+  const ungrouped = applyCompositionEditorPatches(grouped, [{
+    groupId: "group-to-remove",
+    type: "group.ungroup",
+  }]);
+  const avatar = ungrouped.clips.find((clip) => clip.trackId === "avatar")!;
+  const voice = ungrouped.clips.find((clip) => clip.trackId === "voice")!;
+  const moved = applyCompositionEditorPatches(ungrouped, [{
+    clipId: avatar.id,
+    startSeconds: 3,
+    type: "clip.move",
+  }]);
+
+  assert.deepEqual(ungrouped.groups, []);
+  assert.equal(moved.clips.find((clip) => clip.id === voice.id)?.startSeconds, 3);
+});
+
+test("un clip derivado hereda el grupo de su clip de origen", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const companion = document.clips.find((clip) => clip.id !== video.id)!;
+  const grouped = applyCompositionEditorPatches(document, [{
+    clipIds: [video.id, companion.id],
+    groupId: "group-derived",
+    type: "group.create",
+  }]);
+  const splitAt = video.startSeconds + video.durationSeconds / 2;
+  const split = applyCompositionEditorPatches(grouped, [{
+    atSeconds: splitAt,
+    clipId: video.id,
+    newClipId: "derived-video-right",
+    newHfId: "derived-video-right",
+    type: "clip.split",
+  }]);
+
+  assert.deepEqual(split.groups?.[0]?.clipIds, [video.id, companion.id, "derived-video-right"]);
+});
+
+test("un fragmento conservado tras remove-range hereda el grupo", () => {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const companion = document.clips.find((clip) => clip.id !== video.id)!;
+  const rangeStartSeconds = video.startSeconds + video.durationSeconds / 3;
+  const rangeEndSeconds = video.startSeconds + video.durationSeconds * 2 / 3;
+  const grouped = applyCompositionEditorPatches(document, [{
+    clipIds: [video.id, companion.id],
+    groupId: "group-range",
+    type: "group.create",
+  }]);
+  const edited = applyCompositionEditorPatches(grouped, [{
+    clipId: video.id,
+    endSeconds: rangeEndSeconds,
+    newClipId: "range-video-right",
+    newHfId: "range-video-right",
+    ripple: false,
+    startSeconds: rangeStartSeconds,
+    type: "clip.remove-range",
+  }]);
+
+  assert.deepEqual(edited.groups?.[0]?.clipIds, [video.id, companion.id, "range-video-right"]);
+});
+
+test("eliminar un miembro disuelve automáticamente un grupo de dos clips", () => {
+  const document = baseDocument();
+  const clipIds = document.clips.map((clip) => clip.id);
+  const grouped = applyCompositionEditorPatches(document, [{
+    clipIds,
+    groupId: "group-remove",
+    type: "group.create",
+  }]);
+  const edited = applyCompositionEditorPatches(grouped, [{
+    clipId: clipIds[0]!,
+    type: "clip.remove",
+  }]);
+
+  assert.deepEqual(edited.groups, []);
+});
+
+test("rechaza dividir individualmente una relación avatar-voz", () => {
+  const document = linkedAvatarVoiceDocument();
+  const avatar = document.clips.find((clip) => clip.trackId === "avatar")!;
+
+  assert.throws(
+    () => applyCompositionEditorPatches(document, [{
+      atSeconds: avatar.startSeconds + avatar.durationSeconds / 2,
+      clipId: avatar.id,
+      newClipId: "avatar-right",
+      newHfId: "avatar-right",
+      type: "clip.split",
+    }]),
+    (error: unknown) => error instanceof CompositionEditorPatchError
+      && /operación sincronizada/.test(error.message),
+  );
 });
 
 test("aplica un recorte visual no destructivo y conserva timing, layout y fuente", () => {
@@ -574,6 +985,7 @@ test("reinicia un asset, consolida sus fragmentos y elimina recortes y animacion
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
   video.durationSeconds = 30;
   video.sourceDurationSeconds = 30;
+  video.colorGrading = { adjust: { contrast: 0.1, exposure: 0.25, saturation: -0.1 } };
   const originalStartSeconds = video.startSeconds;
   const split = applyCompositionEditorPatches(document, [{
     atSeconds: video.startSeconds + 10,
@@ -601,6 +1013,7 @@ test("reinicia un asset, consolida sus fragmentos y elimina recortes y animacion
   assert.equal(restored.durationSeconds, 30);
   assert.equal(restored.sourceOffsetSeconds, 0);
   assert.equal(restored.crop, undefined);
+  assert.equal(restored.colorGrading, undefined);
   assert.equal(restored.mediaFit, "COVER");
   assert.deepEqual(restored.layout, { height: 1080, opacity: 1, rotation: 0, width: 1920, x: 0, y: 0, zIndex: 0 });
   assert.equal(reset.motion.animations.some((animation) => animation.target.clipId === video.id || animation.target.clipId === "video-reset-right"), false);

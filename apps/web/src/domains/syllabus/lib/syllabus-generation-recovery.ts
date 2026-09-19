@@ -39,13 +39,18 @@ export async function recoverStaleSyllabusGeneration(
     })
     .eq("artifact_id", artifactId)
     .eq("state", SYLLABUS_STATES.GENERATING)
+    .eq("iteration_count", syllabus.iteration_count)
     .eq("updated_at", syllabus.updated_at)
     .select("*")
     .maybeSingle();
 
+  if (error) {
+    throw error;
+  }
+
   // If the job finished between the read and this update, the updated_at guard matches
   // no row: return what was read and let the next poll surface the real result.
-  if (error || !data) {
+  if (!data) {
     return syllabus;
   }
 
