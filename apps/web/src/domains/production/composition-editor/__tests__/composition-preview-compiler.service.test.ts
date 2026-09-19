@@ -339,6 +339,8 @@ test("compiles the native document into a seekable preview with stable visual id
   assert.match(html, /data-hf-id="deck-slide-0"/);
   assert.match(html, /window\.__timelines\["courseforge-composition"\]/);
   assert.match(html, /courseforge-composition-selection/);
+  assert.match(html, /selectTarget\(target, "PARENT"\)/);
+  assert.match(html, /origin = "PREVIEW"/);
   assert.match(html, /courseforge-composition-editor-settings/);
   assert.match(html, /composition-editor-grid/);
   assert.match(html, /snapEnabled/);

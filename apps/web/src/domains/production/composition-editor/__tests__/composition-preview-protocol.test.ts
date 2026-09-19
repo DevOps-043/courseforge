@@ -48,6 +48,24 @@ test("adds a version to valid parent commands and rejects invalid ranges", () =>
   }), null);
 });
 
+test("identifies whether a preview selection came from the canvas or a parent command", () => {
+  assert.deepEqual(parseCompositionPreviewIframeMessage({
+    hfId: "clip-1",
+    origin: "PARENT",
+    type: "courseforge-composition-selection",
+  }), {
+    hfId: "clip-1",
+    origin: "PARENT",
+    protocolVersion: COMPOSITION_PREVIEW_PROTOCOL_VERSION,
+    type: "courseforge-composition-selection",
+  });
+  assert.equal(parseCompositionPreviewIframeMessage({
+    hfId: "clip-1",
+    origin: "UNKNOWN",
+    type: "courseforge-composition-selection",
+  }), null);
+});
+
 test("validates visual patches and their correlated acknowledgements", () => {
   const command = createCompositionPreviewParentCommand({
     baseDocumentHash: "a".repeat(64),

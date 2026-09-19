@@ -1,2 +1,4 @@
 /** Backward-compatible route while slide consumers migrate to /api/admin/fonts. */
-export { GET, POST, runtime } from "../../fonts/route";
+export const runtime = "nodejs";
+
+export { GET, POST } from "../../fonts/route";

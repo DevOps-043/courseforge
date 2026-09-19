@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveCompositionTimelineSelectionSync } from "../composition-timeline-selection.service";
+import {
+  resolveCompositionPreviewSelectionEvent,
+  resolveCompositionTimelineSelectionSync,
+} from "../composition-timeline-selection.service";
 
 const clips = [{ hfId: "hf-1", id: "clip-1" }];
 
@@ -59,5 +62,39 @@ test("ignores a preview selection that is not present in the current document", 
   }), {
     nextClipIds: null,
     shouldClearGroup: false,
+  });
+});
+
+test("preserves timeline multi-selection when the iframe acknowledges a parent command", () => {
+  assert.deepEqual(resolveCompositionPreviewSelectionEvent({
+    clips,
+    hfId: "hf-1",
+    origin: "PARENT",
+  }), {
+    nextClipIds: null,
+    shouldClearGroup: false,
+    shouldOpenProperties: false,
+  });
+});
+
+test("replaces timeline selection only after a direct preview interaction", () => {
+  assert.deepEqual(resolveCompositionPreviewSelectionEvent({
+    clips,
+    hfId: "hf-1",
+    origin: "PREVIEW",
+  }), {
+    nextClipIds: ["clip-1"],
+    shouldClearGroup: true,
+    shouldOpenProperties: true,
+  });
+
+  assert.deepEqual(resolveCompositionPreviewSelectionEvent({
+    clips,
+    hfId: null,
+    origin: "PREVIEW",
+  }), {
+    nextClipIds: [],
+    shouldClearGroup: true,
+    shouldOpenProperties: false,
   });
 });

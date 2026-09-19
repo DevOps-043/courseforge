@@ -1,3 +1,5 @@
+import type { CompositionPreviewSelectionOrigin } from "./composition-preview-protocol";
+
 export interface CompositionTimelineSelectionClip {
   hfId: string;
   id: string;
@@ -13,6 +15,40 @@ export interface CompositionTimelineSelectionSyncInput {
 export interface CompositionTimelineSelectionSyncDecision {
   nextClipIds: string[] | null;
   shouldClearGroup: boolean;
+}
+
+export interface CompositionPreviewSelectionEventInput {
+  clips: ReadonlyArray<CompositionTimelineSelectionClip>;
+  hfId: string | null;
+  origin: CompositionPreviewSelectionOrigin;
+}
+
+export interface CompositionPreviewSelectionEventDecision {
+  nextClipIds: string[] | null;
+  shouldClearGroup: boolean;
+  shouldOpenProperties: boolean;
+}
+
+/**
+ * An iframe selection can be a direct canvas interaction or an acknowledgement
+ * of a timeline command. Only direct canvas interactions may replace a
+ * timeline multi-selection.
+ */
+export function resolveCompositionPreviewSelectionEvent({
+  clips,
+  hfId,
+  origin,
+}: CompositionPreviewSelectionEventInput): CompositionPreviewSelectionEventDecision {
+  if (origin === "PARENT") {
+    return { nextClipIds: null, shouldClearGroup: false, shouldOpenProperties: false };
+  }
+
+  const selectedClip = hfId ? clips.find((clip) => clip.hfId === hfId) : null;
+  return {
+    nextClipIds: selectedClip ? [selectedClip.id] : [],
+    shouldClearGroup: true,
+    shouldOpenProperties: Boolean(selectedClip),
+  };
 }
 
 /**

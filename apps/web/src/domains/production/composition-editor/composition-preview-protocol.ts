@@ -5,8 +5,11 @@ import { compositionPreviewMetricSchema } from "./composition-preview-telemetry"
 import { compositionPreviewVisualPatchSchema } from "./composition-preview-visual-patch";
 
 export const COMPOSITION_PREVIEW_PROTOCOL_VERSION = 1 as const;
+export const COMPOSITION_PREVIEW_SELECTION_ORIGINS = ["PARENT", "PREVIEW"] as const;
+export type CompositionPreviewSelectionOrigin = typeof COMPOSITION_PREVIEW_SELECTION_ORIGINS[number];
 
 const protocolVersionSchema = z.literal(COMPOSITION_PREVIEW_PROTOCOL_VERSION).default(COMPOSITION_PREVIEW_PROTOCOL_VERSION);
+const selectionOriginSchema = z.enum(COMPOSITION_PREVIEW_SELECTION_ORIGINS).default("PREVIEW");
 const hfIdSchema = z.string().trim().min(1).max(160);
 const secondsSchema = z.number().finite().min(0).max(86_400);
 const layoutSchema = z.object({
@@ -36,6 +39,7 @@ export const compositionPreviewIframeMessageSchema = z.discriminatedUnion("type"
     ...iframeMessageBase,
     bounds: z.object({ height: z.number().finite(), width: z.number().finite(), x: z.number().finite(), y: z.number().finite() }).strict().optional(),
     hfId: hfIdSchema.nullable(),
+    origin: selectionOriginSchema,
     type: z.literal("courseforge-composition-selection"),
   }).strict(),
   z.object({ ...iframeMessageBase, hfId: hfIdSchema, layout: layoutSchema, type: z.literal("courseforge-composition-layout-commit") }).strict(),

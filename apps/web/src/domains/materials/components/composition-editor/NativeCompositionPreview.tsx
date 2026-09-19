@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import type { CompositionClip, CompositionEditorDocument, CompositionTrack } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import { resolveCompositionAnimationWindow } from "@/domains/production/composition-editor/composition-motion-scheduling.service";
+import { resolveCompositionPreviewSelectionEvent } from "@/domains/production/composition-editor/composition-timeline-selection.service";
 import { CompositionNarrativePanel } from "./CompositionNarrativePanel";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
 import { applyCompositionEditorPatches, ensureCanvasDurationForClipPatches } from "@/domains/production/composition-editor/editor-patch.service";
@@ -630,12 +631,22 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       }
       if (message.type === "courseforge-composition-selection") {
         setSelectedHfId(message.hfId);
-        setSelectedAnimationId(null);
-        setManualInspectorOpen(Boolean(message.hfId));
-        const clip = payload?.document.clips.find((candidate) => candidate.hfId === message.hfId);
-        setSelectedTimelineClipIds(clip ? new Set([clip.id]) : new Set());
-        setSelectedTimelineGroupId(null);
-        if (message.hfId) setInspectorTab("properties");
+        const selectionDecision = resolveCompositionPreviewSelectionEvent({
+          clips: payload?.document.clips || [],
+          hfId: message.hfId,
+          origin: message.origin,
+        });
+        if (selectionDecision.nextClipIds !== null) {
+          setSelectedTimelineClipIds(new Set(selectionDecision.nextClipIds));
+          setSelectedAnimationId(null);
+          setManualInspectorOpen(Boolean(message.hfId));
+        }
+        if (selectionDecision.shouldClearGroup) setSelectedTimelineGroupId(null);
+        if (selectionDecision.shouldOpenProperties) {
+          setSelectedAnimationId(null);
+          setManualInspectorOpen(true);
+          setInspectorTab("properties");
+        }
       }
       if (message.type === "courseforge-composition-layout-commit") {
         const clip = payload?.document.clips.find((candidate) => candidate.hfId === message.hfId);

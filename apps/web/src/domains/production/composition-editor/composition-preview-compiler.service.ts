@@ -1133,7 +1133,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         else media.addEventListener("loadedmetadata", () => preserveDefaultMediaAspect(media), { once: true });
       });
       bindMediaReadinessListeners();
-      const selectTarget = (target) => {
+      const selectTarget = (target, origin = "PREVIEW") => {
         if (!target) return;
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => {
           if (node instanceof HTMLElement) applyCrop(node, readCrop(node), false);
@@ -1180,9 +1180,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         applyCrop(target, readCrop(target), cropEnabled && canCrop);
         selectedHfId = target.dataset.hfId || null;
         const box = target.getBoundingClientRect();
-        postParentMessage({ type: "courseforge-composition-selection", hfId: selectedHfId, bounds: { height: box.height, width: box.width, x: box.x, y: box.y } });
+        postParentMessage({ type: "courseforge-composition-selection", hfId: selectedHfId, origin, bounds: { height: box.height, width: box.width, x: box.x, y: box.y } });
       };
-      const clearTarget = () => {
+      const clearTarget = (origin = "PREVIEW") => {
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => {
           if (node instanceof HTMLElement) applyCrop(node, readCrop(node), false);
         });
@@ -1190,7 +1190,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => node.removeAttribute("data-crop-mode"));
         document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
         selectedHfId = null;
-        postParentMessage({ type: "courseforge-composition-selection", hfId: null });
+        postParentMessage({ type: "courseforge-composition-selection", hfId: null, origin });
       };
       document.addEventListener("click", (event) => {
         if (activeTransform?.moved) return;
@@ -1454,7 +1454,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           if (editorGrid) editorGrid.setAttribute("data-visible", message.gridVisible === true ? "true" : "false");
           document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
           const selectedTarget = selectedHfId ? document.querySelector('[data-hf-id="' + CSS.escape(selectedHfId) + '"]') : null;
-          if (selectedTarget) selectTarget(selectedTarget);
+          if (selectedTarget) selectTarget(selectedTarget, "PARENT");
         }
         if (message.type === "courseforge-composition-preview-zoom") {
           previewUserScale = Math.max(.5, Math.min(2, Number(message.scale) || 1));
@@ -1472,10 +1472,10 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         }
         if (message.type === "courseforge-composition-select") {
           if (message.hfId === null) {
-            clearTarget();
+            clearTarget("PARENT");
           } else if (typeof message.hfId === "string") {
             const target = document.querySelector('[data-hf-id="' + CSS.escape(message.hfId) + '"]');
-            selectTarget(target);
+            selectTarget(target, "PARENT");
           }
         }
       });
