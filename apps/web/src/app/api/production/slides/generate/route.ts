@@ -37,7 +37,7 @@ import {
   slideDeckGenerateInputSchema,
   type CourseDeckSpec,
 } from "@/domains/production/slides/specs/course-deck.schema";
-import { validateCourseDeckQuality } from "@/domains/production/slides/validation/course-deck-qa.service";
+import { summarizeCourseDeckQaErrors, validateCourseDeckQuality } from "@/domains/production/slides/validation/course-deck-qa.service";
 import {
   planDeckVisualAssets,
   visualAssetPlanSummary,
@@ -52,7 +52,7 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const BUCKET = "production-assets";
-const SLIDE_COPY_PIPELINE_VERSION = "visible-copy-synthesis-v5";
+const SLIDE_COPY_PIPELINE_VERSION = "visible-copy-synthesis-v6";
 const MAX_SLIDE_GENERATION_REQUEST_BYTES = 64 * 1024;
 
 export const slideDeckGenerationRequestSchema = slideDeckGenerateInputSchema.extend({
@@ -641,11 +641,7 @@ export async function runSlideDeckGeneration(params: {
       html: structuralHtml,
     });
     if (failedQaReport.status === "FAIL") {
-      const failingCodes = failedQaReport.findings
-        .filter((finding) => finding.severity === "error")
-        .map((finding) => finding.code)
-        .join(", ");
-      throw new Error(`Deck SofLIA - Engine no paso QA estructural: ${failingCodes}`);
+      throw new Error(`Deck SofLIA - Engine no paso QA estructural: ${summarizeCourseDeckQaErrors(failedQaReport)}`);
     }
     const plannedDeckSpec = planDeckVisualAssets({
       deckSpec: deckSpecWithTemplate,
@@ -674,11 +670,8 @@ export async function runSlideDeckGeneration(params: {
     const qaReport = validateCourseDeckQuality({ deckSpec, html });
 
     if (qaReport.status === "FAIL") {
-      const failingCodes = qaReport.findings
-        .filter((finding) => finding.severity === "error")
-        .map((finding) => finding.code)
-        .join(", ");
-      throw new Error(`Deck SofLIA - Engine no paso QA: ${failingCodes}`);
+      failedQaReport = qaReport;
+      throw new Error(`Deck SofLIA - Engine no paso QA: ${summarizeCourseDeckQaErrors(qaReport)}`);
     }
 
     const basePath = deckBasePath(componentId);

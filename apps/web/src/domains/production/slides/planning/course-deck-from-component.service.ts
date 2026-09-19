@@ -26,7 +26,7 @@ import {
 import {
   buildSourceInsights,
   firstSourceLead,
-  sourceLinesForSlide,
+  createSlideSourceAllocator,
   type SlideSourcePack,
 } from "../content/slide-source-pack.service";
 import { buildScriptSlideSegments } from "./slide-coverage-policy.service";
@@ -385,6 +385,7 @@ function buildSlidesFromScript(
   }
 
   const sectionBeatLines = sections.map(visualBeatLines);
+  const sourceLinesForSlide = createSlideSourceAllocator(sourcePack);
   const contentSlides = buildScriptSlideSegments(sectionBeatLines.map((lines) => ({
     visibleBeatCount: lines.length,
   }))).map((segment, index): CourseSlideSpec => {
@@ -397,9 +398,7 @@ function buildSlidesFromScript(
     const plannedSlide = plannedSlideById(slidePlan, id);
     const baseVisibleLines = sectionBeatLines[segment.sectionIndex] || [];
     const resolvedSlideType = plannedSlide?.type || (index === 0 ? "concept" : "worked_example");
-    const sourceVisibleLines = sourceLinesForSlide(sourcePack, index, {
-      slideType: resolvedSlideType,
-    });
+    const sourceVisibleLines = sourceLinesForSlide(resolvedSlideType);
     const visibleLines = sourceVisibleLines.length > 0
       ? sourceVisibleLines
       : segment.part === 1
@@ -484,6 +483,7 @@ function buildSlidesFromStoryboard(
   }
 
   const coverSourceRefs = sourceRefsForSlide(slidePlan, "cover", ["component.content.storyboard"]);
+  const sourceLinesForSlide = createSlideSourceAllocator(sourcePack);
 
   return [
     {
@@ -507,9 +507,7 @@ function buildSlidesFromStoryboard(
       const id = `storyboard-${item.take_number || index + 1}`;
       const plannedSlide = plannedSlideById(slidePlan, id);
       const resolvedSlideType = plannedSlide?.type || "concept";
-      const sourceVisibleLines = sourceLinesForSlide(sourcePack, index, {
-        slideType: resolvedSlideType,
-      });
+      const sourceVisibleLines = sourceLinesForSlide(resolvedSlideType);
       const resolvedVisibleLines = sourceVisibleLines.length > 0
         ? sourceVisibleLines
         : visibleLines;

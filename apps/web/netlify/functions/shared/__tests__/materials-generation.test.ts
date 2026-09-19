@@ -11,11 +11,133 @@ import { generateWithRetry, matchesLesson, parseAndValidateMaterialsOutput } fro
 import { generationFailureMessage, isGenerationStale, isPermanentProviderFailure } from "../../../../src/lib/pipeline-generation-policy";
 import { markArtifactGenerationFailed } from "../../../../src/domains/artifacts/lib/artifact-generation-failure";
 import type { MaterialsGenerationInput, MaterialsGenerationOutput } from "../../../../src/domains/materials/types/materials.types";
+import { normalizeGeneratedDialogueIdentifiers, validateDialogueIdentifiers } from "../../../../src/domains/materials/lib/dialogue-identifiers";
+import { validateSofliaDialogueContent } from "../../../../src/domains/materials/validators/materials-control3.validators";
+import { validateSofliaDialogueRuntimeConfig } from "../../../../src/domains/publication/lib/soflia-dialogue-runtime-contract";
 
 const content: MaterialsGenerationOutput = { components: { EXERCISE: { title: "Práctica", body_html: "Texto", instructions: "Comparar", expected_outcome: "Resultado" } }, source_refs_used: [] };
 const runtime = { temperature: 0.7, thinkingLevel: "medium" };
 
 const execution = { materialsId: "materials-1", version: 3 };
+
+function dialogueFixture() {
+  return {
+    interactionType: "soflia_dialogue", runtimeType: "SOFLIA_DIALOGUE", schemaVersion: "1.0.0",
+    title: "Audio original y firma sonora", visibleGoal: "Crear una firma sonora",
+    learningObjective: "Crear una estrategia de audio original con transparencia sobre IA",
+    scenario: "Diseña el audio de una campaña", openingMessage: "¿Qué identidad sonora propones?",
+    studentRole: "Productor", sofliaRole: "Tutora", rescueContent: "Explica la autoría y el uso de IA",
+    successCriteria: [
+      { id: "Firma-Sonóra", label: "Identidad", description: "Justifica la firma sonora", required: true },
+      { id: "2 transparencia", label: "Transparencia", description: "Declara el uso de IA", required: true },
+    ],
+    hintLadder: [
+      { id: "Pista-1", level: 1, targetCriterionId: "Firma-Sonóra", content: "Piensa en un motivo reconocible" },
+      { id: "Pista-2", level: 2, targetCriterionId: "2 transparencia", content: "Identifica los elementos generados" },
+    ],
+    expectedEvidence: ["Estrategia justificada"], commonMistakes: ["Omitir la autoría"], challengePrompts: ["Adapta tu propuesta"],
+    rubric: [{ id: "Calidad del Audio", label: "Calidad", description: "Coherencia de la propuesta", weight: 100 }],
+    policy: { approvalMinimum: 80, maxTurns: 8, maxHints: 3 },
+  };
+}
+
+const dialogueInput = {
+  lesson: { lesson_id: "lesson-4-4", lesson_title: "Audio original", module_id: "module-4", module_title: "Audio", oa_text: "Crear audio original", components: [{ type: "DIALOGUE", summary: "Práctica" }], quiz_spec: null, requires_demo_guide: false },
+  sources: [], iteration_number: 3,
+} as MaterialsGenerationInput;
+
+test("dialogue generation repairs ID formatting and references before persistence without changing teaching content", () => {
+  const dialogue = dialogueFixture();
+  const original = structuredClone(dialogue);
+  const output = parseAndValidateMaterialsOutput(dialogueInput, { components: { DIALOGUE: dialogue }, source_refs_used: [] });
+  const fixed = output.components.DIALOGUE as unknown as ReturnType<typeof dialogueFixture>;
+  assert.deepEqual(fixed.successCriteria.map((item) => item.id), ["firma_sonora", "criterion_2_transparencia"]);
+  assert.deepEqual(fixed.hintLadder.map((item) => item.targetCriterionId), ["firma_sonora", "criterion_2_transparencia"]);
+  assert.deepEqual(fixed.hintLadder.map((item) => item.id), ["pista_1", "pista_2"]);
+  assert.equal(fixed.rubric[0].id, "calidad_del_audio");
+  assert.deepEqual(dialogue, original, "normalization must not mutate model output");
+  assert.equal(fixed.successCriteria[0].description, original.successCriteria[0].description);
+  assert.equal(fixed.hintLadder[1].content, original.hintLadder[1].content);
+  assert.deepEqual(normalizeGeneratedDialogueIdentifiers(fixed), fixed, "normalization must be idempotent");
+  assert.deepEqual(validateSofliaDialogueContent(fixed), []);
+  assert.equal(validateSofliaDialogueRuntimeConfig(fixed).valid, true);
+});
+
+test("criterion normalization resolves only unambiguous equivalent references", () => {
+  const dialogue = dialogueFixture();
+  dialogue.hintLadder[0].targetCriterionId = "firma_sonora";
+  assert.doesNotThrow(() => parseAndValidateMaterialsOutput(dialogueInput, { components: { DIALOGUE: dialogue }, source_refs_used: [] }));
+  dialogue.successCriteria[1].id = "firma sonora";
+  assert.throws(() => normalizeGeneratedDialogueIdentifiers(dialogue), /ambiguo/);
+  dialogue.hintLadder[0].targetCriterionId = "Firma-Sonóra";
+  dialogue.hintLadder[1].targetCriterionId = "firma sonora";
+  const normalized = normalizeGeneratedDialogueIdentifiers(dialogue) as ReturnType<typeof dialogueFixture>;
+  assert.deepEqual(normalized.successCriteria.map((item) => item.id), ["firma_sonora", "firma_sonora_2"]);
+  assert.deepEqual(normalized.hintLadder.map((item) => item.targetCriterionId), ["firma_sonora", "firma_sonora_2"]);
+});
+
+test("normalization reserves already valid IDs and rejects absent or duplicated IDs", () => {
+  const dialogue = dialogueFixture();
+  dialogue.successCriteria[1].id = "firma_sonora";
+  dialogue.hintLadder[1].targetCriterionId = "firma_sonora";
+  const normalized = normalizeGeneratedDialogueIdentifiers(dialogue) as ReturnType<typeof dialogueFixture>;
+  assert.deepEqual(normalized.successCriteria.map((item) => item.id), ["firma_sonora_2", "firma_sonora"]);
+  assert.deepEqual(normalized.hintLadder.map((item) => item.targetCriterionId), ["firma_sonora_2", "firma_sonora"]);
+  dialogue.successCriteria[1].id = dialogue.successCriteria[0].id;
+  assert.throws(() => normalizeGeneratedDialogueIdentifiers(dialogue), /duplicado/);
+  dialogue.successCriteria[1].id = "";
+  assert.throws(() => normalizeGeneratedDialogueIdentifiers(dialogue), /no vacíos/);
+});
+
+test("unrepairable dialogues fail before being accepted as generated", () => {
+  const dialogue = dialogueFixture();
+  dialogue.hintLadder[0].targetCriterionId = "criterio_que_no_existe";
+  assert.throws(() => parseAndValidateMaterialsOutput(dialogueInput, { components: { DIALOGUE: dialogue }, source_refs_used: [] }), /DIALOGUE_IDENTIFIER_INVALID/);
+  dialogue.hintLadder[0].targetCriterionId = dialogue.successCriteria[0].id;
+  dialogue.rubric[0].weight = 25;
+  assert.throws(() => parseAndValidateMaterialsOutput(dialogueInput, { components: { DIALOGUE: dialogue }, source_refs_used: [] }), /DIALOGUE_CONTRACT_INVALID.*sumar 100/);
+  assert.throws(() => parseAndValidateMaterialsOutput(dialogueInput, { components: { DIALOGUE: { scenes: [] } }, source_refs_used: [] }), /DIALOGUE_CONTRACT_INVALID.*legacy/);
+});
+
+test("all validation boundaries reject duplicate IDs and avoid cascading errors for later valid criteria", () => {
+  const dialogue = dialogueFixture();
+  dialogue.successCriteria[1].id = "valid_criterion";
+  dialogue.hintLadder = [{ id: "hint_1", level: 1, content: "Pista", targetCriterionId: "valid_criterion" }];
+  const errors = validateDialogueIdentifiers(dialogue);
+  assert.ok(errors.some((error) => error.includes("successCriteria")));
+  assert.ok(!errors.some((error) => error.includes("criterios existentes")), "a malformed first criterion must not hide valid later ones");
+  dialogue.successCriteria[0].id = "valid_criterion";
+  assert.ok(validateSofliaDialogueContent(dialogue).some((error) => error.includes("duplicados")));
+  assert.ok(validateSofliaDialogueRuntimeConfig(dialogue).errors.some((error) => error.includes("duplicados")));
+});
+
+test("bounded model retries receive dialogue contract feedback instead of repeating the same request", async (context) => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-key";
+  context.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalKey;
+  });
+  const prompts: string[] = [];
+  globalThis.fetch = async (_url, options) => {
+    const payload = JSON.parse(String(options?.body)) as { input: string };
+    prompts.push(payload.input);
+    const dialogue = dialogueFixture();
+    if (prompts.length === 1) dialogue.hintLadder[0].targetCriterionId = "unknown_criterion";
+    const generated = JSON.stringify({ components: { DIALOGUE: dialogue }, source_refs_used: [] });
+    return new Response(JSON.stringify({ status: "completed", output_text: generated, output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: generated, annotations: [] }] }] }), { headers: { "content-type": "application/json" } });
+  };
+  const input = { ...dialogueInput, fix_instructions: "Conserva el objetivo de audio original" };
+  const result = await generateWithRetry(input, "[dialogue test]", ["gpt-5-test"], runtime);
+  assert.equal(result.success, true);
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[0], /Contrato de identificadores DIALOGUE/);
+  assert.match(prompts[1], /DIALOGUE_IDENTIFIER_INVALID/);
+  assert.match(prompts[1], /Conserva el objetivo de audio original/);
+  assert.equal(input.fix_instructions, "Conserva el objetivo de audio original");
+});
 
 test("chained jobs await HTTP acceptance when Netlify build flags are absent", async (context) => {
   const keys = ["NODE_ENV", "NETLIFY", "URL", "NEXT_PUBLIC_SUPABASE_URL", "BACKGROUND_FUNCTION_SECRET"] as const;

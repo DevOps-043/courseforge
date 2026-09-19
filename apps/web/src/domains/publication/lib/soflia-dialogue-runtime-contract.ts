@@ -1,4 +1,4 @@
-const STABLE_ID_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
+import { validateDialogueIdentifiers } from "../../materials/lib/dialogue-identifiers";
 
 export const SOFLIA_DIALOGUE_ACTIVITY_SCHEMA_VERSION = 2;
 export const SOFLIA_DIALOGUE_INTERACTION_TYPE = "soflia_dialogue";
@@ -15,10 +15,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
-}
-
-function isStableId(value: unknown): value is string {
-  return typeof value === "string" && STABLE_ID_PATTERN.test(value);
 }
 
 function getRecordArray(value: unknown) {
@@ -89,38 +85,9 @@ export function validateSofliaDialogueRuntimeConfig(
     errors.push("activity_config.successCriteria debe incluir al menos un criterio");
   }
 
-  const successCriterionIds = new Set<string>();
-  for (const criterion of successCriteria) {
-    if (!isStableId(criterion.id)) {
-      errors.push("successCriteria.id debe ser estable, sin acentos ni espacios");
-      break;
-    }
-
-    successCriterionIds.add(criterion.id);
-
-    if (
-      !isNonEmptyString(criterion.label) ||
-      !isNonEmptyString(criterion.description)
-    ) {
-      errors.push("successCriteria requiere label y description");
-      break;
-    }
-  }
-
-  const hintLadder = getRecordArray(content.hintLadder);
-  for (const hint of hintLadder) {
-    if (!isStableId(hint.id)) {
-      errors.push("hintLadder.id debe ser estable, sin acentos ni espacios");
-      break;
-    }
-
-    if (
-      typeof hint.targetCriterionId !== "string" ||
-      !successCriterionIds.has(hint.targetCriterionId)
-    ) {
-      errors.push("hintLadder.targetCriterionId debe apuntar a successCriteria");
-      break;
-    }
+  errors.push(...validateDialogueIdentifiers(content));
+  if (successCriteria.some((criterion) => !isNonEmptyString(criterion.label) || !isNonEmptyString(criterion.description))) {
+    errors.push("successCriteria requiere label y description");
   }
 
   if (getStringArray(content.expectedEvidence).length < 1) {
@@ -151,13 +118,6 @@ export function validateSofliaDialogueRuntimeConfig(
 
   if (rubric.length > 0 && rubricWeight !== 100) {
     errors.push("activity_config.rubric.weight debe sumar 100");
-  }
-
-  for (const item of rubric) {
-    if (!isStableId(item.id)) {
-      errors.push("rubric.id debe ser estable, sin acentos ni espacios");
-      break;
-    }
   }
 
   const policy = isRecord(content.policy) ? content.policy : null;

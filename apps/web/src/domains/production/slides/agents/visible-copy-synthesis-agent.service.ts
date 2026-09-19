@@ -7,7 +7,7 @@ import {
 } from "../../../../lib/server/outbound-http";
 import { getOptionalGeminiApiKey, getOptionalOpenAIApiKey } from "../../../../lib/server/env";
 import type { SlideSourcePack } from "../content/slide-source-pack.service";
-import { containsProductionMetadataLeak } from "../content/slide-visible-content.service";
+import { validateCourseDeckVisibleCopy } from "../validation/course-deck-qa.service";
 import {
   copyBudgetForSlideType,
   hasUnexpectedVisibleLanguage,
@@ -38,7 +38,7 @@ export interface VisibleCopySynthesisTrace {
 
 interface SynthesizeVisibleCopyParams {
   deckSpec: CourseDeckSpec;
-  languageRepair?: boolean;
+  repairFeedback?: string[];
   model?: SlideAgentModelSettingRecord;
   prompt?: SlideAgentPromptRecord;
   sourcePack?: SlideSourcePack;
@@ -121,6 +121,8 @@ function deckDraftForPrompt(deckSpec: CourseDeckSpec) {
       ? block.items || []
       : block.text ? [block.text] : []),
     id: slide.id,
+    // Context for distinct educational ideas; never rendered as slide copy directly.
+    sectionNarrative: slide.speakerNotes,
     sourceRefs: slide.validationHints.sourceRefs,
     title: slide.title,
     type: slide.type,
@@ -144,8 +146,10 @@ CONTRATO OBLIGATORIO:
 - No menciones guion, storyboard, B-roll, avatar, timecode ni instrucciones de produccion.
 - Si una slide no tiene evidencia suficiente, conserva su idea borrador de forma concisa; no agregues contenido nuevo.
 - Devuelve una entrada por cada id de slide proporcionado.
+- Cada diapositiva debe desarrollar una idea distinta de su seccion. No repitas titulo y bullets entre slides ni cambies solo el numero para ocultar duplicados.
+- sectionNarrative es contexto pedagogico de esa seccion: sintetiza su idea sin transcribirlo ni mostrar instrucciones de produccion.
 - Cada elemento de slides debe usar exactamente id, title, subtitle opcional y bullets. No anides esos campos ni uses heading, points o content.
-${params.languageRepair ? "- CORRECCION OBLIGATORIA: el intento anterior contenia prosa en el idioma equivocado. Reescribe todas las slides en el idioma obligatorio antes de responder." : ""}
+${params.repairFeedback?.length ? `CORRECCIONES OBLIGATORIAS DEL INTENTO ANTERIOR:\n${JSON.stringify(params.repairFeedback)}` : ""}
 
 EVIDENCIA CURADA:
 ${JSON.stringify(sourceEvidenceForPrompt(params.sourcePack))}
@@ -170,28 +174,35 @@ function hasDeckLocaleMismatch(deckSpec: CourseDeckSpec) {
   );
 }
 
-function hasDeckProductionMetadataLeak(deckSpec: CourseDeckSpec) {
-  return deckSpec.slides.some((slide) => containsProductionMetadataLeak(slideVisibleText(slide)));
-}
-
 function normalizeSynthesis(params: {
   deckSpec: CourseDeckSpec;
   response: unknown;
 }) {
   const parsed = synthesisResponseSchema.parse(params.response);
-  const byId = new Map(params.deckSpec.slides.map((slide, index) => {
-    const raw = asRecord(parsed.slides[index]);
+  const expectedIds = new Set(params.deckSpec.slides.map((slide) => slide.id));
+  if (parsed.slides.length !== expectedIds.size) {
+    throw new Error(`Devuelve exactamente ${expectedIds.size} slides, una por cada id solicitado.`);
+  }
+  const seenIds = new Set<string>();
+  const byId = new Map(parsed.slides.map((value) => {
+    const raw = asRecord(value);
     const nestedSlide = asRecord(raw.slide);
     const nestedContent = asRecord(raw.content);
     const candidate = Object.keys(nestedSlide).length > 0
       ? nestedSlide
       : Object.keys(nestedContent).length > 0 ? nestedContent : raw;
-    const id = compactText(candidate.id) || slide.id;
+    const id = compactText(candidate.id);
+    if (!expectedIds.has(id) || seenIds.has(id)) {
+      throw new Error(`Id de slide desconocido o repetido: ${id || "(vacio)"}. Conserva exactamente los ids solicitados.`);
+    }
+    seenIds.add(id);
+    const title = compactText(candidate.title ?? candidate.title_text ?? candidate.copy_title ?? candidate.heading ?? candidate.headline);
+    if (!title) throw new Error(`La slide ${id} necesita un titulo.`);
     return [id, {
       bullets: textItems(candidate.bullets ?? candidate.bullet_points ?? candidate.points ?? candidate.items ?? candidate.content),
       id,
       subtitle: compactText(candidate.subtitle ?? candidate.subheading),
-      title: compactText(candidate.title ?? candidate.title_text ?? candidate.copy_title ?? candidate.heading ?? candidate.headline) || slide.title,
+      title,
     }];
   }));
 
@@ -295,36 +306,37 @@ export async function synthesizeDeckVisibleCopy(params: SynthesizeVisibleCopyPar
 
   for (const provider of configuredProviders) {
     try {
-      const result = provider === "gemini"
-        ? geminiKey ? await synthesizeWithGemini(params, geminiKey) : null
-        : openAiKey ? await synthesizeWithOpenAI(params, openAiKey) : null;
-      if (!result) continue;
-
-      let deckSpec = normalizeSynthesis({ deckSpec: params.deckSpec, response: result.response });
-      if (hasDeckLocaleMismatch(deckSpec)) {
-        const repaired = provider === "gemini"
-          ? geminiKey ? await synthesizeWithGemini({ ...params, languageRepair: true }, geminiKey) : null
-          : openAiKey ? await synthesizeWithOpenAI({ ...params, languageRepair: true }, openAiKey) : null;
-        if (!repaired) {
-          throw new Error("No se pudo ejecutar la correccion obligatoria de idioma.");
+      const apiKey = provider === "gemini" ? geminiKey : openAiKey;
+      if (!apiKey) continue;
+      let repairFeedback: string[] | undefined;
+      // One bounded repair per provider, using the same rules as final QA.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const request = { ...params, repairFeedback };
+        const result = provider === "gemini"
+          ? await synthesizeWithGemini(request, apiKey)
+          : await synthesizeWithOpenAI(request, apiKey);
+        let deckSpec: CourseDeckSpec | undefined;
+        try {
+          deckSpec = normalizeSynthesis({ deckSpec: params.deckSpec, response: result.response });
+          repairFeedback = validateCourseDeckVisibleCopy(deckSpec)
+            .filter((finding) => finding.severity === "error")
+            .map((finding) => `${finding.slideId || "deck"}: ${finding.code}: ${finding.message}`);
+        } catch (error) {
+          repairFeedback = [error instanceof Error ? error.message : "Respuesta de copy invalida."];
         }
-        deckSpec = normalizeSynthesis({ deckSpec: params.deckSpec, response: repaired.response });
+        if (deckSpec && repairFeedback.length === 0) {
+          return {
+            deckSpec,
+            trace: {
+              appliedSlideCount: deckSpec.slides.length,
+              model: result.model,
+              provider: result.provider,
+              warning: warnings.length > 0 ? warnings.join(" | ") : null,
+            },
+          };
+        }
       }
-      if (hasDeckLocaleMismatch(deckSpec)) {
-        throw new Error(`El proveedor no genero copy en el idioma solicitado (${params.deckSpec.locale}).`);
-      }
-      if (hasDeckProductionMetadataLeak(deckSpec)) {
-        throw new Error("El proveedor incluyo metadatos internos de produccion en el copy visible.");
-      }
-      return {
-        deckSpec,
-        trace: {
-          appliedSlideCount: deckSpec.slides.length,
-          model: result.model,
-          provider: result.provider,
-          warning: warnings.length > 0 ? warnings.join(" | ") : null,
-        },
-      };
+      throw new Error(`El copy sigue sin pasar QA tras la correccion: ${repairFeedback?.join("; ")}`);
     } catch (error) {
       warnings.push(error instanceof Error ? `${provider}: ${error.message}` : `${provider}: error desconocido`);
     }

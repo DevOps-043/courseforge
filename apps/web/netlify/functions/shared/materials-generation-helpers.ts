@@ -33,6 +33,8 @@ import { VIDEO_GENERATION_LIMITS } from "../../../src/domains/materials/generati
 export type { MaterialsModelRuntimeConfig } from "./materials-model-client";
 import { getMaterialsModelProvider } from "../../../src/shared/ai/materials-model-provider";
 import { createGeminiClient, createOpenAiClient } from "./bootstrap";
+import { normalizeGeneratedDialogueIdentifiers } from "../../../src/domains/materials/lib/dialogue-identifiers";
+import { validateSofliaDialogueContent } from "../../../src/domains/materials/validators/materials-control3.validators";
 
 interface LessonPlanComponentRecord {
   duration_contract?: unknown;
@@ -257,6 +259,7 @@ export async function generateWithRetry(
   const unavailableModels = new Set<string>();
   let geminiClient: GoogleGenAI | undefined;
   let openAiClient: OpenAI | undefined;
+  let attemptInput = input;
 
   for (let retry = 0; retry < 2; retry++) {
     for (const model of modelsToTry) {
@@ -278,7 +281,7 @@ export async function generateWithRetry(
           ? await generateMaterialsWithGemini(
               (geminiClient ||= createGeminiClient()),
               model,
-              input,
+              attemptInput,
               logPrefix,
               supabase,
               componentTypes,
@@ -291,7 +294,7 @@ export async function generateWithRetry(
           : await generateMaterialsWithOpenAI(
               (openAiClient ||= createOpenAiClient()),
               model,
-              input,
+              attemptInput,
               logPrefix,
               supabase,
               componentTypes,
@@ -304,6 +307,12 @@ export async function generateWithRetry(
         return { success: true as const, content };
       } catch (error) {
         const message = getErrorMessage(error, "");
+        if (message.startsWith("DIALOGUE_IDENTIFIER_INVALID:") || message.startsWith("DIALOGUE_CONTRACT_INVALID:")) {
+          attemptInput = {
+            ...input,
+            fix_instructions: [input.fix_instructions, `Corrige el contrato DIALOGUE rechazado: ${message}`].filter(Boolean).join("\n"),
+          };
+        }
         attemptErrors.push(
           `${model} (intento ${retry + 1}): ${message || "error desconocido"}`,
         );
@@ -497,6 +506,9 @@ async function buildMaterialsPrompt(
 
   return (
     basePrompt +
+    (effectiveComponentTypes.includes("DIALOGUE")
+      ? "\n\n## Contrato de identificadores DIALOGUE\nCada successCriteria.id, hintLadder.id y rubric.id debe ser único dentro de su lista y cumplir ^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$. Usa criterion_1, criterion_2 para criterios; hint_1, hint_2 para pistas; rubric_1, rubric_2 para rúbrica. Cada hintLadder.targetCriterionId debe copiar exactamente el id del criterio al que ayuda. No uses números solos, guiones, acentos ni referencias a criterios ausentes."
+      : "") +
     `\n\n${buildVideoGenerationGuardrails(input.lesson.components)}` +
     `\n\n## DATOS DE ENTRADA\n\`\`\`json\n${JSON.stringify(input, null, 2)}\n\`\`\`\n\nResponde SOLO con JSON valido.`
   );
@@ -527,6 +539,14 @@ export function parseAndValidateMaterialsOutput(
     throw new Error(
       `INSUFFICIENT_SOURCE_USAGE: La respuesta debe utilizar al menos ${requiredSourceCount} fuentes validadas y utilizó ${distinctUsedSources.size}.`,
     );
+  }
+  if (generated.components.DIALOGUE) {
+    const dialogue = normalizeGeneratedDialogueIdentifiers(generated.components.DIALOGUE);
+    const errors = validateSofliaDialogueContent(dialogue);
+    if (errors.length > 0) {
+      throw new Error(`DIALOGUE_CONTRACT_INVALID: ${errors.join("; ")}`);
+    }
+    generated.components.DIALOGUE = dialogue;
   }
   return generated as unknown as MaterialsGenerationOutput;
 }

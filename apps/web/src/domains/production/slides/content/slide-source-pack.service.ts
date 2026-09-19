@@ -295,40 +295,27 @@ function insightTypeForSlideType(slideType?: string): SlideSourceInsight["type"]
   return "concept";
 }
 
-export function sourceLinesForSlide(
-  sourcePack: SlideSourcePack | undefined,
-  slideIndex: number,
-  options: {
-    slideType?: string;
-  } = {},
-) {
-  const insightType = insightTypeForSlideType(options.slideType);
+/** Allocates evidence once per deck; exhausted sources fall back to the section's own content. */
+export function createSlideSourceAllocator(sourcePack: SlideSourcePack | undefined) {
   const availableInsights = sourcePack?.insights?.length
     ? sourcePack.insights
     : buildSourceInsights(sourcePack?.items || []);
-  const matchingInsights = availableInsights.filter((insight) => insight.type === insightType);
-  const insights = matchingInsights.length > 0 ? matchingInsights : availableInsights;
-  const insight = insights.length > 0 ? insights[slideIndex % insights.length] : null;
-  if (insight) {
+  const candidates = availableInsights.length > 0
+    ? availableInsights
+    : (sourcePack?.items || []).flatMap((item): SlideSourceInsight[] => {
+        const claim = sourceClaim(item);
+        return claim ? [{ title: "Evidencia disponible", bodyItems: [claim], sourceRef: item.ref, type: "concept" }] : [];
+      });
+  const used = new Set<string>();
+  const signature = (insight: SlideSourceInsight) => normalizeForAnalysis([insight.title, ...insight.bodyItems].join(" "));
+
+  return (slideType?: string): string[] => {
+    const unused = candidates.filter((insight) => !used.has(signature(insight)));
+    const insight = unused.find((item) => item.type === insightTypeForSlideType(slideType)) || unused[0];
+    if (!insight) return [];
+    used.add(signature(insight));
     return [insight.title, ...insight.bodyItems];
-  }
-
-  const items = sourcePack?.items || [];
-  if (items.length === 0) {
-    return [];
-  }
-
-  const item = items[slideIndex % items.length];
-  if (!item) {
-    return [];
-  }
-
-  const claim = sourceClaim(item);
-  if (claim) {
-    return ["Evidencia disponible", claim];
-  }
-
-  return [];
+  };
 }
 
 export function firstSourceLead(sourcePack: SlideSourcePack | undefined) {
