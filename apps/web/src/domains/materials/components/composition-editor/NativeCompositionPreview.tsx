@@ -81,6 +81,11 @@ import {
   type AssemblyBrandingAvailability,
 } from "./CompositionTimelineWorkspace";
 import { useCompositionStudioControls } from "./useCompositionStudioControls";
+import { useCompositionKeyboardShortcuts } from "./useCompositionKeyboardShortcuts";
+import { useCompositionShortcutHelp } from "./useCompositionShortcutHelp";
+import { CompositionInspectorTabs, type CompositionInspectorTab } from "./CompositionInspectorTabs";
+import { CompositionTransportIntent, compositionTransportEnabled } from "@/domains/production/composition-editor/composition-transport-policy";
+import { compositionNavigationTime } from "@/domains/production/composition-editor/composition-shortcut-policy";
 import { useCompositionPresetController } from "./useCompositionPresetController";
 import { useCompositionAgentProposalController } from "./useCompositionAgentProposalController";
 import type { CompositionDocumentPayload, CompositionStudioAsset, CompositionStudioLesson } from "./composition-studio.types";
@@ -348,7 +353,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const animationPlaybackEndRef = useRef<number | null>(null);
   const previewReadyRef = useRef(false);
   const [manualInspectorOpen, setManualInspectorOpen] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState<"assistant" | "properties">("properties");
+  const [inspectorTab, setInspectorTab] = useState<CompositionInspectorTab>("properties");
+  const transportIntentRef = useRef(new CompositionTransportIntent());
   const [removalRangeStart, setRemovalRangeStart] = useState<{ clipId: string; seconds: number } | null>(null);
   const [history, setHistory] = useState<CompositionDocumentHistoryEntry[] | null>(null);
   const [brandingAvailability, setBrandingAvailability] = useState<AssemblyBrandingAvailability | null>(null);
@@ -477,6 +483,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       if (event.source !== frameRef.current?.contentWindow) return;
       const message = parseCompositionPreviewIframeMessage(event.data);
       if (!message) return;
+      if (message.type === "courseforge-composition-transport-ack") {
+        transportIntentRef.current.acknowledge(message.requestId);
+        return;
+      }
       if (message.type === "courseforge-composition-visual-patch-result") {
         runtimePatchCoordinatorRef.current?.acknowledge(message);
         return;
@@ -632,6 +642,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
   const duration = payload?.document.canvas.durationSeconds || 0;
   const transportActive = playing || previewMediaState === "BUFFERING";
+  const transportEnabled = compositionTransportEnabled({ saving, previewReady, previewMediaState });
   const durationSourceLabel = payload?.document.canvas.durationSource
     ? DURATION_SOURCE_LABELS[payload.document.canvas.durationSource]
     : null;
@@ -643,6 +654,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       : savedPreviewUrl;
   useEffect(() => {
     pendingSeekSecondsRef.current = null;
+    transportIntentRef.current.reset();
     previewReadyRef.current = false;
     setPlaying(false);
     setPreviewReady(false);
@@ -655,6 +667,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const estimatedClipCount = payload?.document.clips.filter((clip) => clip.timingSource === "ESTIMATED").length || 0;
   const selectedClip = payload?.document.clips.find((clip) => clip.hfId === selectedHfId) ?? null;
   const inspectorOpen = manualInspectorOpen || Boolean(selectedClip);
+  const { openShortcuts, closeShortcuts, changeInspectorTab } = useCompositionShortcutHelp({
+    tab: inspectorTab, inspectorOpen, setTab: setInspectorTab, setOpen: setManualInspectorOpen, fallbackRef: previewShellRef,
+  });
   const previewStatusLabel = presetPreview
     ? "Preview de preset"
     : agentProposal
@@ -701,6 +716,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     postPreviewMessage({ type: "courseforge-composition-seek", seconds: nextSeconds });
   };
   const beginScrub = () => {
+    transportIntentRef.current.reset();
     postPreviewMessage({ type: "courseforge-composition-pause" });
     setPlaying(false);
   };
@@ -739,6 +755,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     postPreviewMessage({ type: "courseforge-composition-select", hfId: null });
   };
   const pausePreviewForMutation = () => {
+    transportIntentRef.current.reset();
     previewReadyRef.current = false;
     pendingPreviewRestoreSecondsRef.current = playheadSecondsRef.current;
     pendingSeekSecondsRef.current = null;
@@ -780,8 +797,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     });
   };
   const togglePreviewPlayback = () => {
-    if (transportActive) {
-      postPreviewMessage({ type: "courseforge-composition-pause" });
+    if (!transportEnabled || !previewReadyRef.current || saveInFlightRef.current) return;
+    const intent = transportIntentRef.current.toggle(transportActive, performance.now());
+    if (!intent.active) {
+      postPreviewMessage({ type: "courseforge-composition-pause", requestId: intent.requestId });
       return;
     }
     const currentHash = payloadRef.current?.documentHash || null;
@@ -789,8 +808,22 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       refreshPreviewDocument(true, "DIRTY_PLAYBACK");
       return;
     }
-    postPreviewMessage({ type: "courseforge-composition-play" });
+    postPreviewMessage({ type: "courseforge-composition-play", requestId: intent.requestId });
   };
+  const compositionScenes = useMemo(() => payload ? deriveCompositionScenes(payload.document) : [], [payload]);
+  const { onPreviewLoad } = useCompositionKeyboardShortcuts({
+    rootRef: studioGridRef, frameRef, previewUrl, transportEnabled,
+    blocked: toolMenuOpen || Boolean(history) || presetPanelOpen || studioResizing || (inspectorOpen && inspectorTab === "shortcuts"),
+    execute: (action) => {
+      if (action === "toggle-playback") { togglePreviewPlayback(); return; }
+      if (action === "open-shortcuts") { openShortcuts(); return; }
+      if (action === "toggle-fullscreen") { void togglePreviewFullscreen(); return; }
+      if (action === "toggle-grid") { setGridVisible((current) => !current); return; }
+      if (action === "toggle-snap") { setSnapEnabled((current) => !current); return; }
+      const target = compositionNavigationTime(action, playheadSecondsRef.current, duration, compositionScenes.map((scene) => scene.startSeconds));
+      if (target !== null) { beginScrub(); seek(target); }
+    },
+  });
   function savePatch(
     operations: CompositionEditorPatchOperation[],
     summary: string,
@@ -2019,7 +2052,6 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       onRestore={restoreSnapshot}
     />
   );
-  const compositionScenes = deriveCompositionScenes(payload.document);
   const activeSceneId = compositionScenes.find((scene) =>
     seconds >= scene.startSeconds && seconds < scene.startSeconds + scene.durationSeconds
   )?.id;
@@ -2076,7 +2108,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       >
         <CompositionStudioLibrary assets={assets} delivery={deliveryMenu} introAssetId={payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO" ? [clip.source.productionAssetId] : [])[0] || null} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onAddSoundEffect={addSoundEffectToTimeline} onClearIntro={clearProductionIntro} onSelectLesson={onSelectLesson} onSelectAsset={selectClip} onSetIntro={setProductionIntro} selectedLessonId={selectedLessonId} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
 
-        <section ref={previewShellRef} className={`${styles.previewPanel} ${previewFullscreen ? styles.previewFullscreen : ""}`}>
+        <section tabIndex={0} aria-label="Área de preview" data-composition-shortcut-scope="preview" ref={previewShellRef} className={`${styles.previewPanel} ${previewFullscreen ? styles.previewFullscreen : ""}`}>
           <CompositionPreviewToolbar
             agentProposalActive={Boolean(agentProposal)}
             currentVersion={payload.version}
@@ -2094,6 +2126,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
               else void removeSelectedInterval();
               setToolMenuOpen(false);
             }}
+            onOpenShortcuts={openShortcuts}
             onOpenAssistant={() => {
               setManualInspectorOpen(true);
               setInspectorTab("assistant");
@@ -2142,6 +2175,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
             duration={duration}
             fps={payload.document.canvas.fps}
             frameRef={frameRef}
+            onPreviewLoad={onPreviewLoad}
             onBeginScrub={beginScrub}
             onPlaySelectedAnimation={playSelectedAnimation}
             onRefreshDocument={() => refreshPreviewDocument(false)}
@@ -2233,10 +2267,13 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           trimToolEnabled={trimToolEnabled}
         />
 
-        {inspectorOpen && <aside className={styles.inspector}>
-          <div className={styles.inspectorHeader}><div className={styles.inspectorTabs}><button type="button" onClick={() => setInspectorTab("properties")} className={`${styles.inspectorTab} ${inspectorTab === "properties" ? styles.inspectorTabActive : ""}`}>Propiedades</button><button type="button" onClick={() => setInspectorTab("assistant")} className={`${styles.inspectorTab} ${inspectorTab === "assistant" ? styles.inspectorTabActive : ""}`}>SofLIA</button></div><button type="button" onClick={clearSelection} className={styles.inspectorClose} title="Cerrar inspector" aria-label="Cerrar inspector"><X size={15} /></button></div>
-          <div className={styles.inspectorBody}>{inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} selectedAnimationId={selectedAnimationId} onAnimationSelect={(id) => { if (id && selectedClip) selectAnimation(id, selectedClip.hfId); else setSelectedAnimationId(null); }} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} /> : <CompositionAgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={(instruction) => requestAgentProposal(instruction, Boolean(presetPreview))} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}</div>
-        </aside>}
+        <CompositionInspectorTabs
+          tab={inspectorTab} onTabChange={changeInspectorTab} open={inspectorOpen}
+          onClose={clearSelection} onCloseShortcuts={closeShortcuts}
+          fullscreen={previewFullscreen}
+          properties={<CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} selectedAnimationId={selectedAnimationId} onAnimationSelect={(id) => { if (id && selectedClip) selectAnimation(id, selectedClip.hfId); else setSelectedAnimationId(null); }} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} />}
+          assistant={<CompositionAgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={(instruction) => requestAgentProposal(instruction, Boolean(presetPreview))} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}
+        />
       </div>
     </section>
   );

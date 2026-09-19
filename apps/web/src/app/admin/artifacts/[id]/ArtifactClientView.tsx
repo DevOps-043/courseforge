@@ -81,7 +81,7 @@ export default function ArtifactClientView({
   >(
     artifact.state === "APPROVED" || artifact.qa_status === "APPROVED"
       ? "approved"
-      : "pending",
+      : artifact.state === "REJECTED" ? "rejected" : "pending",
   );
   const [localProductionComplete, setLocalProductionComplete] = useState(
     Boolean(artifact.production_complete),

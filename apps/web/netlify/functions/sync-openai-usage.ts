@@ -3,6 +3,7 @@ import {
   createServiceRoleClient,
   getOptionalOpenAiAdminConfig,
 } from "./shared/bootstrap";
+import { jsonResponse, methodNotAllowedResponse } from "./shared/http";
 
 export const config: Config = { schedule: "23 * * * *" };
 
@@ -66,7 +67,12 @@ function utcDate(unixSeconds: number) {
   return new Date(unixSeconds * 1_000).toISOString().slice(0, 10);
 }
 
-export const handler: Handler = async () => {
+export const handler: Handler = async (event) => {
+  if (event.httpMethod !== "POST") return methodNotAllowedResponse();
+  if (event.headers["x-nf-event"] !== "schedule") {
+    return jsonResponse({ error: "scheduled_invocation_required" }, 401);
+  }
+
   const adminConfig = getOptionalOpenAiAdminConfig();
   if (!adminConfig.adminKey) {
     return {

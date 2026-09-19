@@ -327,6 +327,7 @@ export async function POST(request: Request) {
   let previousIteration = 0;
   let previousState = "STEP_DRAFT";
   let reservedIteration: number | undefined;
+  let structuralValidationMessage: string | undefined;
   try {
     const parsedRequest = await parseJsonRequest(
       request,
@@ -594,12 +595,11 @@ export async function POST(request: Request) {
     content.generation_metadata = metadata;
     const validation = runAllValidations(content.modules, objetivos);
     if (!validation.passed) {
-      throw new Error(
-        `El temario generado no superó la validación estructural: ${validation.checks
+      structuralValidationMessage = `El temario generado no superó la validación estructural: ${validation.checks
           .filter((check) => !check.pass)
           .map((check) => check.message)
-          .join(" | ")}`,
-      );
+          .join(" | ")}`;
+      throw new Error(structuralValidationMessage);
     }
     const completedSyllabus = {
       ...content,
@@ -674,7 +674,7 @@ export async function POST(request: Request) {
     logger.error("syllabus.generation_failed", error);
     return apiErrorResponse({
       code: API_ERROR_CODE.internalError,
-      message: "No se pudo generar el temario.",
+      message: structuralValidationMessage || "No se pudo generar el temario.",
       requestId,
       retryable: true,
       status: 500,

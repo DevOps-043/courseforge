@@ -2,6 +2,7 @@ import { z } from "zod";
 import { compositionVisualCropSchema } from "./composition-document.types";
 import { compositionPreviewMetricSchema } from "./composition-preview-telemetry";
 import { compositionPreviewVisualPatchSchema } from "./composition-preview-visual-patch";
+import { COMPOSITION_SHORTCUT_ACTIONS } from "./composition-shortcuts";
 
 export const COMPOSITION_PREVIEW_PROTOCOL_VERSION = 1 as const;
 
@@ -16,8 +17,12 @@ const layoutSchema = z.object({
 }).strict();
 
 const iframeMessageBase = { protocolVersion: protocolVersionSchema };
+const shortcutSessionSchema = z.string().uuid();
+const transportRequestSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 
 export const compositionPreviewIframeMessageSchema = z.discriminatedUnion("type", [
+  z.object({ ...iframeMessageBase, action: z.enum(COMPOSITION_SHORTCUT_ACTIONS), sessionId: shortcutSessionSchema, type: z.literal("courseforge-composition-shortcut") }).strict(),
+  z.object({ ...iframeMessageBase, requestId: transportRequestSchema, type: z.literal("courseforge-composition-transport-ack") }).strict(),
   z.object({ ...iframeMessageBase, duration: secondsSchema, selectedHfId: hfIdSchema.nullable().optional(), type: z.literal("courseforge-composition-ready") }).strict(),
   z.object({ ...iframeMessageBase, seconds: secondsSchema, type: z.literal("courseforge-composition-time") }).strict(),
   z.object({ ...iframeMessageBase, playing: z.boolean(), type: z.literal("courseforge-composition-playback") }).strict(),
@@ -48,9 +53,10 @@ export const compositionPreviewIframeMessageSchema = z.discriminatedUnion("type"
 ]);
 
 export const compositionPreviewParentCommandSchema = z.discriminatedUnion("type", [
+  z.object({ protocolVersion: protocolVersionSchema, actions: z.array(z.enum(COMPOSITION_SHORTCUT_ACTIONS)).max(COMPOSITION_SHORTCUT_ACTIONS.length), sessionId: shortcutSessionSchema, type: z.literal("courseforge-composition-shortcut-settings") }).strict(),
   z.object({ protocolVersion: protocolVersionSchema, seconds: secondsSchema, type: z.literal("courseforge-composition-seek") }).strict(),
-  z.object({ protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-play") }).strict(),
-  z.object({ protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-pause") }).strict(),
+  z.object({ protocolVersion: protocolVersionSchema, requestId: transportRequestSchema.optional(), type: z.literal("courseforge-composition-play") }).strict(),
+  z.object({ protocolVersion: protocolVersionSchema, requestId: transportRequestSchema.optional(), type: z.literal("courseforge-composition-pause") }).strict(),
   z.object({
     cropEnabled: z.boolean(), editingEnabled: z.boolean(), gridVisible: z.boolean(), protocolVersion: protocolVersionSchema,
     snapEnabled: z.boolean(), type: z.literal("courseforge-composition-editor-settings"),

@@ -47,7 +47,7 @@ interface CompositionTimelineWorkspaceProps {
 
 export function CompositionTimelineWorkspace({ assetLabels, brandingAvailability, currentTime, document, durationSourceLabel, estimatedClipCount, onAnimationSelect, onAnimationTimingChange, onAudioMixUpdate, onClearSelection, onDurationChange, onMove, onOrganize, onOutroChange, onRecalculateDuration, onRecoverHistoricalAssets, onRefreshProductionAssets, onSeek, onSelect, onTrackUpdate, onTrim, recoveringHistoricalAssets, refreshingProductionAssets, saving, selectedAnimationId, selectedHfId, snapEnabled, trimToolEnabled }: CompositionTimelineWorkspaceProps) {
   const duration = document.canvas.durationSeconds;
-  return <section className={styles.timelinePanel}>
+  return <section tabIndex={0} aria-label="Área de timeline" data-composition-shortcut-scope="timeline" className={styles.timelinePanel}>
     <div className={styles.timelineScroll}>
       <div className={`${styles.durationStrip} ${durationSourceLabel ? "" : styles.durationStripWarning}`}>
         <span>{durationSourceLabel ? `Duración total: ${formatCompositionTimecode(duration)} · ${durationSourceLabel}` : "Define el asset que controla la duración del contenido."}</span>

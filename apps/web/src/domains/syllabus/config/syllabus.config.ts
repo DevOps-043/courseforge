@@ -2,7 +2,7 @@
 export const COURSE_CONFIG = {
   maxTotalHours: 12,
   minLessonsPerModule: 3,
-  maxLessonsPerModule: 8,
+  maxLessonsPerModule: 6,
   idealLessonsPerModule: 5,
   minModules: 3,
   maxModules: 12,
@@ -31,12 +31,12 @@ export const SYLLABUS_PROMPT = `Eres un experto en diseño instruccional. Genera
 - No uses una duración fija para todas las lecciones; el sistema recalculará la estimación final con la política configurada
 
 **REGLAS DE ESTRUCTURA (MUY IMPORTANTE):**
-1. Genera entre ${COURSE_CONFIG.minModules} y ${COURSE_CONFIG.maxModules} módulos según la complejidad del tema
+1. Genera exactamente un módulo por objetivo general proporcionado
 2. Cada módulo DEBE tener entre ${COURSE_CONFIG.minLessonsPerModule} y ${COURSE_CONFIG.maxLessonsPerModule} lecciones
 3. El número IDEAL de lecciones por módulo es ${COURSE_CONFIG.idealLessonsPerModule}
 4. NUNCA generes menos de ${COURSE_CONFIG.minLessonsPerModule} lecciones por módulo
-5. Para temas complejos, usa más lecciones (6-8). Para temas simples, usa menos (3-4)
-6. El número de módulos NO tiene que ser igual al número de objetivos
+5. Para temas simples, usa el mínimo de lecciones permitido; respeta siempre el límite de duración total
+6. El número de módulos debe ser igual al número de objetivos
 7. Cada objetivo general debe estar cubierto por al menos un módulo
 8. TODOS los títulos de lecciones deben ser ÚNICOS en todo el temario
 9. Los títulos deben ser específicos y descriptivos, NO genéricos

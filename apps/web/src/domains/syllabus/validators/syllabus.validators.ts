@@ -28,15 +28,15 @@ export function validateModulesParity(modules: SyllabusModule[], objetivos: stri
 // V02: Rango Lecciones
 export function validateLessonsRange(modules: SyllabusModule[]): ValidationCheck {
   const invalidModules = modules.filter(m => 
-    m.lessons.length < 3 || m.lessons.length > 6
+    m.lessons.length < COURSE_CONFIG.minLessonsPerModule || m.lessons.length > COURSE_CONFIG.maxLessonsPerModule
   );
   
   return {
     code: "[V02]",
     pass: invalidModules.length === 0,
     message: invalidModules.length === 0
-      ? "Todos los modulos tienen entre 3 y 6 lecciones"
-      : `Hay modulos con cantidad incorrecta de lecciones (se permiten 3-6)`,
+      ? `Todos los modulos tienen entre ${COURSE_CONFIG.minLessonsPerModule} y ${COURSE_CONFIG.maxLessonsPerModule} lecciones`
+      : `Hay modulos con cantidad incorrecta de lecciones (se permiten ${COURSE_CONFIG.minLessonsPerModule}-${COURSE_CONFIG.maxLessonsPerModule})`,
     observed: invalidModules.length
   };
 }

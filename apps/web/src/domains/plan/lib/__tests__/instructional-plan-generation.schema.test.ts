@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { z } from "zod";
 import { GeneratedInstructionalPlanSchema } from "../instructional-plan-generation.schema";
-import { buildInstructionalPlanContextPrompt } from "../instructional-plan-prompt";
+import { buildInstructionalPlanContextPrompt, buildInstructionalPlanVideoDurationInstructions } from "../instructional-plan-prompt";
+import { DEFAULT_VIDEO_DURATION_POLICY } from "../../../video-duration/video-duration-policy";
 import { resolveInstructionalPlanAudience } from "../instructional-plan-validation-context";
 import { getInstructionalPlanCompletenessIssues } from "../plan-completeness";
 
@@ -12,6 +13,18 @@ interface JsonSchemaObject {
   properties?: Record<string, JsonSchemaObject>;
   required?: string[];
 }
+
+test("video generation instructions use the selected policy instead of historical prompt durations", () => {
+  const instructions = buildInstructionalPlanVideoDurationInstructions({
+    ...DEFAULT_VIDEO_DURATION_POLICY,
+    minimumDurationSeconds: 180,
+    targetDurationSeconds: 240,
+    maximumDurationSeconds: 300,
+  });
+  assert.match(instructions, /240 segundos \(4 minutos\)/);
+  assert.match(instructions, /180–300 segundos/);
+  assert.match(instructions, /prevalece/);
+});
 
 function assertStrictObjectContracts(schema: JsonSchemaObject, path = "root") {
   if (schema.properties) {

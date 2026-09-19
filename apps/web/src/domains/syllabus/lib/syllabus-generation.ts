@@ -4,6 +4,7 @@ import {
 } from "../types/syllabus.types";
 import type { SyllabusSourceDocument } from "../syllabus-source-documents";
 import { calculateEstimatedCourseHours } from "./lesson-duration-estimator";
+import { COURSE_CONFIG } from "../config/syllabus.config";
 
 export interface SyllabusGenerationContent {
   modules: SyllabusModule[];
@@ -121,6 +122,11 @@ export function buildSyllabusGenerationPrompt({
     requiredRuntimeContext,
     documentContext,
     SYLLABUS_OUTPUT_CONTRACT,
+    `REGLAS DE VALIDACIÓN OBLIGATORIAS (prevalecen sobre el prompt editable):
+- Genera ${objetivos.length > 0 ? `exactamente ${objetivos.length}` : `al menos ${COURSE_CONFIG.minModules}`} módulos, uno por objetivo general cuando hay objetivos.
+- Cada módulo debe tener entre ${COURSE_CONFIG.minLessonsPerModule} y ${COURSE_CONFIG.maxLessonsPerModule} lecciones con títulos únicos.
+- La duración total debe ser como máximo ${COURSE_CONFIG.maxTotalHours} horas, incluyendo lectura, diálogo, práctica y evaluación, además del video.
+- Para un curso introductorio usa el mínimo de lecciones permitido y evita fragmentar innecesariamente los objetivos.`,
   ].filter(Boolean).join("\n\n");
 }
 

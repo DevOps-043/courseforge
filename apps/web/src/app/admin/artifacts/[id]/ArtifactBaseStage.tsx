@@ -65,8 +65,10 @@ export function ArtifactBaseStage({
   onRegenerate,
   onContinue,
 }: ArtifactBaseStageProps) {
+  const generationInProgress = artifact.state === "GENERATING" || isRegenerating;
   return (
     <>
+      {generationInProgress && <p role="status">Generando la base del curso. La revisión estará disponible al terminar.</p>}
       {validation.results.filter((result) => result.code === "GENERATION_FAILED").map((result) => (
         <div key={result.code} role="alert" className="rounded-lg border border-red-300 bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">
           {result.message}
@@ -232,7 +234,7 @@ export function ArtifactBaseStage({
                 placeholder="Escribe tus comentarios o feedback para la IA..."
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
-                disabled={reviewState === "approved" || isRegenerating}
+                disabled={reviewState === "approved" || generationInProgress}
               />
 
               <div className="flex items-center gap-4 mt-4">
@@ -240,12 +242,14 @@ export function ArtifactBaseStage({
                   <>
                     <button
                       onClick={onApprove}
+                      disabled={generationInProgress}
                       className="flex-1 bg-[var(--engine-accent)]/10 hover:bg-[var(--engine-accent)]/20 text-[var(--engine-accent)] border border-[var(--engine-accent)]/20 py-3 rounded-xl font-medium transition-all"
                     >
                       Aprobar Fase 1
                     </button>
                     <button
                       onClick={onReject}
+                      disabled={generationInProgress}
                       className="flex-1 bg-[#EF4444]/10 hover:bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/20 py-3 rounded-xl font-medium transition-all"
                     >
                       Rechazar Fase 1

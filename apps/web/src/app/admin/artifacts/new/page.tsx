@@ -160,13 +160,14 @@ export default function NewArtifactPage({
 
                                 {/* Title Input */}
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                                    <label htmlFor="course-title" className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
                                         <BookOpen size={16} className="text-[var(--engine-accent)]" />
                                         Tema o Título del Curso
                                     </label>
                                     <input
                                         type="text"
                                         placeholder="Ej. Curso Completo de Python para Data Science"
+                                        id="course-title"
                                         className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-3.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[var(--engine-muted)] focus:outline-none focus:border-[var(--engine-accent)]/50 focus:ring-1 focus:ring-[var(--engine-accent)]/20 transition-all font-medium"
                                         value={formData.title}
                                         onChange={e => {
@@ -178,11 +179,12 @@ export default function NewArtifactPage({
 
                                 {/* Description Textarea */}
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-900 dark:text-white flex justify-between items-center">
+                                    <label htmlFor="course-description" className="text-sm font-medium text-gray-900 dark:text-white flex justify-between items-center">
                                         <span>Idea Principal y Descripción</span>
                                         <span className="text-xs text-gray-500 dark:text-[var(--engine-muted)]">{formData.description.length}/1000</span>
                                     </label>
                                     <textarea
+                                        id="course-description"
                                         placeholder="Describe de qué trata el curso en detalle... Por ejemplo: 'Un curso introductorio para enseñar Python a analistas financieros, enfocándose en librerías como Pandas y visualización de datos...'"
                                         className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-3.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[var(--engine-muted)] focus:outline-none focus:border-[var(--engine-accent)]/50 focus:ring-1 focus:ring-[var(--engine-accent)]/20 transition-all min-h-[160px] resize-none leading-relaxed"
                                         value={formData.description}
@@ -197,13 +199,14 @@ export default function NewArtifactPage({
                                 {/* Two Columns Grid */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-2">
-                                        <label className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                                        <label htmlFor="course-audience" className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
                                             <Users size={16} className="text-[#F59E0B]" />
                                             Público Objetivo
                                         </label>
                                         <input
                                             type="text"
                                             placeholder="Ej. Principiantes, Gerentes..."
+                                            id="course-audience"
                                             className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[var(--engine-muted)] focus:outline-none focus:border-[var(--engine-accent)]/50 transition-all"
                                             value={formData.targetAudience}
                                             onChange={e => {
@@ -213,13 +216,14 @@ export default function NewArtifactPage({
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                                        <label htmlFor="course-results" className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
                                             <Target size={16} className="text-[#10B981]" />
                                             Resultados Esperados
                                         </label>
                                         <input
                                             type="text"
                                             placeholder="Ej. Crear primera app web..."
+                                            id="course-results"
                                             className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-xl px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[var(--engine-muted)] focus:outline-none focus:border-[var(--engine-accent)]/50 transition-all"
                                             value={formData.expectedResults}
                                             onChange={e => {
@@ -248,8 +252,9 @@ export default function NewArtifactPage({
                                             className="pt-4 space-y-4"
                                         >
                                             <div className="space-y-2">
-                                                <label className="text-xs uppercase tracking-wider text-gray-500 dark:text-[var(--engine-muted)] font-bold">ID del Curso (Opcional)</label>
+                                                <label htmlFor="course-id" className="text-xs uppercase tracking-wider text-gray-500 dark:text-[var(--engine-muted)] font-bold">ID del Curso (Opcional)</label>
                                                 <input
+                                                    id="course-id"
                                                     type="text"
                                                     placeholder="#1. MARKETING-101"
                                                     className="w-full bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-[var(--engine-muted)]/20 rounded-lg px-4 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-[var(--engine-accent)]/30"

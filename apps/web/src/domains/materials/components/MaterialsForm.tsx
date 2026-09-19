@@ -153,7 +153,7 @@ export function MaterialsForm({
     return (
       <div className={`space-y-6 ${className}`}>
         <MaterialsStepHeader
-          title="Materiales (Fase 3)"
+          title="Materiales (Paso 5)"
           stateLabel="Generando..."
           stateColor="bg-blue-100 text-blue-800"
           isGenerating
@@ -200,7 +200,7 @@ export function MaterialsForm({
   return (
     <div className={`space-y-6 ${className}`}>
       <MaterialsStepHeader
-        title="Materiales (Fase 3)"
+        title="Materiales (Paso 5)"
         stateLabel={stateLabel}
         stateColor={stateColor}
         isGenerating={isGenerating}

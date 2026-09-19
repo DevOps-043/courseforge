@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from "react";
-import { ArrowRight, ChevronDown, Clapperboard, Crop, Grid3X3, History, Magnet, Maximize2, Minimize2, Minus, MousePointer2, PanelRight, Plus, RefreshCw, Scan, Scissors, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowRight, ChevronDown, Clapperboard, Crop, Grid3X3, History, Keyboard, Magnet, Maximize2, Minimize2, Minus, MousePointer2, PanelRight, Plus, RefreshCw, Scan, Scissors, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import type { CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import styles from "./CompositionStudio.module.css";
@@ -25,6 +25,7 @@ interface CompositionPreviewToolbarProps {
   onInspectorToggle: () => void;
   onIntervalAction: () => void;
   onOpenAssistant: () => void;
+  onOpenShortcuts: () => void;
   onOpenPresets: () => void;
   onReload: () => void;
   onRestoreHistory: (entry: CompositionDocumentHistoryEntry) => void;
@@ -50,7 +51,7 @@ interface CompositionPreviewToolbarProps {
   visualCropEnabled: boolean;
 }
 
-export function CompositionPreviewToolbar({ agentProposalActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenPresets, onReload, onRestoreHistory, onSplit, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onZoom, previewFullscreen, previewStatusLabel, previewZoom, removalRangeStartSeconds, saveError, saving, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, visualCropEnabled }: CompositionPreviewToolbarProps) {
+export function CompositionPreviewToolbar({ agentProposalActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenShortcuts, onOpenPresets, onReload, onRestoreHistory, onSplit, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onZoom, previewFullscreen, previewStatusLabel, previewZoom, removalRangeStartSeconds, saveError, saving, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, visualCropEnabled }: CompositionPreviewToolbarProps) {
   return <div className={styles.previewToolbar}>
     <div className={styles.previewIdentity}>
       <span className={styles.previewIdentityIcon}><Clapperboard size={14} aria-hidden="true" /></span>
@@ -79,6 +80,7 @@ export function CompositionPreviewToolbar({ agentProposalActive, currentVersion,
       </div>
     </div>
     <div className={styles.previewUtilities}>
+      <button type="button" onClick={onOpenShortcuts} className={styles.toolIconButton} title="Atajos de teclado (?)" aria-label="Abrir atajos de teclado" aria-keyshortcuts="?"><Keyboard size={15} /></button>
       <span role="status" data-state={saving ? "saving" : saveError ? "error" : "saved"} className={styles.saveStatus}>{saving ? "Guardando…" : saveError ? "Error" : "Guardado"}</span>
       <div className={styles.toolbarGroup} aria-label="Documento e inspector">
         <button type="button" onClick={onInspectorToggle} className={`${styles.toolIconButton} ${inspectorOpen ? styles.toolIconButtonActive : ""}`} title={inspectorOpen ? "Cerrar inspector" : "Abrir inspector"} aria-label={inspectorOpen ? "Cerrar inspector" : "Abrir inspector"}><PanelRight size={14} /></button>

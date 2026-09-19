@@ -1,3 +1,14 @@
+import type { VideoDurationPolicy } from "../../video-duration/video-duration-policy";
+
+export function buildInstructionalPlanVideoDurationInstructions(policy: VideoDurationPolicy) {
+  return `POLÍTICA DE VIDEO OBLIGATORIA PARA ESTA GENERACIÓN:
+Objetivo por video: ${policy.targetDurationSeconds} segundos (${policy.targetDurationSeconds / 60} minutos).
+Rango permitido: ${policy.minimumDurationSeconds}–${policy.maximumDurationSeconds} segundos.
+Esta política prevalece sobre los ejemplos de duración del prompt configurable.
+Los summaries y production_notes deben ser coherentes con este objetivo; no describas videos más largos que el contrato.
+Planifica contenido sustantivo que quepa en ese tiempo, sin inflar la duración con repeticiones.`;
+}
+
 export function buildInstructionalPlanContextPrompt(params: {
   configuredPrompt: string;
   customPrompt?: string;

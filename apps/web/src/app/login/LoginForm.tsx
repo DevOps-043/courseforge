@@ -83,14 +83,14 @@ function LoginContent() {
       )}
 
       {(error || routeError) && (
-        <div className="mb-6 p-3 bg-red-100 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg text-red-600 dark:text-red-400 text-sm text-center">
+        <div role="alert" className="mb-6 p-3 bg-red-100 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg text-red-600 dark:text-red-400 text-sm text-center">
           {error || routeError}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-[var(--engine-text-muted)] ml-1">
+          <label htmlFor="login-identifier" className="text-sm font-medium text-gray-700 dark:text-[var(--engine-text-muted)] ml-1">
             Usuario o Correo
           </label>
           <div className="relative group">
@@ -99,6 +99,7 @@ function LoginContent() {
             </div>
             <input
               type="text"
+              id="login-identifier"
               name="username"
               autoComplete="username"
               value={identifier}
@@ -111,7 +112,7 @@ function LoginContent() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-[var(--engine-text-muted)] ml-1">
+          <label htmlFor="login-password" className="text-sm font-medium text-gray-700 dark:text-[var(--engine-text-muted)] ml-1">
             Contrasena
           </label>
           <div className="relative group">
@@ -120,6 +121,7 @@ function LoginContent() {
             </div>
             <input
               type={showPassword ? "text" : "password"}
+              id="login-password"
               name="password"
               autoComplete="current-password"
               value={password}
@@ -131,6 +133,8 @@ function LoginContent() {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              aria-pressed={showPassword}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-[var(--engine-muted)] hover:text-gray-600 dark:hover:text-white transition-colors"
             >
               {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}

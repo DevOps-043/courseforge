@@ -35,7 +35,8 @@ import {
   type GeneratedInstructionalPlanBlocker,
   type GeneratedInstructionalPlanLesson,
 } from "../../src/domains/plan/lib/instructional-plan-generation.schema";
-import { buildInstructionalPlanContextPrompt } from "../../src/domains/plan/lib/instructional-plan-prompt";
+import { buildInstructionalPlanContextPrompt, buildInstructionalPlanVideoDurationInstructions } from "../../src/domains/plan/lib/instructional-plan-prompt";
+import { PIPELINE_GENERATION_LIMITS } from "../../src/lib/pipeline-generation-policy";
 import { getInstructionalPlanCompletenessIssues } from "../../src/domains/plan/lib/plan-completeness";
 import { recordAiFailure, recordAiSdkUsage } from "../../src/shared/ai/usage-telemetry";
 
@@ -248,8 +249,10 @@ async function generateModulePlans(params: {
     result = await generateObject({
       model: resolveAiModel(modelName),
       schema: GeneratedInstructionalPlanSchema,
-      prompt: `${finalSystemPrompt}\n\nMODULO ACTUAL: ${module.title}\n${finalContextPrompt}`,
-      temperature,
+      prompt: `${finalSystemPrompt}\n\nMODULO ACTUAL: ${module.title}\n${finalContextPrompt}\n\n${buildInstructionalPlanVideoDurationInstructions(videoDurationPolicy)}`,
+      ...(modelName.startsWith("gemini-") ? { temperature } : {}),
+      abortSignal: AbortSignal.timeout(PIPELINE_GENERATION_LIMITS.requestTimeoutMs),
+      maxRetries: 0,
     });
   } catch (error) {
     await recordAiFailure({

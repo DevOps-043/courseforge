@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { readJsonResponseWithLimit } from "@/lib/server/outbound-http";
+import { readJsonResponseWithLimit } from "../../../lib/server/outbound-http";
 import { isVideoStudioReasoningModel } from "../hyperframes/video-studio-model-options";
 import {
   getCompositionAgentProviderJsonSchema,

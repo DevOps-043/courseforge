@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, RefreshCw } from "lucide-react";
+import { AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
 import { UpstreamChangeAlert } from "@/shared/components/UpstreamChangeAlert";
 import { InstructionalPlanValidationResult } from "./InstructionalPlanValidationResult";
 import { InstructionalPlanLessonCard } from "./InstructionalPlanLessonCard";
@@ -89,6 +89,7 @@ export function InstructionalPlanResultsView({
     Array.isArray(plan.lesson_plans) && plan.lesson_plans.length > 0,
   );
   const canRegenerate = canIteratePlan(iterationCount);
+  const generationFailed = plan.state === "STEP_FAILED";
 
   return (
     <div className="mx-auto max-w-5xl animate-in space-y-8 fade-in pb-20 duration-500">
@@ -96,9 +97,9 @@ export function InstructionalPlanResultsView({
         <div>
           <h2 className="flex items-center gap-3 text-2xl font-bold text-gray-900 dark:text-white">
             <div className="rounded-lg bg-green-500/10 p-2 text-green-500">
-              <CheckCircle2 size={24} />
+              {generationFailed ? <AlertCircle size={24} /> : <CheckCircle2 size={24} />}
             </div>
-            Plan Instruccional Generado
+            {generationFailed ? "Generación del plan interrumpida" : isGenerating ? "Generando plan instruccional" : "Plan Instruccional Generado"}
           </h2>
           <p className="ml-12 mt-1 text-sm text-gray-500 dark:text-gray-400">
             {plan.lesson_plans.length} lecciones planificadas • Iteracion{" "}
@@ -120,6 +121,8 @@ export function InstructionalPlanResultsView({
               : "Limite alcanzado"}
         </button>
       </div>
+
+      {generationFailed && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">{plan.last_error?.message || "No se completó la generación. Puedes reintentar con Regenerar."}</p>}
 
       {plan.upstream_dirty && (
         <UpstreamChangeAlert

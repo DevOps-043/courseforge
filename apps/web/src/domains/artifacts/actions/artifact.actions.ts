@@ -192,14 +192,21 @@ export async function updateArtifactStatusAction(
   }
 
   const { admin } = authorized;
-  const { error } = await admin
+  const { data: updatedArtifact, error } = await admin
     .from("artifacts")
     .update({ state: status })
-    .eq("id", artifactId);
+    .eq("id", artifactId)
+    .neq("state", "GENERATING")
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     console.error("[ArtifactActions] Error updating artifact status:", error);
     return { success: false, error: error.message };
+  }
+
+  if (!updatedArtifact) {
+    return { success: false, error: "Espera a que termine la generación antes de revisar el artefacto." };
   }
 
   return { success: true };

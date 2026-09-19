@@ -89,6 +89,9 @@ test("an edited prompt reaches the final model prompt with required runtime cont
   assert.match(finalPrompt, /Comparar modelos GPT/);
   assert.match(finalPrompt, /Contexto investigado/);
   assert.match(finalPrompt, /Responde únicamente con JSON válido/);
+  assert.match(finalPrompt, /exactamente 1 módulos/);
+  assert.match(finalPrompt, /entre 3 y 6 lecciones/);
+  assert.match(finalPrompt, /máximo 12 horas/);
 });
 
 test("document-based generation requires one or more bounded source documents", () => {

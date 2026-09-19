@@ -13,6 +13,7 @@ import {
 } from "./composition-clip-audio.service";
 import { buildCompositionTimelineLayout } from "./composition-timeline-layout.service";
 import { COMPOSITION_PREVIEW_PROTOCOL_VERSION } from "./composition-preview-protocol";
+import { buildCompositionPreviewKeyboardRuntime } from "./composition-preview-keyboard-runtime";
 import {
   resolveCompositionPreviewAspectAnchor,
   resolveCompositionPreviewClipVolume,
@@ -402,6 +403,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         protocolVersion: ${COMPOSITION_PREVIEW_PROTOCOL_VERSION},
       }, "*");
       const activeMedia = new Set();
+      ${buildCompositionPreviewKeyboardRuntime()}
       // Remote previews cannot eagerly download the whole composition. Warm a
       // bounded forward window and hold the transport at the last valid frame
       // whenever active media has not decoded its current frame. Browsers may
@@ -1152,6 +1154,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         if (message.type === "courseforge-composition-seek") scrubTo(message.seconds);
         if (message.type === "courseforge-composition-play") play();
         if (message.type === "courseforge-composition-pause") pause();
+        if ((message.type === "courseforge-composition-play" || message.type === "courseforge-composition-pause") && Number.isSafeInteger(message.requestId) && message.requestId > 0) {
+          postParentMessage({ type: "courseforge-composition-transport-ack", requestId: message.requestId });
+        }
         if (message.type === "courseforge-composition-editor-settings") {
           editingEnabled = message.editingEnabled !== false;
           cropEnabled = message.cropEnabled === true;
