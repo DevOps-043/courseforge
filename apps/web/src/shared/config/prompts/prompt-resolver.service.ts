@@ -279,7 +279,7 @@ OUTPUT_SCHEMAS.DIALOGUE = `"DIALOGUE": {
       "sofliaRole": "string",
       "successCriteria": [
         {
-          "id": "stable_snake_case_id",
+          "id": "criterion_1",
           "label": "string",
           "description": "string",
           "required": true
@@ -289,9 +289,9 @@ OUTPUT_SCHEMAS.DIALOGUE = `"DIALOGUE": {
       "commonMistakes": ["string"],
       "hintLadder": [
         {
-          "id": "stable_snake_case_id",
+          "id": "hint_1",
           "level": 1,
-          "targetCriterionId": "stable_snake_case_id",
+          "targetCriterionId": "criterion_1",
           "content": "string"
         }
       ],
@@ -304,10 +304,10 @@ OUTPUT_SCHEMAS.DIALOGUE = `"DIALOGUE": {
       "rescueContent": "string",
       "rubric": [
         {
-          "id": "stable_snake_case_id",
+          "id": "rubric_1",
           "label": "string",
           "description": "string",
-          "weight": 25
+          "weight": 100
         }
       ],
       "policy": {

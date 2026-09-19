@@ -6,18 +6,14 @@ import type {
 } from "../types/materials.types";
 import { extractKeywords } from "./materials-validation-helpers";
 
-const STABLE_ID_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
+import { validateDialogueIdentifiers } from "../lib/dialogue-identifiers";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isNonEmptyString(value: unknown) {
   return typeof value === "string" && value.trim().length > 0;
-}
-
-function isStableId(value: unknown): value is string {
-  return typeof value === "string" && STABLE_ID_PATTERN.test(value);
 }
 
 function getRecordArray(value: unknown) {
@@ -185,33 +181,29 @@ export function validateSofliaDialogueRuntime(
     };
   }
 
-  const content = dialogueComponent.content;
-  if (!isRecord(content)) {
-    return {
-      code: "CTRL3_DIALOGUE_RUNTIME_INVALID",
-      lesson_id: lesson.lesson_id,
-      component: "DIALOGUE",
-      message: "DIALOGUE debe ser un objeto JSON",
-      pass: false,
-      severity: "error",
-    };
-  }
+  const errors = validateSofliaDialogueContent(dialogueComponent.content);
 
-  if (
-    content.interactionType !== "soflia_dialogue" ||
-    content.runtimeType !== "SOFLIA_DIALOGUE"
-  ) {
-    return {
-      code: "CTRL3_DIALOGUE_RUNTIME_LEGACY",
-      lesson_id: lesson.lesson_id,
-      component: "DIALOGUE",
-      message:
-        "DIALOGUE usa formato legacy; regenera solo este componente para SOFLIA_DIALOGUE",
-      pass: false,
-      severity: "error",
-    };
-  }
+  return {
+    code:
+      errors.length > 0
+        ? "CTRL3_DIALOGUE_RUNTIME_INVALID"
+        : "CTRL3_DIALOGUE_RUNTIME_VALID",
+    lesson_id: lesson.lesson_id,
+    component: "DIALOGUE",
+    message:
+      errors.length > 0
+        ? `Contrato SOFLIA_DIALOGUE invalido: ${errors.join("; ")}`
+        : "Contrato SOFLIA_DIALOGUE valido",
+    pass: errors.length === 0,
+    severity: "error",
+  };
+}
 
+export function validateSofliaDialogueContent(content: unknown): string[] {
+  if (!isRecord(content)) return ["DIALOGUE debe ser un objeto JSON"];
+  if (content.interactionType !== "soflia_dialogue" || content.runtimeType !== "SOFLIA_DIALOGUE") {
+    return ["DIALOGUE usa formato legacy; regenera solo este componente para SOFLIA_DIALOGUE"];
+  }
   const errors: string[] = [];
   const requiredStringFields = [
     "schemaVersion",
@@ -236,17 +228,9 @@ export function validateSofliaDialogueRuntime(
     errors.push("successCriteria debe incluir al menos un criterio");
   }
 
-  const criterionIds = new Set<string>();
-  for (const criterion of criteria) {
-    if (!isStableId(criterion.id)) {
-      errors.push("successCriteria contiene ids no estables");
-      break;
-    }
-    criterionIds.add(criterion.id);
-    if (!isNonEmptyString(criterion.label) || !isNonEmptyString(criterion.description)) {
-      errors.push("successCriteria requiere label y description");
-      break;
-    }
+  errors.push(...validateDialogueIdentifiers(content));
+  if (criteria.some((criterion) => !isNonEmptyString(criterion.label) || !isNonEmptyString(criterion.description))) {
+    errors.push("successCriteria requiere label y description");
   }
 
   if (getStringArray(content.expectedEvidence).length === 0) {
@@ -262,20 +246,6 @@ export function validateSofliaDialogueRuntime(
     errors.push("hintLadder debe incluir pistas progresivas");
   }
 
-  for (const hint of hints) {
-    if (!isStableId(hint.id)) {
-      errors.push("hintLadder contiene ids no estables");
-      break;
-    }
-    if (
-      typeof hint.targetCriterionId !== "string" ||
-      !criterionIds.has(hint.targetCriterionId)
-    ) {
-      errors.push("hintLadder debe apuntar a criterios existentes");
-      break;
-    }
-  }
-
   if (getStringArray(content.challengePrompts).length === 0) {
     errors.push("challengePrompts debe incluir al menos un reto");
   }
@@ -288,13 +258,6 @@ export function validateSofliaDialogueRuntime(
   );
   if (rubric.length === 0 || rubricWeight !== 100) {
     errors.push("rubric debe existir y sus pesos deben sumar 100");
-  }
-
-  for (const item of rubric) {
-    if (!isStableId(item.id)) {
-      errors.push("rubric contiene ids no estables");
-      break;
-    }
   }
 
   const policy = isRecord(content.policy) ? content.policy : {};
@@ -321,20 +284,7 @@ export function validateSofliaDialogueRuntime(
     errors.push("openingMessage no debe revelar la rubrica");
   }
 
-  return {
-    code:
-      errors.length > 0
-        ? "CTRL3_DIALOGUE_RUNTIME_INVALID"
-        : "CTRL3_DIALOGUE_RUNTIME_VALID",
-    lesson_id: lesson.lesson_id,
-    component: "DIALOGUE",
-    message:
-      errors.length > 0
-        ? `Contrato SOFLIA_DIALOGUE invalido: ${errors.join("; ")}`
-        : "Contrato SOFLIA_DIALOGUE valido",
-    pass: errors.length === 0,
-    severity: "error",
-  };
+  return errors;
 }
 
 export function buildControl3Dod(
