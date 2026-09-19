@@ -48,7 +48,7 @@ export const compositionPresetSlotRuleSchema = z.object({
   minItems: z.number().int().min(0).max(500).default(0),
   replaceAnimations: z.boolean().default(true),
   selector: z.object({
-    kinds: z.array(z.enum(["AUDIO", "DECK_SLIDE", "IMAGE", "VIDEO"])).min(1).max(4),
+    kinds: z.array(z.enum(["AUDIO", "CAPTION", "DECK_SLIDE", "IMAGE", "TEXT", "VIDEO"])).min(1).max(6),
     semanticRole: z.enum(COMPOSITION_TRACK_ROLES),
   }).strict(),
   timing: z.object({
@@ -122,4 +122,3 @@ export type CompositionPresetCatalogEntry = {
   sourceKind: CompositionPresetSourceKind;
   version: number;
 };
-

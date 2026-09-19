@@ -103,31 +103,31 @@ export function TransitionControls({ document, onAdd, onRemove, onSelect, onUpda
     onUpdate(selected.id, { alignment, durationSeconds });
   };
 
-  return <div role="toolbar" aria-label="Transiciones entre clips" className="space-y-2 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-2 text-[10px] text-slate-800 dark:border-cyan-400/25 dark:bg-cyan-400/10 dark:text-cyan-50">
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="inline-flex items-center gap-1 font-bold uppercase tracking-wide"><Sparkles size={12} /> Transiciones reales</span>
-      <select
+  return <div aria-label="Transiciones entre clips" className="space-y-3 text-[10px] text-slate-800 dark:text-cyan-50">
+    <section className="space-y-2 rounded-lg border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-400/25 dark:bg-cyan-400/10">
+      <span className="inline-flex items-center gap-1 font-bold uppercase tracking-wide"><Sparkles size={12} /> Nueva transición</span>
+      <Field label="Corte entre clips"><select
         aria-label="Corte donde añadir una transición"
-        className="min-w-44 flex-1 rounded border border-cyan-200 bg-white px-2 py-1 dark:border-white/15 dark:bg-[#101720]"
+        className="w-full rounded border border-cyan-200 bg-white px-2 py-1.5 dark:border-white/15 dark:bg-[#101720]"
         disabled={saving || emptyPoints.length === 0}
         onChange={(event) => setSelectedCutKey(event.target.value)}
         value={selectedCandidate ? cutKey(selectedCandidate) : ""}
       >
         {emptyPoints.length === 0 && <option value="">No hay cortes disponibles</option>}
         {emptyPoints.map((point) => <option key={cutKey(point)} value={cutKey(point)}>{formatEditPoint(point)}</option>)}
-      </select>
-      <button type="button" disabled={saving || !candidateDefault} onClick={addTransition} className="inline-flex items-center gap-1 rounded border border-cyan-300 bg-white px-2 py-1 font-bold disabled:opacity-40 dark:border-cyan-300/30 dark:bg-white/10"><Plus size={12} /> Añadir</button>
-      {(document.transitions?.items.length || 0) > 0 && <select aria-label="Transición a editar" className="min-w-40 rounded border border-cyan-200 bg-white px-2 py-1 dark:border-white/15 dark:bg-[#101720]" onChange={(event) => onSelect(event.target.value || null)} value={selected?.id || ""}>
-        <option value="">Editar transición…</option>
-        {document.transitions?.items.map((transition) => {
-          const point = editPoints.find((candidate) => candidate.existingTransitionId === transition.id);
-          return <option key={transition.id} value={transition.id}>{TYPE_LABELS[transition.type]}{point ? ` · ${formatClock(point.cutSeconds)}` : ""}</option>;
-        })}
-      </select>}
-    </div>
+      </select></Field>
+      <button type="button" disabled={saving || !candidateDefault} onClick={addTransition} className="inline-flex w-full items-center justify-center gap-1 rounded border border-cyan-300 bg-white px-2 py-1.5 font-bold disabled:opacity-40 dark:border-cyan-300/30 dark:bg-white/10"><Plus size={12} /> Añadir transición</button>
+    </section>
+    {(document.transitions?.items.length || 0) > 0 && <Field label="Transición a editar"><select aria-label="Transición a editar" className="w-full rounded border border-cyan-200 bg-white px-2 py-1.5 dark:border-white/15 dark:bg-[#101720]" onChange={(event) => onSelect(event.target.value || null)} value={selected?.id || ""}>
+      <option value="">Selecciona una transición…</option>
+      {document.transitions?.items.map((transition) => {
+        const point = editPoints.find((candidate) => candidate.existingTransitionId === transition.id);
+        return <option key={transition.id} value={transition.id}>{TYPE_LABELS[transition.type]}{point ? ` · ${formatClock(point.cutSeconds)}` : ""}</option>;
+      })}
+    </select></Field>}
     {candidateBlocker && <p role="status" className="text-[9px] text-amber-700 dark:text-amber-200">{candidateBlocker}</p>}
 
-    {selected && selectedPoint && <div className="grid grid-cols-2 gap-2 rounded border border-cyan-200/80 bg-white/80 p-2 sm:grid-cols-3 lg:grid-cols-6 dark:border-white/10 dark:bg-black/10">
+    {selected && selectedPoint && <div className="grid gap-3 rounded-lg border border-cyan-200/80 bg-white/80 p-3 dark:border-white/10 dark:bg-black/10">
       <Field label="Efecto"><select value={selected.type} disabled={saving} onChange={(event) => updateType(event.target.value as CompositionTransition["type"])} className={inputClass}>{COMPOSITION_TRANSITION_TYPES.map((type) => <option key={type} value={type}>{TYPE_LABELS[type]}</option>)}</select></Field>
       <Field label="Alineación"><select value={selected.alignment} disabled={saving} onChange={(event) => updateAlignment(event.target.value as CompositionTransition["alignment"])} className={inputClass}>{COMPOSITION_TRANSITION_ALIGNMENTS.map((alignment) => <option key={alignment} value={alignment}>{ALIGNMENT_LABELS[alignment]}</option>)}</select></Field>
       <Field label={`Duración · máx. ${currentEligibility?.maximumDurationSeconds.toFixed(2) || "0.00"} s`}><input type="number" min={1 / document.canvas.fps} max={currentEligibility?.maximumDurationSeconds || selected.durationSeconds} step={1 / document.canvas.fps} value={selected.durationSeconds} disabled={saving} onChange={(event) => onUpdate(selected.id, { durationSeconds: quantizeDuration(Math.min(Number(event.target.value), currentEligibility?.maximumDurationSeconds || selected.durationSeconds), document.canvas.fps) })} className={inputClass} /></Field>
@@ -137,9 +137,10 @@ export function TransitionControls({ document, onAdd, onRemove, onSelect, onUpda
       {selected.type === "DIP_TO_COLOR" && <Field label="Color"><input type="color" value={selected.parameters?.color || "#000000"} disabled={saving} onChange={(event) => onUpdate(selected.id, { parameters: { color: event.target.value } })} className={inputClass} /></Field>}
       {(selected.type === "PUSH" || selected.type === "SOFT_WIPE") && <Field label="Dirección"><select value={selected.parameters?.direction || "LEFT"} disabled={saving} onChange={(event) => onUpdate(selected.id, { parameters: { direction: event.target.value as NonNullable<CompositionTransition["parameters"]>["direction"] } })} className={inputClass}>{COMPOSITION_TRANSITION_DIRECTIONS.map((direction) => <option key={direction} value={direction}>{direction}</option>)}</select></Field>}
       {selected.type === "BLUR_DISSOLVE" && <Field label="Desenfoque"><input type="number" min={0} max={40} step={1} value={selected.parameters?.blurPixels ?? 12} disabled={saving} onChange={(event) => onUpdate(selected.id, { parameters: { blurPixels: Number(event.target.value) } })} className={inputClass} /></Field>}
-      <p className="col-span-2 self-end text-[9px] text-slate-500 sm:col-span-2 lg:col-span-3 dark:text-cyan-100/70">{formatEditPoint(selectedPoint)} · el efecto ocupa ambos clips; no es una animación de entrada o salida.</p>
-      {!crossfadeAvailable && <p className="col-span-2 self-end text-[9px] text-amber-700 sm:col-span-2 lg:col-span-3 dark:text-amber-200">Crossfade disponible solo cuando ambos videos confirman una pista de audio.</p>}
+      <p className="self-end text-[9px] leading-4 text-slate-500 dark:text-cyan-100/70">{formatEditPoint(selectedPoint)} · el efecto ocupa ambos clips; no es una animación de entrada o salida.</p>
+      {!crossfadeAvailable && <p className="self-end text-[9px] leading-4 text-amber-700 dark:text-amber-200">Crossfade disponible solo cuando ambos videos confirman una pista de audio.</p>}
     </div>}
+    {!selected && (document.transitions?.items.length || 0) > 0 && <p className="rounded-lg border border-dashed border-slate-300 p-3 text-center text-[10px] leading-4 text-slate-500 dark:border-white/15 dark:text-gray-400">Selecciona una transición aquí o desde el marcador ↔ del timeline para editarla.</p>}
   </div>;
 }
 

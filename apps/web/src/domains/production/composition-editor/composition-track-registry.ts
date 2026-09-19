@@ -14,6 +14,8 @@ const TRACK_DEFINITIONS: Record<CompositionTrackRole, CompositionTrack> = {
   BROLL: { hidden: false, id: "broll", kind: "VISUAL", label: "B-roll", locked: false, muted: false, order: 40, semanticRole: "BROLL", volume: 1 },
   VISUAL: { hidden: false, id: "visual", kind: "VISUAL", label: "Medios visuales", locked: false, muted: false, order: 50, semanticRole: "VISUAL", volume: 1 },
   OVERLAY: { hidden: false, id: "overlay", kind: "OVERLAY", label: "Gráficos y overlays", locked: false, muted: false, order: 60, semanticRole: "OVERLAY", volume: 1 },
+  TEXT: { hidden: false, id: "native-text", kind: "OVERLAY", label: "Texto", locked: false, muted: false, order: 70, semanticRole: "TEXT", volume: 1 },
+  CAPTIONS: { hidden: false, id: "native-captions", kind: "OVERLAY", label: "Captions", locked: false, muted: false, order: 80, semanticRole: "CAPTIONS", volume: 1 },
 };
 
 export function getCompositionTrackDefinition(role: CompositionTrackRole): CompositionTrack {
@@ -42,6 +44,8 @@ export function normalizeCompositionTrackTopology(
     if (clip.source.type === "DECK_SLIDE") return { ...clip, trackId: TRACK_DEFINITIONS.DECK.id };
     if (clip.source.type === "ASSEMBLY_BRAND_ASSET") return clip;
     if (clip.source.type === "SOUND_EFFECT_ASSET") return { ...clip, trackId: TRACK_DEFINITIONS.SFX.id };
+    if (clip.source.type === "NATIVE_TEXT") return { ...clip, trackId: TRACK_DEFINITIONS.TEXT.id };
+    if (clip.source.type === "NATIVE_CAPTIONS") return { ...clip, trackId: TRACK_DEFINITIONS.CAPTIONS.id };
     const storedRole = normalizeProductionTimelineRole(assetRoles.get(clip.source.productionAssetId));
     const role = storedRole
       ? resolveCompositionTrackRole({ mimeType: clip.kind === "AUDIO" ? "audio/unknown" : "application/octet-stream", timelineRole: storedRole })

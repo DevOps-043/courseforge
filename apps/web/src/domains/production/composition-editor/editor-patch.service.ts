@@ -1,5 +1,6 @@
 import {
   COMPOSITION_DOCUMENT_FORMAT,
+  NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT,
   compositionEditorDocumentSchema,
   exceedsCompositionTimelineBoundary,
   type CompositionEditorDocument,
@@ -967,6 +968,33 @@ export function applyCompositionEditorPatches(
       clip.volume = operation.volume;
     }
 
+    if (operation.type === "clip.text-content") {
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes editar texto en un track bloqueado.");
+      if (clip.source.type !== "NATIVE_TEXT") {
+        throw new CompositionEditorPatchError("Esta operación solo está disponible para capas de texto nativo.");
+      }
+      clip.source.text = operation.text;
+    }
+
+    if (operation.type === "clip.caption-cues") {
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes editar captions en un track bloqueado.");
+      if (clip.source.type !== "NATIVE_CAPTIONS") {
+        throw new CompositionEditorPatchError("Esta operación solo está disponible para capas de captions.");
+      }
+      clip.source.cues = operation.cues;
+    }
+
+    if (operation.type === "clip.text-style") {
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes editar el estilo en un track bloqueado.");
+      if (clip.source.type !== "NATIVE_TEXT" && clip.source.type !== "NATIVE_CAPTIONS") {
+        throw new CompositionEditorPatchError("El estilo tipográfico solo está disponible para texto y captions.");
+      }
+      const { fontAssetId, ...style } = operation.style;
+      clip.source.style = { ...clip.source.style, ...style };
+      if (fontAssetId === null) delete clip.source.style.fontAssetId;
+      else if (fontAssetId !== undefined) clip.source.style.fontAssetId = fontAssetId;
+    }
+
     if (operation.type === "clip.template") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes aplicar una plantilla a un track bloqueado.");
       clip.durationSeconds = operation.durationSeconds;
@@ -981,6 +1009,9 @@ export function applyCompositionEditorPatches(
   }
 
   // Every newly appended document uses the current motion contract, including restores.
+  next.format = next.clips.some((clip) => clip.kind === "TEXT" || clip.kind === "CAPTION")
+    ? NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT
+    : COMPOSITION_DOCUMENT_FORMAT;
   next.motion.schemaVersion = 2;
   if (next.transitions) next.transitions.schemaVersion = COMPOSITION_TRANSITION_SCHEMA_VERSION;
   const parsed = compositionEditorDocumentSchema.safeParse(next);

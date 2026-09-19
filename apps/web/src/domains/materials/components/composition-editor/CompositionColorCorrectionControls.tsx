@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RotateCcw, Save } from "lucide-react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionColorGrading } from "@/domains/production/composition-editor/composition-color-grading.types";
@@ -37,48 +37,89 @@ const CONTROL_FIELDS: Array<{
 
 export function CompositionColorCorrectionControls({
   clip,
+  ...props
+}: CompositionColorCorrectionControlsProps) {
+  const stateKey = `${clip.id}:${JSON.stringify(clip.colorGrading || null)}`;
+  return <CompositionColorCorrectionControlState key={stateKey} clip={clip} {...props} />;
+}
+
+function CompositionColorCorrectionControlState({
+  clip,
   disabled,
   onPatch,
   onPreview,
   runtimeStatus,
 }: CompositionColorCorrectionControlsProps) {
   const [values, setValues] = useState(() => toCompositionColorGradingControlValues(clip.colorGrading));
+  const [dirty, setDirty] = useState(false);
+  const [persisting, setPersisting] = useState(false);
+  const baselineRef = useRef<CompositionColorGrading | null>(clip.colorGrading || null);
+  const dirtyRef = useRef(false);
+  const onPreviewRef = useRef(onPreview);
 
   useEffect(() => {
-    setValues(toCompositionColorGradingControlValues(clip.colorGrading));
-  }, [clip.id, clip.colorGrading]);
+    onPreviewRef.current = onPreview;
+  }, [onPreview]);
+
+  useEffect(() => {
+    return () => {
+      if (dirtyRef.current) onPreviewRef.current(clip.hfId, baselineRef.current);
+    };
+  }, [clip.hfId]);
 
   const preview = (next: CompositionColorGradingControlValues) => {
     setValues(next);
+    dirtyRef.current = true;
+    setDirty(true);
     onPreview(clip.hfId, fromCompositionColorGradingControlValues(next) || null);
   };
-  const save = () => onPatch([{
-    clipId: clip.id,
-    colorGrading: fromCompositionColorGradingControlValues(values) || null,
-    type: "clip.color-grading",
-  }], `Ajustó brillo, contraste y saturación de ${clip.label}.`);
-  const reset = () => {
-    preview(NEUTRAL_COMPOSITION_COLOR_GRADING_CONTROLS);
-    return onPatch([{
+
+  const persist = async (colorGrading: CompositionColorGrading | null, summary: string) => {
+    const previousBaseline = baselineRef.current;
+    dirtyRef.current = false;
+    setDirty(false);
+    setPersisting(true);
+    const saved = await onPatch([{
       clipId: clip.id,
-      colorGrading: null,
+      colorGrading,
       type: "clip.color-grading",
-    }], `Restableció la corrección de color de ${clip.label}.`);
+    }], summary);
+    setPersisting(false);
+    if (saved) {
+      baselineRef.current = colorGrading;
+      return;
+    }
+
+    baselineRef.current = previousBaseline;
+    setValues(toCompositionColorGradingControlValues(previousBaseline));
+    onPreviewRef.current(clip.hfId, previousBaseline);
+  };
+
+  const save = () => persist(
+    fromCompositionColorGradingControlValues(values) || null,
+    `Ajustó brillo, contraste y saturación de ${clip.label}.`,
+  );
+  const reset = () => {
+    setValues(NEUTRAL_COMPOSITION_COLOR_GRADING_CONTROLS);
+    onPreview(clip.hfId, null);
+    return persist(null, `Restableció la corrección de color de ${clip.label}.`);
   };
   const statusMessage = resolveStatusMessage(runtimeStatus);
+  const runtimeReady = runtimeStatus?.state === "active" || runtimeStatus?.state === "inactive";
+  const controlsDisabled = disabled || persisting || !runtimeReady;
 
   return <section className="border-t border-slate-200 pt-3 dark:border-white/10">
     <div className="flex items-center justify-between gap-2">
       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Corrección de color</p>
-      <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${clip.colorGrading ? "bg-cyan-100 text-cyan-800 dark:bg-cyan-400/10 dark:text-cyan-200" : "bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-gray-400"}`}>
-        {clip.colorGrading ? "Ajustado" : "Neutro"}
+      <span aria-live="polite" className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${dirty ? "bg-amber-100 text-amber-800 dark:bg-amber-400/10 dark:text-amber-200" : clip.colorGrading ? "bg-cyan-100 text-cyan-800 dark:bg-cyan-400/10 dark:text-cyan-200" : "bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-gray-400"}`}>
+        {dirty ? "Sin guardar" : clip.colorGrading ? "Ajustado" : "Neutro"}
       </span>
     </div>
     <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Ajustes no destructivos por clip. Los tres controles usan una escala editorial de −100 a 100.</p>
     <div className="mt-3 space-y-3">
       {CONTROL_FIELDS.map((field) => <ColorControl
         key={field.key}
-        disabled={disabled}
+        disabled={controlsDisabled}
         label={field.label}
         onChange={(value) => preview({ ...values, [field.key]: value })}
         value={values[field.key]}
@@ -86,8 +127,8 @@ export function CompositionColorCorrectionControls({
     </div>
     {statusMessage && <p role={runtimeStatus?.state === "unavailable" ? "alert" : undefined} className={`mt-2 rounded-md px-2 py-1.5 text-[10px] leading-4 ${runtimeStatus?.state === "unavailable" ? "bg-amber-50 text-amber-800 dark:bg-amber-400/10 dark:text-amber-200" : "bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-gray-400"}`}>{statusMessage}</p>}
     <div className="mt-3 flex flex-wrap gap-1.5">
-      <button type="button" disabled={disabled} onClick={() => void save()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={12} /> Guardar color</button>
-      <button type="button" disabled={disabled} onClick={() => void reset()} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-600 disabled:opacity-50 dark:border-white/15 dark:text-gray-300"><RotateCcw size={12} /> Restablecer</button>
+      <button type="button" disabled={controlsDisabled || !dirty} onClick={() => void save()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={12} /> {persisting ? "Guardando…" : "Guardar color"}</button>
+      <button type="button" disabled={controlsDisabled || (!dirty && !clip.colorGrading)} onClick={() => void reset()} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-600 disabled:opacity-50 dark:border-white/15 dark:text-gray-300"><RotateCcw size={12} /> Restablecer</button>
     </div>
     {disabled && <p className="mt-2 text-[10px] text-slate-500 dark:text-gray-400">Desbloquea la pista para modificar el color.</p>}
   </section>;
@@ -109,9 +150,10 @@ function ColorControl({ disabled, label, onChange, value }: {
 }
 
 function resolveStatusMessage(status: CompositionColorGradingRuntimeStatus | null) {
-  if (!status || status.state === "active" || status.state === "inactive") return null;
+  if (!status) return "Conectando los controles con el preview de color…";
+  if (status.state === "active" || status.state === "inactive") return null;
   if (status.state === "unavailable") {
-    return "El navegador no pudo activar la corrección en vivo. Se muestra el medio original; el ajuste guardado seguirá disponible para render.";
+    return "La corrección en vivo no está disponible. Se muestra el medio original; el ajuste guardado seguirá disponible para render.";
   }
   if (status.state === "pending") return "Preparando la corrección de color del medio…";
   return "No se encontró el medio visual para aplicar la corrección.";

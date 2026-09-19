@@ -4,11 +4,11 @@ import { stepCompositionFrame } from "@/domains/production/composition-editor/co
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
-import { ChevronLeft, ChevronRight, Combine, FolderOpen, LogOut, Ungroup, ZoomIn, ZoomOut } from "lucide-react";
+import { CheckSquare2, ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { CompositionClip, CompositionEditorDocument, CompositionGroup } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionAnimation } from "@/domains/production/composition-editor/composition-motion.types";
-import type { CompositionTransition } from "@/domains/production/composition-editor/composition-transition.types";
 import { resolveCompositionGroupBounds } from "@/domains/production/composition-editor/composition-group.service";
+import { resolveCompositionTimelineSelectionSync } from "@/domains/production/composition-editor/composition-timeline-selection.service";
 import { buildCompositionTimelineLayout } from "@/domains/production/composition-editor/composition-timeline-layout.service";
 import {
   buildTimelineSnapTargets,
@@ -21,7 +21,6 @@ import {
 } from "@/domains/production/composition-editor/composition-timeline-trim.service";
 import { TrackControls } from "./TrackControls";
 import { AnimationTimelineBand } from "./AnimationTimelineBand";
-import { TransitionControls, type CompositionTransitionUpdateSettings } from "./TransitionControls";
 import type { CompositionTrackUpdateHandler } from "./composition-studio.types";
 
 type TimelineGesture = {
@@ -46,35 +45,36 @@ interface CompositionTimelineProps {
   assetLabels: Record<string, string>;
   currentTime: number;
   document: CompositionEditorDocument;
+  editingGroupId: string | null;
   onClearSelection: () => void;
-  onCreateGroup: (clipIds: string[], groupId: string) => void;
   onDurationChange: (clip: CompositionClip, durationSeconds: number) => void;
   onAnimationSelect: (animationId: string, clipHfId: string) => void;
   onAnimationTimingChange: (animation: CompositionAnimation, timing: CompositionAnimation["timing"]) => void;
+  onEditingGroupChange: (groupId: string | null) => void;
+  onInspectSelection: () => void;
   onMove: (clip: CompositionClip, startSeconds: number) => void;
   onMoveGroup: (groupId: string, startSeconds: number) => void;
   onSeek: (seconds: number) => void;
   onSelect: (hfId: string) => void;
+  onSelectedClipIdsChange: (clipIds: Set<string>) => void;
+  onSelectedGroupChange: (groupId: string | null) => void;
   onTrackUpdate: CompositionTrackUpdateHandler;
-  onTransitionAdd: (transition: CompositionTransition) => void;
-  onTransitionRemove: (transitionId: string) => void;
-  onTransitionUpdate: (transitionId: string, settings: CompositionTransitionUpdateSettings) => void;
+  onTransitionSelect: (transitionId: string | null) => void;
   onTrim: (clip: CompositionClip, startSeconds: number, durationSeconds: number, sourceOffsetSeconds: number) => void;
-  onUngroup: (groupId: string) => void;
   saving: boolean;
   selectedAnimationId: string | null;
+  selectedClipIds: ReadonlySet<string>;
+  selectedGroupId: string | null;
   selectedHfId: string | null;
+  selectedTransitionId: string | null;
   snapEnabled?: boolean;
   trimMode?: boolean;
 }
 
-export function CompositionTimeline({ assetLabels, currentTime, document, onAnimationSelect, onAnimationTimingChange, onClearSelection, onCreateGroup, onDurationChange, onMove, onMoveGroup, onSeek, onSelect, onTrackUpdate, onTransitionAdd, onTransitionRemove, onTransitionUpdate, onTrim, onUngroup, saving, selectedAnimationId, selectedHfId, snapEnabled = true, trimMode = false }: CompositionTimelineProps) {
+export function CompositionTimeline({ assetLabels, currentTime, document, editingGroupId, onAnimationSelect, onAnimationTimingChange, onClearSelection, onDurationChange, onEditingGroupChange, onInspectSelection, onMove, onMoveGroup, onSeek, onSelect, onSelectedClipIdsChange, onSelectedGroupChange, onTrackUpdate, onTransitionSelect, onTrim, saving, selectedAnimationId, selectedClipIds, selectedGroupId, selectedHfId, selectedTransitionId, snapEnabled = true, trimMode = false }: CompositionTimelineProps) {
   const [gesture, setGesture] = useState<TimelineGesture | null>(null);
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [motionEditError, setMotionEditError] = useState<string | null>(null);
-  const [selectedClipIds, setSelectedClipIds] = useState<Set<string>>(() => new Set());
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
-  const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(null);
+  const [multiSelectEnabled, setMultiSelectEnabled] = useState(false);
   const [scrubbing, setScrubbing] = useState(false);
   const [timelineZoom, setTimelineZoom] = useState(MIN_TIMELINE_ZOOM);
   const [timelineScroll, setTimelineScroll] = useState(0);
@@ -88,7 +88,6 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
   const logicalGroupsByClipId = useMemo(() => new Map(logicalGroups.flatMap((group) => (
     group.clipIds.map((clipId) => [clipId, group] as const)
   ))), [logicalGroups]);
-  const selectedGroup = logicalGroups.find((group) => group.id === selectedGroupId) || null;
   const editingGroup = logicalGroups.find((group) => group.id === editingGroupId) || null;
   const maxDuration = document.canvas.durationSeconds;
   const fps = document.canvas.fps;
@@ -100,16 +99,11 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
 
   useEffect(() => {
     const availableClipIds = new Set(document.clips.map((clip) => clip.id));
-    setSelectedClipIds((current) => new Set([...current].filter((clipId) => availableClipIds.has(clipId))));
-    if (selectedGroupId && !logicalGroups.some((group) => group.id === selectedGroupId)) setSelectedGroupId(null);
-    if (editingGroupId && !logicalGroups.some((group) => group.id === editingGroupId)) setEditingGroupId(null);
-  }, [document.clips, editingGroupId, logicalGroups, selectedGroupId]);
-
-  useEffect(() => {
-    if (selectedTransitionId && !document.transitions?.items.some((transition) => transition.id === selectedTransitionId)) {
-      setSelectedTransitionId(null);
-    }
-  }, [document.transitions?.items, selectedTransitionId]);
+    const availableSelection = new Set([...selectedClipIds].filter((clipId) => availableClipIds.has(clipId)));
+    if (availableSelection.size !== selectedClipIds.size) onSelectedClipIdsChange(availableSelection);
+    if (selectedGroupId && !logicalGroups.some((group) => group.id === selectedGroupId)) onSelectedGroupChange(null);
+    if (editingGroupId && !logicalGroups.some((group) => group.id === editingGroupId)) onEditingGroupChange(null);
+  }, [document.clips, editingGroupId, logicalGroups, onEditingGroupChange, onSelectedClipIdsChange, onSelectedGroupChange, selectedClipIds, selectedGroupId]);
 
   useEffect(() => {
     if (editingGroupId || selectedGroupId || selectedClipIds.size < 2) return;
@@ -117,29 +111,29 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
       group.clipIds.length === selectedClipIds.size
       && group.clipIds.every((clipId) => selectedClipIds.has(clipId))
     ));
-    if (exactGroup) setSelectedGroupId(exactGroup.id);
-  }, [editingGroupId, logicalGroups, selectedClipIds, selectedGroupId]);
+    if (exactGroup) onSelectedGroupChange(exactGroup.id);
+  }, [editingGroupId, logicalGroups, onSelectedGroupChange, selectedClipIds, selectedGroupId]);
 
   useEffect(() => {
-    const clip = document.clips.find((candidate) => candidate.hfId === selectedHfId);
-    if (!clip) {
-      if (!selectedHfId) {
-        setSelectedClipIds(new Set());
-        setSelectedGroupId(null);
-      }
-      return;
-    }
-    setSelectedClipIds((current) => current.has(clip.id) ? current : new Set([clip.id]));
-  }, [document.clips, selectedHfId]);
+    const decision = resolveCompositionTimelineSelectionSync({
+      clips: document.clips,
+      selectedClipIds,
+      selectedGroupId,
+      selectedHfId,
+    });
+    if (decision.nextClipIds !== null) onSelectedClipIdsChange(new Set(decision.nextClipIds));
+    if (decision.shouldClearGroup) onSelectedGroupChange(null);
+  }, [document.clips, onSelectedClipIdsChange, onSelectedGroupChange, selectedClipIds, selectedGroupId, selectedHfId]);
 
   const selectLogicalGroup = (group: CompositionGroup, preferredHfId?: string) => {
-    setSelectedGroupId(group.id);
-    setSelectedClipIds(new Set(group.clipIds));
+    onSelectedGroupChange(group.id);
+    onSelectedClipIdsChange(new Set(group.clipIds));
     const preferredClip = preferredHfId
       ? document.clips.find((clip) => clip.hfId === preferredHfId)
       : null;
     const representative = preferredClip || document.clips.find((clip) => group.clipIds.includes(clip.id));
     if (representative) onSelect(representative.hfId);
+    onInspectSelection();
   };
 
   const selectTimelineClip = (clip: CompositionClip, event?: Pick<MouseEvent<HTMLElement>, "ctrlKey" | "metaKey" | "shiftKey">) => {
@@ -148,58 +142,36 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
       selectLogicalGroup(group, clip.hfId);
       return;
     }
-    setSelectedGroupId(null);
-    if (event?.ctrlKey || event?.metaKey || event?.shiftKey) {
+    onSelectedGroupChange(null);
+    if (multiSelectEnabled || event?.ctrlKey || event?.metaKey || event?.shiftKey) {
       const next = new Set(selectedClipIds);
       if (next.has(clip.id)) next.delete(clip.id);
       else next.add(clip.id);
-      setSelectedClipIds(next);
+      onSelectedClipIdsChange(next);
       const representative = document.clips.find((candidate) => next.has(candidate.id));
       if (next.has(clip.id)) onSelect(clip.hfId);
       else if (representative) onSelect(representative.hfId);
       else onClearSelection();
+      if (next.size > 0) onInspectSelection();
     } else {
-      setSelectedClipIds(new Set([clip.id]));
+      onSelectedClipIdsChange(new Set([clip.id]));
       onSelect(clip.hfId);
     }
   };
 
   const clearTimelineSelection = () => {
-    setSelectedClipIds(new Set());
-    setSelectedGroupId(null);
+    onSelectedClipIdsChange(new Set());
+    onSelectedGroupChange(null);
     onClearSelection();
   };
 
   const enterSelectedGroup = (group: CompositionGroup, preferredClip?: CompositionClip) => {
-    setEditingGroupId(group.id);
-    setSelectedGroupId(null);
+    onEditingGroupChange(group.id);
+    onSelectedGroupChange(null);
     const clip = preferredClip || document.clips.find((candidate) => group.clipIds.includes(candidate.id));
-    if (clip) {
-      setSelectedClipIds(new Set([clip.id]));
-      onSelect(clip.hfId);
-    }
-  };
-
-  const exitEditingGroup = () => {
-    if (!editingGroup) return;
-    setEditingGroupId(null);
-    selectLogicalGroup(editingGroup);
-  };
-
-  const createSelectedGroup = () => {
-    const clipIds = [...selectedClipIds];
-    if (clipIds.length < 2 || clipIds.some((clipId) => logicalGroupsByClipId.has(clipId))) return;
-    const groupId = `group-${crypto.randomUUID()}`;
-    onCreateGroup(clipIds, groupId);
-  };
-
-  const ungroupSelectedGroup = () => {
-    if (!selectedGroup) return;
-    const firstClip = document.clips.find((clip) => selectedGroup.clipIds.includes(clip.id));
-    onUngroup(selectedGroup.id);
-    setSelectedGroupId(null);
-    setEditingGroupId(null);
-    setSelectedClipIds(firstClip ? new Set([firstClip.id]) : new Set());
+    if (!clip) return;
+    onSelectedClipIdsChange(new Set([clip.id]));
+    onSelect(clip.hfId);
   };
 
   const beginGesture = (event: PointerEvent<HTMLElement>, clip: CompositionClip, kind: TimelineGesture["kind"]) => {
@@ -449,10 +421,6 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
     });
   };
 
-  const selectedClipCount = selectedClipIds.size;
-  const canCreateGroup = selectedClipCount >= 2
-    && [...selectedClipIds].every((clipId) => !logicalGroupsByClipId.has(clipId));
-
   return <div className="space-y-2 pb-2">
     <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">
       <span>Timeline</span>
@@ -466,30 +434,11 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
         </div>
       </div>
     </div>
-    <div role="toolbar" aria-label="Herramientas de agrupación" className="flex flex-wrap items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-2 py-1.5 text-[10px] text-violet-950 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-100">
-      <span className="mr-auto font-semibold">
-        {editingGroup
-          ? `Editando contenido · ${editingGroup.label || editingGroup.id}`
-          : selectedGroup
-            ? `${selectedGroup.label || "Grupo"} · ${selectedGroup.clipIds.length} clips`
-            : selectedClipCount > 0
-              ? `${selectedClipCount} clip${selectedClipCount === 1 ? "" : "s"} seleccionado${selectedClipCount === 1 ? "" : "s"}`
-              : "Ctrl/Cmd o Shift + clic para seleccionar clips entre pistas"}
-      </span>
-      {!editingGroup && <button type="button" disabled={saving || !canCreateGroup} onClick={createSelectedGroup} className="inline-flex items-center gap-1 rounded border border-violet-300 bg-white px-2 py-1 font-bold disabled:opacity-40 dark:border-violet-300/30 dark:bg-white/10"><Combine size={12} /> Agrupar</button>}
-      {selectedGroup && !editingGroup && <button type="button" disabled={saving} onClick={() => enterSelectedGroup(selectedGroup)} className="inline-flex items-center gap-1 rounded border border-violet-300 bg-white px-2 py-1 font-bold disabled:opacity-40 dark:border-violet-300/30 dark:bg-white/10"><FolderOpen size={12} /> Editar contenido</button>}
-      {selectedGroup && !editingGroup && <button type="button" disabled={saving} onClick={ungroupSelectedGroup} className="inline-flex items-center gap-1 rounded border border-violet-300 bg-white px-2 py-1 font-bold disabled:opacity-40 dark:border-violet-300/30 dark:bg-white/10"><Ungroup size={12} /> Desagrupar</button>}
-      {editingGroup && <button type="button" disabled={saving} onClick={exitEditingGroup} className="inline-flex items-center gap-1 rounded border border-violet-300 bg-white px-2 py-1 font-bold disabled:opacity-40 dark:border-violet-300/30 dark:bg-white/10"><LogOut size={12} /> Salir del grupo</button>}
+    <div role="toolbar" aria-label="Controles de selección múltiple" className="flex flex-wrap items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-2 py-1.5 text-[10px] text-violet-950 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-100">
+      <button type="button" aria-pressed={multiSelectEnabled} disabled={saving} onClick={() => setMultiSelectEnabled((current) => !current)} className={`inline-flex items-center gap-1 rounded border px-2 py-1 font-bold disabled:opacity-40 ${multiSelectEnabled ? "border-violet-600 bg-violet-600 text-white dark:border-violet-300 dark:bg-violet-300 dark:text-violet-950" : "border-violet-300 bg-white dark:border-violet-300/30 dark:bg-white/10"}`}><CheckSquare2 size={12} /> Selección múltiple</button>
+      <span className="mr-auto font-semibold">También puedes usar Ctrl/Cmd o Shift + clic sobre los clips.</span>
+      {selectedClipIds.size > 0 && <button type="button" disabled={saving} onClick={clearTimelineSelection} className="inline-flex items-center gap-1 rounded border border-violet-300 bg-white px-2 py-1 font-bold disabled:opacity-40 dark:border-violet-300/30 dark:bg-white/10"><X size={12} /> Limpiar</button>}
     </div>
-    <TransitionControls
-      document={document}
-      onAdd={onTransitionAdd}
-      onRemove={onTransitionRemove}
-      onSelect={setSelectedTransitionId}
-      onUpdate={onTransitionUpdate}
-      saving={saving}
-      selectedTransitionId={selectedTransitionId}
-    />
     <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-white/10 dark:bg-white/5">
       <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">Desplazamiento</span>
       <button type="button" aria-label="Mover timeline a la izquierda" title="Mover timeline a la izquierda" disabled={timelineScroll <= 0} onClick={() => nudgeTimelineScroll(-1)} className="rounded p-1 text-slate-600 hover:bg-slate-200 disabled:opacity-30 dark:text-gray-300 dark:hover:bg-white/10"><ChevronLeft size={14} /></button>
@@ -656,7 +605,7 @@ export function CompositionTimeline({ assetLabels, currentTime, document, onAnim
                 title={`${transition.type} · ${transition.durationSeconds.toFixed(2)} s`}
                 onClick={(event) => {
                   event.stopPropagation();
-                  setSelectedTransitionId(transition.id);
+                  onTransitionSelect(transition.id);
                   onSeek(cutSeconds);
                 }}
                 style={{ left: `${(cutSeconds / maxDuration) * 100}%` }}

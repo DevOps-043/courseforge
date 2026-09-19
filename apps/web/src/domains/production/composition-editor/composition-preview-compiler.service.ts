@@ -6,6 +6,10 @@ import {
   validateCompositionColorGradingRuntimeArtifact,
 } from "./composition-color-grading-runtime.service";
 import { getCompositionClipMediaAssetId, type CompositionClip, type CompositionEditorDocument, type CompositionTrack } from "./composition-document.types";
+import {
+  captionCueElementId,
+  renderCompositionNativeOverlay,
+} from "./composition-native-overlay-renderer.service";
 import { normalizeCompositionColorGrading, type CompositionColorGrading } from "./composition-color-grading.types";
 import { buildCompositionMotionRuntime } from "./composition-motion-runtime";
 import {
@@ -33,8 +37,29 @@ import {
   normalizeAnimatedDeckAppearance,
   repairLegacyAnimatedDeckAppearanceSelectors,
 } from "../animated-deck/animated-deck-appearance.service";
+import type { CompositionCompiledFont } from "../fonts/organization-font.types";
 
-export class CompositionPreviewCompilerError extends Error {}
+export class CompositionPreviewCompilerError extends Error {
+  constructor(
+    message: string,
+    readonly status = 400,
+    readonly retryable = false,
+  ) {
+    super(message);
+    this.name = "CompositionPreviewCompilerError";
+  }
+}
+
+export class CompositionPreviewDependencyError extends CompositionPreviewCompilerError {
+  constructor(message: string) {
+    super(message, 500, false);
+    this.name = "CompositionPreviewDependencyError";
+  }
+}
+
+export type CompositionPreviewCompilerDiagnostics = {
+  colorGradingRuntime: "AVAILABLE" | "NOT_REQUIRED" | "UNAVAILABLE";
+};
 
 export const COMPOSITION_COMPILATION_TARGETS = {
   HYPERFRAMES_RENDER: "HYPERFRAMES_RENDER",
@@ -74,9 +99,12 @@ function loadHfColorGradingSerializer() {
 export async function compileCompositionPreview(params: {
   assetVariableNames?: Map<string, string>;
   assetUrls: Map<string, string>;
+  colorGradingRuntimeOverride?: string | null;
   deckAssetUrls?: Map<string, string>;
   document: CompositionEditorDocument;
   documentHash?: string;
+  fontAssets?: Map<string, CompositionCompiledFont>;
+  onDiagnostics?: (diagnostics: CompositionPreviewCompilerDiagnostics) => void;
   target?: CompositionCompilationTarget;
 }) {
   const target = params.target || COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW;
@@ -84,9 +112,19 @@ export async function compileCompositionPreview(params: {
   const viewportBackground = isInteractivePreview ? "transparent" : "#020617";
   const animationRuntime = isInteractivePreview ? await readCompositionAnimationRuntime() : null;
   const { document } = params;
-  const colorGradingRuntime = isInteractivePreview && document.clips.some((clip) => clip.kind === "VIDEO" || clip.kind === "IMAGE")
-    ? await readCompositionColorGradingRuntime()
+  const requiresColorGradingRuntime = isInteractivePreview
+    && document.clips.some((clip) => clip.kind === "VIDEO" || clip.kind === "IMAGE");
+  const colorGradingRuntime = requiresColorGradingRuntime
+    ? params.colorGradingRuntimeOverride === undefined
+      ? await readOptionalCompositionColorGradingRuntime()
+      : params.colorGradingRuntimeOverride
     : null;
+  const colorGradingRuntimeState = !requiresColorGradingRuntime
+    ? "NOT_REQUIRED"
+    : colorGradingRuntime
+      ? "AVAILABLE"
+      : "UNAVAILABLE";
+  params.onDiagnostics?.({ colorGradingRuntime: colorGradingRuntimeState });
   const serializeColorGrading = document.clips.some((clip) => normalizeCompositionColorGrading(clip.colorGrading))
     ? await loadHfColorGradingSerializer()
     : null;
@@ -111,6 +149,7 @@ export async function compileCompositionPreview(params: {
     ? `${document.deckStyles.fontUrls.map((url) => `@import url(${JSON.stringify(replaceUrls(url, params.deckAssetUrls))});`).join("\n")}\n${replaceUrls(repairLegacyAnimatedDeckAppearanceSelectors(document.deckStyles.css), params.deckAssetUrls)}`
     : "";
   const deckAppearance = normalizeAnimatedDeckAppearance(document.deckStyles?.appearance);
+  const fontStyles = renderCompositionFontFaces(document, params.fontAssets);
   const clips = document.clips
     .slice()
     .sort((left, right) => left.layout.zIndex - right.layout.zIndex || left.startSeconds - right.startSeconds)
@@ -139,7 +178,7 @@ export async function compileCompositionPreview(params: {
       && resolveCompositionClipAudioVolume(clip, track) > 0;
   });
   return `<!doctype html>
-<html lang="es"${renderHyperframesCompositionVariables(target, params.assetVariableNames)}>
+<html lang="es" data-color-grading-runtime="${colorGradingRuntimeState.toLowerCase()}"${renderHyperframesCompositionVariables(target, params.assetVariableNames)}>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=${document.canvas.width}, height=${document.canvas.height}" />
@@ -172,6 +211,7 @@ export async function compileCompositionPreview(params: {
     .composition-audio-unlock[data-visible="true"] { display: block; }` : ""}
     .deck-content { overflow: hidden; }
     .deck-content .deck-shell, .deck-content .deck-stage, .deck-content .deck-stage > .slide { width: 100%; height: 100%; }
+    ${fontStyles}
     ${deckStyles}
   </style>
 </head>
@@ -241,6 +281,14 @@ function renderClip(
   const colorGrading = renderColorGradingAttribute(clip, serializeColorGrading);
   const hasSynchronizedVideoAudio = clip.kind === "VIDEO"
     && compositionClipHasConfigurableAudio(clip, track);
+  if (clip.kind === "TEXT" || clip.kind === "CAPTION") {
+    return renderCompositionNativeOverlay({
+      clip,
+      commonAttributes: common,
+      motionId,
+      visualTiming,
+    });
+  }
   if (clip.source.type === "DECK_SLIDE") {
     const deckContainStyle = renderDeckContainStyle(clip, canvas);
     return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope" data-appearance="${deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
@@ -353,6 +401,13 @@ function renderTimelineInitializer(
   const clipMetadata = document.clips.map((clip) => {
     const runtimeWindow = transitionRuntime.clipWindowsById.get(clip.id);
     return {
+    captionCues: clip.source.type === "NATIVE_CAPTIONS"
+      ? clip.source.cues.map((cue) => ({
+        elementId: captionCueElementId(clip.id, cue.id),
+        end: clip.startSeconds + cue.endSeconds,
+        start: clip.startSeconds + cue.startSeconds,
+      }))
+      : [],
     duration: clip.durationSeconds,
     hfId: clip.hfId,
     hidden: clip.hidden || Boolean(tracksById.get(clip.trackId)?.hidden),
@@ -378,6 +433,13 @@ function renderTimelineInitializer(
         if (!element) continue;
         if (clip.hidden) { timeline.set(element, { autoAlpha: 0 }, 0); continue; }
         timeline.set(element, { autoAlpha: clip.layoutOpacity }, clip.runtimeStart);
+        for (const cue of clip.captionCues) {
+          const cueElement = document.getElementById(cue.elementId);
+          if (!cueElement) continue;
+          timeline.set(cueElement, { autoAlpha: 0 }, clip.runtimeStart);
+          timeline.set(cueElement, { autoAlpha: 1 }, cue.start);
+          timeline.set(cueElement, { autoAlpha: 0 }, cue.end);
+        }
         if (clip.kind === "DECK_SLIDE") {
           const deckScope = element.querySelector(".deck-scope");
           if (deckScope) {
@@ -1071,7 +1133,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         else media.addEventListener("loadedmetadata", () => preserveDefaultMediaAspect(media), { once: true });
       });
       bindMediaReadinessListeners();
-      const selectTarget = (target) => {
+      const selectTarget = (target, origin = "PREVIEW") => {
         if (!target) return;
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => {
           if (node instanceof HTMLElement) applyCrop(node, readCrop(node), false);
@@ -1118,9 +1180,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         applyCrop(target, readCrop(target), cropEnabled && canCrop);
         selectedHfId = target.dataset.hfId || null;
         const box = target.getBoundingClientRect();
-        postParentMessage({ type: "courseforge-composition-selection", hfId: selectedHfId, bounds: { height: box.height, width: box.width, x: box.x, y: box.y } });
+        postParentMessage({ type: "courseforge-composition-selection", hfId: selectedHfId, origin, bounds: { height: box.height, width: box.width, x: box.x, y: box.y } });
       };
-      const clearTarget = () => {
+      const clearTarget = (origin = "PREVIEW") => {
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => {
           if (node instanceof HTMLElement) applyCrop(node, readCrop(node), false);
         });
@@ -1128,7 +1190,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => node.removeAttribute("data-crop-mode"));
         document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
         selectedHfId = null;
-        postParentMessage({ type: "courseforge-composition-selection", hfId: null });
+        postParentMessage({ type: "courseforge-composition-selection", hfId: null, origin });
       };
       document.addEventListener("click", (event) => {
         if (activeTransform?.moved) return;
@@ -1296,7 +1358,11 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         if (!isBasicColorGrading(colorGrading)) return false;
         const runtime = getColorGradingRuntime();
         const media = target?.querySelector?.("video, img") || (target?.id ? document.getElementById(target.id + "-media") : null);
-        if (!runtime || !(media instanceof HTMLVideoElement || media instanceof HTMLImageElement)) return false;
+        if (!(media instanceof HTMLVideoElement || media instanceof HTMLImageElement)) return false;
+        if (!runtime) {
+          reportColorGradingStatus(target, media);
+          return false;
+        }
         if (colorGrading === null) media.removeAttribute("data-color-grading");
         else media.setAttribute("data-color-grading", JSON.stringify(colorGrading));
         runtime.setGrading(media, colorGrading);
@@ -1388,7 +1454,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           if (editorGrid) editorGrid.setAttribute("data-visible", message.gridVisible === true ? "true" : "false");
           document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
           const selectedTarget = selectedHfId ? document.querySelector('[data-hf-id="' + CSS.escape(selectedHfId) + '"]') : null;
-          if (selectedTarget) selectTarget(selectedTarget);
+          if (selectedTarget) selectTarget(selectedTarget, "PARENT");
         }
         if (message.type === "courseforge-composition-preview-zoom") {
           previewUserScale = Math.max(.5, Math.min(2, Number(message.scale) || 1));
@@ -1406,10 +1472,10 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         }
         if (message.type === "courseforge-composition-select") {
           if (message.hfId === null) {
-            clearTarget();
+            clearTarget("PARENT");
           } else if (typeof message.hfId === "string") {
             const target = document.querySelector('[data-hf-id="' + CSS.escape(message.hfId) + '"]');
-            selectTarget(target);
+            selectTarget(target, "PARENT");
           }
         }
       });
@@ -1419,7 +1485,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
       seek(0);
       announceInitialReadyIfPossible();
       window.setTimeout(() => {
-        document.querySelectorAll("video[data-color-grading], img[data-color-grading]").forEach((media) => {
+        document.querySelectorAll("video.composition-media, img.composition-media").forEach((media) => {
           const target = media.closest("[data-hf-id]");
           if (target instanceof HTMLElement) reportColorGradingStatus(target, media);
         });
@@ -1452,10 +1518,36 @@ export async function readCompositionAnimationRuntime() {
       if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
     }
   }
-  throw new CompositionPreviewCompilerError("No se encontró el runtime de animación del preview.");
+  throw new CompositionPreviewDependencyError("No se encontró el runtime de animación del preview.");
 }
 
-export async function readCompositionColorGradingRuntime() {
+function renderCompositionFontFaces(
+  document: CompositionEditorDocument,
+  fontAssets: Map<string, CompositionCompiledFont> | undefined,
+) {
+  const references = new Map<string, string>();
+  for (const clip of document.clips) {
+    if (clip.source.type !== "NATIVE_TEXT" && clip.source.type !== "NATIVE_CAPTIONS") continue;
+    const { fontAssetId, fontFamily } = clip.source.style;
+    if (fontAssetId) references.set(fontAssetId, fontFamily);
+  }
+  return [...references].map(([assetId, family]) => {
+    const font = fontAssets?.get(assetId);
+    if (!font) throw new CompositionPreviewCompilerError(`No se resolvió la fuente personalizada ${family}.`, 409);
+    if (font.family !== family) throw new CompositionPreviewCompilerError(`La fuente ${font.family} no coincide con la familia declarada ${family}.`, 409);
+    return `@font-face { font-family: '${escapeCssString(font.family)}'; src: url("${escapeCssUrl(font.sourceUrl)}") format('${font.format}'); font-display: block; }`;
+  }).join("\n");
+}
+
+function escapeCssString(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+function escapeCssUrl(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\r\n]/g, "");
+}
+
+export async function readOptionalCompositionColorGradingRuntime() {
   const candidates = [
     resolve(process.cwd(), "node_modules/@hyperframes/core/dist"),
     resolve(process.cwd(), "../node_modules/@hyperframes/core/dist"),
@@ -1480,12 +1572,18 @@ export async function readCompositionColorGradingRuntime() {
       );
       return validateCompositionColorGradingRuntimeArtifact({ manifestRaw, source }).source;
     } catch (error) {
-      throw new CompositionPreviewCompilerError(
+      throw new CompositionPreviewDependencyError(
         `El runtime autónomo de color de HyperFrames no superó la validación: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
-  throw new CompositionPreviewCompilerError(
+  return null;
+}
+
+export async function readCompositionColorGradingRuntime() {
+  const runtime = await readOptionalCompositionColorGradingRuntime();
+  if (runtime) return runtime;
+  throw new CompositionPreviewDependencyError(
     "No se encontró el runtime autónomo de corrección de color de HyperFrames. Actualiza @hyperframes/core antes de abrir el preview.",
   );
 }

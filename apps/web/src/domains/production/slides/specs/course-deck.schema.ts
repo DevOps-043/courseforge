@@ -160,6 +160,7 @@ export const courseDeckDesignSystemSchema = z.object({
   font: z.object({
     cssUrl: z.string().url().max(2000).optional(),
     family: z.string().trim().regex(/^[a-zA-Z0-9 ._-]+$/).min(1).max(120),
+    fontAssetId: z.string().uuid().optional(),
     source: z.enum(["google", "uploaded"]),
   }).optional(),
   muted: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),

@@ -19,9 +19,14 @@ import {
   compositionColorGradingSchema,
   type CompositionColorGrading,
 } from "./composition-color-grading.types";
+import {
+  compositionNativeCaptionSourceSchema,
+  compositionNativeTextSourceSchema,
+} from "./composition-text-layer.types";
 
 export const LEGACY_COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v1";
 export const COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v2";
+export const NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-v3";
 /** Supports full source media such as a 2–3 minute avatar without truncating it. */
 export { COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS } from "./composition-document.types.constants";
 export const COMPOSITION_DURATION_SOURCES = [
@@ -32,7 +37,7 @@ export const COMPOSITION_DURATION_SOURCES = [
   "slides",
 ] as const;
 export type CompositionDurationSource = typeof COMPOSITION_DURATION_SOURCES[number];
-export const COMPOSITION_TRACK_ROLES = ["DECK", "AVATAR", "VOICE", "MUSIC", "SFX", "BROLL", "VISUAL", "OVERLAY"] as const;
+export const COMPOSITION_TRACK_ROLES = ["DECK", "AVATAR", "VOICE", "MUSIC", "SFX", "BROLL", "VISUAL", "OVERLAY", "TEXT", "CAPTIONS"] as const;
 export type CompositionTrackRole = typeof COMPOSITION_TRACK_ROLES[number];
 export const COMPOSITION_MEDIA_FIT_MODES = ["CONTAIN", "COVER"] as const;
 export type CompositionMediaFit = typeof COMPOSITION_MEDIA_FIT_MODES[number];
@@ -187,7 +192,7 @@ export const compositionClipSchema = z.object({
   hidden: z.boolean().default(false),
   hfId: editorIdSchema,
   id: editorIdSchema,
-  kind: z.enum(["AUDIO", "DECK_SLIDE", "IMAGE", "VIDEO"]),
+  kind: z.enum(["AUDIO", "CAPTION", "DECK_SLIDE", "IMAGE", "TEXT", "VIDEO"]),
   label: z.string().trim().min(1).max(200),
   layout: compositionLayoutSchema,
   /** Controls source fitting independently from layout and explicit crop. */
@@ -195,6 +200,8 @@ export const compositionClipSchema = z.object({
   source: z.discriminatedUnion("type", [
     assemblyBrandAssetSourceSchema.extend({ type: z.literal("ASSEMBLY_BRAND_ASSET") }),
     deckSourceSchema.extend({ type: z.literal("DECK_SLIDE") }),
+    compositionNativeCaptionSourceSchema,
+    compositionNativeTextSourceSchema,
     productionAssetSourceSchema.extend({ type: z.literal("PRODUCTION_ASSET") }),
     soundEffectAssetSourceSchema.extend({ type: z.literal("SOUND_EFFECT_ASSET") }),
   ]),
@@ -225,8 +232,34 @@ export const compositionClipSchema = z.object({
   if (clip.kind === "DECK_SLIDE" && clip.source.type !== "DECK_SLIDE") {
     context.addIssue({ code: "custom", message: "Un clip de deck debe conservar su fuente HTML." });
   }
-  if (clip.kind !== "DECK_SLIDE" && clip.source.type !== "PRODUCTION_ASSET" && clip.source.type !== "ASSEMBLY_BRAND_ASSET" && clip.source.type !== "SOUND_EFFECT_ASSET") {
+  if (clip.kind === "TEXT" && clip.source.type !== "NATIVE_TEXT") {
+    context.addIssue({ code: "custom", message: "Una capa de texto debe conservar su fuente de texto nativo." });
+  }
+  if (clip.kind === "CAPTION" && clip.source.type !== "NATIVE_CAPTIONS") {
+    context.addIssue({ code: "custom", message: "Una capa de captions debe conservar su fuente de captions nativos." });
+  }
+  if (
+    clip.kind !== "DECK_SLIDE"
+    && clip.kind !== "TEXT"
+    && clip.kind !== "CAPTION"
+    && clip.source.type !== "PRODUCTION_ASSET"
+    && clip.source.type !== "ASSEMBLY_BRAND_ASSET"
+    && clip.source.type !== "SOUND_EFFECT_ASSET"
+  ) {
     context.addIssue({ code: "custom", message: "Un clip multimedia debe referenciar un asset válido." });
+  }
+  if (clip.source.type === "NATIVE_TEXT" && clip.kind !== "TEXT") {
+    context.addIssue({ code: "custom", message: "La fuente de texto nativo solo puede usarse en una capa TEXT." });
+  }
+  if (clip.source.type === "NATIVE_CAPTIONS") {
+    if (clip.kind !== "CAPTION") {
+      context.addIssue({ code: "custom", message: "La fuente de captions solo puede usarse en una capa CAPTION." });
+    }
+    for (const cue of clip.source.cues) {
+      if (cue.endSeconds > clip.durationSeconds + COMPOSITION_TIMELINE_BOUNDARY_EPSILON_SECONDS) {
+        context.addIssue({ code: "custom", message: `El caption ${cue.id} excede la duración de su capa.` });
+      }
+    }
   }
   if (clip.source.type === "ASSEMBLY_BRAND_ASSET" && clip.kind !== "VIDEO") {
     context.addIssue({ code: "custom", message: "Intro y outro deben ser clips de video." });
@@ -265,7 +298,7 @@ export const compositionEditorDocumentSchema = z.object({
   }).strict(),
   clips: z.array(compositionClipSchema).min(1).max(500),
   deckStyles: deckStylesSchema.nullable(),
-  format: z.enum([LEGACY_COMPOSITION_DOCUMENT_FORMAT, COMPOSITION_DOCUMENT_FORMAT]),
+  format: z.enum([LEGACY_COMPOSITION_DOCUMENT_FORMAT, COMPOSITION_DOCUMENT_FORMAT, NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT]),
   groups: z.array(compositionGroupSchema).max(250).optional(),
   motion: compositionMotionSchema,
   /** Optional for backward compatibility; new transition edits initialize V1. */
@@ -277,6 +310,10 @@ export const compositionEditorDocumentSchema = z.object({
     title: z.string().min(1).max(100),
   }).strict(),
 }).strict().superRefine((document, context) => {
+  const hasNativeText = document.clips.some((clip) => clip.kind === "TEXT" || clip.kind === "CAPTION");
+  if (hasNativeText && document.format !== NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT) {
+    context.addIssue({ code: "custom", message: "Las capas de texto y captions requieren el contrato courseforge-composition-v3." });
+  }
   const trackIds = new Set(document.tracks.map((track) => track.id));
   const clipIds = new Set<string>();
   const hfIds = new Set<string>();

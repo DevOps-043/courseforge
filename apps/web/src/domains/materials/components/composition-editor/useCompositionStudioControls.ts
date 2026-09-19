@@ -14,7 +14,7 @@ export function useCompositionStudioControls() {
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
   const [trimToolEnabled, setTrimToolEnabled] = useState(false);
   const [visualCropEnabled, setVisualCropEnabled] = useState(false);
-  const [studioTopPanePercent, setStudioTopPanePercent] = useState(60);
+  const [studioTopPanePercent, setStudioTopPanePercent] = useState(68);
   const [studioResizing, setStudioResizing] = useState(false);
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
 

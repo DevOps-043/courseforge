@@ -32,6 +32,13 @@ import {
   type HyperframesRenderProfile,
   type HyperframesRenderSettings,
 } from "../hyperframes/hyperframes-render-profiles";
+import {
+  compiledCompositionFont,
+  compositionFontArchivePath,
+  CompositionFontAssetError,
+  downloadCompositionFont,
+  readReferencedCompositionFonts,
+} from "./composition-font-assets.service";
 
 const PROJECT_BUCKET = "production-assets";
 
@@ -83,6 +90,24 @@ export async function snapshotCompositionDocument(params: {
 
   const renderSettings = toHyperframesRenderSettings(params.renderProfile);
   const persistedRenderProfile = { id: params.renderProfile.id, ...renderSettings };
+  let referencedFonts;
+  try {
+    referencedFonts = await readReferencedCompositionFonts({
+      document: current.document,
+      organizationId: params.organizationId,
+      supabase: params.supabase,
+    });
+  } catch (error) {
+    if (error instanceof CompositionFontAssetError) throw new CompositionSnapshotError(error.message, error.status);
+    throw error;
+  }
+  const fontManifest = referencedFonts.map((font) => ({
+    checksumSha256: font.checksumSha256,
+    family: font.family,
+    fileSizeBytes: font.fileSizeBytes,
+    fontAssetId: font.id,
+    mimeType: font.mimeType,
+  }));
   const { data: existing, error: existingError } = await params.supabase
     .from("video_composition_revisions")
     .select("id, revision_number, project_hash, project_archive_size_bytes")
@@ -91,6 +116,7 @@ export async function snapshotCompositionDocument(params: {
       asset_delivery_mode: HYPERFRAMES_ASSET_DELIVERY_MODES.REMOTE_VARIABLES,
       media_binding_version: HYPERFRAMES_MEDIA_BINDING_VERSION,
       draft_document_hash: current.documentHash,
+      font_manifest: fontManifest,
       render_profile: persistedRenderProfile,
     })
     .maybeSingle();
@@ -147,6 +173,21 @@ export async function snapshotCompositionDocument(params: {
   if (!preflight.valid) throw new CompositionSnapshotError(preflight.errors.join(" "));
 
   const zip = new JSZip();
+  let packagedFonts;
+  try {
+    packagedFonts = await Promise.all(referencedFonts.map(async (font) => ({
+      bytes: await downloadCompositionFont({ font, supabase: params.supabase }),
+      font,
+      path: compositionFontArchivePath(font),
+    })));
+  } catch (error) {
+    if (error instanceof CompositionFontAssetError) throw new CompositionSnapshotError(error.message, error.status);
+    throw error;
+  }
+  const compiledFonts = new Map(packagedFonts.map(({ font, path }) => [
+    font.id,
+    compiledCompositionFont(font, path),
+  ]));
   const assetVariableNames = buildHyperframesAssetVariableNames(manifest);
   // Direct media is represented by provider variables and receives its URL at
   // submission time. Only deck-owned public dependencies must be rewritten in
@@ -169,14 +210,17 @@ export async function snapshotCompositionDocument(params: {
       assetVariableNames,
       deckAssetUrls,
       document: current.document,
+      fontAssets: compiledFonts,
       target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
     }),
     readCompositionAnimationRuntime(),
   ]);
   zip.file("index.html", snapshotHtml);
   zip.file("assets/gsap.min.js", animationRuntime);
+  for (const packagedFont of packagedFonts) zip.file(packagedFont.path, packagedFont.bytes);
   zip.file("composition-document.json", JSON.stringify(current.document, null, 2));
   zip.file("asset-manifest.json", JSON.stringify(manifest, null, 2));
+  zip.file("font-manifest.json", JSON.stringify(fontManifest, null, 2));
   const archive = await zip.generateAsync({ compression: "DEFLATE", type: "uint8array", compressionOptions: { level: 6 } });
   const archivePreflight = validateHyperframesPreflight({
     archiveSizeBytes: archive.byteLength,
@@ -223,6 +267,7 @@ export async function snapshotCompositionDocument(params: {
       canvas_duration_seconds: current.document.canvas.durationSeconds,
       draft_document_hash: current.documentHash,
       draft_document_version: current.version,
+      font_manifest: fontManifest,
       render_profile: {
         ...persistedRenderProfile,
       },

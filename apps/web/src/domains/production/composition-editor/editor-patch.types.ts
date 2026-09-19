@@ -10,6 +10,10 @@ import {
   compositionVisualCropSchema,
 } from "./composition-document.types";
 import { compositionColorGradingSchema } from "./composition-color-grading.types";
+import {
+  compositionCaptionCueSchema,
+  compositionTextLayerStylePatchSchema,
+} from "./composition-text-layer.types";
 import { COMPOSITION_MOTION_EASES, COMPOSITION_MOTION_PRESET_IDS, compositionMotionValuesSchema } from "./composition-motion.types";
 import {
   COMPOSITION_TRANSITION_ALIGNMENTS,
@@ -103,6 +107,21 @@ const clipVisibilityOperationSchema = z.object({
 const clipVolumeOperationSchema = z.object({
   type: z.literal("clip.volume"),
   volume: z.number().finite().min(0).max(1),
+}).strict();
+
+const clipTextContentOperationSchema = z.object({
+  text: z.string().min(1).max(4_000),
+  type: z.literal("clip.text-content"),
+}).strict();
+
+const clipCaptionCuesOperationSchema = z.object({
+  cues: z.array(compositionCaptionCueSchema).min(1).max(2_000),
+  type: z.literal("clip.caption-cues"),
+}).strict();
+
+const clipTextStyleOperationSchema = z.object({
+  style: compositionTextLayerStylePatchSchema,
+  type: z.literal("clip.text-style"),
 }).strict();
 
 /** Only alters the editable document; source assets remain linked and intact. */
@@ -299,10 +318,13 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipTemplateOperationSchema,
   clipTrimOperationSchema,
   clipSplitOperationSchema,
+  clipCaptionCuesOperationSchema,
   clipRemoveRangeOperationSchema,
   clipResetAssetOperationSchema,
   clipVisibilityOperationSchema,
   clipVolumeOperationSchema,
+  clipTextContentOperationSchema,
+  clipTextStyleOperationSchema,
 ]).and(z.object({ clipId: editorIdSchema }).strict());
 
 export const compositionEditorPatchOperationSchema = z.union([

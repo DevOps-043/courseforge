@@ -71,7 +71,7 @@ test("compiles HyperFrames media as provider variables instead of ZIP paths", as
   assert.match(html, new RegExp(`data-var-src="${variableName}"`));
   assert.match(
     html,
-    new RegExp(`<html lang="es" data-composition-variables='\\[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;${variableName}&quot;,&quot;label&quot;:&quot;SofLIA - Engine remote asset&quot;,&quot;type&quot;:&quot;string&quot;}\\]'`),
+    new RegExp(`<html lang="es" data-color-grading-runtime="not_required" data-composition-variables='\\[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;${variableName}&quot;,&quot;label&quot;:&quot;SofLIA - Engine remote asset&quot;,&quot;type&quot;:&quot;string&quot;}\\]'`),
   );
   assert.doesNotMatch(html, /src="https:\/\/project\.supabase\.co\/avatar\.mp4"/);
 });
@@ -135,6 +135,32 @@ test("omite el atributo neutro y conserva el contrato en imÃ¡genes", async () 
   assert.equal(payload.adjust.exposure, -0.25);
   assert.equal(payload.adjust.contrast, -0.4);
   assert.equal(payload.adjust.saturation, 0.6);
+});
+
+test("degrada el preview de medios cuando el runtime de color no está publicado", async () => {
+  const assetId = "00000000-0000-4000-8000-000000000096";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "6".repeat(64), durationSeconds: 5, fileSizeBytes: 6, mimeType: "image/png", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/fallback.png", timelineRole: "BROLL" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Fallback" },
+  });
+  const image = document.clips.find((clip) => clip.kind === "IMAGE")!;
+  image.colorGrading = { adjust: { contrast: 0.2, exposure: 0.1, saturation: -0.3 } };
+  let diagnostics: { colorGradingRuntime: string } | null = null;
+
+  const html = await compileCompositionPreview({
+    assetUrls: new Map([[assetId, "https://storage.test/fallback.png"]]),
+    colorGradingRuntimeOverride: null,
+    document,
+    onDiagnostics: (value) => { diagnostics = value; },
+  });
+
+  assert.deepEqual(diagnostics, { colorGradingRuntime: "UNAVAILABLE" });
+  assert.match(html, /data-color-grading-runtime="unavailable"/);
+  assert.match(html, /data-color-grading=/);
+  assert.match(html, /video\.composition-media, img\.composition-media/);
+  assert.match(html, /state: "unavailable"/);
+  assert.doesNotMatch(html, /__hfColorGradingRuntimeInstalled/);
 });
 
 test("el agrupamiento editorial no altera el HTML enviado a HyperFrames", async () => {
@@ -313,6 +339,8 @@ test("compiles the native document into a seekable preview with stable visual id
   assert.match(html, /data-hf-id="deck-slide-0"/);
   assert.match(html, /window\.__timelines\["courseforge-composition"\]/);
   assert.match(html, /courseforge-composition-selection/);
+  assert.match(html, /selectTarget\(target, "PARENT"\)/);
+  assert.match(html, /origin = "PREVIEW"/);
   assert.match(html, /courseforge-composition-editor-settings/);
   assert.match(html, /composition-editor-grid/);
   assert.match(html, /snapEnabled/);
