@@ -7,6 +7,7 @@ import {
   COMPOSITION_COMPILATION_TARGETS,
   COMPOSITION_PREVIEW_MEDIA_CONFIG,
   compileCompositionPreview,
+  resolveHyperframesCoreDirectoryFromPackageResolution,
 } from "../composition-preview-compiler.service";
 import { applyCompositionEditorPatches } from "../editor-patch.service";
 import {
@@ -141,6 +142,11 @@ test("omite el atributo neutro y conserva el contrato en imÃ¡genes", async () 
   assert.equal(payload.adjust.exposure, -0.25);
   assert.equal(payload.adjust.contrast, -0.4);
   assert.equal(payload.adjust.saturation, 0.6);
+});
+
+test("treats a bundled numeric HyperFrames module id as an optional runtime without a filesystem path", () => {
+  assert.equal(resolveHyperframesCoreDirectoryFromPackageResolution(374476), null);
+  assert.equal(resolveHyperframesCoreDirectoryFromPackageResolution(undefined), null);
 });
 
 test("usa el fallback de Courseforge cuando el runtime de color externo no está publicado", async () => {

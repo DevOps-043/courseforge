@@ -1621,11 +1621,27 @@ function resolveInstalledHyperframesCoreDirectory() {
     // Resolving the public package metadata makes the installed package the only source
     // of preview code. This prevents a sibling checkout from masking an
     // incomplete deployment dependency.
-    return resolve(dirname(require.resolve("@hyperframes/core/package.json")), "dist");
+    return resolveHyperframesCoreDirectoryFromPackageResolution(
+      require.resolve("@hyperframes/core/package.json"),
+    );
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "MODULE_NOT_FOUND") return null;
     throw error;
   }
+}
+
+/**
+ * Next/Turbopack can compile `require.resolve(...)` into a numeric module id in
+ * serverless bundles. A numeric id proves that the module was bundled, but it is
+ * not a filesystem path and must not be passed to `path.dirname`. The color
+ * runtime is optional, so an unavailable physical path intentionally selects
+ * Courseforge's deterministic CSS fallback.
+ */
+export function resolveHyperframesCoreDirectoryFromPackageResolution(
+  packageResolution: unknown,
+) {
+  if (typeof packageResolution !== "string" || packageResolution.length === 0) return null;
+  return resolve(dirname(packageResolution), "dist");
 }
 
 export async function readCompositionColorGradingRuntime() {
