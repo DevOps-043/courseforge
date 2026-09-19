@@ -297,11 +297,10 @@ function normalizedVisibleText(value: string) {
     .trim();
 }
 
-function validateContentUniquenessAndCoverage(
+function validateCoverage(
   deckSpec: CourseDeckSpec,
   findings: CourseDeckQaFinding[],
 ) {
-  const seenSlides = new Map<string, string>();
   const requiredSlideCount = Math.max(
     0,
     ...deckSpec.slides.map((slide) => slide.validationHints.targetSlideCount || 0),
@@ -314,7 +313,10 @@ function validateContentUniquenessAndCoverage(
       severity: "error",
     });
   }
+}
 
+function validateContentUniqueness(deckSpec: CourseDeckSpec, findings: CourseDeckQaFinding[]) {
+  const seenSlides = new Map<string, string>();
   for (const slide of deckSpec.slides) {
     const title = normalizedVisibleText(slide.title);
     const bodyItems = slide.bodyBlocks.flatMap((block) =>
@@ -555,6 +557,30 @@ function resolveStatus(findings: CourseDeckQaFinding[]): CourseDeckQaStatus {
   return "PASS";
 }
 
+/** Shared by synthesis repair and final QA so invalid copy cannot bypass the quality gate. */
+export function validateCourseDeckVisibleCopy(deckSpec: CourseDeckSpec): CourseDeckQaFinding[] {
+  const findings: CourseDeckQaFinding[] = [];
+  validateTextDensity(deckSpec, findings);
+  validateContentUniqueness(deckSpec, findings);
+  validateVisibleLanguage(deckSpec, findings);
+  validateNarrationLeakage(deckSpec, findings);
+  validateVisibleProductionMetadata(deckSpec, findings);
+  return findings;
+}
+
+export function summarizeCourseDeckQaErrors(report: CourseDeckQaReport): string {
+  const groups = new Map<string, { message: string; count: number }>();
+  for (const finding of report.findings.filter((item) => item.severity === "error")) {
+    const group = groups.get(finding.code);
+    if (group) group.count += 1;
+    else groups.set(finding.code, {
+      message: finding.code === "duplicate_slide_copy" ? "Contenido repetido entre diapositivas" : finding.message,
+      count: 1,
+    });
+  }
+  return Array.from(groups.values()).map(({ message, count }) => `${message}${count > 1 ? ` (${count} incidencias)` : ""}`).join("; ");
+}
+
 export function validateCourseDeckQuality(params: {
   deckSpec: CourseDeckSpec;
   html: string;
@@ -563,13 +589,10 @@ export function validateCourseDeckQuality(params: {
 
   validateSlideOrder(params.deckSpec, findings);
   validateVisualDiversity(params.deckSpec, findings);
-  validateTextDensity(params.deckSpec, findings);
-  validateContentUniquenessAndCoverage(params.deckSpec, findings);
-  validateVisibleLanguage(params.deckSpec, findings);
+  findings.push(...validateCourseDeckVisibleCopy(params.deckSpec));
+  validateCoverage(params.deckSpec, findings);
   validateChartContracts(params.deckSpec, params.html, findings);
   validateVisualAssetContracts(params.deckSpec, params.html, findings);
-  validateNarrationLeakage(params.deckSpec, findings);
-  validateVisibleProductionMetadata(params.deckSpec, findings);
   validateHtmlSafety(params.html, findings);
   validateRenderContract(params.deckSpec, params.html, findings);
 

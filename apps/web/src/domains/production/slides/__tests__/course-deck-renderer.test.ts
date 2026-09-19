@@ -1,14 +1,175 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, type TestContext } from "node:test";
+import * as serverEnv from "../../../../lib/server/env";
+import { synthesizeDeckVisibleCopy } from "../agents/visible-copy-synthesis-agent.service";
+import { createSlideSourceAllocator, type SlideSourcePack } from "../content/slide-source-pack.service";
 import {
   generateCourseDeckWithCopySynthesisQualityGate,
   generateCourseDeckWithQualityGate,
 } from "../generation/course-deck-generation-orchestrator.service";
 import { buildCourseDeckSpecFromComponent } from "../planning/course-deck-from-component.service";
 import { renderCourseDeckHtml } from "../render/html-deck-renderer.service";
-import { validateCourseDeckQuality } from "../validation/course-deck-qa.service";
+import { summarizeCourseDeckQaErrors, validateCourseDeckQuality } from "../validation/course-deck-qa.service";
 import { planDeckVisualAssets } from "../visuals/slide-visual-asset-planning.service";
 import { prepareAnimatedDeckForRemotion } from "../../validation/animated-deck-preprocessor.service";
+
+describe("slide copy duplication regressions", () => {
+  const sourcePack: SlideSourcePack = {
+    items: [],
+    sourceRefs: ["source-1"],
+    insights: [{
+      sourceRef: "source-1", type: "concept", title: "Escucha activa",
+      bodyItems: ["Identifica los elementos del sonido."],
+    }],
+  };
+
+  function draft(content: Record<string, unknown> = {}) {
+    return buildCourseDeckSpecFromComponent({
+      artifactId: "artifact-duplicates",
+      component: { id: "component-duplicates", type: "VIDEO_THEORETICAL", sourcePack, content },
+      input: { locale: "es", template: "course-module" },
+    });
+  }
+
+  function synthesisDraft() {
+    return draft({ script: { sections: [
+      { section_number: 1, on_screen_text: "Licencias", narration_text: "Verifica los permisos de uso antes de compartir una obra." },
+      { section_number: 2, on_screen_text: "Atribucion", narration_text: "Documenta la autoria y el origen de los recursos usados." },
+    ] } });
+  }
+
+  function validResponse(deck: ReturnType<typeof draft>) {
+    return { slides: deck.slides.map((slide, index) => ({
+      id: slide.id, title: `Concepto educativo ${index + 1}`, bullets: [`Criterio de aprendizaje ${index + 1}`],
+    })) };
+  }
+
+  function mockProvider(t: TestContext, responses: unknown[]) {
+    t.mock.method(serverEnv, "getOptionalOpenAIApiKey", () => "test-key");
+    t.mock.method(serverEnv, "getOptionalGeminiApiKey", () => null);
+    const prompts: string[] = [];
+    t.mock.method(globalThis, "fetch", async (_url: unknown, init: RequestInit) => {
+      prompts.push(JSON.parse(String(init.body)).input);
+      assert.ok(prompts.length <= responses.length, "Provider attempts must remain bounded");
+      return new Response(JSON.stringify({ output_text: JSON.stringify(responses[prompts.length - 1]) }), {
+        headers: { "content-type": "application/json" }, status: 200,
+      });
+    });
+    return prompts;
+  }
+
+  for (const mode of ["script", "storyboard"] as const) {
+    it(`does not cycle scarce evidence across a long ${mode} deck`, () => {
+      const sections = Array.from({ length: 7 }, (_, index) => ({
+        section_number: index + 1, take_number: index + 1,
+        on_screen_text: `Tema educativo ${index + 1}\nCriterio de aprendizaje ${index + 1}`,
+      }));
+      const deck = draft(mode === "script" ? { script: { sections } } : { storyboard: sections });
+      const qa = validateCourseDeckQuality({ deckSpec: deck, html: renderCourseDeckHtml(deck) });
+      assert.equal(deck.slides.length, mode === "script" ? 15 : 8);
+      assert.equal(qa.status, "PASS", JSON.stringify(qa.findings));
+      assert.equal(deck.slides.filter((slide) => slide.title === "Escucha activa").length, 1);
+    });
+  }
+
+  it("consumes distinct evidence across slide types and duplicate source entries", () => {
+    const allocate = createSlideSourceAllocator({ ...sourcePack, insights: [
+      sourcePack.insights![0]!,
+      { ...sourcePack.insights![0]!, sourceRef: "duplicate-source" },
+      { sourceRef: "practice", type: "practice", title: "Practica auditiva", bodyItems: ["Compara dos grabaciones."] },
+    ] });
+    assert.equal(allocate("worked_example")[0], "Practica auditiva");
+    assert.equal(allocate("concept")[0], "Escucha activa");
+    assert.deepEqual(allocate("worked_example"), []);
+    assert.deepEqual(allocate("concept"), []);
+  });
+
+  it("repairs duplicate model copy once with slide IDs and section context", async (t) => {
+    const deck = synthesisDraft();
+    const duplicate = { slides: deck.slides.map((slide) => ({ id: slide.id, title: "Idea repetida", bullets: ["Contenido repetido"] })) };
+    const prompts = mockProvider(t, [duplicate, validResponse(deck)]);
+    const result = await synthesizeDeckVisibleCopy({ deckSpec: deck, sourcePack });
+    assert.equal(prompts.length, 2);
+    assert.match(prompts[1]!, /duplicate_slide_copy/);
+    assert.match(prompts[1]!, /script-section-2/);
+    assert.match(prompts[0]!, /Documenta la autoria/);
+    assert.equal(result.trace.provider, "openai");
+    assert.equal(validateCourseDeckQuality({ deckSpec: result.deckSpec, html: renderCourseDeckHtml(result.deckSpec) }).status, "PASS");
+  });
+
+  it("matches reordered responses by ID without another model call", async (t) => {
+    const deck = synthesisDraft();
+    const response = validResponse(deck);
+    response.slides.reverse();
+    const prompts = mockProvider(t, [response]);
+    const result = await synthesizeDeckVisibleCopy({ deckSpec: deck });
+    assert.equal(prompts.length, 1);
+    assert.deepEqual(result.deckSpec.slides.map((slide) => slide.title), ["Concepto educativo 1", "Concepto educativo 2", "Concepto educativo 3"]);
+  });
+
+  it("preserves mandatory language repair using the shared QA rules", async (t) => {
+    const deck = synthesisDraft();
+    const response = validResponse(deck);
+    response.slides[1]!.title = "Learning with the evidence";
+    response.slides[1]!.bullets = ["The students can improve their learning with practice."];
+    const prompts = mockProvider(t, [response, validResponse(deck)]);
+    const result = await synthesizeDeckVisibleCopy({ deckSpec: deck });
+    assert.equal(prompts.length, 2);
+    assert.match(prompts[1]!, /visible_copy_wrong_language/);
+    assert.equal(result.trace.provider, "openai");
+  });
+
+  it("leaves an invalid fallback blocked by the production quality gate", async (t) => {
+    const params = {
+      artifactId: "artifact-invalid",
+      component: {
+        id: "component-invalid", type: "VIDEO_THEORETICAL",
+        content: { script: { sections: [
+          { section_number: 1, on_screen_text: "Idea repetida" },
+          { section_number: 2, on_screen_text: "Idea repetida" },
+        ] } },
+      },
+      input: { locale: "es" as const, template: "course-module" as const },
+    };
+    const deck = buildCourseDeckSpecFromComponent(params);
+    const response = { slides: deck.slides.map((slide) => ({ id: slide.id, title: "Idea repetida", bullets: ["Contenido repetido"] })) };
+    const prompts = mockProvider(t, [response, response]);
+    const result = await generateCourseDeckWithCopySynthesisQualityGate(params);
+    assert.equal(prompts.length, 2);
+    assert.equal(result.qaReport.status, "FAIL");
+    assert.ok(result.qaReport.findings.some((finding) => finding.code === "duplicate_slide_copy"));
+  });
+
+  for (const invalid of ["missing", "duplicate-id", "unknown-id"] as const) {
+    it(`repairs ${invalid} responses instead of silently accepting a partial deck`, async (t) => {
+      const deck = synthesisDraft();
+      const response = validResponse(deck);
+      if (invalid === "missing") response.slides.pop();
+      if (invalid === "duplicate-id") response.slides[1]!.id = response.slides[0]!.id;
+      if (invalid === "unknown-id") response.slides[1]!.id = "unknown";
+      const prompts = mockProvider(t, [response, validResponse(deck)]);
+      const result = await synthesizeDeckVisibleCopy({ deckSpec: deck });
+      assert.equal(prompts.length, 2);
+      assert.equal(result.trace.appliedSlideCount, deck.slides.length);
+    });
+  }
+
+  it("stops after one failed repair and keeps the final QA guard", async (t) => {
+    const deck = synthesisDraft();
+    const duplicate = { slides: deck.slides.map((slide) => ({ id: slide.id, title: "Idea repetida", bullets: ["Contenido repetido"] })) };
+    const prompts = mockProvider(t, [duplicate, duplicate]);
+    const result = await synthesizeDeckVisibleCopy({ deckSpec: deck });
+    assert.equal(prompts.length, 2);
+    assert.equal(result.trace.provider, "deterministic_fallback");
+    assert.deepEqual(result.deckSpec, deck);
+    assert.match(result.trace.warning!, /duplicate_slide_copy/);
+    const invalidDeck = { ...deck, slides: deck.slides.map((slide) => ({ ...slide, title: "Idea repetida", subtitle: undefined, bodyBlocks: [{ kind: "bullets" as const, items: ["Contenido repetido"] }] })) };
+    const qa = validateCourseDeckQuality({ deckSpec: invalidDeck, html: renderCourseDeckHtml(invalidDeck) });
+    assert.equal(qa.status, "FAIL");
+    assert.equal(qa.findings.filter((finding) => finding.code === "duplicate_slide_copy").length, 2);
+    assert.equal(summarizeCourseDeckQaErrors(qa), "Contenido repetido entre diapositivas (2 incidencias)");
+  });
+});
 
 describe("SofLIA - Engine slide deck generation", () => {
   it("uses the approved light appearance by default", () => {
