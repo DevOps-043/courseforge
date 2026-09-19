@@ -101,6 +101,66 @@ test("renders caption cues on the composition timeline without turning them into
   assert.doesNotMatch(html, /class="clip"[^>]*caption-timeline-caption-cue-a/);
 });
 
+test("renders word-level karaoke spans and seek-safe opacity events", async () => {
+  const initial = baseDocument();
+  const { clip, track } = createCompositionNativeOverlay({
+    document: initial,
+    id: "caption-karaoke",
+    kind: "CAPTION",
+    playheadSeconds: 0,
+  });
+  const edited = applyCompositionEditorPatches(initial, [{
+    clip,
+    clipId: clip.id,
+    ...(track ? { track } : {}),
+    type: "clip.add",
+  }, {
+    clipId: clip.id,
+    cues: [{
+      endSeconds: 2,
+      id: "cue-a",
+      startSeconds: 0,
+      text: "Hola mundo",
+      words: [
+        { endSeconds: 0.5, id: "word-1", startSeconds: 0, text: "Hola" },
+        { endSeconds: 1, id: "word-2", startSeconds: 0.5, text: "mundo" },
+      ],
+    }],
+    origin: "TRANSCRIPT",
+    type: "clip.caption-cues",
+  }]);
+  const html = await compileCompositionPreview({ assetUrls: new Map(), document: edited });
+
+  assert.match(html, /id="caption-karaoke-caption-cue-a-word-word-1" class="composition-caption-word"/);
+  assert.match(html, /"words":\[\{"elementId":"caption-karaoke-caption-cue-a-word-word-1","end":0\.5,"start":0\}/);
+  assert.match(html, /timeline\.set\(wordElement, \{ opacity: 1 \}, word\.start\)/);
+});
+
+test("persists the imported caption origin through the allow-listed patch", () => {
+  const initial = baseDocument();
+  const { clip, track } = createCompositionNativeOverlay({
+    document: initial,
+    id: "caption-imported",
+    kind: "CAPTION",
+    playheadSeconds: 0,
+  });
+  const edited = applyCompositionEditorPatches(initial, [{
+    clip,
+    clipId: clip.id,
+    ...(track ? { track } : {}),
+    type: "clip.add",
+  }, {
+    clipId: clip.id,
+    cues: [{ endSeconds: 2, id: "cue-1", startSeconds: 0, text: "Importado" }],
+    origin: "VTT",
+    type: "clip.caption-cues",
+  }]);
+  const imported = edited.clips.find((candidate) => candidate.id === clip.id);
+
+  assert.equal(imported?.source.type, "NATIVE_CAPTIONS");
+  if (imported?.source.type === "NATIVE_CAPTIONS") assert.equal(imported.source.origin, "VTT");
+});
+
 test("embeds an explicitly resolved custom font and fails closed when it is missing", async () => {
   const initial = baseDocument();
   const fontAssetId = "00000000-0000-4000-8000-000000000701";

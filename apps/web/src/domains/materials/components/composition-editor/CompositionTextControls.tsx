@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Save, Subtitles, Trash2, Type } from "lucide-react";
+import { FileUp, Plus, Save, Subtitles, Trash2, Type } from "lucide-react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
 import type {
@@ -9,6 +9,15 @@ import type {
   CompositionTextLayerStyle,
 } from "@/domains/production/composition-editor/composition-text-layer.types";
 import { readCompositionApiResponse } from "@/domains/production/composition-editor/composition-editor-api.client";
+import {
+  MAX_CAPTION_IMPORT_BYTES,
+  parseCompositionCaptionImport,
+} from "@/domains/production/composition-editor/composition-caption-import.service";
+import {
+  applyCompositionCaptionPreset,
+  listCompositionCaptionPresets,
+  type CompositionCaptionPresetId,
+} from "@/domains/production/composition-editor/composition-caption-preset.service";
 
 type PatchHandler = (
   operations: CompositionEditorPatchOperation[],
@@ -37,6 +46,10 @@ export function CompositionTextControls({
     : null;
   const [text, setText] = useState("");
   const [cues, setCues] = useState<CompositionCaptionCue[]>([]);
+  const [captionOrigin, setCaptionOrigin] = useState<"MANUAL" | "SRT" | "TRANSCRIPT" | "VTT">("MANUAL");
+  const [captionPreset, setCaptionPreset] = useState<CompositionCaptionPresetId | "">("");
+  const [captionImportSummary, setCaptionImportSummary] = useState<string | null>(null);
+  const [isImportingCaptions, setIsImportingCaptions] = useState(false);
   const [style, setStyle] = useState<CompositionTextLayerStyle | null>(null);
   const [fontAssetId, setFontAssetId] = useState<string | null>(null);
   const [organizationFonts, setOrganizationFonts] = useState<OrganizationFontOption[]>([]);
@@ -51,6 +64,9 @@ export function CompositionTextControls({
     setFontAssetId(source.style.fontAssetId || null);
     setText(source.type === "NATIVE_TEXT" ? source.text : "");
     setCues(source.type === "NATIVE_CAPTIONS" ? source.cues : []);
+    setCaptionOrigin(source.type === "NATIVE_CAPTIONS" ? source.origin : "MANUAL");
+    setCaptionPreset("");
+    setCaptionImportSummary(null);
     setError(null);
   }, [clip.id, source]);
 
@@ -95,6 +111,30 @@ export function CompositionTextControls({
     setError(null);
   };
 
+  const importCaptions = async (file: File) => {
+    if (file.size <= 0 || file.size > MAX_CAPTION_IMPORT_BYTES) {
+      setError("El archivo de captions debe pesar entre 1 byte y 1 MiB.");
+      return;
+    }
+    setIsImportingCaptions(true);
+    try {
+      const imported = parseCompositionCaptionImport({
+        content: await file.text(),
+        fileName: file.name,
+        maxDurationSeconds: clip.durationSeconds,
+      });
+      setCues(imported.cues);
+      setCaptionOrigin(imported.format);
+      setCaptionImportSummary(`${imported.cues.length} captions importados desde ${file.name}.`);
+      setError(null);
+    } catch (caught) {
+      setCaptionImportSummary(null);
+      setError(caught instanceof Error ? caught.message : "No se pudo importar el archivo de captions.");
+    } finally {
+      setIsImportingCaptions(false);
+    }
+  };
+
   const save = async () => {
     const operations: CompositionEditorPatchOperation[] = [{
       clipId: clip.id,
@@ -120,7 +160,7 @@ export function CompositionTextControls({
         setError("Revisa texto y tiempos: los captions no deben solaparse ni exceder la capa.");
         return;
       }
-      operations.push({ clipId: clip.id, cues: ordered, type: "clip.caption-cues" });
+      operations.push({ clipId: clip.id, cues: ordered, origin: captionOrigin, type: "clip.caption-cues" });
     }
     setError(null);
     await onPatch(operations, `Actualizó contenido y estilo de ${clip.label}.`);
@@ -136,6 +176,19 @@ export function CompositionTextControls({
     {source.type === "NATIVE_TEXT"
       ? <textarea value={text} maxLength={4_000} disabled={disabled} onChange={(event) => setText(event.target.value)} className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white" />
       : <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-slate-300 p-2 dark:border-white/15">
+          <div><p className="text-[10px] font-semibold text-slate-600 dark:text-gray-300">Importar subtítulos</p><p className="text-[9px] text-slate-400">SRT o WebVTT · máximo 1 MiB · reemplaza los cues al guardar</p></div>
+          <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 dark:border-white/15 dark:text-gray-300"><FileUp size={12} /> {isImportingCaptions ? "Importando…" : "Seleccionar archivo"}<input type="file" accept=".srt,.vtt,text/vtt,application/x-subrip" disabled={disabled || isImportingCaptions} className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void importCaptions(file); event.currentTarget.value = ""; }} /></label>
+        </div>
+        {captionImportSummary && <p role="status" className="rounded-md bg-emerald-50 px-2 py-1.5 text-[10px] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">{captionImportSummary}</p>}
+        <label className="block text-[10px] font-medium text-slate-600 dark:text-gray-300">Preset visual<select value={captionPreset} disabled={disabled} onChange={(event) => {
+          const value = event.target.value as CompositionCaptionPresetId | "";
+          setCaptionPreset(value);
+          if (value) setStyle((current) => current ? applyCompositionCaptionPreset(current, value) : current);
+        }} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-white/15 dark:bg-slate-950">
+          <option value="">Aplicar un preset…</option>
+          {listCompositionCaptionPresets().map((preset) => <option key={preset.id} value={preset.id}>{preset.label} · {preset.description}</option>)}
+        </select></label>
         {cues.map((cue, index) => <div key={cue.id} className="rounded-md border border-slate-200 p-2 dark:border-white/10">
           <textarea value={cue.text} disabled={disabled} onChange={(event) => setCues((current) => current.map((item) => item.id === cue.id ? { ...item, text: event.target.value } : item))} className="min-h-14 w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs dark:border-white/10 dark:bg-slate-950" />
           <div className="mt-2 grid grid-cols-2 gap-2"><NumberField label="Inicio (s)" value={cue.startSeconds} disabled={disabled} onChange={(value) => setCues((current) => current.map((item) => item.id === cue.id ? { ...item, startSeconds: value } : item))} /><NumberField label="Fin (s)" value={cue.endSeconds} disabled={disabled} onChange={(value) => setCues((current) => current.map((item) => item.id === cue.id ? { ...item, endSeconds: value } : item))} /></div>

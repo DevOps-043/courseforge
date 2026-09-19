@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import { compositionEditorDocumentSchema } from "../composition-document.types";
+import { resolveCompositionGroupColors } from "../composition-group-color.service";
 import { hashCompositionDocument } from "../composition-document.service";
 import { applyCompositionEditorPatches } from "../editor-patch.service";
 
@@ -44,6 +45,26 @@ test("restaurar historial conserva o elimina grupos según la versión elegida",
   assert.notEqual(restoredGrouped.groups, grouped.groups);
   assert.equal(restoredUngrouped.groups, undefined);
   assert.deepEqual(grouped.groups?.[0]?.clipIds, ungrouped.clips.map((clip) => clip.id));
+});
+
+test("asigna colores distintos a grupos que se cruzan y reutiliza el color después", () => {
+  const document = createTwoClipDocument();
+  const [firstClip, secondClip] = document.clips;
+  const thirdClip = { ...firstClip!, id: "slide-third", hfId: "slide-third", startSeconds: 2 };
+  const fourthClip = { ...secondClip!, id: "slide-fourth", hfId: "slide-fourth", startSeconds: 6 };
+  const fifthClip = { ...firstClip!, id: "slide-fifth", hfId: "slide-fifth", startSeconds: 20 };
+  const sixthClip = { ...secondClip!, id: "slide-sixth", hfId: "slide-sixth", startSeconds: 24 };
+  document.clips = [firstClip!, secondClip!, thirdClip, fourthClip, fifthClip, sixthClip];
+  document.groups = [
+    { clipIds: [firstClip!.id, secondClip!.id], id: "group-overlap-one", order: 0 },
+    { clipIds: [thirdClip.id, fourthClip.id], id: "group-overlap-two", order: 1 },
+    { clipIds: [fifthClip.id, sixthClip.id], id: "group-after-overlap", order: 2 },
+  ];
+
+  const colors = resolveCompositionGroupColors(document);
+
+  assert.notEqual(colors.get("group-overlap-one")?.key, colors.get("group-overlap-two")?.key);
+  assert.equal(colors.get("group-overlap-one")?.key, colors.get("group-after-overlap")?.key);
 });
 
 function createTwoClipDocument() {

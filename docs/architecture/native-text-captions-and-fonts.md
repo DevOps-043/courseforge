@@ -12,6 +12,8 @@ Aceptada e implementada para texto/captions nativos y tipografías privadas de o
 - Texto, fondo y capa tienen opacidades independientes.
 - Los captions son cues relativos al clip, ordenados y sin solapamiento. El renderer los sincroniza en el único timeline GSAP pausado de la composición.
 - El preset inicial de captions es transparente y recupera contraste mediante stroke y sombra.
+- El editor ofrece presets visuales explícitos (`Transparente`, `Caja sólida`, `Minimal`) que solo aplican overrides de estilo; la fuente seleccionada y el contenido permanecen intactos.
+- Los captions generados desde timestamps por palabra incluyen resaltado karaoke seek-safe; SRT/VTT conservan el modo frase sin inventar precisión por palabra.
 
 ## Tipografías
 
@@ -36,9 +38,11 @@ El documento persiste `fontAssetId` y la familia esperada, nunca una URL firmada
 
 1. Completado: texto/captions con fuentes deterministas incluidas en runtime.
 2. Completado: dominio compartido de fuentes, compatibilidad del flujo de diapositivas y empaquetado inmutable en snapshots.
-3. Pendiente: importación SRT/VTT y generación desde transcript hacia el mismo contrato de cues.
-4. Pendiente: normalización segura de fuentes comprimidas.
-5. Opcional: edición avanzada por palabra únicamente si existe una necesidad real; no adoptar el modelo disperso de overrides de Studio como formato persistente de Courseforge.
+3. Completado: importación local SRT/VTT hacia el mismo contrato de cues, con límites de tamaño, conteo, duración y solapamiento.
+4. Completado: generación desde timestamps por palabra de voces vigentes hacia el contrato de cues, sin una segunda transcripción ni costo adicional.
+5. Completado: presets visuales de captions como aplicación local de overrides, sin crear un formato persistente paralelo.
+6. Pendiente: normalización segura de fuentes comprimidas.
+7. Opcional: edición avanzada por palabra únicamente si existe una necesidad real; no adoptar el modelo disperso de overrides de Studio como formato persistente de Courseforge.
 
 ## Validación mínima
 
@@ -46,5 +50,6 @@ El documento persiste `fontAssetId` y la familia esperada, nunca una URL firmada
 - Los cues no pueden solaparse ni exceder la duración del clip.
 - Las mutaciones pasan por operaciones allow-listed y respetan tracks bloqueados.
 - Preview y render reciben el mismo HTML y el mismo timeline.
+- El smoke visual de composición verifica los presets de captions y los dos sentidos de seek del resaltado karaoke en Chromium.
 - Una fuente no resuelta, ajena a la organización o cuyo checksum cambió bloquea preview/snapshot en lugar de aplicar fallback silencioso.
 - Documentos V1/V2 permanecen legibles y solo se promueven a V3 al incorporar texto o captions nativos.

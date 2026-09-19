@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
-import { getCurrentCompositionDocument, CompositionDocumentError } from "@/domains/production/composition-editor/composition-document.service";
+import {
+  getCompositionDocumentByHash,
+  getCurrentCompositionDocument,
+  CompositionDocumentError,
+} from "@/domains/production/composition-editor/composition-document.service";
 import { resolveCompositionPreviewAssetUrls } from "@/domains/production/composition-editor/composition-preview-assets.service";
 import { CompositionFontAssetError, resolveCompositionPreviewFonts } from "@/domains/production/composition-editor/composition-font-assets.service";
 import {
@@ -20,6 +24,7 @@ import { createClient } from "@/utils/supabase/server";
 import { API_ERROR_CODE } from "@/lib/server/api-contract";
 import { apiErrorResponse } from "@/lib/server/api-response";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+import { isCompositionDocumentHash } from "@/domains/production/composition-editor/composition-preview-comparison";
 
 interface RouteContext { params: Promise<{ draftId: string }>; }
 
@@ -36,11 +41,22 @@ export async function GET(request: Request, context: RouteContext) {
     const authorizationMs = elapsedMilliseconds(authorizationStartedAt);
     const draftId = z.string().uuid().parse((await context.params).draftId);
     const documentStartedAt = performance.now();
-    const current = await getCurrentCompositionDocument({
-      draftId,
-      organizationId: authorization.organizationId,
-      supabase: authorization.admin,
-    });
+    const requestedDocumentHash = new URL(request.url).searchParams.get("documentHash");
+    if (requestedDocumentHash && !isCompositionDocumentHash(requestedDocumentHash)) {
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "La versión de comparación no es válida.", requestId, status: 400 });
+    }
+    const current = requestedDocumentHash
+      ? await getCompositionDocumentByHash({
+        documentHash: requestedDocumentHash,
+        draftId,
+        organizationId: authorization.organizationId,
+        supabase: authorization.admin,
+      })
+      : await getCurrentCompositionDocument({
+        draftId,
+        organizationId: authorization.organizationId,
+        supabase: authorization.admin,
+      });
     const documentMs = elapsedMilliseconds(documentStartedAt);
     let assetDiagnostics: CompositionPreviewAssetDiagnostics | null = null;
     const assetsStartedAt = performance.now();
@@ -74,16 +90,12 @@ export async function GET(request: Request, context: RouteContext) {
       documentMs,
       totalMs: elapsedMilliseconds(requestStartedAt),
     };
-    if (compilerDiagnostics.current?.colorGradingRuntime === "UNAVAILABLE") {
-      logger.warn("production.hyperframes.draft.preview_color_runtime_unavailable", {
-        event: "composition_preview_dependency_degraded",
-      });
-    }
     logger.info("production.hyperframes.draft.preview_compiled", {
       assetDiagnostics,
       clipCount: current.document.clips.length,
       compilerDiagnostics: compilerDiagnostics.current,
       correlationId,
+      documentHash: current.documentHash,
       event: "composition_preview_compiled",
       timings,
       trackCount: current.document.tracks.length,

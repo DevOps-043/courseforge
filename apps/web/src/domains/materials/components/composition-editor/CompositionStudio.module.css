@@ -331,6 +331,36 @@
   grid-template-columns: 18.5rem minmax(26rem, 1fr) 20rem;
 }
 
+.editorGridWithoutLibrary {
+  grid-template-columns: minmax(26rem, 1fr);
+}
+
+.editorGridWithoutLibrary.editorGridWithInspector {
+  grid-template-columns: minmax(26rem, 1fr) 20rem;
+}
+
+.editorGridWithoutLibrary .previewPanel {
+  grid-column: 1;
+}
+
+.editorGridWithoutLibrary .timelinePanel,
+.editorGridWithoutLibrary .resizer {
+  grid-column: 1 / -1;
+}
+
+.editorGridWithoutLibrary.editorGridWithInspector .resizer {
+  grid-column: 1 / -1;
+}
+
+.editorGridWithoutLibrary:has(.libraryHidden) .timelinePanel,
+.editorGridWithoutLibrary:has(.libraryHidden) .resizer {
+  grid-column: 1 / -1;
+}
+
+.editorGridWithoutLibrary.editorGridWithInspector .inspector {
+  grid-column: 2;
+}
+
 .library {
   container-type: inline-size;
   display: flex;
@@ -344,6 +374,10 @@
   border-radius: 1rem;
   background: color-mix(in srgb, var(--studio-panel) 94%, transparent);
   box-shadow: 0 0.9rem 2.5rem rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.035);
+}
+
+.libraryHidden {
+  display: none;
 }
 
 /* The script needs enough vertical room to review several scenes at once.
@@ -1024,15 +1058,6 @@
 }
 
 .comparisonHeader,
-.referenceFooter {
-  display: flex;
-  min-height: 2rem;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  color: var(--studio-text);
-}
-
 .comparisonHeader > div:first-child {
   display: flex;
   min-width: 0;
@@ -1044,127 +1069,13 @@
   line-height: 1rem;
 }
 
-.comparisonHeader small,
-.referenceFooter > span {
+.comparisonHeader small {
   overflow: hidden;
   color: var(--studio-muted);
   font-size: 0.54rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.referenceSourceControls,
-.referenceZoomControls {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-.referenceSelect,
-.referenceUpload,
-.referenceZoomControls button {
-  border: 1px solid var(--studio-border);
-  border-radius: 0.38rem;
-  color: var(--studio-text);
-  background: color-mix(in srgb, var(--studio-panel) 92%, black);
-  font-size: 0.55rem;
-}
-
-.referenceSelect {
-  width: min(10rem, 46cqw);
-  min-width: 0;
-  padding: 0.32rem 0.4rem;
-}
-
-.referenceUpload {
-  display: inline-flex;
-  cursor: pointer;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.32rem 0.42rem;
-  font-weight: 700;
-}
-
-.referenceUpload:hover,
-.referenceZoomControls button:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--engine-accent) 50%, var(--studio-border));
-  color: var(--engine-accent);
-}
-
-.referenceZoomControls button {
-  display: inline-flex;
-  min-width: 1.7rem;
-  height: 1.65rem;
-  cursor: pointer;
-  align-items: center;
-  justify-content: center;
-  padding: 0 0.35rem;
-}
-
-.referenceZoomControls button:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-
-.referenceFrame {
-  position: relative;
-  display: grid;
-  width: min(100%, calc(100cqh * var(--composition-aspect-ratio, 1.7777778)));
-  max-height: 100%;
-  aspect-ratio: var(--composition-aspect-ratio, 1.7777778);
-  overflow: hidden;
-  place-items: center;
-  border: 1px solid rgb(255 255 255 / 0.11);
-  border-radius: 0.9rem;
-  background:
-    linear-gradient(45deg, rgb(255 255 255 / 0.035) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 0.035) 75%),
-    linear-gradient(45deg, rgb(255 255 255 / 0.035) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 0.035) 75%),
-    var(--studio-canvas-deep);
-  background-position: 0 0, 8px 8px;
-  background-size: 16px 16px;
-  box-shadow: 0 1.8rem 5rem rgb(0 0 0 / 0.4), 0 0 0 1px rgb(255 255 255 / 0.025);
-}
-
-.referenceImage {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  transform-origin: center;
-  transition: transform 120ms ease-out;
-  user-select: none;
-}
-
-.referencePlaceholder {
-  display: flex;
-  align-items: center;
-  flex-direction: column;
-  gap: 0.4rem;
-  color: var(--studio-muted);
-  text-align: center;
-}
-
-.referencePlaceholder span {
-  color: var(--studio-text);
-  font-size: 0.65rem;
-  font-weight: 700;
-}
-
-.referencePlaceholder small {
-  font-size: 0.52rem;
-}
-
-.referenceError {
-  margin: 0;
-  border: 1px solid rgb(251 191 36 / 0.3);
-  border-radius: 0.42rem;
-  padding: 0.35rem 0.45rem;
-  color: #fde68a;
-  background: rgb(120 53 15 / 0.24);
-  font-size: 0.55rem;
-  line-height: 1rem;
-}
-
 /* The stage is a size container so the canvas can fit against both available
    width and height. Width-only sizing caused 16:9 frames to overflow short
    monitors and be clipped by the viewport. */
@@ -1191,6 +1102,13 @@
 }
 
 .previewFrame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.comparisonFrame {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -2300,6 +2218,14 @@
     grid-template-columns: 16.5rem minmax(24rem, 1fr) 18rem;
   }
 
+  .editorGridWithoutLibrary {
+    grid-template-columns: minmax(24rem, 1fr);
+  }
+
+  .editorGridWithoutLibrary.editorGridWithInspector {
+    grid-template-columns: minmax(24rem, 1fr) 18rem;
+  }
+
   .studioMeta .metaOptional,
   .toolButton span {
     display: none;
@@ -2314,6 +2240,11 @@
     grid-template-rows: auto minmax(22rem, 52svh) minmax(18rem, auto) auto;
   }
 
+  .editorGridWithoutLibrary,
+  .editorGridWithoutLibrary.editorGridWithInspector {
+    grid-template-rows: minmax(22rem, 52svh) minmax(18rem, auto) auto;
+  }
+
   .library,
   .previewPanel,
   .timelinePanel,
@@ -2326,11 +2257,15 @@
   .previewPanel { grid-row: 2; }
   .timelinePanel { grid-row: 3; min-height: 18rem; }
 
+  .editorGridWithoutLibrary .previewPanel { grid-row: 1; }
+  .editorGridWithoutLibrary .timelinePanel { grid-row: 2; }
+
   .editorGrid:has(.libraryNarrative) .timelinePanel,
   .editorGridWithInspector:has(.libraryNarrative) .timelinePanel {
     grid-column: 1;
   }
   .inspector { grid-row: 4; min-height: 22rem; }
+  .editorGridWithoutLibrary .inspector { grid-row: 3; }
   .resizer { display: none; }
 
   .deliveryBody {
@@ -2395,15 +2330,6 @@
   .comparisonHeader {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .referenceSourceControls {
-    width: 100%;
-  }
-
-  .referenceSelect {
-    width: 100%;
-    flex: 1;
   }
 
   .audioMix {

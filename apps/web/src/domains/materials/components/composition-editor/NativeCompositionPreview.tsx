@@ -27,6 +27,7 @@ import {
 } from "@/domains/production/composition-editor/composition-native-overlay.factory";
 import { reconcileProductionIntroDocument } from "@/domains/production/composition-editor/composition-production-intro.service";
 import { deriveCompositionScenes } from "@/domains/production/composition-editor/composition-scene.service";
+import { createCompositionTranscriptCaptionPlan } from "@/domains/production/composition-editor/composition-transcript-caption.service";
 import {
   COMPOSITION_VERSION_FALLBACK_HEADER,
   formatCompositionDocumentEtag,
@@ -56,6 +57,7 @@ import {
   requiresCompositionPreviewReload,
 } from "@/domains/production/composition-editor/composition-preview-operation-policy";
 import { buildCompositionPreviewVisualPatch } from "@/domains/production/composition-editor/composition-preview-visual-patch";
+import { buildCompositionComparisonPreviewUrl } from "@/domains/production/composition-editor/composition-preview-comparison";
 import { createClient as createBrowserSupabaseClient } from "@/utils/supabase/client";
 import {
   DEFAULT_HYPERFRAMES_RENDER_PROFILE_ID,
@@ -93,7 +95,6 @@ import {
   type AssemblyBrandingAvailability,
 } from "./CompositionTimelineWorkspace";
 import { useCompositionStudioControls } from "./useCompositionStudioControls";
-import { useCompositionReferenceComparison } from "./useCompositionReferenceComparison";
 import { useCompositionPresetController } from "./useCompositionPresetController";
 import { useCompositionAgentProposalController } from "./useCompositionAgentProposalController";
 import type { CompositionDocumentPayload, CompositionStudioAsset, CompositionStudioLesson } from "./composition-studio.types";
@@ -174,6 +175,7 @@ type HistoricalRecoveryResponse = {
 /** The native assembly studio: library, full preview, timeline and contextual inspector. */
 export function NativeCompositionPreview({ assets, componentId, compositionId, draftId, lessons, onAssetsChanged, onContinueToPublication, onRefreshProductionAssets, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const comparisonBaselineFrameRef = useRef<HTMLIFrameElement | null>(null);
   const {
     changePreviewZoom,
     directEditingEnabled,
@@ -202,7 +204,6 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     trimToolEnabled,
     visualCropEnabled,
   } = useCompositionStudioControls();
-  const referenceComparison = useCompositionReferenceComparison();
   const payloadRef = useRef<DocumentPayload | null>(null);
   const saveInFlightRef = useRef(false);
   const saveQueueRef = useRef<CompositionSaveQueue<() => Promise<boolean>> | null>(null);
@@ -221,6 +222,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const previewTelemetryRef = useRef<CompositionPreviewTelemetryBuffer | null>(null);
   const previewReloadTelemetryRef = useRef<{ reason: PreviewReloadReason; startedAt: number } | null>(null);
   const pendingEditTelemetryRef = useRef<PendingEditTelemetry | null>(null);
+  const comparisonBaselineReadyRef = useRef(false);
   const [payload, setPayload] = useState<DocumentPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -231,6 +233,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const [previewDocumentHash, setPreviewDocumentHash] = useState<string | null>(null);
   const [previewDirty, setPreviewDirty] = useState(false);
+  const [comparisonActive, setComparisonActive] = useState(false);
+  const [comparisonBaselineHash, setComparisonBaselineHash] = useState<string | null>(null);
+  const [comparisonBaselineLoading, setComparisonBaselineLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [colorGradingStatuses, setColorGradingStatuses] = useState<Record<string, CompositionColorGradingRuntimeStatus>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -367,6 +372,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const animationPlaybackEndRef = useRef<number | null>(null);
   const previewReadyRef = useRef(false);
   const [manualInspectorOpen, setManualInspectorOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(true);
   const [inspectorTab, setInspectorTab] = useState<CompositionInspectorTab>("properties");
   const [removalRangeStart, setRemovalRangeStart] = useState<{ clipId: string; seconds: number } | null>(null);
   const [history, setHistory] = useState<CompositionDocumentHistoryEntry[] | null>(null);
@@ -403,6 +409,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       setPlaying(false);
       setPreviewReady(false);
       setPlaybackError(null);
+      comparisonBaselineReadyRef.current = false;
+      setComparisonActive(false);
+      setComparisonBaselineHash(null);
+      setComparisonBaselineLoading(false);
       setSelectedHfId(null);
       setSelectedAnimationId(null);
       setSelectedTimelineClipIds(new Set());
@@ -497,9 +507,27 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   useEffect(() => () => runtimePatchCoordinatorRef.current?.dispose(), []);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      if (event.source !== frameRef.current?.contentWindow) return;
+      const isCurrentFrame = event.source === frameRef.current?.contentWindow;
+      const isComparisonBaselineFrame = event.source === comparisonBaselineFrameRef.current?.contentWindow;
+      if (!isCurrentFrame && !isComparisonBaselineFrame) return;
       const message = parseCompositionPreviewIframeMessage(event.data);
       if (!message) return;
+      if (isComparisonBaselineFrame) {
+        if (message.type === "courseforge-composition-ready") {
+          comparisonBaselineReadyRef.current = true;
+          setComparisonBaselineLoading(false);
+          postComparisonBaselineMessage({
+            editingEnabled: false,
+            cropEnabled: false,
+            gridVisible,
+            snapEnabled: false,
+            type: "courseforge-composition-editor-settings",
+          });
+          postComparisonBaselineMessage({ type: "courseforge-composition-seek", seconds: playheadSecondsRef.current });
+          if (playing) postComparisonBaselineMessage({ type: "courseforge-composition-play" });
+        }
+        return;
+      }
       if (message.type === "courseforge-composition-visual-patch-result") {
         runtimePatchCoordinatorRef.current?.acknowledge(message);
         return;
@@ -516,6 +544,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         pendingSeekSecondsRef.current = null;
         playheadSecondsRef.current = message.seconds;
         setSeconds(message.seconds);
+        if (comparisonActive && comparisonBaselineReadyRef.current) {
+          postComparisonBaselineMessage({ type: "courseforge-composition-seek", seconds: message.seconds });
+        }
         if (animationPlaybackEndRef.current !== null && message.seconds >= animationPlaybackEndRef.current) {
           animationPlaybackEndRef.current = null;
           postPreviewMessage({ type: "courseforge-composition-pause" });
@@ -527,6 +558,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       }
       if (message.type === "courseforge-composition-playback") {
         setPlaying(message.playing);
+        if (comparisonBaselineReadyRef.current) {
+          postComparisonBaselineMessage({ type: message.playing ? "courseforge-composition-play" : "courseforge-composition-pause" });
+        }
         if (message.playing) setPlaybackError(null);
       }
       if (message.type === "courseforge-composition-media-state") {
@@ -670,7 +704,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [payload]);
+  }, [comparisonActive, gridVisible, payload, playing, snapEnabled]);
 
   const duration = payload?.document.canvas.durationSeconds || 0;
   const transportActive = playing || previewMediaState === "BUFFERING";
@@ -678,11 +712,18 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     ? DURATION_SOURCE_LABELS[payload.document.canvas.durationSource]
     : null;
   const savedPreviewUrl = useMemo(() => payload && previewDocumentHash ? `/api/production/hyperframes/drafts/${draftId}/preview?v=${encodeURIComponent(previewDocumentHash)}&r=${previewRefreshKey}` : null, [draftId, payload, previewDocumentHash, previewRefreshKey]);
+  const comparisonBaselineUrl = useMemo(() => comparisonBaselineHash
+    ? buildCompositionComparisonPreviewUrl({ draftId, documentHash: comparisonBaselineHash })
+    : null, [comparisonBaselineHash, draftId]);
   const previewUrl = presetPreview
     ? `/api/production/hyperframes/drafts/${draftId}/preset-applications/${presetPreview.applicationId}/preview`
     : agentProposal
       ? `/api/production/hyperframes/drafts/${draftId}/agent-proposals/${agentProposal.proposalId}/preview`
       : savedPreviewUrl;
+  useEffect(() => {
+    comparisonBaselineReadyRef.current = false;
+    if (comparisonBaselineUrl) setComparisonBaselineLoading(true);
+  }, [comparisonBaselineUrl]);
   useEffect(() => {
     pendingSeekSecondsRef.current = null;
     previewReadyRef.current = false;
@@ -717,6 +758,12 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     frameRef.current?.contentWindow?.postMessage(command, "*");
     return true;
   };
+  const postComparisonBaselineMessage = (message: CompositionPreviewParentCommandInput) => {
+    const command = createCompositionPreviewParentCommand(message);
+    if (!command) return false;
+    comparisonBaselineFrameRef.current?.contentWindow?.postMessage(command, "*");
+    return true;
+  };
   useEffect(() => {
     if (!previewReady) return;
     postPreviewMessage({
@@ -726,9 +773,19 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       snapEnabled,
       type: "courseforge-composition-editor-settings",
     });
-  }, [agentProposal, directEditingEnabled, gridVisible, presetPreview, previewReady, snapEnabled, visualCropEnabled]);
+    if (comparisonBaselineReadyRef.current) {
+      postComparisonBaselineMessage({
+        editingEnabled: false,
+        cropEnabled: false,
+        gridVisible,
+        snapEnabled: false,
+        type: "courseforge-composition-editor-settings",
+      });
+    }
+  }, [agentProposal, comparisonActive, directEditingEnabled, gridVisible, presetPreview, previewReady, snapEnabled, visualCropEnabled]);
   useEffect(() => {
     if (previewReady) postPreviewMessage({ scale: previewZoom, type: "courseforge-composition-preview-zoom" });
+    if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ scale: previewZoom, type: "courseforge-composition-preview-zoom" });
   }, [previewReady, previewZoom]);
   useEffect(() => {
     const syncFullscreenState = () => setPreviewFullscreen(document.fullscreenElement === previewShellRef.current);
@@ -745,9 +802,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     playheadSecondsRef.current = nextSeconds;
     setSeconds(nextSeconds);
     postPreviewMessage({ type: "courseforge-composition-seek", seconds: nextSeconds });
+    if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-seek", seconds: nextSeconds });
   };
   const beginScrub = () => {
     postPreviewMessage({ type: "courseforge-composition-pause" });
+    if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-pause" });
     setPlaying(false);
   };
   const selectClip = (hfId: string, preserveTimelineSelection = false) => {
@@ -781,7 +840,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     seek(clip.startSeconds + window.start);
     animationPlaybackEndRef.current = clip.startSeconds + window.end;
     if (previewDirty) refreshPreviewDocument(true, "DIRTY_PLAYBACK");
-    else postPreviewMessage({ type: "courseforge-composition-play" });
+    else {
+      postPreviewMessage({ type: "courseforge-composition-play" });
+      if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-play" });
+    }
   };
   const clearSelection = () => {
     setSelectedHfId(null);
@@ -849,6 +911,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     pendingPreviewRestoreSecondsRef.current = playheadSecondsRef.current;
     pendingSeekSecondsRef.current = null;
     postPreviewMessage({ type: "courseforge-composition-pause" });
+    if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-pause" });
     setPlaying(false);
     setPreviewReady(false);
     setPreviewMediaState("PREPARING");
@@ -888,6 +951,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const togglePreviewPlayback = () => {
     if (transportActive) {
       postPreviewMessage({ type: "courseforge-composition-pause" });
+      if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-pause" });
       return;
     }
     const currentHash = payloadRef.current?.documentHash || null;
@@ -896,6 +960,25 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       return;
     }
     postPreviewMessage({ type: "courseforge-composition-play" });
+    if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-play" });
+  };
+  const toggleComparison = () => {
+    if (comparisonActive) {
+      comparisonBaselineReadyRef.current = false;
+      setComparisonActive(false);
+      setComparisonBaselineHash(null);
+      setComparisonBaselineLoading(false);
+      setToolMenuOpen(false);
+      return;
+    }
+    const currentPayload = payloadRef.current;
+    if (!currentPayload || saving) return;
+    comparisonBaselineReadyRef.current = false;
+    setComparisonBaselineHash(currentPayload.documentHash);
+    setComparisonBaselineLoading(true);
+    setComparisonActive(true);
+    setLibraryOpen(false);
+    setToolMenuOpen(false);
   };
   function savePatch(
     operations: CompositionEditorPatchOperation[],
@@ -1179,6 +1262,31 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       if (saved) selectClip(clip.hfId);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "No se pudo crear la capa de texto.");
+    }
+  }
+
+  async function generateTranscriptCaptions() {
+    const currentPayload = payloadRef.current;
+    if (!currentPayload) return;
+    try {
+      const scenes = deriveCompositionScenes(currentPayload.document);
+      const plan = createCompositionTranscriptCaptionPlan({
+        document: currentPayload.document,
+        id: `caption-transcript-${crypto.randomUUID()}`,
+        scenes,
+      });
+      const saved = await savePatch(
+        plan.operations,
+        plan.mode === "CREATE"
+          ? `Generó ${plan.cueCount} captions desde la voz.`
+          : `Actualizó ${plan.cueCount} captions desde la voz.`,
+      );
+      if (saved) {
+        selectClip(plan.hfId);
+        toast.success(`${plan.cueCount} captions sincronizados con la voz.`);
+      }
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudieron generar captions desde la voz.");
     }
   }
 
@@ -2151,6 +2259,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     />
   );
   const compositionScenes = deriveCompositionScenes(payload.document);
+  const captionTranscriptWordCount = compositionScenes.reduce(
+    (total, scene) => total + (scene.wordCues?.length || 0),
+    0,
+  );
   const activeSceneId = compositionScenes.find((scene) =>
     seconds >= scene.startSeconds && seconds < scene.startSeconds + scene.durationSeconds
   )?.id;
@@ -2203,24 +2315,32 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           "--studio-preview-row": `${studioTopPanePercent}fr`,
           "--studio-timeline-row": `${100 - studioTopPanePercent}fr`,
         } as CSSProperties}
-        className={`${styles.editorGrid} ${inspectorOpen ? styles.editorGridWithInspector : ""}`}
+        className={`${styles.editorGrid} ${!libraryOpen ? styles.editorGridWithoutLibrary : ""} ${inspectorOpen ? styles.editorGridWithInspector : ""}`}
       >
-        <CompositionStudioLibrary assets={assets} delivery={deliveryMenu} introAssetId={payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO" ? [clip.source.productionAssetId] : [])[0] || null} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onAddCaptionLayer={() => void addNativeOverlay("CAPTION")} onAddSoundEffect={addSoundEffectToTimeline} onAddTextLayer={() => void addNativeOverlay("TEXT")} onClearIntro={clearProductionIntro} onSelectLesson={onSelectLesson} onSelectAsset={selectClip} onSetIntro={setProductionIntro} selectedLessonId={selectedLessonId} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
+        <CompositionStudioLibrary assets={assets} captionTranscriptWordCount={captionTranscriptWordCount} delivery={deliveryMenu} introAssetId={payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO" ? [clip.source.productionAssetId] : [])[0] || null} libraryOpen={libraryOpen} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onAddCaptionLayer={() => void addNativeOverlay("CAPTION")} onGenerateTranscriptCaptions={() => void generateTranscriptCaptions()} onAddSoundEffect={addSoundEffectToTimeline} onAddTextLayer={() => void addNativeOverlay("TEXT")} onClearIntro={clearProductionIntro} onSelectLesson={onSelectLesson} onSelectAsset={selectClip} onSetIntro={setProductionIntro} selectedLessonId={selectedLessonId} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
 
         <section ref={previewShellRef} className={`${styles.previewPanel} ${previewFullscreen ? styles.previewFullscreen : ""}`}>
           <CompositionPreviewToolbar
             agentProposalActive={Boolean(agentProposal)}
-            comparisonActive={referenceComparison.active}
+            comparisonActive={comparisonActive}
             currentVersion={payload.version}
             directEditingEnabled={directEditingEnabled}
             duration={duration}
             gridVisible={gridVisible}
             history={history}
             inspectorOpen={inspectorOpen}
+            libraryOpen={libraryOpen}
             onCloseHistory={() => setHistory(null)}
             onContinueToPublication={onContinueToPublication}
             onHistoryOpen={() => void loadHistory()}
             onInspectorToggle={() => setManualInspectorOpen((current) => !current)}
+            onOpenLibrary={() => {
+              setLibraryOpen(true);
+              comparisonBaselineReadyRef.current = false;
+              setComparisonActive(false);
+              setComparisonBaselineHash(null);
+              setComparisonBaselineLoading(false);
+            }}
             onIntervalAction={() => {
               if (removalRangeStart === null) markSelectedIntervalStart();
               else void removeSelectedInterval();
@@ -2237,10 +2357,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
             onReload={() => void loadDocument()}
             onRestoreHistory={(entry) => void restoreHistoryEntry(entry)}
             onSplit={() => void splitSelectedClipAtPlayhead()}
-            onToggleComparison={() => {
-              referenceComparison.setActive((current) => !current);
-              setToolMenuOpen(false);
-            }}
+            onToggleComparison={toggleComparison}
             onToggleDirectEditing={() => setDirectEditingEnabled((current) => !current)}
             onToggleFullscreen={() => void togglePreviewFullscreen()}
             onToggleGrid={() => {
@@ -2275,32 +2392,24 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           <CompositionPreviewViewport
             activeSceneId={activeSceneId}
             agentProposalActive={Boolean(agentProposal)}
-            assets={assets}
             canvasHeight={payload.document.canvas.height}
             canvasWidth={payload.document.canvas.width}
-            comparisonActive={referenceComparison.active}
-            comparisonError={referenceComparison.error}
-            comparisonLoading={referenceComparison.loading}
-            comparisonReference={referenceComparison.reference}
-            comparisonZoom={referenceComparison.zoom}
+            comparisonActive={comparisonActive}
+            comparisonBaselineFrameRef={comparisonBaselineFrameRef}
+            comparisonBaselineLoading={comparisonBaselineLoading}
+            comparisonBaselineUrl={comparisonBaselineUrl}
             duration={duration}
             fps={payload.document.canvas.fps}
             frameRef={frameRef}
             onBeginScrub={beginScrub}
-            onChangeComparisonZoom={referenceComparison.changeZoom}
-            onClearComparison={referenceComparison.clear}
-            onComparisonImageError={referenceComparison.setError}
             onPlaySelectedAnimation={playSelectedAnimation}
             onRefreshDocument={() => refreshPreviewDocument(false)}
             onRefreshMedia={refreshPreviewMedia}
-            onResetComparisonZoom={referenceComparison.resetZoom}
             onSceneSelect={(scene) => {
               seek(scene.startSeconds);
               selectClip(scene.primaryHfId);
             }}
             onSeek={seek}
-            onSelectComparisonAsset={referenceComparison.selectAsset}
-            onSelectComparisonFile={referenceComparison.selectLocalFile}
             onTogglePlayback={togglePreviewPlayback}
             pendingMediaCount={pendingPreviewMediaIds.length}
             playbackError={playbackError}

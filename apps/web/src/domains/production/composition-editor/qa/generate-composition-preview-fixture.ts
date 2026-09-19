@@ -7,6 +7,8 @@ import {
 } from "../../validation/animated-deck-preprocessor.service";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import { hashCompositionDocument } from "../composition-document.service";
+import { createCompositionNativeOverlay } from "../composition-native-overlay.factory";
+import { applyCompositionCaptionPreset } from "../composition-caption-preset.service";
 import { applyCompositionEditorPatches } from "../editor-patch.service";
 import type { CompositionEditorPatchOperation } from "../editor-patch.types";
 import {
@@ -25,6 +27,7 @@ const fixtureSourcePath = resolve(
 const outputDirectory = resolve(workspaceRoot, ".tmp/composition-preview-qa");
 const interactiveOutputDirectory = resolve(workspaceRoot, ".tmp/composition-preview-qa-interactive");
 const transitionOutputDirectory = resolve(workspaceRoot, ".tmp/composition-transition-qa-interactive");
+const captionOutputDirectory = resolve(workspaceRoot, ".tmp/composition-caption-qa-interactive");
 
 async function main() {
   const sourceHtml = await readFile(fixtureSourcePath, "utf8");
@@ -86,6 +89,17 @@ async function main() {
     "</body>",
     `${renderTransitionRuntimeSmokeHarness(transitionSmoke)}</body>`,
   );
+  const captionSmoke = createCaptionRuntimeSmokeScenario(animatedDeck);
+  const captionPreviewHtml = await compileCompositionPreview({
+    assetUrls: new Map(),
+    deckAssetUrls: fontDataUrls,
+    document: captionSmoke.document,
+    target: COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW,
+  });
+  const captionRuntimeSmokeHtml = captionPreviewHtml.replace(
+    "</body>",
+    `${renderCaptionRuntimeSmokeHarness(captionSmoke)}</body>`,
+  );
   const animationRuntime = await readCompositionAnimationRuntime();
   const report = {
     canvas: document.canvas,
@@ -113,21 +127,27 @@ async function main() {
       hfId: runtimeSmoke.hfId,
       operations: runtimeSmoke.operationTypes,
     },
+    captionSmoke: {
+      checkpointsSeconds: captionSmoke.checkpointsSeconds,
+      presetIds: captionSmoke.presetIds,
+    },
   };
 
   await Promise.all([
     mkdir(resolve(outputDirectory, "assets"), { recursive: true }),
     mkdir(interactiveOutputDirectory, { recursive: true }),
     mkdir(transitionOutputDirectory, { recursive: true }),
+    mkdir(captionOutputDirectory, { recursive: true }),
   ]);
   await Promise.all([
     writeFile(resolve(outputDirectory, "index.html"), renderHtml, "utf8"),
     writeFile(resolve(outputDirectory, "assets/gsap.min.js"), animationRuntime, "utf8"),
     writeFile(resolve(interactiveOutputDirectory, "index.html"), interactiveRuntimeSmokeHtml, "utf8"),
     writeFile(resolve(transitionOutputDirectory, "index.html"), transitionRuntimeSmokeHtml, "utf8"),
+    writeFile(resolve(captionOutputDirectory, "index.html"), captionRuntimeSmokeHtml, "utf8"),
     writeFile(resolve(outputDirectory, "qa-report.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8"),
   ]);
-  process.stdout.write(`${JSON.stringify({ interactiveOutputDirectory, outputDirectory, transitionOutputDirectory, ...report }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ captionOutputDirectory, interactiveOutputDirectory, outputDirectory, transitionOutputDirectory, ...report }, null, 2)}\n`);
 }
 
 const runtimeSmokeAssetId = "00000000-0000-4000-8000-000000000042";
@@ -237,6 +257,80 @@ function createTransitionRuntimeSmokeScenario(
   };
 }
 
+function createCaptionRuntimeSmokeScenario(
+  animatedDeck: Parameters<typeof createInitialCompositionDocument>[0]["animatedDeck"],
+) {
+  let document = createInitialCompositionDocument({
+    animatedDeck,
+    assets: [],
+    plan: {
+      accentColor: "#23AEA8",
+      durationSeconds: 25,
+      subtitle: "Caption visual smoke test",
+      title: "SofLIA caption QA",
+    },
+  });
+  const definitions = [
+    { id: "caption-qa-transparent", playheadSeconds: 0, presetId: "TRANSPARENT" as const },
+    { id: "caption-qa-solid", playheadSeconds: 5, presetId: "SOLID" as const },
+    { id: "caption-qa-minimal", playheadSeconds: 10, presetId: "MINIMAL" as const },
+  ];
+  const clips = [] as Array<{ id: string; presetId: "TRANSPARENT" | "SOLID" | "MINIMAL" }>;
+  for (const definition of definitions) {
+    const overlay = createCompositionNativeOverlay({
+      document,
+      id: definition.id,
+      kind: "CAPTION",
+      playheadSeconds: definition.playheadSeconds,
+    });
+    document = applyCompositionEditorPatches(document, [{
+      clip: overlay.clip,
+      clipId: overlay.clip.id,
+      ...(overlay.track ? { track: overlay.track } : {}),
+      type: "clip.add",
+    }]);
+    clips.push({ id: overlay.clip.id, presetId: definition.presetId });
+  }
+  const [transparent, solid, minimal] = clips;
+  if (!transparent || !solid || !minimal) throw new Error("No se pudieron crear los captions de QA.");
+  const operations: CompositionEditorPatchOperation[] = clips.map((item) => {
+    const clip = document.clips.find((candidate) => candidate.id === item.id);
+    if (!clip || clip.source.type !== "NATIVE_CAPTIONS") throw new Error("No se pudo resolver un caption de QA.");
+    return {
+      clipId: clip.id,
+      style: applyCompositionCaptionPreset(clip.source.style, item.presetId),
+      type: "clip.text-style",
+    };
+  });
+  const transparentClip = document.clips.find((clip) => clip.id === transparent.id);
+  if (!transparentClip || transparentClip.source.type !== "NATIVE_CAPTIONS") throw new Error("No se pudo crear el caption karaoke de QA.");
+  operations.push({
+    clipId: transparentClip.id,
+    cues: [{
+      endSeconds: transparentClip.durationSeconds,
+      id: `${transparentClip.id}-cue-1`,
+      startSeconds: 0,
+      text: "Captions karaoke",
+      words: [
+        { endSeconds: 0.8, id: "word-1", startSeconds: 0, text: "Captions" },
+        { endSeconds: 1.6, id: "word-2", startSeconds: 0.8, text: "karaoke" },
+      ],
+    }],
+    origin: "TRANSCRIPT",
+    type: "clip.caption-cues",
+  });
+  document = applyCompositionEditorPatches(document, operations);
+  return {
+    checkpointsSeconds: [0.4, 1.2, 5.4, 10.4],
+    document,
+    minimalCueId: `${minimal.id}-cue-1`,
+    presetIds: definitions.map((definition) => definition.presetId),
+    solidCueId: `${solid.id}-cue-1`,
+    transparentCueId: `${transparent.id}-cue-1`,
+    transparentClipId: transparent.id,
+  };
+}
+
 function requireVisualPatch(
   document: Parameters<typeof buildCompositionPreviewVisualPatch>[0]["document"],
   operations: CompositionEditorPatchOperation[],
@@ -323,15 +417,20 @@ function renderRuntimeSmokeHarness(params: {
         assert(colorTarget instanceof HTMLElement, "color target was not found after acknowledgement");
         const colorMedia = document.getElementById(colorTarget.id + "-media");
         const colorRuntime = window.__hf?.colorGrading;
-        assert(colorMedia instanceof HTMLImageElement && colorRuntime, "standalone color runtime was not installed");
-        assert(window.__hfColorGradingRuntimeContractVersion === 1, "standalone color runtime contract diverged");
+        assert(colorMedia instanceof HTMLImageElement, "color media was not found");
         const colorPayload = JSON.parse(colorMedia.getAttribute("data-color-grading") || "null");
         assert(colorPayload?.adjust?.exposure === 0.5, "color attribute diverged");
-        const colorStatus = colorRuntime.getStatus(colorMedia);
-        assert(["active", "pending", "unavailable"].includes(colorStatus.state), "color runtime status diverged");
-        document.documentElement.dataset.colorRuntimeState = colorStatus.state;
-        if (colorStatus.state === "unavailable") {
-          assert(!colorMedia.hasAttribute("data-hf-color-grading-source-hidden"), "unavailable grading hid the source media");
+        if (colorRuntime) {
+          assert(window.__hfColorGradingRuntimeContractVersion === 1, "standalone color runtime contract diverged");
+          const colorStatus = colorRuntime.getStatus(colorMedia);
+          assert(["active", "pending", "unavailable"].includes(colorStatus.state), "color runtime status diverged");
+          document.documentElement.dataset.colorRuntimeState = colorStatus.state;
+          if (colorStatus.state === "unavailable") {
+            assert(!colorMedia.hasAttribute("data-hf-color-grading-source-hidden"), "unavailable grading hid the source media");
+          }
+        } else {
+          assert(colorMedia.dataset.courseforgeColorFallback === "true", "Courseforge fallback was not applied");
+          document.documentElement.dataset.colorRuntimeState = "fallback";
         }
 
         const geometryResult = await dispatchPatch(${JSON.stringify(params.geometryPatch)});
@@ -441,6 +540,77 @@ function renderTransitionRuntimeSmokeHarness(params: {
         assert(approximately(readOpacity(to), firstToOpacity), "backward seek changed incoming state");
         document.documentElement.dataset.transitionRuntimeSmoke = "passed";
       };
+      if (document.getElementById("composition-root")?.dataset.previewReady === "true") queueMicrotask(start);
+    })();
+  </script>`;
+}
+
+function renderCaptionRuntimeSmokeHarness(params: {
+  checkpointsSeconds: number[];
+  minimalCueId: string;
+  solidCueId: string;
+  transparentClipId: string;
+  transparentCueId: string;
+}) {
+  return `<script>
+    (() => {
+      const protocolVersion = ${COMPOSITION_PREVIEW_PROTOCOL_VERSION};
+      const checkpoints = ${JSON.stringify(params.checkpointsSeconds)};
+      const transparentId = ${JSON.stringify(`${params.transparentClipId}-caption-${params.transparentCueId}`)};
+      const transparentWordOneId = ${JSON.stringify(`${params.transparentClipId}-caption-${params.transparentCueId}-word-word-1`)};
+      const transparentWordTwoId = ${JSON.stringify(`${params.transparentClipId}-caption-${params.transparentCueId}-word-word-2`)};
+      const solidId = ${JSON.stringify(`caption-qa-solid-caption-${params.solidCueId}`)};
+      const minimalId = ${JSON.stringify(`caption-qa-minimal-caption-${params.minimalCueId}`)};
+      const pendingSeeks = [];
+      let started = false;
+      const fail = (message) => { throw new Error("CAPTION_RUNTIME_SMOKE: " + message); };
+      const assert = (condition, message) => { if (!condition) fail(message); };
+      const approximately = (actual, expected, tolerance = 0.08) => Math.abs(Number(actual) - expected) <= tolerance;
+      const seekTo = (seconds) => new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("CAPTION_RUNTIME_SMOKE_TIMEOUT")), 1500);
+        pendingSeeks.push({ resolve: (value) => { clearTimeout(timeout); resolve(value); }, seconds });
+        window.postMessage({ protocolVersion, seconds, type: "courseforge-composition-seek" }, "*");
+      });
+      window.addEventListener("message", (event) => {
+        if (event.source !== window || !event.data || event.data.type !== "courseforge-composition-time") return;
+        for (let index = pendingSeeks.length - 1; index >= 0; index -= 1) {
+          if (!approximately(event.data.seconds, pendingSeeks[index].seconds, 0.01)) continue;
+          pendingSeeks.splice(index, 1)[0].resolve(event.data);
+        }
+      });
+      const opacity = (element) => Number.parseFloat(getComputedStyle(element).opacity || "0");
+      const start = () => {
+        if (started) return;
+        started = true;
+        void (async () => {
+          const transparent = document.getElementById(transparentId);
+          const firstWord = document.getElementById(transparentWordOneId);
+          const secondWord = document.getElementById(transparentWordTwoId);
+          const solid = document.getElementById(solidId);
+          const minimal = document.getElementById(minimalId);
+          assert(transparent instanceof HTMLElement && firstWord instanceof HTMLElement && secondWord instanceof HTMLElement, "caption karaoke no fue renderizado");
+          assert(solid instanceof HTMLElement && minimal instanceof HTMLElement, "presets de caption no fueron renderizados");
+          await seekTo(checkpoints[0]);
+          assert(opacity(transparent) > 0.99, "caption transparente no está visible");
+          assert(opacity(firstWord) > 0.99 && approximately(opacity(secondWord), 0.55), "primer estado karaoke divergió");
+          assert(getComputedStyle(transparent).backgroundColor === "rgba(0, 0, 0, 0)", "preset transparente dejó una caja opaca");
+          await seekTo(checkpoints[1]);
+          assert(approximately(opacity(firstWord), 0.55) && opacity(secondWord) > 0.99, "seek karaoke no actualizó la palabra activa");
+          await seekTo(checkpoints[2]);
+          assert(opacity(solid) > 0.99 && !getComputedStyle(solid).backgroundColor.endsWith(", 0)"), "preset sólido no conserva fondo visible");
+          await seekTo(checkpoints[3]);
+          assert(opacity(minimal) > 0.99 && getComputedStyle(minimal).backgroundColor === "rgba(0, 0, 0, 0)", "preset minimal no conserva fondo transparente");
+          await seekTo(checkpoints[0]);
+          assert(opacity(firstWord) > 0.99 && approximately(opacity(secondWord), 0.55), "seek inverso karaoke divergió");
+          document.documentElement.dataset.captionRuntimeSmoke = "passed";
+        })().catch((error) => {
+          document.documentElement.dataset.captionRuntimeSmoke = "failed";
+          document.documentElement.dataset.captionRuntimeError = error instanceof Error ? error.message : String(error);
+        });
+      };
+      window.addEventListener("message", (event) => {
+        if (event.source === window && event.data?.type === "courseforge-composition-ready") start();
+      });
       if (document.getElementById("composition-root")?.dataset.previewReady === "true") queueMicrotask(start);
     })();
   </script>`;

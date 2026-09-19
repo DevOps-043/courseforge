@@ -116,6 +116,7 @@ const clipTextContentOperationSchema = z.object({
 
 const clipCaptionCuesOperationSchema = z.object({
   cues: z.array(compositionCaptionCueSchema).min(1).max(2_000),
+  origin: z.enum(["MANUAL", "SRT", "TRANSCRIPT", "VTT"]).optional(),
   type: z.literal("clip.caption-cues"),
 }).strict();
 

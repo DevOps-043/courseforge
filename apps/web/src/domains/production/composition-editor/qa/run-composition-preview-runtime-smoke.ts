@@ -1,9 +1,16 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-const smokeFixtures = [
+type SmokeFixture = {
+  marker: string;
+  path: string;
+  result: string;
+  screenshotPath?: string;
+};
+
+const smokeFixtures: readonly SmokeFixture[] = [
   {
     marker: 'data-runtime-patch-smoke="passed"',
     path: ".tmp/composition-preview-qa-interactive/index.html",
@@ -14,7 +21,13 @@ const smokeFixtures = [
     path: ".tmp/composition-transition-qa-interactive/index.html",
     result: "transitionRuntimeSmoke",
   },
-] as const;
+  {
+    marker: 'data-caption-runtime-smoke="passed"',
+    path: ".tmp/composition-caption-qa-interactive/index.html",
+    result: "captionRuntimeSmoke",
+    screenshotPath: ".tmp/composition-caption-qa-interactive/caption-karaoke-seek-smoke.png",
+  },
+];
 const CDP_COMMAND_TIMEOUT_MS = 20_000;
 
 async function main() {
@@ -26,6 +39,10 @@ async function main() {
     await access(fixturePath);
     const metrics = await runSmokeFixture({ browserPath, fixturePath, gpuEnabled, marker: fixture.marker });
     results[fixture.result] = "passed";
+    if (fixture.screenshotPath && metrics.screenshot) {
+      await writeFile(resolve(process.cwd(), fixture.screenshotPath), metrics.screenshot, "base64");
+      results.captionRuntimeScreenshot = fixture.screenshotPath;
+    }
     if (metrics.colorPatchDurationMs !== null) {
       results.colorPatchDispatchMs1080p = metrics.colorPatchDurationMs;
     }
@@ -71,7 +88,11 @@ async function runSmokeFixture(params: {
     await client.send("Page.enable");
     await client.send("Runtime.enable");
     await client.send("Page.navigate", { url: pathToFileURL(params.fixturePath).href });
-    return await waitForMarker(client, params.marker, params.fixturePath);
+    const metrics = await waitForMarker(client, params.marker, params.fixturePath);
+    const screenshot = params.marker.includes("caption-runtime-smoke")
+      ? await captureScreenshot(client)
+      : null;
+    return { ...metrics, screenshot };
   } finally {
     if (client) {
       await client.send("Browser.close").catch(() => undefined);
@@ -237,6 +258,15 @@ async function waitForMarker(
     await delay(100);
   }
   throw new Error(`El fixture ${fixturePath} no alcanzó ${marker} dentro del tiempo esperado.`);
+}
+
+async function captureScreenshot(client: CdpClient) {
+  const result = await client.send("Page.captureScreenshot", { format: "png" });
+  const data = result.data;
+  if (typeof data !== "string" || data.length === 0) {
+    throw new Error("Chromium no devolvió el snapshot PNG del smoke de captions.");
+  }
+  return data;
 }
 
 function delay(milliseconds: number): Promise<void> {

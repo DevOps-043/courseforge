@@ -7,6 +7,10 @@ import type { MouseEvent, PointerEvent } from "react";
 import { CheckSquare2, ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { CompositionClip, CompositionEditorDocument, CompositionGroup } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionAnimation } from "@/domains/production/composition-editor/composition-motion.types";
+import {
+  COMPOSITION_GROUP_COLORS,
+  resolveCompositionGroupColors,
+} from "@/domains/production/composition-editor/composition-group-color.service";
 import { resolveCompositionGroupBounds } from "@/domains/production/composition-editor/composition-group.service";
 import { resolveCompositionTimelineSelectionSync } from "@/domains/production/composition-editor/composition-timeline-selection.service";
 import { buildCompositionTimelineLayout } from "@/domains/production/composition-editor/composition-timeline-layout.service";
@@ -85,6 +89,7 @@ export function CompositionTimeline({ assetLabels, currentTime, document, editin
   const timelineLayout = useMemo(() => buildCompositionTimelineLayout(document), [document]);
   const groups = timelineLayout.groups;
   const logicalGroups = useMemo(() => document.groups || [], [document.groups]);
+  const groupColorsById = useMemo(() => resolveCompositionGroupColors(document), [document]);
   const logicalGroupsByClipId = useMemo(() => new Map(logicalGroups.flatMap((group) => (
     group.clipIds.map((clipId) => [clipId, group] as const)
   ))), [logicalGroups]);
@@ -481,6 +486,7 @@ export function CompositionTimeline({ assetLabels, currentTime, document, editin
             {clipSnapMatch && <span aria-hidden="true" style={{ left: `${(clipSnapMatch.timeSeconds / maxDuration) * 100}%` }} className="absolute inset-y-0 z-20 w-0.5 bg-amber-400 shadow-[0_0_9px_rgba(251,191,36,0.9)]" />}
             <span aria-hidden="true" style={{ left: `${(currentTime / maxDuration) * 100}%` }} className={`absolute inset-y-0 z-20 w-0.5 shadow-[0_0_5px_rgba(0,212,179,0.75)] ${snappedToPlayhead ? "bg-amber-400 shadow-[0_0_9px_rgba(251,191,36,0.9)]" : "bg-[var(--engine-accent)]"}`} />
             {laneGroupOverlays.map(({ bounds, logicalGroup }) => {
+              const groupColor = groupColorsById.get(logicalGroup.id) || COMPOSITION_GROUP_COLORS[0];
               const groupGestureDelta = gesture?.groupId === logicalGroup.id
                 && gesture.groupStartSeconds !== null
                 && gesture.originalGroupStartSeconds !== null
@@ -489,10 +495,13 @@ export function CompositionTimeline({ assetLabels, currentTime, document, editin
               return <span key={`group-boundary-${logicalGroup.id}`} aria-hidden="true" style={{
                 left: `${((bounds.startSeconds + groupGestureDelta) / maxDuration) * 100}%`,
                 width: `${(bounds.durationSeconds / maxDuration) * 100}%`,
-              }} className={`pointer-events-none absolute inset-y-0 z-10 rounded-md border border-dashed ${selectedGroupId === logicalGroup.id ? "border-violet-500 bg-violet-400/20 ring-1 ring-violet-400" : editingGroupId === logicalGroup.id ? "border-cyan-500 bg-cyan-300/10" : "border-violet-400/70 bg-violet-300/10"}`} />;
+              }} className={`pointer-events-none absolute inset-y-0 z-10 rounded-md border border-dashed ${selectedGroupId === logicalGroup.id ? groupColor?.selectedOverlay : editingGroupId === logicalGroup.id ? "border-cyan-500 bg-cyan-300/10" : groupColor?.overlay}`} />;
             })}
             {lane.map((clip) => {
               const logicalGroup = logicalGroupsByClipId.get(clip.id) || null;
+              const groupColor = logicalGroup
+                ? groupColorsById.get(logicalGroup.id) || COMPOSITION_GROUP_COLORS[0]
+                : null;
               const groupGestureActive = Boolean(
                 gesture?.kind === "move"
                 && gesture.groupId
@@ -568,7 +577,7 @@ export function CompositionTimeline({ assetLabels, currentTime, document, editin
                     left: `${(clipStart / maxDuration) * 100}%`,
                     width: `${(clipDuration / maxDuration) * 100}%`,
                   }}
-                  className={`absolute inset-y-1 min-w-5 touch-none select-none truncate rounded-md border px-3 pb-2 text-left text-[10px] font-semibold shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${activeGesture?.snapMatch || clipSnapMatch?.clipId === clip.id ? "ring-2 ring-amber-400 ring-offset-1 ring-offset-white dark:ring-offset-[#0b1119]" : ""} ${isSelectedGroupMember ? "border-violet-600 bg-violet-500 text-white ring-2 ring-violet-300/80" : isSelected ? "border-[var(--engine-accent)] bg-[var(--engine-accent)] text-[#042119] shadow-[0_0_0_1px_rgba(13,212,183,0.25),0_6px_16px_rgba(0,0,0,0.25)]" : logicalGroup ? "border-violet-500/80 bg-violet-50 text-violet-950 hover:bg-violet-100 dark:bg-violet-400/20 dark:text-violet-100" : clip.timingSource === "ESTIMATED" ? "border-amber-500/70 bg-amber-50 text-amber-950 hover:bg-amber-100 dark:border-amber-400/60 dark:bg-amber-400/20 dark:text-amber-100 dark:hover:bg-amber-400/30" : "border-teal-500/60 bg-teal-50 text-teal-950 hover:bg-teal-100 dark:border-[var(--engine-accent)]/45 dark:bg-[var(--engine-accent)]/15 dark:text-slate-100 dark:hover:bg-[var(--engine-accent)]/25"}`}
+                  className={`absolute inset-y-1 min-w-5 touch-none select-none truncate rounded-md border px-3 pb-2 text-left text-[10px] font-semibold shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${activeGesture?.snapMatch || clipSnapMatch?.clipId === clip.id ? "ring-2 ring-amber-400 ring-offset-1 ring-offset-white dark:ring-offset-[#0b1119]" : ""} ${isSelectedGroupMember ? groupColor?.selectedClip : isSelected ? "border-[var(--engine-accent)] bg-[var(--engine-accent)] text-[#042119] shadow-[0_0_0_1px_rgba(13,212,183,0.25),0_6px_16px_rgba(0,0,0,0.25)]" : groupColor?.defaultClip || (clip.timingSource === "ESTIMATED" ? "border-amber-500/70 bg-amber-50 text-amber-950 hover:bg-amber-100 dark:border-amber-400/60 dark:bg-amber-400/20 dark:text-amber-100 dark:hover:bg-amber-400/30" : "border-teal-500/60 bg-teal-50 text-teal-950 hover:bg-teal-100 dark:border-[var(--engine-accent)]/45 dark:bg-[var(--engine-accent)]/15 dark:text-slate-100 dark:hover:bg-[var(--engine-accent)]/25")}`}
                 >
                   {canEditIndividually && <span aria-label={`Ajustar inicio de ${label}`} onPointerDown={(event) => beginGesture(event, clip, "trim-start")} className={`absolute inset-y-0 left-0 cursor-ew-resize border-r hover:bg-black/10 ${trimMode && selectedHfId === clip.hfId ? "w-3 border-white bg-cyan-300/70" : "w-2 border-black/20"}`} />}
                   <span className="relative z-10">{logicalGroup && editingGroupId !== logicalGroup.id ? "◆ " : ""}{label}</span>

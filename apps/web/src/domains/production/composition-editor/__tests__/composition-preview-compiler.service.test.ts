@@ -17,6 +17,8 @@ import {
 } from "../composition-preview-assets.service";
 import type { CompositionPreviewAssetDiagnostics } from "../composition-preview-performance";
 
+const COLOR_GRADING_RUNTIME_FIXTURE = "window.__hfColorGradingRuntimeInstalled=true;";
+
 function readColorGradingPayload(html: string, clipId: string) {
   const mediaStart = html.indexOf(`id="${clipId}-media"`);
   assert.notEqual(mediaStart, -1, `No se encontrÃ³ el medio del clip ${clipId}.`);
@@ -92,7 +94,11 @@ test("serializa la correcciÃ³n bÃ¡sica en el medio real para preview y rende
     document,
   };
   const [previewHtml, renderHtml] = await Promise.all([
-    compileCompositionPreview({ ...params, target: COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW }),
+    compileCompositionPreview({
+      ...params,
+      colorGradingRuntimeOverride: COLOR_GRADING_RUNTIME_FIXTURE,
+      target: COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW,
+    }),
     compileCompositionPreview({ ...params, target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER }),
   ]);
 
@@ -137,7 +143,7 @@ test("omite el atributo neutro y conserva el contrato en imÃ¡genes", async () 
   assert.equal(payload.adjust.saturation, 0.6);
 });
 
-test("degrada el preview de medios cuando el runtime de color no está publicado", async () => {
+test("usa el fallback de Courseforge cuando el runtime de color externo no está publicado", async () => {
   const assetId = "00000000-0000-4000-8000-000000000096";
   const document = createInitialCompositionDocument({
     animatedDeck: null,
@@ -155,11 +161,31 @@ test("degrada el preview de medios cuando el runtime de color no está publicado
     onDiagnostics: (value) => { diagnostics = value; },
   });
 
-  assert.deepEqual(diagnostics, { colorGradingRuntime: "UNAVAILABLE" });
-  assert.match(html, /data-color-grading-runtime="unavailable"/);
+  assert.deepEqual(diagnostics, { colorGradingRuntime: "FALLBACK" });
+  assert.match(html, /data-color-grading-runtime="fallback"/);
   assert.match(html, /data-color-grading=/);
   assert.match(html, /video\.composition-media, img\.composition-media/);
-  assert.match(html, /state: "unavailable"/);
+  assert.match(html, /state: "fallback"/);
+  assert.doesNotMatch(html, /__hfColorGradingRuntimeInstalled/);
+});
+
+test("no usa un checkout vecino de HyperFrames cuando el paquete instalado no publica el runtime", async () => {
+  const assetId = "00000000-0000-4000-8000-000000000095";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "5".repeat(64), durationSeconds: 5, fileSizeBytes: 5, mimeType: "image/png", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/package-only.png", timelineRole: "BROLL" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Paquete" },
+  });
+  let diagnostics: { colorGradingRuntime: string } | null = null;
+
+  const html = await compileCompositionPreview({
+    assetUrls: new Map([[assetId, "https://storage.test/package-only.png"]]),
+    document,
+    onDiagnostics: (value) => { diagnostics = value; },
+  });
+
+  assert.deepEqual(diagnostics, { colorGradingRuntime: "FALLBACK" });
+  assert.match(html, /data-color-grading-runtime="fallback"/);
   assert.doesNotMatch(html, /__hfColorGradingRuntimeInstalled/);
 });
 

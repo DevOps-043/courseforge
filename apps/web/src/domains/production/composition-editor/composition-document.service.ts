@@ -10,6 +10,7 @@ import { assertCompositionAgentOperationsAllowed, CompositionAgentPolicyError } 
 import { validateCompositionAgentSimulation, CompositionAgentValidationError } from "./composition-agent-validation.service";
 import { normalizeCompositionDocumentLayerDepths } from "./composition-layer-depth";
 import { readReadyLinkedSoundEffectAssetIds } from "./composition-sound-effect-assets.service";
+import { isCompositionDocumentHash } from "./composition-preview-comparison";
 
 export class CompositionDocumentError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -81,11 +82,36 @@ export async function getCurrentCompositionDocument(params: {
 }) {
   const current = await getLatestCompositionDocument(params);
   if (!current) throw new CompositionDocumentError("El documento de composición aún no está disponible.", 404);
-  return {
-    document: current.document,
-    documentHash: current.documentHash,
-    version: current.version,
-  };
+  return current;
+}
+
+/** Returns one immutable saved document version for side-by-side preview. */
+export async function getCompositionDocumentByHash(params: {
+  documentHash: string;
+  draftId: string;
+  organizationId: string;
+  supabase: SupabaseClient<any, "public", any>;
+}) {
+  if (!isCompositionDocumentHash(params.documentHash)) {
+    throw new CompositionDocumentError("La versión de comparación no es válida.", 400);
+  }
+
+  const { data, error } = await params.supabase
+    .from("video_composition_draft_documents")
+    .select("document, document_hash, version")
+    .eq("draft_id", params.draftId)
+    .eq("organization_id", params.organizationId)
+    .eq("document_hash", params.documentHash.toLowerCase())
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new CompositionDocumentError("La versión de comparación ya no está disponible.", 404);
+
+  return resolveCompositionDocumentRow({
+    assetLinks: await getDraftAssetLinks(params),
+    document: data.document,
+    documentHash: data.document_hash,
+    version: data.version,
+  });
 }
 
 /** Returns immutable prior states for explicit user-directed restoration. */
@@ -444,14 +470,36 @@ async function getLatestCompositionDocument(params: {
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  const { data: assetLinks, error: assetLinksError } = await params.supabase
+  return resolveCompositionDocumentRow({
+    assetLinks: await getDraftAssetLinks(params),
+    document: data.document,
+    documentHash: data.document_hash,
+    version: data.version,
+  });
+}
+
+async function getDraftAssetLinks(params: {
+  draftId: string;
+  organizationId: string;
+  supabase: SupabaseClient<any, "public", any>;
+}) {
+  const { data, error } = await params.supabase
     .from("video_composition_draft_assets")
     .select("production_asset_id, role")
     .eq("draft_id", params.draftId)
     .eq("organization_id", params.organizationId);
-  if (assetLinksError) throw assetLinksError;
-  const documentHash = String(data.document_hash || "");
-  if (!/^[a-f0-9]{64}$/.test(documentHash)) {
+  if (error) throw error;
+  return (data || []) as Array<{ production_asset_id: string; role: string }>;
+}
+
+function resolveCompositionDocumentRow(params: {
+  assetLinks: Array<{ production_asset_id: string; role: string }>;
+  document: unknown;
+  documentHash: unknown;
+  version: unknown;
+}) {
+  const documentHash = String(params.documentHash || "");
+  if (!isCompositionDocumentHash(documentHash)) {
     throw new CompositionDocumentPersistenceError(
       "La versión almacenada de la composición no tiene un identificador válido.",
       "COMPOSITION_DOCUMENT_HASH_INVALID",
@@ -459,15 +507,12 @@ async function getLatestCompositionDocument(params: {
       false,
     );
   }
-  const parsedDocument = parsePersistedCompositionDocument(data.document);
-  const assetRoles = new Map((assetLinks || []).map((link: { production_asset_id: string; role: string }) => [
-    link.production_asset_id,
-    link.role,
-  ]));
+  const parsedDocument = parsePersistedCompositionDocument(params.document);
+  const assetRoles = new Map(params.assetLinks.map((link) => [link.production_asset_id, link.role]));
   return {
     document: compositionEditorDocumentSchema.parse(normalizeCompositionTrackTopology(parsedDocument, assetRoles)),
-    documentHash,
-    version: data.version as number,
+    documentHash: documentHash.toLowerCase(),
+    version: Number(params.version),
   };
 }
 

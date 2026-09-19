@@ -105,7 +105,7 @@ function CompositionColorCorrectionControlState({
     return persist(null, `Restableció la corrección de color de ${clip.label}.`);
   };
   const statusMessage = resolveStatusMessage(runtimeStatus);
-  const runtimeReady = runtimeStatus?.state === "active" || runtimeStatus?.state === "inactive";
+  const runtimeReady = runtimeStatus?.state === "active" || runtimeStatus?.state === "fallback" || runtimeStatus?.state === "inactive";
   const controlsDisabled = disabled || persisting || !runtimeReady;
 
   return <section className="border-t border-slate-200 pt-3 dark:border-white/10">
@@ -125,7 +125,7 @@ function CompositionColorCorrectionControlState({
         value={values[field.key]}
       />)}
     </div>
-    {statusMessage && <p role={runtimeStatus?.state === "unavailable" ? "alert" : undefined} className={`mt-2 rounded-md px-2 py-1.5 text-[10px] leading-4 ${runtimeStatus?.state === "unavailable" ? "bg-amber-50 text-amber-800 dark:bg-amber-400/10 dark:text-amber-200" : "bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-gray-400"}`}>{statusMessage}</p>}
+    {statusMessage && <p role={runtimeStatus?.state === "unavailable" ? "alert" : undefined} className={`mt-2 rounded-md px-2 py-1.5 text-[10px] leading-4 ${runtimeStatus?.state === "unavailable" ? "bg-amber-50 text-amber-800 dark:bg-amber-400/10 dark:text-amber-200" : runtimeStatus?.state === "fallback" ? "bg-cyan-50 text-cyan-800 dark:bg-cyan-400/10 dark:text-cyan-200" : "bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-gray-400"}`}>{statusMessage}</p>}
     <div className="mt-3 flex flex-wrap gap-1.5">
       <button type="button" disabled={controlsDisabled || !dirty} onClick={() => void save()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={12} /> {persisting ? "Guardando…" : "Guardar color"}</button>
       <button type="button" disabled={controlsDisabled || (!dirty && !clip.colorGrading)} onClick={() => void reset()} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-600 disabled:opacity-50 dark:border-white/15 dark:text-gray-300"><RotateCcw size={12} /> Restablecer</button>
@@ -152,6 +152,9 @@ function ColorControl({ disabled, label, onChange, value }: {
 function resolveStatusMessage(status: CompositionColorGradingRuntimeStatus | null) {
   if (!status) return "Conectando los controles con el preview de color…";
   if (status.state === "active" || status.state === "inactive") return null;
+  if (status.state === "fallback") {
+    return "Vista previa aproximada de Courseforge. El ajuste guardado se conserva para el render final.";
+  }
   if (status.state === "unavailable") {
     return "La corrección en vivo no está disponible. Se muestra el medio original; el ajuste guardado seguirá disponible para render.";
   }

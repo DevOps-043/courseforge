@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from "react";
-import { ArrowRight, ChevronDown, Clapperboard, Columns2, Crop, Grid3X3, History, Magnet, Maximize2, Minimize2, Minus, MousePointer2, PanelRight, Plus, RefreshCw, Scan, Scissors, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowRight, ChevronDown, Clapperboard, Columns2, Crop, Grid3X3, History, Magnet, Maximize2, Minimize2, Minus, MousePointer2, PanelLeftOpen, PanelRight, Plus, RefreshCw, Scan, Scissors, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import type { CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import styles from "./CompositionStudio.module.css";
@@ -19,10 +19,12 @@ interface CompositionPreviewToolbarProps {
   duration: number;
   gridVisible: boolean;
   history: CompositionDocumentHistoryEntry[] | null;
+  libraryOpen: boolean;
   inspectorOpen: boolean;
   onCloseHistory: () => void;
   onContinueToPublication?: () => void;
   onHistoryOpen: () => void;
+  onOpenLibrary: () => void;
   onInspectorToggle: () => void;
   onIntervalAction: () => void;
   onOpenAssistant: () => void;
@@ -52,7 +54,7 @@ interface CompositionPreviewToolbarProps {
   visualCropEnabled: boolean;
 }
 
-export function CompositionPreviewToolbar({ agentProposalActive, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenPresets, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onZoom, previewFullscreen, previewStatusLabel, previewZoom, removalRangeStartSeconds, saveError, saving, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, visualCropEnabled }: CompositionPreviewToolbarProps) {
+export function CompositionPreviewToolbar({ agentProposalActive, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, libraryOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenLibrary, onOpenPresets, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onZoom, previewFullscreen, previewStatusLabel, previewZoom, removalRangeStartSeconds, saveError, saving, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, visualCropEnabled }: CompositionPreviewToolbarProps) {
   return <div className={styles.previewToolbar}>
     <div className={styles.previewIdentity}>
       <span className={styles.previewIdentityIcon}><Clapperboard size={14} aria-hidden="true" /></span>
@@ -67,7 +69,7 @@ export function CompositionPreviewToolbar({ agentProposalActive, comparisonActiv
       <div ref={toolMenuRef} className={styles.toolMenuWrap}>
         <button type="button" aria-expanded={toolMenuOpen} aria-haspopup="menu" onClick={onToggleToolMenu} className={`${styles.toolButton} ${comparisonActive || gridVisible || visualCropEnabled || trimToolEnabled || removalRangeStartSeconds !== null ? styles.toolButtonActive : ""}`} title="Abrir herramientas adicionales"><SlidersHorizontal size={13} /><span>Herramientas</span><ChevronDown className={toolMenuOpen ? styles.toolMenuChevronOpen : ""} size={12} /></button>
         {toolMenuOpen && <div className={styles.toolMenu} role="menu" aria-label="Herramientas adicionales">
-          <button type="button" role="menuitemcheckbox" aria-checked={comparisonActive} onClick={onToggleComparison} className={styles.toolMenuItem}><Columns2 size={14} /><span><strong>Vista de referencia</strong><small>Comparar color y composición</small></span><i data-active={comparisonActive} /></button>
+          <button type="button" role="menuitemcheckbox" aria-checked={comparisonActive} onClick={onToggleComparison} className={styles.toolMenuItem}><Columns2 size={14} /><span><strong>Comparar antes / después</strong><small>Revisar color y composición</small></span><i data-active={comparisonActive} /></button>
           <button type="button" role="menuitemcheckbox" aria-checked={gridVisible} onClick={onToggleGrid} className={styles.toolMenuItem}><Grid3X3 size={14} /><span><strong>Rejilla</strong><small>Guías visuales del canvas</small></span><i data-active={gridVisible} /></button>
           <button type="button" role="menuitemcheckbox" aria-checked={visualCropEnabled} onClick={onToggleVisualCrop} className={styles.toolMenuItem}><Scan size={14} /><span><strong>Recorte visual</strong><small>Ajustar bordes del medio</small></span><i data-active={visualCropEnabled} /></button>
           <button type="button" role="menuitemcheckbox" aria-checked={trimToolEnabled} onClick={onToggleTrim} className={styles.toolMenuItem}><Crop size={14} /><span><strong>Recorte temporal</strong><small>Modificar inicio y duración</small></span><i data-active={trimToolEnabled} /></button>
@@ -80,10 +82,11 @@ export function CompositionPreviewToolbar({ agentProposalActive, comparisonActiv
         <button type="button" disabled={previewZoom >= 1.75} onClick={() => onZoom(0.1)} title="Acercar preview" aria-label="Acercar preview" className={styles.toolIconButton}><Plus size={13} /></button>
         <button type="button" onClick={onToggleFullscreen} title={previewFullscreen ? "Salir de pantalla completa" : "Abrir preview en pantalla completa"} aria-label={previewFullscreen ? "Salir de pantalla completa" : "Abrir preview en pantalla completa"} className={styles.toolIconButton}>{previewFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button>
       </div>
-    </div>
-    <div className={styles.previewUtilities}>
-      <span role="status" data-state={saving ? "saving" : saveError ? "error" : "saved"} className={styles.saveStatus}>{saving ? "Guardando…" : saveError ? "Error" : "Guardado"}</span>
+      </div>
+      <div className={styles.previewUtilities}>
+        <span role="status" data-state={saving ? "saving" : saveError ? "error" : "saved"} className={styles.saveStatus}>{saving ? "Guardando…" : saveError ? "Error" : "Guardado"}</span>
       <div className={styles.toolbarGroup} aria-label="Documento e inspector">
+        {!libraryOpen && <button type="button" onClick={onOpenLibrary} className={styles.toolIconButton} title="Abrir biblioteca y cerrar vista de referencia" aria-label="Abrir biblioteca"><PanelLeftOpen size={14} /></button>}
         <button type="button" onClick={onInspectorToggle} className={`${styles.toolIconButton} ${inspectorOpen ? styles.toolIconButtonActive : ""}`} title={inspectorOpen ? "Cerrar inspector" : "Abrir inspector"} aria-label={inspectorOpen ? "Cerrar inspector" : "Abrir inspector"}><PanelRight size={14} /></button>
         <div className={styles.historyWrap}>
           <button type="button" disabled={saving} onClick={onHistoryOpen} className={styles.toolIconButton} title="Historial de edición" aria-label="Abrir historial de edición"><History size={14} /></button>

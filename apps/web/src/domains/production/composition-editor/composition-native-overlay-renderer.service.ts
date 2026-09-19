@@ -14,7 +14,7 @@ export function renderCompositionNativeOverlay(params: {
   if (clip.kind === "CAPTION" && clip.source.type === "NATIVE_CAPTIONS") {
     const style = clip.source.style;
     const cues = clip.source.cues.map((cue) => (
-      `<div id="${escapeAttribute(captionCueElementId(clip.id, cue.id))}" class="composition-caption-cue" style="${renderTextStyle(style)};position:absolute;inset:0;visibility:hidden;opacity:0;">${escapeHtml(cue.text)}</div>`
+      `<div id="${escapeAttribute(captionCueElementId(clip.id, cue.id))}" class="composition-caption-cue" style="${renderTextStyle(style)};position:absolute;inset:0;visibility:hidden;opacity:0;">${renderCaptionCueText(clip.id, cue)}</div>`
     )).join("");
     return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${params.visualTiming}><div ${params.commonAttributes} class="clip-content composition-native-overlay"><div id="${params.motionId}" class="motion-subject composition-native-caption" style="position:absolute;inset:0;">${cues}</div></div></section>`;
   }
@@ -23,6 +23,18 @@ export function renderCompositionNativeOverlay(params: {
 
 export function captionCueElementId(clipId: string, cueId: string) {
   return `${clipId}-caption-${cueId}`;
+}
+
+export function captionWordElementId(clipId: string, cueId: string, wordId: string) {
+  return `${captionCueElementId(clipId, cueId)}-word-${wordId}`;
+}
+
+function renderCaptionCueText(
+  clipId: string,
+  cue: Extract<CompositionClip["source"], { type: "NATIVE_CAPTIONS" }>['cues'][number],
+) {
+  if (!cue.words?.length) return escapeHtml(cue.text);
+  return cue.words.map((word, index) => `${index > 0 ? " " : ""}<span id="${escapeAttribute(captionWordElementId(clipId, cue.id, word.id))}" class="composition-caption-word" style="opacity:0.55;">${escapeHtml(word.text)}</span>`).join("");
 }
 
 function renderTextLayer(

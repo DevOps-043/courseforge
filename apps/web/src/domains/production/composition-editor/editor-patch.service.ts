@@ -982,6 +982,7 @@ export function applyCompositionEditorPatches(
         throw new CompositionEditorPatchError("Esta operación solo está disponible para capas de captions.");
       }
       clip.source.cues = operation.cues;
+      if (operation.origin) clip.source.origin = operation.origin;
     }
 
     if (operation.type === "clip.text-style") {

@@ -32,7 +32,7 @@ export const compositionPreviewIframeMessageSchema = z.discriminatedUnion("type"
     ...iframeMessageBase,
     hfId: hfIdSchema,
     message: z.string().trim().min(1).max(500),
-    state: z.enum(["active", "inactive", "missing", "pending", "unavailable"]),
+    state: z.enum(["active", "fallback", "inactive", "missing", "pending", "unavailable"]),
     type: z.literal("courseforge-composition-color-grading-status"),
   }).strict(),
   z.object({

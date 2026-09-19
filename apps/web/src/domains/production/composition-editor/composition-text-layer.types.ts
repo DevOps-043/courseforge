@@ -52,9 +52,31 @@ export const compositionCaptionCueSchema = z.object({
   id: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i),
   startSeconds: finiteNumberSchema.min(0).max(86_400),
   text: z.string().trim().min(1).max(1_000),
+  words: z.array(z.object({
+    endSeconds: finiteNumberSchema.positive().max(86_400),
+    id: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i),
+    startSeconds: finiteNumberSchema.min(0).max(86_400),
+    text: z.string().trim().min(1).max(200),
+  }).strict()).max(20).optional(),
 }).strict().superRefine((cue, context) => {
   if (cue.endSeconds <= cue.startSeconds) {
     context.addIssue({ code: "custom", message: "El final de cada caption debe ser posterior a su inicio." });
+  }
+  const words = cue.words || [];
+  const seenWordIds = new Set<string>();
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index]!;
+    if (seenWordIds.has(word.id)) {
+      context.addIssue({ code: "custom", message: `La palabra ${word.id} está duplicada dentro del caption.` });
+    }
+    seenWordIds.add(word.id);
+    if (word.startSeconds < cue.startSeconds || word.endSeconds > cue.endSeconds || word.endSeconds <= word.startSeconds) {
+      context.addIssue({ code: "custom", message: `La palabra ${word.id} está fuera de los límites del caption.` });
+    }
+    const previous = words[index - 1];
+    if (previous && word.startSeconds < previous.endSeconds) {
+      context.addIssue({ code: "custom", message: "Las palabras de un caption no pueden solaparse." });
+    }
   }
 });
 

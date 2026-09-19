@@ -14,6 +14,7 @@ import {
   Plus,
   ScrollText,
   Send,
+  Sparkles,
   Subtitles,
   Type,
   Video,
@@ -36,12 +37,15 @@ interface CompositionStudioLibraryProps {
   assets: CompositionStudioAsset[];
   delivery: ReactNode;
   introAssetId: string | null;
+  libraryOpen: boolean;
   lessons: CompositionStudioLesson[];
   narrative: ReactNode;
   narrativeCount: number;
+  captionTranscriptWordCount: number;
   onAddAsset: (asset: CompositionStudioAsset) => void;
   onAddSoundEffect: (soundEffect: SoundEffectCatalogItem) => void;
   onAddCaptionLayer: () => void;
+  onGenerateTranscriptCaptions: () => void;
   onAddTextLayer: () => void;
   onClearIntro: () => void;
   onSelectAsset: (hfId: string) => void;
@@ -52,7 +56,7 @@ interface CompositionStudioLibraryProps {
   timelineAssetIds: Set<string>;
 }
 
-export function CompositionStudioLibrary({ assets, delivery, introAssetId, lessons, narrative, narrativeCount, onAddAsset, onAddCaptionLayer, onAddSoundEffect, onAddTextLayer, onClearIntro, onSelectAsset, onSelectLesson, onSetIntro, selectedHfId, selectedLessonId, timelineAssetIds }: CompositionStudioLibraryProps) {
+export function CompositionStudioLibrary({ assets, captionTranscriptWordCount, delivery, introAssetId, libraryOpen, lessons, narrative, narrativeCount, onAddAsset, onAddCaptionLayer, onAddSoundEffect, onAddTextLayer, onClearIntro, onGenerateTranscriptCaptions, onSelectAsset, onSelectLesson, onSetIntro, selectedHfId, selectedLessonId, timelineAssetIds }: CompositionStudioLibraryProps) {
   const [activeView, setActiveView] = useState<"assets" | "delivery" | "lessons" | "narrative" | "sfx" | "text">("lessons");
   const [soundEffects, setSoundEffects] = useState<SoundEffectCatalogItem[]>([]);
   const [soundEffectsLoading, setSoundEffectsLoading] = useState(false);
@@ -101,7 +105,7 @@ export function CompositionStudioLibrary({ assets, delivery, introAssetId, lesso
     }
   }, [activeView]);
 
-  return <aside className={`${styles.library} ${activeView === "narrative" ? styles.libraryNarrative : ""}`}>
+  return <aside className={`${styles.library} ${!libraryOpen ? styles.libraryHidden : ""} ${activeView === "narrative" ? styles.libraryNarrative : ""}`}>
     <div className={`${styles.panelTabs} ${narrative ? styles.panelTabsWithNarrative : ""}`} role="tablist" aria-label="Biblioteca del ensamble">
       <button type="button" role="tab" aria-selected={activeView === "lessons"} onClick={() => selectView("lessons")} className={`${styles.panelTab} ${activeView === "lessons" ? styles.panelTabActive : ""}`}><Clapperboard size={14} aria-hidden="true" /> Videos <span className={styles.tabCount}>{lessons.length}</span></button>
       <button type="button" role="tab" aria-selected={activeView === "assets"} onClick={() => selectView("assets")} className={`${styles.panelTab} ${activeView === "assets" ? styles.panelTabActive : ""}`}><ImageIcon size={14} aria-hidden="true" /> Medios <span className={styles.tabCount}>{assets.length}</span></button>
@@ -118,7 +122,7 @@ export function CompositionStudioLibrary({ assets, delivery, introAssetId, lesso
           const inTimeline = timelineAssetIds.has(asset.id);
           return <div key={asset.id} className={`${styles.assetItem} ${selectedHfId === hfId ? styles.assetItemActive : ""} ${asset.valid ? "" : "border-red-400/40 bg-red-500/10"}`}><button type="button" disabled={!asset.isEditable || !inTimeline} onClick={() => onSelectAsset(hfId)} className={styles.assetMain}><AssetThumbnail asset={asset} /><span className="min-w-0 flex-1"><span className={styles.itemTitle}>{asset.label}</span><span className={styles.assetMetaRow}><span className={styles.itemMeta}>{asset.sourceLabel}</span><span className={styles.itemMeta}>{asset.sizeLabel}</span></span></span></button><button type="button" disabled={!asset.isEditable || !asset.valid || inTimeline} onClick={() => onAddAsset(asset)} title={inTimeline ? "Este asset ya está en la línea de tiempo" : "Añadir a la línea de tiempo"} className={`${styles.assetAdd} ${inTimeline ? styles.assetAddComplete : ""}`}>{inTimeline ? <CheckCircle2 size={12} /> : <Plus size={12} />}<span>{inTimeline ? "En timeline" : "Añadir a timeline"}</span></button>{asset.mimeType.startsWith("video/") && <button type="button" disabled={!asset.isEditable || !asset.valid || !asset.durationSeconds} onClick={() => introAssetId === asset.id ? onClearIntro() : onSetIntro(asset)} title="Usar este asset de Producción como intro" className={styles.assetAdd}><Film size={12} /><span>{introAssetId === asset.id ? "Quitar intro" : "Usar como intro"}</span></button>}</div>;
         })}</div>
-        : activeView === "text" ? <div className="space-y-3 p-3" role="tabpanel"><p className="text-xs leading-5 text-slate-500 dark:text-gray-400">Crea capas editables en el cursor. Texto y fondo mantienen opacidades independientes.</p><button type="button" onClick={onAddTextLayer} className="flex w-full items-center gap-3 rounded-lg border border-slate-200 p-3 text-left hover:border-cyan-400 hover:bg-cyan-50 dark:border-white/10 dark:hover:bg-cyan-400/10"><Type size={19} className="text-cyan-600" /><span><span className={styles.itemTitle}>Capa de texto</span><span className={styles.itemMeta}>Título, etiqueta o llamada visual</span></span></button><button type="button" onClick={onAddCaptionLayer} className="flex w-full items-center gap-3 rounded-lg border border-slate-200 p-3 text-left hover:border-violet-400 hover:bg-violet-50 dark:border-white/10 dark:hover:bg-violet-400/10"><Subtitles size={19} className="text-violet-600" /><span><span className={styles.itemTitle}>Captions transparentes</span><span className={styles.itemMeta}>Sin caja opaca; contraste por stroke y sombra</span></span></button></div>
+        : activeView === "text" ? <div className="space-y-3 p-3" role="tabpanel"><p className="text-xs leading-5 text-slate-500 dark:text-gray-400">Crea capas editables en el cursor. Texto y fondo mantienen opacidades independientes.</p><button type="button" onClick={onAddTextLayer} className="flex w-full items-center gap-3 rounded-lg border border-slate-200 p-3 text-left hover:border-cyan-400 hover:bg-cyan-50 dark:border-white/10 dark:hover:bg-cyan-400/10"><Type size={19} className="text-cyan-600" /><span><span className={styles.itemTitle}>Capa de texto</span><span className={styles.itemMeta}>Título, etiqueta o llamada visual</span></span></button><button type="button" onClick={onAddCaptionLayer} className="flex w-full items-center gap-3 rounded-lg border border-slate-200 p-3 text-left hover:border-violet-400 hover:bg-violet-50 dark:border-white/10 dark:hover:bg-violet-400/10"><Subtitles size={19} className="text-violet-600" /><span><span className={styles.itemTitle}>Captions transparentes</span><span className={styles.itemMeta}>Sin caja opaca; contraste por stroke y sombra</span></span></button><button type="button" disabled={captionTranscriptWordCount === 0} onClick={onGenerateTranscriptCaptions} className="flex w-full items-center gap-3 rounded-lg border border-slate-200 p-3 text-left hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:hover:bg-emerald-400/10"><Sparkles size={19} className="text-emerald-600" /><span><span className={styles.itemTitle}>Generar desde la voz</span><span className={styles.itemMeta}>{captionTranscriptWordCount > 0 ? `${captionTranscriptWordCount} palabras sincronizadas disponibles` : "Genera primero una voz con timestamps"}</span></span></button></div>
         : activeView === "sfx" ? <div className={styles.assetList} role="tabpanel"><label className={styles.sfxSearch}><span className="sr-only">Buscar efectos de sonido</span><input value={soundEffectQuery} onChange={(event) => setSoundEffectQuery(event.target.value)} placeholder="Buscar whoosh, click…" /></label><select className={styles.sfxCategory} value={soundEffectCategory} onChange={(event) => setSoundEffectCategory(event.target.value as "" | SoundEffectCatalogItem["category"])} aria-label="Categoría de efectos"><option value="">Todas las categorías</option><option value="TRANSITION">Transición</option><option value="EMPHASIS">Énfasis</option><option value="UI">UI</option><option value="IMPACT">Impacto</option><option value="AMBIENCE">Ambiente</option><option value="OTHER">Otros</option></select>{soundEffectsLoading ? <p className={styles.libraryEmpty}>Cargando efectos…</p> : soundEffectsError ? <p className={styles.libraryEmpty}>{soundEffectsError}</p> : soundEffects.length === 0 ? <p className={styles.libraryEmpty}>No hay efectos disponibles todavía.</p> : soundEffects.map((soundEffect) => <div key={soundEffect.id} className={styles.assetItem}><span className={styles.assetMain}><span className="relative flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-violet-100 text-violet-700 dark:border-white/10 dark:bg-violet-500/10 dark:text-violet-200"><Music2 size={18} /></span><span className="min-w-0 flex-1"><span className={styles.itemTitle}>{soundEffect.name}</span><span className={styles.assetMetaRow}><span className={styles.itemMeta}>{soundEffect.category.toLowerCase()}</span><span className={styles.itemMeta}>{(soundEffect.durationMilliseconds / 1000).toFixed(2)} s</span></span></span></span><span className="flex flex-none items-center gap-1"><SoundEffectPreviewButton soundEffectId={soundEffect.id} /><button type="button" onClick={() => onAddSoundEffect(soundEffect)} title={`Añadir ${soundEffect.name} al cursor`} className={styles.assetAdd}><Plus size={12} /><span>Añadir al cursor</span></button></span></div>)}</div>
         : activeView === "narrative" ? <div className={styles.narrativeMenu} role="tabpanel">{narrative}</div>
           : <div className={styles.deliveryMenu} role="tabpanel">{delivery}</div>}
