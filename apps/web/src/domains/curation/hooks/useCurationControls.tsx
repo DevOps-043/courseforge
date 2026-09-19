@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
 import { AlertCircle } from "lucide-react";
 import { updateCurationStatusAction } from "../actions/curation.actions";
 import type { Curation, CurationRow } from "../types/curation.types";
@@ -43,7 +42,6 @@ export function useCurationControls({
   startCuration,
   clearSystemGeneratedRows,
 }: UseCurationControlsParams) {
-  const router = useRouter();
   const [isLoadingModal, setIsLoadingModal] = useState(false);
   const [modalConfig, setModalConfig] =
     useState<CurationModalConfig>(INITIAL_MODAL_CONFIG);
@@ -191,28 +189,10 @@ export function useCurationControls({
     await startCuration(1, [], true);
   };
 
-  const handleRegenerateBlocked = async () => {
-    if (
-      !confirm("¿Reiniciar por completo la busqueda automatica de fuentes web?")
-    ) {
-      return;
-    }
-
-    try {
-      await clearSystemGeneratedRows();
-      await startCuration(1, []);
-      router.refresh();
-    } catch (error) {
-      console.error(error);
-      toast.error("No se pudo regenerar la curaduria.");
-    }
-  };
-
   return {
     closeModal,
     handleGenerate,
     handlePause,
-    handleRegenerateBlocked,
     handleResetStep,
     handleResume,
     handleStop,

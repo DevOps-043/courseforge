@@ -17,7 +17,7 @@ async function run() {
     normalizeSourceUrl(
       "http://WWW.Example.com/guide/?utm_source=newsletter&b=2&a=1#intro",
     ),
-    "https://example.com/guide?a=1&b=2",
+    "https://www.example.com/guide/?a=1&b=2",
   );
   assert.equal(isBlockedSourceDomain("https://subdomain.reddit.com/r/test"), true);
   assert.equal(isBlockedSourceDomain("https://docs.example.edu/guide"), false);
@@ -50,6 +50,33 @@ async function run() {
   });
   assert.equal(valid.isValid, true);
   assert.equal(valid.report.detected_title, "Educational guide");
+
+  const fetchedUrls: string[] = [];
+  const exactUrl = "https://www.example.edu/Guide/?ref=chapter&source=lesson";
+  const exactSource = await validateUrlSource(exactUrl, {
+    addressResolver: publicAddressResolver,
+    fetchImpl: async (url) => {
+      fetchedUrls.push(String(url));
+      return new Response(validHtml, { headers: { "content-type": "text/html" } });
+    },
+  });
+  assert.equal(exactSource.isValid, true);
+  assert.deepEqual(fetchedUrls, [exactUrl]);
+  assert.equal(exactSource.normalizedUrl, exactUrl, "stored URL must preserve the accessible host and resource");
+
+  for (const destination of ["https://example.edu/guide", "https://reddit.com/article"]) {
+    let redirects = 0;
+    const redirected = await validateUrlSource("https://example.edu/alias", {
+      addressResolver: publicAddressResolver,
+      existingNormalizedUrls: ["https://example.edu/guide"],
+      fetchImpl: async () => ++redirects === 1
+        ? new Response(null, { status: 302, headers: { location: destination } })
+        : new Response(validHtml, { headers: { "content-type": "text/html" } }),
+    });
+    assert.equal(redirected.isValid, false, "redirect must not bypass duplicate or domain rules");
+    assert.equal(redirected.report.checks.duplicate, destination.includes("example.edu"));
+    assert.equal(redirected.report.checks.blocked_domain, destination.includes("reddit.com"));
+  }
 
   const short = await validateUrlSource("https://example.edu/short", {
     addressResolver: publicAddressResolver,

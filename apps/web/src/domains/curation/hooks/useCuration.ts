@@ -38,6 +38,7 @@ export function useCuration(artifactId: string) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [snapshotAuthUnavailable, setSnapshotAuthUnavailable] = useState(false);
   const hasShownAuthToast = useRef(false);
+  const startInFlight = useRef(false);
   const isValidating = curation?.state === CURATION_STATES.VALIDATING;
 
   const fetchCurationData = useCallback(async () => {
@@ -131,25 +132,35 @@ export function useCuration(artifactId: string) {
     resume: boolean = false,
     promptOverride?: string,
   ) => {
+    if (startInFlight.current || isGenerating) return;
+    startInFlight.current = true;
     setIsGenerating(true);
-    const result = await startCurationAction(
-      artifactId,
-      attemptNumber,
-      gaps,
-      resume,
-      promptOverride,
-    );
+    try {
+      const result = await startCurationAction(
+        artifactId,
+        attemptNumber,
+        gaps,
+        resume,
+        promptOverride,
+      );
 
-    if (result.success) {
+      if (!result.success) {
+        throw new Error(result.error || "No se pudo iniciar la curaduría.");
+      }
       toast.success(
         resume
-          ? "Reanudando curaduria..."
+          ? "Completando fuentes pendientes; se conserva el progreso."
           : "Curaduria iniciada. Las fuentes comenzaran a aparecer pronto.",
       );
-      fetchCurationData();
-    } else {
+      await fetchCurationData();
+    } catch (error) {
       setIsGenerating(false);
-      toast.error("Error al iniciar curaduria: " + result.error);
+      toast.error(
+        "Error al iniciar curaduria: " +
+          (error instanceof Error ? error.message : "No se pudo iniciar la curaduría."),
+      );
+    } finally {
+      startInFlight.current = false;
     }
   };
 

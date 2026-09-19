@@ -17,7 +17,7 @@ export const MINIMUM_SOURCE_CHARACTERS = 500;
 export const MINIMUM_PDF_CHARACTERS = 500;
 const MAXIMUM_SOURCE_BYTES = 2 * 1024 * 1024;
 const MAXIMUM_SOURCE_REDIRECTS = 5;
-const SOURCE_VALIDATION_TIMEOUT_MS = 15_000;
+export const SOURCE_VALIDATION_TIMEOUT_MS = 15_000;
 
 const BLOCKED_DOMAINS = [
   "facebook.com",
@@ -55,8 +55,6 @@ const TRACKING_PARAMETERS = new Set([
   "gclid",
   "mc_cid",
   "mc_eid",
-  "ref",
-  "source",
 ]);
 
 function emptyChecks() {
@@ -92,7 +90,9 @@ export function normalizeSourceUrl(rawUrl: string) {
 
   url.protocol = "https:";
   url.hash = "";
-  url.hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+  // Keep the actual host, path and functional query parameters. Removing www
+  // or a trailing slash can change the resource (or make its host unreachable).
+  url.hostname = url.hostname.toLowerCase();
   if (url.port === "80" || url.port === "443") url.port = "";
 
   for (const key of [...url.searchParams.keys()]) {
@@ -101,7 +101,6 @@ export function normalizeSourceUrl(rawUrl: string) {
     }
   }
   url.searchParams.sort();
-  url.pathname = url.pathname.replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
   return url.toString();
 }
 
@@ -196,14 +195,17 @@ export async function validateUrlSource(
       },
     });
     const { response } = result;
+    normalizedUrl = normalizeSourceUrl(result.url.toString());
+    checks.blocked_domain = isBlockedSourceDomain(normalizedUrl);
+    checks.duplicate = existing.has(normalizedUrl);
     checks.http_ok = response.ok;
     checks.valid_mime = /(?:text\/html|application\/xhtml\+xml|text\/plain)/i.test(
       response.headers.get("content-type") || "",
     );
-    if (!checks.http_ok || !checks.valid_mime) {
+    if (checks.blocked_domain || checks.duplicate || !checks.http_ok || !checks.valid_mime) {
       await response.body?.cancel().catch(() => undefined);
     }
-    const html = checks.http_ok && checks.valid_mime
+    const html = !checks.blocked_domain && !checks.duplicate && checks.http_ok && checks.valid_mime
       ? await readResponseTextWithLimit(response, MAXIMUM_SOURCE_BYTES)
       : "";
     const readable = extractReadableText(html);
@@ -213,20 +215,24 @@ export async function validateUrlSource(
       readable.length >= (options.minimumCharacters || MINIMUM_SOURCE_CHARACTERS);
 
     let reason = "Fuente valida.";
-    if (!checks.http_ok) reason = `La fuente respondio HTTP ${response.status}.`;
+    if (checks.blocked_domain) reason = "El dominio de destino no esta permitido como fuente.";
+    else if (checks.duplicate) reason = "La fuente redirige a una pagina ya registrada.";
+    else if (!checks.http_ok) reason = `La fuente respondio HTTP ${response.status}.`;
     else if (!checks.valid_mime) reason = "La URL no contiene una pagina de texto compatible.";
     else if (checks.soft_404) reason = "La pagina parece ser un soft 404.";
     else if (checks.paywall) reason = "La pagina requiere pago, registro o suscripcion.";
     else if (!checks.minimum_content) reason = "La pagina no contiene suficiente contenido educativo.";
 
     const isValid =
+      !checks.blocked_domain &&
+      !checks.duplicate &&
       checks.http_ok &&
       checks.valid_mime &&
       !checks.soft_404 &&
       !checks.paywall &&
       checks.minimum_content;
     const report = buildReport(isValid ? "valid" : "invalid", reason, checks);
-    report.normalized_url = normalizeSourceUrl(result.url.toString());
+    report.normalized_url = normalizedUrl;
     report.http_status_code = response.status;
     report.content_characters = readable.length;
     report.content_excerpt = readable.slice(0, 6_000);
