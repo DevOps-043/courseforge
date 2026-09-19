@@ -28,6 +28,7 @@ export interface CurationModalConfig {
 interface CurationDashboardViewProps {
   curationApproved: boolean;
   curationBlocked: boolean;
+  blockedReason?: string;
   curationState?: string | null;
   isGenerating: boolean;
   isLoadingModal: boolean;
@@ -38,7 +39,6 @@ interface CurationDashboardViewProps {
   onDismissDirty: () => Promise<void> | void;
   onIterateDirty: () => Promise<void> | void;
   onModalClose: () => void;
-  onRegenerate: () => Promise<void> | void;
   onResetStep: () => void;
   onResume: () => Promise<void> | void;
   pendingValidationCount: number;
@@ -56,6 +56,7 @@ interface CurationDashboardViewProps {
 export function CurationDashboardView({
   curationApproved,
   curationBlocked,
+  blockedReason,
   curationState,
   isGenerating,
   isLoadingModal,
@@ -66,7 +67,6 @@ export function CurationDashboardView({
   onDismissDirty,
   onIterateDirty,
   onModalClose,
-  onRegenerate,
   onResetStep,
   onResume,
   pendingValidationCount,
@@ -133,11 +133,12 @@ export function CurationDashboardView({
       <CurationReviewPanel
         curationApproved={curationApproved}
         curationBlocked={curationBlocked}
+        blockedReason={blockedReason}
         isGenerating={isGenerating}
         isValidating={isValidating}
         invalidRowsCount={invalidRowsCount}
         onContinue={onContinue}
-        onRegenerate={onRegenerate}
+        onResume={onResume}
         pendingValidationCount={pendingValidationCount}
         missingCoverageCount={missingCoverageCount}
         completedLessonsCount={completedLessonsCount}

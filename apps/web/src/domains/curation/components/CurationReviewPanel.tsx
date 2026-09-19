@@ -5,11 +5,12 @@ import { AlertCircle, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
 interface CurationReviewPanelProps {
   curationApproved: boolean;
   curationBlocked: boolean;
+  blockedReason?: string;
   isGenerating: boolean;
   isValidating: boolean;
   invalidRowsCount: number;
   onContinue?: () => Promise<void> | void;
-  onRegenerate: () => Promise<void> | void;
+  onResume: () => Promise<void> | void;
   pendingValidationCount: number;
   missingCoverageCount: number;
   completedLessonsCount: number;
@@ -21,11 +22,12 @@ interface CurationReviewPanelProps {
 export function CurationReviewPanel({
   curationApproved,
   curationBlocked,
+  blockedReason,
   isGenerating,
   isValidating,
   invalidRowsCount,
   onContinue,
-  onRegenerate,
+  onResume,
   pendingValidationCount,
   missingCoverageCount,
   completedLessonsCount,
@@ -94,21 +96,26 @@ export function CurationReviewPanel({
         </div>
       )}
 
-      {curationBlocked && (
+      {curationBlocked && !isRunning && (
         <div className="mt-4 border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-800 dark:text-rose-100">
           <p>
-            La automatizacion agoto sus rondas internas. Quedaron{" "}
+            La curaduría quedó incompleta. Quedaron{" "}
             {missingCoverageCount} leccion(es) incompletas,{" "}
             {pendingValidationCount} fuente(s) pendientes y {invalidRowsCount}{" "}
             no apta(s).
           </p>
+          {blockedReason && <p className="mt-2">{blockedReason}</p>}
+          <p className="mt-2">
+            Se conservan las fuentes válidas. Al reanudar se buscarán únicamente
+            las que faltan para completar cada lección.
+          </p>
           <button
             type="button"
-            onClick={onRegenerate}
+            onClick={onResume}
             className="mt-3 inline-flex items-center gap-2 border border-rose-500/30 bg-white px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:bg-[var(--engine-canvas)] dark:text-rose-300"
           >
             <RefreshCw size={14} />
-            Reintentar proceso automatico
+            Completar fuentes pendientes
           </button>
         </div>
       )}

@@ -6,6 +6,7 @@
     "plugins": []
   },
   "include": [
+    "next-env.d.ts",
     "netlify/functions/curation-background.ts",
     "netlify/functions/unified-curation-logic.ts",
     "netlify/functions/validate-curation-background.ts",

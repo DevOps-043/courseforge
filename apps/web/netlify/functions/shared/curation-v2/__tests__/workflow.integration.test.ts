@@ -92,14 +92,14 @@ void run().then(() => {
   console.log("curation-v2 workflow integration tests passed");
 });
 
-function workflowDatabase() {
+function workflowDatabase(options: { lessonCount?: number; rows?: Record<string, unknown>[] } = {}) {
   let active = true;
-  let completion: { state?: string } | null = null;
-  const saved: Record<string, unknown>[] = [];
+  let completion: { state?: string; qa_decision?: { notes?: string } } | null = null;
+  const saved: Record<string, unknown>[] = [...(options.rows || [])];
   const database = {
     from(table: string) {
       const result = () => ({ error: null, data: table === "instructional_plans"
-        ? { lesson_plans: [{ lesson_id: "lesson-1", lesson_title: "Lesson", module_title: "Module", oa_text: "Apply", components: [{ type: "READING" }] }] }
+        ? { lesson_plans: Array.from({ length: options.lessonCount || 1 }, (_, index) => ({ lesson_id: `lesson-${index + 1}`, lesson_title: `Lesson ${index + 1}`, module_title: "Module", oa_text: "Apply", components: [{ type: "READING" }] })) }
         : table === "artifacts" ? { idea_central: "Course", nombres: [], objetivos: [], descripcion: {} }
         : table === "syllabus" ? { modules: [] } : saved });
       const query = { select: () => query, eq: () => query, single: async () => result(),
@@ -147,4 +147,78 @@ test("billing rejection is not retried for every lesson", async () => {
     search: async () => { calls++; throw Object.assign(new Error("insufficient_quota"), { status: 429 }); }, validate }), /insufficient_quota/);
   assert.equal(calls, 1);
   assert.equal(fixture.completion(), null);
+});
+
+test("resuming partial curation preserves valid sources and searches only missing coverage", async () => {
+  const fixture = workflowDatabase({ lessonCount: 2 });
+  const partial = [...candidates, { ...candidates[0], lesson_id: "lesson-2" }];
+  await runCurationWorkflowV2({ ...workflowOptions, supabase: fixture.database, search: async () => partial, validate });
+  assert.equal(fixture.saved.length, 3);
+  assert.equal(fixture.completion()?.state, "PHASE2_BLOCKED");
+  assert.match(fixture.completion()?.qa_decision?.notes || "", /no encontraron nuevas fuentes/);
+  const originalRows = [...fixture.saved];
+  let searches = 0;
+  await runCurationWorkflowV2({
+    ...workflowOptions, attemptNumber: 2, resume: true, supabase: fixture.database,
+    search: async ({ lessons }) => {
+      searches++;
+      assert.equal(lessons.length, 1, "completed lesson must not be regenerated");
+      assert.equal(lessons[0].lesson_id, "lesson-2");
+      assert.equal(lessons[0].remaining_sources, 1);
+      assert.deepEqual(lessons[0].excluded_urls, [candidates[0].url]);
+      return candidates.map((candidate) => ({ ...candidate, lesson_id: "lesson-2" }));
+    }, validate,
+  });
+  assert.equal(searches, 1);
+  assert.equal(fixture.saved.length, 4);
+  assert.deepEqual(fixture.saved.slice(0, 3), originalRows);
+  assert.equal(fixture.completion()?.state, "PHASE2_APPROVED");
+});
+
+test("resuming a complete curation does not call the search provider", async () => {
+  const fixture = workflowDatabase();
+  await runCurationWorkflowV2({ ...workflowOptions, supabase: fixture.database, search: async () => candidates, validate });
+  await runCurationWorkflowV2({ ...workflowOptions, attemptNumber: 2, resume: true, supabase: fixture.database,
+    search: async () => { throw new Error("complete lessons must be skipped"); }, validate });
+  assert.equal(fixture.saved.length, 2);
+  assert.equal(fixture.completion()?.state, "PHASE2_APPROVED");
+});
+
+test("redirect aliases cannot count as multiple valid sources or be retried indefinitely", async () => {
+  const excluded = new Set<string>();
+  let validations = 0;
+  const selected = await validateAutomaticCandidates({
+    candidates: [...candidates, candidates[0]], existingNormalizedUrls: excluded,
+    validate: async () => {
+      validations++;
+      return { normalizedUrl: "https://example.org/canonical", isValid: true, report: report("valid") };
+    },
+  });
+  assert.equal(selected.length, 1);
+  assert.equal(validations, 2);
+  assert.ok(excluded.has(candidates[0].url));
+  assert.ok(excluded.has(candidates[1].url));
+  assert.ok(excluded.has("https://example.org/canonical"));
+});
+
+test("exhausting the deadline saves a resumable state without starting more provider retries", async () => {
+  const fixture = workflowDatabase();
+  const originalNow = Date.now;
+  let now = originalNow();
+  Date.now = () => now;
+  let searches = 0;
+  try {
+    await runCurationWorkflowV2({ ...workflowOptions, supabase: fixture.database,
+      search: async ({ deadlineMs }) => {
+        searches++;
+        assert.ok(deadlineMs && deadlineMs > now);
+        now = deadlineMs!;
+        throw new Error("timeout");
+      }, validate });
+  } finally {
+    Date.now = originalNow;
+  }
+  assert.equal(searches, 1);
+  assert.equal(fixture.completion()?.state, "PHASE2_BLOCKED");
+  assert.match(fixture.completion()?.qa_decision?.notes || "", /tiempo disponible/);
 });

@@ -1,4 +1,5 @@
 import { SyllabusLesson, SyllabusModule } from "../types/syllabus.types";
+import { getModuleTitle } from "../lib/module-title";
 
 interface SyllabusModuleCardProps {
   module: SyllabusModule;
@@ -12,6 +13,7 @@ interface SyllabusModuleCardProps {
   onSaveEdit: () => Promise<void>;
   onCancelEdit: () => void;
   onUpdateModuleTitle: (title: string) => void;
+  onUpdateModuleObjective: (objective: string) => void;
   onUpdateLesson: <K extends keyof SyllabusLesson>(
     lessonIndex: number,
     field: K,
@@ -33,6 +35,7 @@ export function SyllabusModuleCard({
   onSaveEdit,
   onCancelEdit,
   onUpdateModuleTitle,
+  onUpdateModuleObjective,
   onUpdateLesson,
   onDeleteLesson,
   onAddLesson,
@@ -49,13 +52,15 @@ export function SyllabusModuleCard({
           <div className="flex items-center gap-2 mb-1">
             {isEditing ? (
               <input
+                aria-label={`Título del módulo ${index + 1}`}
+                placeholder="Título del módulo (sin numeración)"
                 className="bg-gray-50 dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-lg font-bold text-gray-900 dark:text-white w-full focus:outline-none focus:border-[var(--engine-accent)] transition-all focus:bg-white dark:focus:bg-[var(--engine-surface-solid)] placeholder-gray-400 dark:placeholder-gray-600 shadow-inner"
                 value={module.title}
                 onChange={(event) => onUpdateModuleTitle(event.target.value)}
               />
             ) : (
               <h3 className="text-lg font-bold text-gray-900 dark:text-white group-hover:text-[var(--engine-accent)] transition-colors">
-                Módulo {index + 1}: {module.title}
+                Módulo {index + 1}: {getModuleTitle(module.title)}
               </h3>
             )}
           </div>
@@ -115,6 +120,7 @@ export function SyllabusModuleCard({
           {isEditing ? (
             <div className="flex items-center gap-2">
               <button
+                aria-label="Guardar módulo"
                 onClick={() => void onSaveEdit()}
                 className="p-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-500 rounded-lg"
               >
@@ -133,6 +139,7 @@ export function SyllabusModuleCard({
                 </svg>
               </button>
               <button
+                aria-label="Cancelar edición"
                 onClick={onCancelEdit}
                 className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg"
               >
@@ -152,7 +159,10 @@ export function SyllabusModuleCard({
               </button>
             </div>
           ) : (
-            <div onClick={onToggle} className="cursor-pointer flex items-center gap-3">
+            <div
+              onClick={onToggle}
+              className="cursor-pointer flex items-center gap-3"
+            >
               <span className="text-xs font-medium bg-gray-100 dark:bg-[var(--engine-canvas)] px-2.5 py-1 rounded-md border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400">
                 {module.lessons.length} lecciones
               </span>
@@ -174,12 +184,24 @@ export function SyllabusModuleCard({
         </div>
       </div>
 
+      {isEditing && (
+        <label className="block px-6 pb-4 text-sm text-gray-600 dark:text-gray-300">
+          Objetivo general del módulo
+          <textarea
+            value={module.objective_general_ref}
+            onChange={(event) => onUpdateModuleObjective(event.target.value)}
+            placeholder="Objetivo u objetivos generales que cubre este módulo"
+            className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 focus:outline-none focus:border-[var(--engine-accent)] dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
+          />
+        </label>
+      )}
+
       {isExpanded && (
         <div className="border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[var(--engine-canvas)]/50 animate-in slide-in-from-top-1 duration-200">
           <div className="p-4 space-y-2">
             {module.lessons.map((lesson, lessonIndex) => (
               <div
-                key={`${lesson.title}-${lessonIndex}`}
+                key={lesson.id || lessonIndex}
                 className="p-4 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-colors group/item border border-transparent hover:border-gray-200 dark:hover:border-white/5"
               >
                 <div className="flex gap-4">
@@ -192,6 +214,7 @@ export function SyllabusModuleCard({
                       <div className="space-y-3 relative">
                         <div className="flex justify-between items-start gap-4">
                           <input
+                            aria-label={`Título de la lección ${index + 1}.${lessonIndex + 1}`}
                             className="w-full bg-white dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-base font-medium text-gray-900 dark:text-white focus:outline-none focus:border-[var(--engine-accent)] transition-all focus:bg-white dark:focus:bg-[var(--engine-surface-solid)] placeholder-gray-400 dark:placeholder-gray-600"
                             value={lesson.title}
                             onChange={(event) =>
@@ -226,6 +249,7 @@ export function SyllabusModuleCard({
                           )}
                         </div>
                         <textarea
+                          aria-label={`Objetivo de la lección ${index + 1}.${lessonIndex + 1}`}
                           className="w-full bg-white dark:bg-[var(--engine-canvas)] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-[var(--engine-accent)] min-h-[80px] transition-all focus:bg-white dark:focus:bg-[var(--engine-surface-solid)] resize-none placeholder-gray-400 dark:placeholder-gray-600"
                           value={lesson.objective_specific}
                           onChange={(event) =>
@@ -260,12 +284,17 @@ export function SyllabusModuleCard({
                             </span>
                             <div className="flex items-baseline gap-1">
                               <input
+                                aria-label={`Duración de la lección ${index + 1}.${lessonIndex + 1}`}
                                 type="number"
                                 min={5}
                                 max={180}
                                 step={5}
                                 className="bg-transparent border-none p-0 text-sm font-bold text-gray-900 dark:text-white w-12 focus:outline-none focus:ring-0 font-mono text-right appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                value={lesson.estimated_minutes}
+                                value={
+                                  Number.isFinite(lesson.estimated_minutes)
+                                    ? lesson.estimated_minutes
+                                    : ""
+                                }
                                 onChange={(event) =>
                                   onUpdateLesson(
                                     lessonIndex,

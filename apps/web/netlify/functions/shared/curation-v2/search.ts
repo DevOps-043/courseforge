@@ -22,6 +22,7 @@ export async function searchLessonCandidates(params: {
   artifactId?: string;
   organizationId?: string | null;
   supabase?: SupabaseClient;
+  deadlineMs?: number;
 }) {
   const {
     client,
@@ -38,12 +39,17 @@ export async function searchLessonCandidates(params: {
     Math.max(
       5,
       ...lessons.map(
-        (lesson) => (lesson.required_sources || 2) + 2 + round * 2,
+        (lesson) => (lesson.remaining_sources ?? lesson.required_sources ?? 2) + 2 + round * 2,
       ),
     ),
   );
   const isReasoningModel = model.toLowerCase().startsWith("gpt-5");
   const startedAt = Date.now();
+  const timeoutMs = Math.min(
+    PIPELINE_GENERATION_LIMITS.requestTimeoutMs,
+    params.deadlineMs === undefined ? Infinity : params.deadlineMs - startedAt,
+  );
+  if (timeoutMs <= 0) throw new Error("Curation search timeout: execution deadline reached.");
   let response;
   try {
     response = await client.responses.create({
@@ -63,6 +69,7 @@ export async function searchLessonCandidates(params: {
           customPrompt ? `Instrucciones adicionales: ${customPrompt}` : "",
           `Ronda autonoma ${round}. Cada leccion indica required_sources, video_target_seconds y excluded_urls. Encuentra suficientes fuentes distintas y complementarias para cubrir el objetivo completo de la leccion despues de la validacion. No devuelvas ninguna URL incluida en excluded_urls. Devuelve hasta ${maxCandidatesPerLesson} candidatos por leccion para compensar URLs que puedan fallar. Usa exclusivamente paginas web HTML publicas y accesibles: no devuelvas enlaces directos a PDF, archivos descargables, redes sociales, foros ni contenido con paywall. Prioriza documentacion oficial, universidades y publicaciones educativas abiertas.`,
           JSON.stringify(lessons),
+          "remaining_sources es el número de fuentes que aún faltan: las anteriores ya están conservadas. Si hay URLs excluidas, cambia las consultas y busca otros dominios o documentación complementaria sobre el objetivo; no repitas las mismas páginas con parámetros o fragmentos distintos.",
         ]
           .filter(Boolean)
           .join("\n\n"),
@@ -90,9 +97,9 @@ export async function searchLessonCandidates(params: {
       },
     },
     } as unknown as Parameters<typeof client.responses.create>[0], {
-      timeout: PIPELINE_GENERATION_LIMITS.requestTimeoutMs,
+      timeout: timeoutMs,
       maxRetries: 0,
-      signal: AbortSignal.timeout(PIPELINE_GENERATION_LIMITS.requestTimeoutMs),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     await recordAiFailure({

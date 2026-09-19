@@ -121,7 +121,6 @@ export function SourcesCurationGenerationContainer({
     closeModal,
     handleGenerate,
     handlePause,
-    handleRegenerateBlocked,
     handleResetStep,
     handleResume,
     handleStop,
@@ -211,6 +210,7 @@ export function SourcesCurationGenerationContainer({
       <CurationDashboardView
         curationApproved={curationApproved}
         curationBlocked={curationBlocked}
+        blockedReason={curation?.qa_decision?.notes}
         curationState={curation?.state}
         isGenerating={isGenerating}
         isLoadingModal={isLoadingModal}
@@ -231,7 +231,6 @@ export function SourcesCurationGenerationContainer({
           await dismissUpstreamDirtyAction("curation", artifactId);
         }}
         onModalClose={closeModal}
-        onRegenerate={handleRegenerateBlocked}
         onResetStep={handleResetStep}
         onResume={handleResume}
         pendingValidationCount={pendingValidationCount}

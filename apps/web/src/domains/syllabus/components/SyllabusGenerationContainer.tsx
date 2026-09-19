@@ -209,15 +209,16 @@ export function SyllabusGenerationContainer({
       return;
     }
 
+    // Keep the saved view intact on failure; the viewer retains the editable draft.
+    setError(null);
+    await syllabusService.updateModules(artifactId, modules);
+    setTemario(buildTemarioForReview({ ...temario, modules }, route, initialObjetivos));
+
     try {
-      setTemario({ ...temario, modules });
-      await syllabusService.updateModules(artifactId, modules);
       await markDownstreamDirtyAction(artifactId, 2, "Temario");
-    } catch (saveError) {
+    } catch {
       setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "No se pudieron guardar los módulos.",
+        "El temario se guardó, pero no se pudo avisar a las fases siguientes del cambio. Revisa su contenido antes de continuar.",
       );
     }
   };

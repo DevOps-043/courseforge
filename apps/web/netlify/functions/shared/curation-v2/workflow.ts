@@ -8,7 +8,7 @@ import {
 } from "../unified-curation-helpers";
 import { calculateLessonCoverage } from "./coverage";
 import { searchLessonCandidates } from "./search";
-import { normalizeSourceUrl, validateUrlSource } from "./validation";
+import { normalizeSourceUrl, SOURCE_VALIDATION_TIMEOUT_MS, validateUrlSource } from "./validation";
 import type {
   CurationCandidate,
   CurationLesson,
@@ -47,8 +47,8 @@ export async function validateAutomaticCandidates(params: {
   }> = [];
 
   for (const candidate of candidates) {
-    if (params.shouldContinue && !await params.shouldContinue()) break;
     if (selected.length >= limit) break;
+    if (params.shouldContinue && !await params.shouldContinue()) break;
     let candidateUrl: string;
     try {
       candidateUrl = normalizeSourceUrl(candidate.url);
@@ -61,8 +61,11 @@ export async function validateAutomaticCandidates(params: {
     });
     // Exclude every attempted URL in later autonomous rounds, including
     // candidates rejected by the technical validator.
-    existingNormalizedUrls.add(validation.normalizedUrl || candidateUrl);
-    if (!validation.isValid) continue;
+    const resolvedUrl = validation.normalizedUrl || candidateUrl;
+    const duplicateDestination = existingNormalizedUrls.has(resolvedUrl);
+    existingNormalizedUrls.add(candidateUrl);
+    existingNormalizedUrls.add(resolvedUrl);
+    if (!validation.isValid || duplicateDestination) continue;
     selected.push({ candidate, validation });
   }
   return selected;
@@ -209,17 +212,21 @@ export async function runCurationWorkflowV2(params: {
       let candidates: CurationCandidate[] = [];
       let lastSearchError: unknown;
       for (let attempt = 0; attempt < SEARCH_ATTEMPTS; attempt += 1) {
+        if (Date.now() >= deadline) break rounds;
+        if (!await checkpoint()) return inserted;
         try {
           candidates = await (params.search || searchLessonCandidates)({
             client,
             model,
             courseContext: context.fullCourseContext,
-            lessons: batch.map((lesson) => ({
-              ...lesson,
-              excluded_urls: [
-                ...(normalizedUrlsByLesson.get(lesson.lesson_id) || []),
-              ],
-            })),
+            lessons: batch.map((lesson) => {
+              const currentCoverage = coverage.find((item) => item.lessonId === lesson.lesson_id)!;
+              return {
+                ...lesson,
+                remaining_sources: Math.max(0, currentCoverage.targetCount - currentCoverage.validCount),
+                excluded_urls: [...(normalizedUrlsByLesson.get(lesson.lesson_id) || [])],
+              };
+            }),
             customPrompt,
             systemPrompt,
             reasoningEffort,
@@ -227,6 +234,7 @@ export async function runCurationWorkflowV2(params: {
             artifactId,
             organizationId: artifactResult.data.organization_id,
             supabase,
+            deadlineMs: deadline,
           });
           successfulSearchCalls += 1;
           lastSearchError = undefined;
@@ -238,7 +246,11 @@ export async function runCurationWorkflowV2(params: {
             `[Curation V2] Search attempt ${attempt + 1}/${SEARCH_ATTEMPTS} failed:`,
             error,
           );
-          if (attempt < SEARCH_ATTEMPTS - 1) await wait(2_000 * (attempt + 1));
+          if (attempt < SEARCH_ATTEMPTS - 1) {
+            const delay = 2_000 * (attempt + 1);
+            if (Date.now() + delay >= deadline) break rounds;
+            await wait(delay);
+          }
         }
       }
       if (lastSearchError) {
@@ -267,7 +279,10 @@ export async function runCurationWorkflowV2(params: {
           ),
           existingNormalizedUrls: lessonNormalizedUrls,
           limit: remainingSources,
-          validate: params.validate,
+          validate: (url, options) => (params.validate || validateUrlSource)(url, {
+            ...options,
+            timeoutMilliseconds: Math.max(1, Math.min(SOURCE_VALIDATION_TIMEOUT_MS, deadline - Date.now())),
+          }),
           shouldContinue: async () => Date.now() < deadline && await checkpoint(),
         });
         const rows: CurationRowInsert[] = selected.map(
@@ -319,7 +334,7 @@ export async function runCurationWorkflowV2(params: {
     }
   }
 
-  if (hadMissingCoverage && successfulSearchCalls === 0 && inserted === 0) {
+  if (hadMissingCoverage && successfulSearchCalls === 0 && inserted === 0 && Date.now() < deadline) {
     throw new Error("OpenAI search failed for every lesson batch.");
   }
 
@@ -337,13 +352,18 @@ export async function runCurationWorkflowV2(params: {
   const coverage = calculateLessonCoverage(lessons, finalAutomaticRows);
   const missing = coverage.filter((item) => !item.isCovered);
   const isComplete = missing.length === 0 && lessons.length > 0;
+  const stopReason = Date.now() >= deadline
+    ? "La búsqueda alcanzó el tiempo disponible para esta ejecución."
+    : stalledRounds >= MAX_STALLED_ROUNDS
+      ? "Las últimas búsquedas no encontraron nuevas fuentes que superaran la validación."
+      : "La búsqueda alcanzó el máximo de rondas de esta ejecución.";
   await checkpoint([], {
       state: isComplete ? "PHASE2_APPROVED" : "PHASE2_BLOCKED",
       qa_decision: {
         decision: isComplete ? "APPROVED" : "BLOCKED",
         notes: isComplete
           ? `Curaduria autonoma completada: ${coverage.reduce((total, item) => total + item.validCount, 0)} fuentes web validas para ${lessons.length} lecciones.`
-          : `La búsqueda alcanzó su límite de tiempo o intentos. Reanuda para completar las fuentes conservadas. Lecciones pendientes: ${missing.map((item) => `${item.lessonTitle} (${item.validCount}/${item.targetCount})`).join(", ")}`,
+          : `${stopReason} Se conservaron las fuentes válidas. Lecciones pendientes: ${missing.map((item) => `${item.lessonTitle} (${item.validCount}/${item.targetCount})`).join(", ")}`,
         reviewed_by: "gpt:auto",
         reviewed_at: new Date().toISOString(),
       },
