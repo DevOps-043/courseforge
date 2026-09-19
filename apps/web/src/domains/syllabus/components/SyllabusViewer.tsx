@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   SyllabusGenerationMetadata,
   SyllabusLesson,
@@ -8,6 +8,8 @@ import {
 import { SyllabusModuleCard } from "./SyllabusModuleCard";
 import { SyllabusValidationPanel } from "./SyllabusValidationPanel";
 import { estimateLessonDurationMinutes } from "../lib/lesson-duration-estimator";
+import { getModuleTitle } from "../lib/module-title";
+import { syllabusModulesSchema } from "../syllabus-management-request.schema";
 
 interface SyllabusViewerProps {
   modules: SyllabusModule[];
@@ -20,7 +22,33 @@ interface SyllabusViewerProps {
 type ViewerTab = "SYLLABUS" | "VALIDATION";
 
 function cloneModules(modules: SyllabusModule[]): SyllabusModule[] {
-  return JSON.parse(JSON.stringify(modules)) as SyllabusModule[];
+  return modules.map((module) => ({
+    ...module,
+    lessons: module.lessons.map((lesson) => ({ ...lesson })),
+  }));
+}
+
+function createDraft(modules: SyllabusModule[]): SyllabusModule[] {
+  return modules.map((module) => ({
+    ...module,
+    title: getModuleTitle(module.title),
+    lessons: module.lessons.map((lesson) => ({
+      ...lesson,
+      id: lesson.id || crypto.randomUUID(),
+    })),
+  }));
+}
+
+function createLesson(): SyllabusLesson {
+  return {
+    id: crypto.randomUUID(),
+    title: "",
+    objective_specific: "",
+    estimated_minutes: estimateLessonDurationMinutes({
+      title: "",
+      objective_specific: "",
+    }),
+  };
 }
 
 export function SyllabusViewer({
@@ -34,28 +62,71 @@ export function SyllabusViewer({
   const [expandedModules, setExpandedModules] = useState<number[]>([0]);
   const [editingModuleIdx, setEditingModuleIdx] = useState<number | null>(null);
   const [editedModules, setEditedModules] = useState<SyllabusModule[]>([]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const saveInFlight = useRef(false);
+  const visibleModules = editingModuleIdx === null ? modules : editedModules;
 
-  const totalLessons = modules.reduce(
+  const totalLessons = visibleModules.reduce(
     (lessonCount, module) => lessonCount + module.lessons.length,
     0,
   );
 
   const handleStartEdit = (moduleIndex: number) => {
+    setSaveError(null);
     setEditingModuleIdx(moduleIndex);
-    setEditedModules(cloneModules(modules));
+    setEditedModules(createDraft(modules));
   };
 
   const handleCancelEdit = () => {
+    setSaveError(null);
     setEditingModuleIdx(null);
     setEditedModules([]);
   };
 
-  const handleSaveEdit = async () => {
-    if (onSave && editedModules.length > 0) {
-      await onSave(editedModules);
+  const saveModules = async (nextModules: SyllabusModule[]) => {
+    if (!onSave || saveInFlight.current) return false;
+    const parsed = syllabusModulesSchema.safeParse(
+      nextModules.map((module) => ({
+        ...module,
+        title: getModuleTitle(module.title),
+      })),
+    );
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const moduleIndex = issue.path[0];
+      const lessonIndex = issue.path[2];
+      const location =
+        typeof moduleIndex === "number"
+          ? `Módulo ${moduleIndex + 1}${typeof lessonIndex === "number" ? `, lección ${lessonIndex + 1}` : ""}: `
+          : "";
+      setSaveError(`${location}${issue.message}`);
+      return false;
     }
 
-    setEditingModuleIdx(null);
+    saveInFlight.current = true;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await onSave(parsed.data);
+      return true;
+    } catch (error) {
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "No se pudieron guardar los módulos.",
+      );
+      return false;
+    } finally {
+      saveInFlight.current = false;
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (await saveModules(editedModules)) {
+      handleCancelEdit();
+    }
   };
 
   const updateEditedModules = (updater: (draft: SyllabusModule[]) => void) => {
@@ -89,42 +160,32 @@ export function SyllabusViewer({
     }
 
     const newModules = modules.filter((_, index) => index !== moduleIndex);
-    if (onSave) {
-      await onSave(newModules);
+    if (await saveModules(newModules)) {
+      setExpandedModules((current) =>
+        current
+          .filter((index) => index !== moduleIndex)
+          .map((index) => (index > moduleIndex ? index - 1 : index)),
+      );
     }
   };
 
-  const handleAddModule = async () => {
+  const handleAddModule = () => {
     const newModule: SyllabusModule = {
+      id: crypto.randomUUID(),
       objective_general_ref: "",
-      title: "Nuevo Módulo",
-      lessons: [
-        {
-          title: "Nueva Lección",
-          objective_specific: "",
-          estimated_minutes: estimateLessonDurationMinutes({
-            title: "Nueva Lección",
-            objective_specific: "",
-          }),
-        },
-      ],
+      title: "",
+      lessons: [createLesson()],
     };
 
-    if (onSave) {
-      await onSave([...modules, newModule]);
-    }
+    setSaveError(null);
+    setEditedModules([...createDraft(modules), newModule]);
+    setEditingModuleIdx(modules.length);
   };
 
   const handleAddLesson = (moduleIndex: number) => {
+    const lesson = createLesson();
     updateEditedModules((draft) => {
-      draft[moduleIndex].lessons.push({
-        title: "Nueva Lección",
-        objective_specific: "",
-        estimated_minutes: estimateLessonDurationMinutes({
-          title: "Nueva Lección",
-          objective_specific: "",
-        }),
-      });
+      draft[moduleIndex].lessons.push(lesson);
     });
   };
 
@@ -219,7 +280,7 @@ export function SyllabusViewer({
                   />
                 </svg>
                 <span className="font-semibold text-gray-900 dark:text-white">
-                  {modules.length} módulos
+                  {visibleModules.length} módulos
                 </span>
               </div>
               <div className="w-px h-4 bg-gray-200 dark:bg-white/10" />
@@ -244,26 +305,42 @@ export function SyllabusViewer({
             </div>
             <div className="flex items-center gap-3">
               <span className="bg-[var(--engine-accent)]/10 text-[var(--engine-accent)] px-2 py-1 rounded text-xs font-bold border border-[var(--engine-accent)]/20">
-                Validación OK
+                {editingModuleIdx !== null
+                  ? "Cambios sin guardar"
+                  : validation?.automatic_pass
+                    ? "Validación OK"
+                    : "Requiere revisión"}
               </span>
             </div>
           </div>
 
-          <div className="space-y-4">
-            {modules.map((module, moduleIndex) => {
+          {saveError && (
+            <p
+              role="alert"
+              className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+            >
+              {saveError}
+            </p>
+          )}
+          {isSaving && <p role="status">Guardando cambios…</p>}
+          <fieldset
+            disabled={isSaving}
+            aria-busy={isSaving}
+            className="min-w-0 space-y-4"
+          >
+            {visibleModules.map((module, moduleIndex) => {
               const isEditing = editingModuleIdx === moduleIndex;
-              const displayModule =
-                isEditing && editedModules.length > 0
-                  ? editedModules[moduleIndex]
-                  : module;
-              const isExpanded = expandedModules.includes(moduleIndex) || isEditing;
+              const isExpanded =
+                expandedModules.includes(moduleIndex) || isEditing;
 
               return (
                 <SyllabusModuleCard
-                  key={`${module.title}-${moduleIndex}`}
-                  module={displayModule}
+                  key={module.id || moduleIndex}
+                  module={module}
                   index={moduleIndex}
-                  isEditable={isEditable}
+                  isEditable={
+                    isEditable && !!onSave && editingModuleIdx === null
+                  }
                   isExpanded={isExpanded}
                   isEditing={isEditing}
                   onToggle={() => toggleModule(moduleIndex)}
@@ -273,6 +350,11 @@ export function SyllabusViewer({
                   onCancelEdit={handleCancelEdit}
                   onUpdateModuleTitle={(title) =>
                     updateModuleTitle(moduleIndex, title)
+                  }
+                  onUpdateModuleObjective={(objective) =>
+                    updateEditedModules((draft) => {
+                      draft[moduleIndex].objective_general_ref = objective;
+                    })
                   }
                   onUpdateLesson={(lessonIndex, field, value) =>
                     updateLesson(moduleIndex, lessonIndex, field, value)
@@ -285,10 +367,10 @@ export function SyllabusViewer({
               );
             })}
 
-            {isEditable && editingModuleIdx === null && (
+            {isEditable && onSave && editingModuleIdx === null && (
               <div className="flex justify-center mt-6">
                 <button
-                  onClick={() => void handleAddModule()}
+                  onClick={handleAddModule}
                   className="flex items-center gap-2 px-5 py-2.5 bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 border border-dashed border-gray-300 dark:border-white/20 rounded-xl text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors text-sm font-medium shadow-sm hover:shadow"
                 >
                   <svg
@@ -308,7 +390,7 @@ export function SyllabusViewer({
                 </button>
               </div>
             )}
-          </div>
+          </fieldset>
         </>
       )}
     </div>
