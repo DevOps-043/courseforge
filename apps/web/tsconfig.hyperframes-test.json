@@ -13,6 +13,7 @@
   "include": [
     "src/domains/production/hyperframes/**/*.ts",
     "src/domains/production/composition-editor/**/*.ts",
+    "src/domains/production/fonts/**/*.ts",
     "src/app/api/production/hyperframes/**/*.ts"
   ],
   "exclude": [

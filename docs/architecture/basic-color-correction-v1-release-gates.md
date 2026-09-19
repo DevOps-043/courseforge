@@ -18,9 +18,11 @@ Courseforge valida antes de inyectar el IIFE:
 - SHA-256 declarado y SHA-256 real;
 - presupuesto máximo de 160 KiB.
 
-Un artefacto presente pero incompatible falla cerrado. La ausencia del runtime
-produce un error operativo que solicita actualizar `@hyperframes/core`. El
-puente al repositorio hermano existe sólo para desarrollo local.
+Un artefacto presente pero incompatible falla cerrado. Si el runtime no está
+publicado, el preview continúa con el medio original, informa el estado
+`unavailable` y deshabilita los controles de color para no guardar cambios que
+no puedan revisarse visualmente. El puente al repositorio hermano existe sólo
+para desarrollo local.
 
 ### Gate externo pendiente
 

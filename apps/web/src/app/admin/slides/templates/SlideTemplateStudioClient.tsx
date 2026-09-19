@@ -56,7 +56,7 @@ interface TemplateModifiers {
   cornerRadius: number;
   density: "compact" | "comfortable" | "spacious";
   fontPairing: "system_sans" | "editorial_serif" | "technical_mono";
-  font?: { family: string; source: "google" | "uploaded"; cssUrl?: string };
+  font?: { family: string; source: "google" | "uploaded"; cssUrl?: string; fontAssetId?: string };
   showBrandMark: boolean;
 }
 
@@ -65,6 +65,7 @@ interface OrganizationSlideFont {
   family: string;
   source: "google" | "uploaded";
   cssUrl?: string;
+  renderEligible?: boolean;
 }
 
 function organizationFontIdentity(font: Pick<OrganizationSlideFont, "family" | "source">) {
@@ -483,13 +484,15 @@ export function SlideTemplateStudioClient() {
   }, [loadedConversationId, searchParams]);
 
   useEffect(() => {
-    fetchJson("/api/admin/slides/fonts", { cache: "no-store" })
+    fetchJson("/api/admin/fonts", { cache: "no-store" })
       .then((payload) => setOrganizationFonts(mergeOrganizationFonts(payload.fonts || [])))
       .catch(() => setOrganizationFonts([]));
   }, []);
 
   useEffect(() => {
-    const cssUrl = modifiers.font?.cssUrl;
+    const cssUrl = modifiers.font?.source === "uploaded" && modifiers.font.fontAssetId
+      ? organizationFonts.find((font) => font.id === modifiers.font?.fontAssetId)?.cssUrl
+      : modifiers.font?.cssUrl;
     if (!cssUrl) return;
     const selector = modifiers.font?.source === "google" ? "link" : "style";
     const existing = document.querySelector(`${selector}[data-slide-font-url="${CSS.escape(cssUrl)}"]`);
@@ -506,18 +509,25 @@ export function SlideTemplateStudioClient() {
       style.textContent = `@font-face { font-family: '${modifiers.font.family}'; src: url('${cssUrl}'); font-display: swap; }`;
       document.head.appendChild(style);
     }
-  }, [modifiers.font]);
+  }, [modifiers.font, organizationFonts]);
 
   async function selectOrganizationFont(font: OrganizationSlideFont | undefined) {
     setDirtyOverrides((current) => ({ ...current, modifiers: true }));
-    setModifiers((current) => ({ ...current, font: font ? { family: font.family, source: font.source, cssUrl: font.cssUrl } : undefined }));
+    setModifiers((current) => ({
+      ...current,
+      font: font
+        ? font.source === "uploaded"
+          ? { family: font.family, fontAssetId: font.id, source: font.source }
+          : { cssUrl: font.cssUrl, family: font.family, source: font.source }
+        : undefined,
+    }));
   }
 
   async function addGoogleFont(family: string) {
     const cssUrl = googleFontCssUrl(family);
     let font = organizationFonts.find((item) => item.source === "google" && item.family === family);
     if (!font) {
-      const payload = await fetchJson("/api/admin/slides/fonts", {
+      const payload = await fetchJson("/api/admin/fonts", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ family, source: "google", cssUrl }),
       });
       font = payload.font;
@@ -533,7 +543,7 @@ export function SlideTemplateStudioClient() {
     try {
       const family = file.name.replace(/\.(woff2?|ttf|otf)$/i, "").replace(/[-_]+/g, " ").trim();
       const form = new FormData(); form.set("family", family); form.set("file", file);
-      const payload = await fetchJson("/api/admin/slides/fonts", { method: "POST", body: form });
+      const payload = await fetchJson("/api/admin/fonts", { method: "POST", body: form });
       setOrganizationFonts((current) => mergeOrganizationFonts([payload.font, ...current]));
       await selectOrganizationFont(payload.font);
       toast.success(payload.created === false ? "La fuente ya estaba disponible y se seleccionó." : "Fuente de empresa agregada.");

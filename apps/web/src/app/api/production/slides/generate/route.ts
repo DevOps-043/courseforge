@@ -46,6 +46,7 @@ import { generateSlideVisualAssets } from "@/domains/production/slides/visuals/s
 import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+import { ORGANIZATION_FONT_TABLE } from "@/domains/production/fonts/organization-font.types";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -199,6 +200,7 @@ async function resolveSlideTemplateDesignSystem(params: {
     font: asRecord(modifiers?.font) && typeof asRecord(modifiers?.font)?.family === "string"
       ? {
           family: asRecord(modifiers?.font)?.family as string,
+          fontAssetId: typeof asRecord(modifiers?.font)?.fontAssetId === "string" ? asRecord(modifiers?.font)?.fontAssetId as string : undefined,
           source: asRecord(modifiers?.font)?.source === "uploaded" ? "uploaded" : "google",
           cssUrl: typeof asRecord(modifiers?.font)?.cssUrl === "string" ? asRecord(modifiers?.font)?.cssUrl as string : undefined,
         }
@@ -213,6 +215,34 @@ async function resolveSlideTemplateDesignSystem(params: {
       ? blueprint.visualStyleGuide
       : undefined,
   };
+}
+
+async function resolveDeckFontForRender(params: {
+  admin: NonNullable<Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>>["admin"];
+  deckSpec: CourseDeckSpec;
+  organizationId: string;
+}) {
+  const font = params.deckSpec.designSystem.font;
+  if (font?.source !== "uploaded" || !font.fontAssetId) return params.deckSpec;
+  const { data, error } = await params.admin.from(ORGANIZATION_FONT_TABLE)
+    .select("id, family, status, storage_bucket, storage_path")
+    .eq("id", font.fontAssetId)
+    .eq("organization_id", params.organizationId)
+    .eq("source", "uploaded")
+    .maybeSingle();
+  if (error) throw error;
+    if (!data || !["READY", "LEGACY"].includes(data.status) || !data.storage_bucket || !data.storage_path || data.family !== font.family) {
+      throw new Error(`La fuente ${font.family} no está lista para generar diapositivas.`);
+    }
+  const { data: signed, error: signedError } = await params.admin.storage.from(data.storage_bucket).createSignedUrl(data.storage_path, 30 * 60);
+  if (signedError || !signed?.signedUrl) throw new Error(`No se pudo preparar la fuente ${font.family}.`);
+  return courseDeckSpecSchema.parse({
+    ...params.deckSpec,
+    designSystem: {
+      ...params.deckSpec.designSystem,
+      font: { ...font, cssUrl: signed.signedUrl },
+    },
+  });
 }
 
 async function uploadTextAsset(params: {
@@ -488,7 +518,7 @@ export async function runSlideDeckGeneration(params: {
       organizationId: context.organizationId || "",
       slideTemplateRunId,
     });
-    const preparedDeckSpec = input.customSlides?.length ||
+    const preparedDeckSpecCandidate = input.customSlides?.length ||
       !canReusePreparedDeckSpec({
         assets: currentAssets,
         componentId,
@@ -498,6 +528,13 @@ export async function runSlideDeckGeneration(params: {
       })
       ? null
       : getPreparedDeckSpec(currentAssets, componentId);
+    const preparedDeckSpec = preparedDeckSpecCandidate
+      ? await resolveDeckFontForRender({
+          admin: authorizedComponent.admin,
+          deckSpec: preparedDeckSpecCandidate,
+          organizationId: context.organizationId || "",
+        })
+      : null;
     const deckGeneration = preparedDeckSpec
       ? (() => {
           const html = renderCourseDeckHtml(preparedDeckSpec);
@@ -571,7 +608,7 @@ export async function runSlideDeckGeneration(params: {
         `El deck produjo ${generatedDeckSpec.slides.length} diapositivas; el contrato requiere al menos ${context.videoDurationContract.minimumSlideCount}.`,
       );
     }
-    const deckSpecWithTemplate = selectedSlideTemplate
+    const deckSpecWithTemplateCandidate = selectedSlideTemplate
       ? courseDeckSpecSchema.parse({
           ...generatedDeckSpec,
           appearance: input.appearance,
@@ -593,6 +630,11 @@ export async function runSlideDeckGeneration(params: {
           ...generatedDeckSpec,
           appearance: input.appearance,
         });
+    const deckSpecWithTemplate = await resolveDeckFontForRender({
+      admin: authorizedComponent.admin,
+      deckSpec: deckSpecWithTemplateCandidate,
+      organizationId: context.organizationId || "",
+    });
     const structuralHtml = renderCourseDeckHtml(deckSpecWithTemplate);
     failedQaReport = validateCourseDeckQuality({
       deckSpec: deckSpecWithTemplate,

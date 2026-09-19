@@ -380,7 +380,7 @@ test("Lia does not log prompts, model responses, actions or credential state", (
 test("critical public APIs preserve the shared response and request-boundary contract", () => {
   const webRoot = resolve(process.cwd());
   const jsonRoutes = [
-    join(webRoot, "src", "app", "api", "admin", "slides", "fonts", "route.ts"),
+    join(webRoot, "src", "app", "api", "admin", "fonts", "route.ts"),
     join(webRoot, "src", "app", "api", "admin", "remotion", "bundle-agent", "conversations", "route.ts"),
     join(webRoot, "src", "app", "api", "admin", "remotion", "bundle-agent", "conversations", "[conversationId]", "route.ts"),
     join(webRoot, "src", "app", "api", "admin", "remotion", "bundle-agent", "conversations", "[conversationId]", "generate", "route.ts"),
@@ -497,6 +497,15 @@ test("critical public APIs preserve the shared response and request-boundary con
     assert.match(source, /apiErrorResponse|bundleAgentRouteErrorResponse/);
     assert.doesNotMatch(source, /NextResponse\.json\(\s*\{\s*(?:success:\s*false,\s*)?error:/);
   }
+
+  const legacySlideFontsRoute = readFileSync(
+    join(webRoot, "src", "app", "api", "admin", "slides", "fonts", "route.ts"),
+    "utf8",
+  );
+  assert.match(
+    legacySlideFontsRoute,
+    /export\s*\{\s*GET\s*,\s*POST\s*,\s*runtime\s*\}\s*from\s*["']\.\.\/\.\.\/fonts\/route["']/,
+  );
 
   const binaryDownloadRoutes = auditedRoutes.filter((path) => path.includes("bundle-agent\\base-bundle") || path.endsWith("download\\route.ts"));
   for (const path of binaryDownloadRoutes) {

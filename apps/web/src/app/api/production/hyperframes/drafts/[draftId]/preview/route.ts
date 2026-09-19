@@ -4,7 +4,12 @@ import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { getCurrentCompositionDocument, CompositionDocumentError } from "@/domains/production/composition-editor/composition-document.service";
 import { resolveCompositionPreviewAssetUrls } from "@/domains/production/composition-editor/composition-preview-assets.service";
-import { compileCompositionPreview, CompositionPreviewCompilerError } from "@/domains/production/composition-editor/composition-preview-compiler.service";
+import { CompositionFontAssetError, resolveCompositionPreviewFonts } from "@/domains/production/composition-editor/composition-font-assets.service";
+import {
+  compileCompositionPreview,
+  CompositionPreviewCompilerError,
+  type CompositionPreviewCompilerDiagnostics,
+} from "@/domains/production/composition-editor/composition-preview-compiler.service";
 import {
   createPreviewCorrelationId,
   elapsedMilliseconds,
@@ -46,12 +51,20 @@ export async function GET(request: Request, context: RouteContext) {
       organizationId: authorization.organizationId,
       supabase: authorization.admin,
     });
+    const fontAssets = await resolveCompositionPreviewFonts({
+      document: current.document,
+      organizationId: authorization.organizationId,
+      supabase: authorization.admin,
+    });
     const assetsMs = elapsedMilliseconds(assetsStartedAt);
     const compileStartedAt = performance.now();
+    const compilerDiagnostics: { current: CompositionPreviewCompilerDiagnostics | null } = { current: null };
     const previewHtml = await compileCompositionPreview({
       assetUrls,
       document: current.document,
       documentHash: current.documentHash,
+      fontAssets,
+      onDiagnostics: (diagnostics) => { compilerDiagnostics.current = diagnostics; },
     });
     const compileMs = elapsedMilliseconds(compileStartedAt);
     const timings = {
@@ -61,9 +74,15 @@ export async function GET(request: Request, context: RouteContext) {
       documentMs,
       totalMs: elapsedMilliseconds(requestStartedAt),
     };
+    if (compilerDiagnostics.current?.colorGradingRuntime === "UNAVAILABLE") {
+      logger.warn("production.hyperframes.draft.preview_color_runtime_unavailable", {
+        event: "composition_preview_dependency_degraded",
+      });
+    }
     logger.info("production.hyperframes.draft.preview_compiled", {
       assetDiagnostics,
       clipCount: current.document.clips.length,
+      compilerDiagnostics: compilerDiagnostics.current,
       correlationId,
       event: "composition_preview_compiled",
       timings,
@@ -82,9 +101,18 @@ export async function GET(request: Request, context: RouteContext) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de borrador inválido.", requestId, status: 400 });
-    if (error instanceof CompositionDocumentError || error instanceof CompositionPreviewCompilerError) {
-      const status = error instanceof CompositionDocumentError ? error.status : 400;
-      return apiErrorResponse({ code: status === 404 ? API_ERROR_CODE.resourceNotFound : status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest, message: error.message, requestId, status });
+    if (error instanceof CompositionDocumentError || error instanceof CompositionPreviewCompilerError || error instanceof CompositionFontAssetError) {
+      const status = error.status;
+      if (status >= 500) logger.error("production.hyperframes.draft.preview_dependency_failed", error);
+      const code = status >= 500
+        ? API_ERROR_CODE.internalError
+        : status === 404
+          ? API_ERROR_CODE.resourceNotFound
+          : status === 409
+            ? API_ERROR_CODE.conflict
+            : API_ERROR_CODE.invalidRequest;
+      const retryable = error instanceof CompositionPreviewCompilerError ? error.retryable : false;
+      return apiErrorResponse({ code, message: error.message, requestId, retryable, status });
     }
     logger.error("production.hyperframes.draft.preview_failed", error, { durationMs: Math.round(elapsedMilliseconds(requestStartedAt)) });
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar el preview de la composición.", requestId, retryable: true, status: 500 });

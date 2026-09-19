@@ -20,6 +20,10 @@ import { CompositionPresetPanel } from "./CompositionPresetPanel";
 import { buildCompositionAutoOrganizePatch } from "@/domains/production/composition-editor/composition-auto-organize.service";
 import { buildCompositionDurationRecalculationPatch } from "@/domains/production/composition-editor/composition-duration-recalculation.service";
 import { resolveCompositionAssetInsertionTiming } from "@/domains/production/composition-editor/composition-asset-placement.service";
+import {
+  createCompositionNativeOverlay,
+  type NativeOverlayKind,
+} from "@/domains/production/composition-editor/composition-native-overlay.factory";
 import { reconcileProductionIntroDocument } from "@/domains/production/composition-editor/composition-production-intro.service";
 import { deriveCompositionScenes } from "@/domains/production/composition-editor/composition-scene.service";
 import {
@@ -67,6 +71,12 @@ import {
 } from "./CompositionStudioLibrary";
 import { CompositionInspector } from "./CompositionInspector";
 import {
+  CompositionInspectorTabs,
+  type CompositionInspectorTab,
+} from "./CompositionInspectorTabs";
+import { CompositionSelectionPanel } from "./CompositionSelectionPanel";
+import { TransitionControls } from "./TransitionControls";
+import {
   CompositionDeliveryPanel,
   type ActiveCompositionAssembly,
   type CompositionSnapshotEntry,
@@ -82,6 +92,7 @@ import {
   type AssemblyBrandingAvailability,
 } from "./CompositionTimelineWorkspace";
 import { useCompositionStudioControls } from "./useCompositionStudioControls";
+import { useCompositionReferenceComparison } from "./useCompositionReferenceComparison";
 import { useCompositionPresetController } from "./useCompositionPresetController";
 import { useCompositionAgentProposalController } from "./useCompositionAgentProposalController";
 import type { CompositionDocumentPayload, CompositionStudioAsset, CompositionStudioLesson } from "./composition-studio.types";
@@ -190,6 +201,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     trimToolEnabled,
     visualCropEnabled,
   } = useCompositionStudioControls();
+  const referenceComparison = useCompositionReferenceComparison();
   const payloadRef = useRef<DocumentPayload | null>(null);
   const saveInFlightRef = useRef(false);
   const saveQueueRef = useRef<CompositionSaveQueue<() => Promise<boolean>> | null>(null);
@@ -346,11 +358,15 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   }
 
   const [selectedAnimationId, setSelectedAnimationId] = useState<string | null>(null);
+  const [selectedTimelineClipIds, setSelectedTimelineClipIds] = useState<Set<string>>(() => new Set());
+  const [selectedTimelineGroupId, setSelectedTimelineGroupId] = useState<string | null>(null);
+  const [editingTimelineGroupId, setEditingTimelineGroupId] = useState<string | null>(null);
+  const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(null);
   const [applyingPreassembly, setApplyingPreassembly] = useState(false);
   const animationPlaybackEndRef = useRef<number | null>(null);
   const previewReadyRef = useRef(false);
   const [manualInspectorOpen, setManualInspectorOpen] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState<"assistant" | "properties">("properties");
+  const [inspectorTab, setInspectorTab] = useState<CompositionInspectorTab>("properties");
   const [removalRangeStart, setRemovalRangeStart] = useState<{ clipId: string; seconds: number } | null>(null);
   const [history, setHistory] = useState<CompositionDocumentHistoryEntry[] | null>(null);
   const [brandingAvailability, setBrandingAvailability] = useState<AssemblyBrandingAvailability | null>(null);
@@ -388,6 +404,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       setPlaybackError(null);
       setSelectedHfId(null);
       setSelectedAnimationId(null);
+      setSelectedTimelineClipIds(new Set());
+      setSelectedTimelineGroupId(null);
+      setEditingTimelineGroupId(null);
+      setSelectedTransitionId(null);
       setManualInspectorOpen(false);
       setRemovalRangeStart(null);
       setHistory(null);
@@ -612,6 +632,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         setSelectedHfId(message.hfId);
         setSelectedAnimationId(null);
         setManualInspectorOpen(Boolean(message.hfId));
+        const clip = payload?.document.clips.find((candidate) => candidate.hfId === message.hfId);
+        setSelectedTimelineClipIds(clip ? new Set([clip.id]) : new Set());
+        setSelectedTimelineGroupId(null);
         if (message.hfId) setInspectorTab("properties");
       }
       if (message.type === "courseforge-composition-layout-commit") {
@@ -663,7 +686,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   }, [payload?.documentHash]);
   const estimatedClipCount = payload?.document.clips.filter((clip) => clip.timingSource === "ESTIMATED").length || 0;
   const selectedClip = payload?.document.clips.find((clip) => clip.hfId === selectedHfId) ?? null;
-  const inspectorOpen = manualInspectorOpen || Boolean(selectedClip);
+  const activeSelectedTransitionId = payload?.document.transitions?.items.some((transition) => transition.id === selectedTransitionId)
+    ? selectedTransitionId
+    : null;
+  const inspectorOpen = manualInspectorOpen || Boolean(selectedClip) || selectedTimelineClipIds.size > 0 || Boolean(activeSelectedTransitionId);
   const previewStatusLabel = presetPreview
     ? "Preview de preset"
     : agentProposal
@@ -713,9 +739,14 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     postPreviewMessage({ type: "courseforge-composition-pause" });
     setPlaying(false);
   };
-  const selectClip = (hfId: string) => {
+  const selectClip = (hfId: string, preserveTimelineSelection = false) => {
     const nextClip = payloadRef.current?.document.clips.find((clip) => clip.hfId === hfId);
     if (removalRangeStart && nextClip?.id !== removalRangeStart.clipId) setRemovalRangeStart(null);
+    if (!preserveTimelineSelection) {
+      setSelectedTimelineClipIds(nextClip ? new Set([nextClip.id]) : new Set());
+      setSelectedTimelineGroupId(null);
+      setEditingTimelineGroupId(null);
+    }
     setSelectedHfId(hfId);
     setSelectedAnimationId(null);
     setManualInspectorOpen(true);
@@ -723,7 +754,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     postPreviewMessage({ type: "courseforge-composition-select", hfId });
   };
   const selectAnimation = (animationId: string, clipHfId: string) => {
-    selectClip(clipHfId);
+    selectClip(clipHfId, true);
     setSelectedAnimationId(animationId);
     const document = payloadRef.current?.document;
     const animation = document?.motion.animations.find((item) => item.id === animationId);
@@ -744,8 +775,63 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const clearSelection = () => {
     setSelectedHfId(null);
     setSelectedAnimationId(null);
+    setSelectedTimelineClipIds(new Set());
+    setSelectedTimelineGroupId(null);
+    setEditingTimelineGroupId(null);
+    setSelectedTransitionId(null);
     setManualInspectorOpen(false);
     postPreviewMessage({ type: "courseforge-composition-select", hfId: null });
+  };
+  const inspectTimelineSelection = () => {
+    setManualInspectorOpen(true);
+    setInspectorTab("selection");
+  };
+  const selectTransition = (transitionId: string | null) => {
+    setSelectedTransitionId(transitionId);
+    if (!transitionId) return;
+    setManualInspectorOpen(true);
+    setInspectorTab("transitions");
+  };
+  const createTimelineGroup = () => {
+    const currentDocument = payloadRef.current?.document;
+    if (!currentDocument) return;
+    const clipIds = [...selectedTimelineClipIds];
+    const groupedClipIds = new Set((currentDocument.groups || []).flatMap((group) => group.clipIds));
+    if (clipIds.length < 2 || clipIds.some((clipId) => groupedClipIds.has(clipId))) return;
+    void savePatch([{ clipIds, groupId: `group-${crypto.randomUUID()}`, type: "group.create" }], `Agrupó ${clipIds.length} clips del timeline.`);
+  };
+  const enterTimelineGroup = () => {
+    const currentDocument = payloadRef.current?.document;
+    const group = currentDocument?.groups?.find((candidate) => candidate.id === selectedTimelineGroupId);
+    if (!currentDocument || !group) return;
+    const firstClip = currentDocument.clips.find((clip) => group.clipIds.includes(clip.id));
+    setEditingTimelineGroupId(group.id);
+    setSelectedTimelineGroupId(null);
+    if (!firstClip) return;
+    setSelectedTimelineClipIds(new Set([firstClip.id]));
+    selectClip(firstClip.hfId, true);
+  };
+  const exitTimelineGroup = () => {
+    const currentDocument = payloadRef.current?.document;
+    const group = currentDocument?.groups?.find((candidate) => candidate.id === editingTimelineGroupId);
+    if (!currentDocument || !group) return;
+    const firstClip = currentDocument.clips.find((clip) => group.clipIds.includes(clip.id));
+    setEditingTimelineGroupId(null);
+    setSelectedTimelineGroupId(group.id);
+    setSelectedTimelineClipIds(new Set(group.clipIds));
+    if (firstClip) selectClip(firstClip.hfId, true);
+    inspectTimelineSelection();
+  };
+  const ungroupTimelineSelection = () => {
+    const currentDocument = payloadRef.current?.document;
+    const group = currentDocument?.groups?.find((candidate) => candidate.id === selectedTimelineGroupId);
+    if (!currentDocument || !group) return;
+    const firstClip = currentDocument.clips.find((clip) => group.clipIds.includes(clip.id));
+    void savePatch([{ groupId: group.id, type: "group.ungroup" }], "Desagrupó los clips seleccionados.");
+    setSelectedTimelineGroupId(null);
+    setEditingTimelineGroupId(null);
+    setSelectedTimelineClipIds(firstClip ? new Set([firstClip.id]) : new Set());
+    if (firstClip) selectClip(firstClip.hfId, true);
   };
   const pausePreviewForMutation = () => {
     previewReadyRef.current = false;
@@ -1058,6 +1144,31 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       source: "course",
     });
     window.location.assign(`${tenantPrefix}/admin/heygen?${query.toString()}`);
+  }
+
+  async function addNativeOverlay(kind: NativeOverlayKind) {
+    const currentPayload = payloadRef.current;
+    if (!currentPayload) return;
+    try {
+      const prefix = kind === "CAPTION" ? "caption" : "text";
+      const { clip, track } = createCompositionNativeOverlay({
+        document: currentPayload.document,
+        id: `${prefix}-${crypto.randomUUID()}`,
+        kind,
+        playheadSeconds: playheadSecondsRef.current,
+      });
+      const saved = await savePatch([{
+        clip,
+        clipId: clip.id,
+        ...(track ? { track } : {}),
+        type: "clip.add",
+      }], kind === "CAPTION"
+        ? "Añadió una capa de captions transparentes."
+        : "Añadió una capa de texto nativo.");
+      if (saved) selectClip(clip.hfId);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo crear la capa de texto.");
+    }
   }
 
   async function addAssetToTimeline(asset: CompositionStudioAsset) {
@@ -2083,11 +2194,12 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         } as CSSProperties}
         className={`${styles.editorGrid} ${inspectorOpen ? styles.editorGridWithInspector : ""}`}
       >
-        <CompositionStudioLibrary assets={assets} delivery={deliveryMenu} introAssetId={payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO" ? [clip.source.productionAssetId] : [])[0] || null} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onAddSoundEffect={addSoundEffectToTimeline} onClearIntro={clearProductionIntro} onSelectLesson={onSelectLesson} onSelectAsset={selectClip} onSetIntro={setProductionIntro} selectedLessonId={selectedLessonId} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
+        <CompositionStudioLibrary assets={assets} delivery={deliveryMenu} introAssetId={payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO" ? [clip.source.productionAssetId] : [])[0] || null} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onAddCaptionLayer={() => void addNativeOverlay("CAPTION")} onAddSoundEffect={addSoundEffectToTimeline} onAddTextLayer={() => void addNativeOverlay("TEXT")} onClearIntro={clearProductionIntro} onSelectLesson={onSelectLesson} onSelectAsset={selectClip} onSetIntro={setProductionIntro} selectedLessonId={selectedLessonId} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
 
         <section ref={previewShellRef} className={`${styles.previewPanel} ${previewFullscreen ? styles.previewFullscreen : ""}`}>
           <CompositionPreviewToolbar
             agentProposalActive={Boolean(agentProposal)}
+            comparisonActive={referenceComparison.active}
             currentVersion={payload.version}
             directEditingEnabled={directEditingEnabled}
             duration={duration}
@@ -2114,6 +2226,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
             onReload={() => void loadDocument()}
             onRestoreHistory={(entry) => void restoreHistoryEntry(entry)}
             onSplit={() => void splitSelectedClipAtPlayhead()}
+            onToggleComparison={() => {
+              referenceComparison.setActive((current) => !current);
+              setToolMenuOpen(false);
+            }}
             onToggleDirectEditing={() => setDirectEditingEnabled((current) => !current)}
             onToggleFullscreen={() => void togglePreviewFullscreen()}
             onToggleGrid={() => {
@@ -2148,18 +2264,32 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           <CompositionPreviewViewport
             activeSceneId={activeSceneId}
             agentProposalActive={Boolean(agentProposal)}
+            assets={assets}
+            canvasHeight={payload.document.canvas.height}
+            canvasWidth={payload.document.canvas.width}
+            comparisonActive={referenceComparison.active}
+            comparisonError={referenceComparison.error}
+            comparisonLoading={referenceComparison.loading}
+            comparisonReference={referenceComparison.reference}
+            comparisonZoom={referenceComparison.zoom}
             duration={duration}
             fps={payload.document.canvas.fps}
             frameRef={frameRef}
             onBeginScrub={beginScrub}
+            onChangeComparisonZoom={referenceComparison.changeZoom}
+            onClearComparison={referenceComparison.clear}
+            onComparisonImageError={referenceComparison.setError}
             onPlaySelectedAnimation={playSelectedAnimation}
             onRefreshDocument={() => refreshPreviewDocument(false)}
             onRefreshMedia={refreshPreviewMedia}
+            onResetComparisonZoom={referenceComparison.resetZoom}
             onSceneSelect={(scene) => {
               seek(scene.startSeconds);
               selectClip(scene.primaryHfId);
             }}
             onSeek={seek}
+            onSelectComparisonAsset={referenceComparison.selectAsset}
+            onSelectComparisonFile={referenceComparison.selectLocalFile}
             onTogglePlayback={togglePreviewPlayback}
             pendingMediaCount={pendingPreviewMediaIds.length}
             playbackError={playbackError}
@@ -2184,7 +2314,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           aria-valuemax={75}
           aria-valuenow={Math.round(studioTopPanePercent)}
           tabIndex={0}
-          onDoubleClick={() => setStudioTopPanePercent(60)}
+          onDoubleClick={() => setStudioTopPanePercent(68)}
           onKeyDown={(event) => {
             if (event.key === "ArrowUp") {
               event.preventDefault();
@@ -2217,13 +2347,15 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           currentTime={seconds}
           document={payload.document}
           durationSourceLabel={durationSourceLabel}
+          editingGroupId={editingTimelineGroupId}
           estimatedClipCount={estimatedClipCount}
           onAnimationSelect={selectAnimation}
           onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)}
           onAudioMixUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)}
           onClearSelection={clearSelection}
-          onCreateGroup={(clipIds, groupId) => void savePatch([{ clipIds, groupId, type: "group.create" }], `Agrupó ${clipIds.length} clips del timeline.`)}
           onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)}
+          onEditingGroupChange={setEditingTimelineGroupId}
+          onInspectSelection={inspectTimelineSelection}
           onMove={(clip, startSeconds) => void savePatch([{ clipId: clip.id, startSeconds, type: "clip.move" }], `Movió ${clip.label} a ${startSeconds} segundos.`)}
           onMoveGroup={(groupId, startSeconds) => void savePatch([{ groupId, startSeconds, type: "group.move" }], `Movió el grupo a ${formatSeconds(startSeconds)}.`)}
           onOrganize={() => void organizeTimeline()}
@@ -2232,25 +2364,40 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           onRecoverHistoricalAssets={() => void recoverHistoricalAssets()}
           onRefreshProductionAssets={() => void refreshProductionAssets()}
           onSeek={seek}
-          onSelect={selectClip}
+          onSelect={(hfId) => selectClip(hfId, true)}
+          onSelectedClipIdsChange={setSelectedTimelineClipIds}
+          onSelectedGroupChange={setSelectedTimelineGroupId}
           onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)}
-          onTransitionAdd={(transition) => void savePatch([{ transition, type: "transition.add" }], `Añadió ${transition.type} entre dos clips.`)}
-          onTransitionRemove={(transitionId) => void savePatch([{ transitionId, type: "transition.remove" }], "Quitó una transición entre clips.")}
-          onTransitionUpdate={(transitionId, settings) => void savePatch([{ settings, transitionId, type: "transition.update" }], "Ajustó una transición entre clips.")}
+          onTransitionSelect={selectTransition}
           onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Ajustó el inicio de ${clip.label} desde la timeline.`)}
-          onUngroup={(groupId) => void savePatch([{ groupId, type: "group.ungroup" }], "Desagrupó los clips seleccionados.")}
           recoveringHistoricalAssets={recoveringHistoricalAssets}
           refreshingProductionAssets={refreshingProductionAssets}
           saving={saving}
           selectedAnimationId={selectedAnimationId}
+          selectedClipIds={selectedTimelineClipIds}
+          selectedGroupId={selectedTimelineGroupId}
           selectedHfId={selectedHfId}
+          selectedTransitionId={activeSelectedTransitionId}
           snapEnabled={snapEnabled}
           trimToolEnabled={trimToolEnabled}
         />
 
         {inspectorOpen && <aside className={styles.inspector}>
-          <div className={styles.inspectorHeader}><div className={styles.inspectorTabs}><button type="button" onClick={() => setInspectorTab("properties")} className={`${styles.inspectorTab} ${inspectorTab === "properties" ? styles.inspectorTabActive : ""}`}>Propiedades</button><button type="button" onClick={() => setInspectorTab("assistant")} className={`${styles.inspectorTab} ${inspectorTab === "assistant" ? styles.inspectorTabActive : ""}`}>SofLIA</button></div><button type="button" onClick={clearSelection} className={styles.inspectorClose} title="Cerrar inspector" aria-label="Cerrar inspector"><X size={15} /></button></div>
-          <div className={styles.inspectorBody}>{inspectorTab === "properties" ? <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} colorGradingStatus={selectedHfId ? colorGradingStatuses[selectedHfId] || null : null} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} selectedAnimationId={selectedAnimationId} onAnimationSelect={(id) => { if (id && selectedClip) selectAnimation(id, selectedClip.hfId); else setSelectedAnimationId(null); }} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewColorGrading={(hfId, colorGrading) => postPreviewMessage({ type: "courseforge-composition-preview-color-grading", hfId, colorGrading })} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} /> : <CompositionAgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={(instruction) => requestAgentProposal(instruction, Boolean(presetPreview))} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}</div>
+          <div className={styles.inspectorHeader}>
+            <CompositionInspectorTabs
+              activeTab={inspectorTab}
+              onSelect={setInspectorTab}
+              selectedClipCount={selectedTimelineClipIds.size}
+              transitionCount={payload.document.transitions?.items.length || 0}
+            />
+            <button type="button" onClick={clearSelection} className={styles.inspectorClose} title="Cerrar inspector" aria-label="Cerrar inspector"><X size={15} /></button>
+          </div>
+          <div className={styles.inspectorBody}>
+            {inspectorTab === "properties" && <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} colorGradingStatus={selectedHfId ? colorGradingStatuses[selectedHfId] || null : null} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} selectedAnimationId={selectedAnimationId} onAnimationSelect={(id) => { if (id && selectedClip) selectAnimation(id, selectedClip.hfId); else setSelectedAnimationId(null); }} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewColorGrading={(hfId, colorGrading) => postPreviewMessage({ type: "courseforge-composition-preview-color-grading", hfId, colorGrading })} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} />}
+            {inspectorTab === "selection" && <CompositionSelectionPanel document={payload.document} editingGroupId={editingTimelineGroupId} onClear={clearSelection} onCreateGroup={createTimelineGroup} onEnterGroup={enterTimelineGroup} onExitGroup={exitTimelineGroup} onInspectClip={(hfId) => selectClip(hfId, true)} onUngroup={ungroupTimelineSelection} saving={saving} selectedClipIds={selectedTimelineClipIds} selectedGroupId={selectedTimelineGroupId} />}
+            {inspectorTab === "transitions" && <TransitionControls document={payload.document} onAdd={(transition) => void savePatch([{ transition, type: "transition.add" }], `Añadió ${transition.type} entre dos clips.`)} onRemove={(transitionId) => void savePatch([{ transitionId, type: "transition.remove" }], "Quitó una transición entre clips.")} onSelect={selectTransition} onUpdate={(transitionId, settings) => void savePatch([{ settings, transitionId, type: "transition.update" }], "Ajustó una transición entre clips.")} saving={saving} selectedTransitionId={activeSelectedTransitionId} />}
+            {inspectorTab === "assistant" && <CompositionAgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={(instruction) => requestAgentProposal(instruction, Boolean(presetPreview))} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}
+          </div>
         </aside>}
       </div>
     </section>
