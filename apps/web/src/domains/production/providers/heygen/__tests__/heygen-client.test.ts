@@ -12,6 +12,43 @@ import { estimateHeygenCost } from "../heygen-cost.service";
 import { heygenPlatformActionSchema } from "../heygen-platform.validators";
 
 describe("HeyGen separated track client", () => {
+  it("paginates public and private avatars and preserves ownership", async () => {
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      fetchImpl: async (input) => {
+        const url = String(input);
+        const ownership = url.includes("ownership=private") ? "private" : "public";
+        return Response.json({ data: [{ id: `${ownership}-avatar`, name: ownership }], has_more: false });
+      },
+    });
+    const result = await client.listAllAvatarLooks();
+    assert.deepEqual(result.data.map((item) => [item.id, item.ownership]), [
+      ["public-avatar", "public"],
+      ["private-avatar", "private"],
+    ]);
+  });
+
+  it("builds an authoritative snapshot from private account catalogs only", async () => {
+    const requested: string[] = [];
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      fetchImpl: async (input) => {
+        requested.push(String(input));
+        return Response.json({ data: [{ id: "private-item" }], has_more: false });
+      },
+    });
+
+    const [avatars, voices] = await Promise.all([
+      client.listAllPrivateAvatarLooks(),
+      client.listAllPrivateVoices(),
+    ]);
+
+    assert.equal(avatars.data[0]?.ownership, "private");
+    assert.equal(voices.data[0]?.type, "private");
+    assert.ok(requested.every((url) => url.includes("private")));
+    assert.ok(requested.every((url) => !url.includes("public")));
+  });
+
   it("paginates public and private Starfish voices without duplicates", async () => {
     const requested: string[] = [];
     const client = new HeygenClient({

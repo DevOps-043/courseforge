@@ -39,11 +39,13 @@ export async function GET(request: Request) {
     }
 
     const repository = new HeygenRepository(getServiceRoleClient());
-    const [avatars, voices, archivedAvatars, archivedVoices] = await Promise.all([
+    const [avatars, voices, archivedAvatars, archivedVoices, unavailable, sync] = await Promise.all([
       repository.listAvatarPresets(tenant.organizationId),
       repository.listVoicePresets(tenant.organizationId),
       repository.listArchivedAvatarPresets(tenant.organizationId),
       repository.listArchivedVoicePresets(tenant.organizationId),
+      repository.listUnavailableCatalog(tenant.organizationId),
+      repository.getWorkspaceSyncStatus(tenant.organizationId),
     ]);
 
     return apiSuccessResponse({
@@ -51,6 +53,8 @@ export async function GET(request: Request) {
         avatars,
         archivedAvatars,
         archivedVoices,
+        sync,
+        unavailable,
         voices,
       },
     }, { requestId });
@@ -85,7 +89,13 @@ export async function PATCH(request: Request) {
     const { archived, kind, presetId } = parsedRequest.data;
 
     const repository = new HeygenRepository(getServiceRoleClient());
-    const result = await repository.setCatalogPresetArchived({ archived, kind, organizationId: tenant.organizationId, presetId });
+    const result = await repository.setCatalogPresetArchived({
+      actorUserId: authenticatedUser.userId,
+      archived,
+      kind,
+      organizationId: tenant.organizationId,
+      presetId,
+    });
     if (result === "NOT_FOUND") return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Preset no encontrado.", requestId, status: 404 });
     if (result === "DEFAULT") {
       return apiErrorResponse({ code: API_ERROR_CODE.conflict, message: "Selecciona otro preset predeterminado antes de archivarlo.", requestId, status: 409 });

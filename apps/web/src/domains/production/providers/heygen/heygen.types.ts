@@ -68,6 +68,14 @@ export interface HeygenAccountSummary {
   wallet: Record<string, unknown> | null;
 }
 
+export interface HeygenApiKeySummary {
+  expiresAt: string | null;
+  name: string | null;
+  raw: Record<string, unknown>;
+  scopeMode: string | null;
+  scopes: string[];
+}
+
 export type HeygenPlatformOperationType =
   | "AI_CLIPPING"
   | "BRAND_GLOSSARY"
@@ -106,10 +114,17 @@ export interface HeygenVoice {
 }
 
 export interface HeygenCatalogSyncResult {
+  accountUsername: string | null;
+  assetCount: number;
   avatarCount: number;
   defaultAvatarPresetId: string | null;
   defaultVoicePresetId: string | null;
+  missingAssetCount: number;
+  missingAvatarCount: number;
+  missingVoiceCount: number;
   organizationId: string;
+  scopeMode: string | null;
+  scopes: string[];
   syncedAt: string;
   voiceCount: number;
 }

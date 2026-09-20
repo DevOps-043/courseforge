@@ -15,6 +15,7 @@ type HeygenConnection = {
   last4: string | null;
   lastValidatedAt: string | null;
   lastValidationError: string | null;
+  metadata?: Record<string, unknown>;
   validationStatus: string | null;
 };
 
@@ -125,6 +126,15 @@ export function HeygenIntegrationCard() {
   };
 
   const connected = connection?.connected === true;
+  const accountUsername = typeof connection?.metadata?.account_username === "string"
+    ? connection.metadata.account_username
+    : null;
+  const scopeMode = typeof connection?.metadata?.scope_mode === "string"
+    ? connection.metadata.scope_mode
+    : null;
+  const scopes = Array.isArray(connection?.metadata?.scopes)
+    ? connection.metadata.scopes.filter((scope): scope is string => typeof scope === "string")
+    : [];
 
   return (
     <section className="engine-integration-row engine-integration-row--credential">
@@ -162,9 +172,12 @@ export function HeygenIntegrationCard() {
 
       <div className="engine-integration-row__details">
       {connected ? (
-        <p className="engine-integration-note engine-integration-note--success">
-          API configurada ••••{connection.last4 || ""}
-        </p>
+        <div className="engine-integration-note engine-integration-note--success">
+          <p>API configurada ••••{connection.last4 || ""}{accountUsername ? ` · ${accountUsername}` : ""}</p>
+          <p className="mt-1 text-[11px] opacity-80">
+            Permisos: {scopeMode || "no identificados"}{scopes.length ? ` · ${scopes.join(", ")}` : ""}
+          </p>
+        </div>
       ) : null}
 
       {connection?.lastValidationError ? (

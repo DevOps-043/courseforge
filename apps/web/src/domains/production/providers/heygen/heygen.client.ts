@@ -10,6 +10,7 @@ import {
   HEYGEN_REQUEST_TIMEOUT_MS,
   type HeygenCreateVideoRequest,
   type HeygenCreateVideoResponse,
+  type HeygenApiKeySummary,
   type HeygenAccountSummary,
   type HeygenGeneratedSpeech,
   type HeygenGenerateSpeechRequest,
@@ -27,6 +28,7 @@ import {
 
 const HEYGEN_JSON_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
 const HEYGEN_ERROR_RESPONSE_MAX_BYTES = 32 * 1024;
+const HEYGEN_MAX_CATALOG_PAGES = 100;
 
 export class HeygenApiError extends Error {
   readonly providerCode?: string;
@@ -99,7 +101,20 @@ export class HeygenClient {
   }
 
   async listAllAvatarLooks() {
-    return this.collectPages((token) => this.listAvatarLooks({ token }));
+    const [publicAvatars, privateAvatars] = await Promise.all([
+      this.collectPages((token) => this.listAvatarLooks({ ownership: "public", token })),
+      this.collectPages((token) => this.listAvatarLooks({ ownership: "private", token })),
+    ]);
+    return mergeOwnedCatalogPages(publicAvatars, privateAvatars);
+  }
+
+  async listAllPrivateAvatarLooks() {
+    const page = await this.collectPages((token) =>
+      this.listAvatarLooks({ ownership: "private", token }));
+    return {
+      ...page,
+      data: page.data.map((item) => ({ ...item, ownership: "private" })),
+    } satisfies HeygenPage;
   }
 
   async listVoices(params: {
@@ -127,7 +142,11 @@ export class HeygenClient {
       this.collectPages((token) => this.listVoices({ token, type: "private" })),
     ]);
     const unique = new Map<string, Record<string, unknown>>();
-    for (const voice of [...publicVoices.data, ...privateVoices.data]) {
+    const ownedVoices: Record<string, unknown>[] = [
+      ...publicVoices.data.map((item): Record<string, unknown> => ({ ...item, type: readString(item.type) || "public" })),
+      ...privateVoices.data.map((item): Record<string, unknown> => ({ ...item, type: readString(item.type) || "private" })),
+    ];
+    for (const voice of ownedVoices) {
       const id = readString(voice.id) || readString(voice.voice_id) || JSON.stringify(voice);
       unique.set(id, voice);
     }
@@ -137,6 +156,33 @@ export class HeygenClient {
       nextToken: null,
       raw: { private: privateVoices.raw, public: publicVoices.raw },
     } satisfies HeygenPage;
+  }
+
+  async listAllPrivateVoices() {
+    const page = await this.collectPages((token) =>
+      this.listVoices({ token, type: "private" }));
+    return {
+      ...page,
+      data: page.data.map((item) => ({
+        ...item,
+        type: readString(item.type) || "private",
+      })),
+    } satisfies HeygenPage;
+  }
+
+  async getApiKeySelf(): Promise<HeygenApiKeySummary> {
+    const raw = await this.requestJson({ method: "GET", path: "/v3/api_keys/self" });
+    const root = toRecord(raw) || {};
+    const data = toRecord(root.data) || root;
+    return {
+      expiresAt: readString(data.expires_at),
+      name: readString(data.name),
+      raw: data,
+      scopeMode: readString(data.scope_mode),
+      scopes: Array.isArray(data.scopes)
+        ? data.scopes.filter((scope): scope is string => typeof scope === "string")
+        : [],
+    };
   }
 
   async getCurrentUser(): Promise<HeygenAccountSummary> {
@@ -303,13 +349,18 @@ export class HeygenClient {
     const data: HeygenVideoCatalogItem[] = [];
     let token: string | undefined;
     let raw: Record<string, unknown> = {};
-    for (let page = 0; page < 20; page += 1) {
+    const seenTokens = new Set<string>();
+    for (let page = 0; page < HEYGEN_MAX_CATALOG_PAGES; page += 1) {
       const response = await this.listVideos({ token });
       data.push(...response.data);
       raw = response.raw;
       if (!response.hasMore || !response.nextToken) {
         return { data, hasMore: false, nextToken: null, raw };
       }
+      if (seenTokens.has(response.nextToken)) {
+        return { data, hasMore: true, nextToken: response.nextToken, raw };
+      }
+      seenTokens.add(response.nextToken);
       token = response.nextToken;
     }
     return { data, hasMore: true, nextToken: token || null, raw };
@@ -321,7 +372,8 @@ export class HeygenClient {
     const data: Record<string, unknown>[] = [];
     let token: string | undefined;
     let raw: Record<string, unknown> = {};
-    for (let page = 0; page < 20; page += 1) {
+    const seenTokens = new Set<string>();
+    for (let page = 0; page < HEYGEN_MAX_CATALOG_PAGES; page += 1) {
       const response = await loader(token);
       const root = toRecord(response) || {};
       raw = root;
@@ -333,6 +385,10 @@ export class HeygenClient {
       if (!root.has_more || !nextToken) {
         return { data, hasMore: false, nextToken: null, raw };
       }
+      if (seenTokens.has(nextToken)) {
+        return { data, hasMore: true, nextToken, raw };
+      }
+      seenTokens.add(nextToken);
       token = nextToken;
     }
     return { data, hasMore: true, nextToken: token || null, raw };
@@ -437,6 +493,29 @@ function readString(value: unknown) {
 
 function readNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function mergeOwnedCatalogPages(
+  publicPage: HeygenPage,
+  privatePage: HeygenPage,
+): HeygenPage {
+  const unique = new Map<string, Record<string, unknown>>();
+  for (const [ownership, items] of [
+    ["public", publicPage.data],
+    ["private", privatePage.data],
+  ] as const) {
+    for (const item of items) {
+      const id = readString(item.id) || readString(item.avatar_id);
+      if (!id) continue;
+      unique.set(id, { ...item, ownership: readString(item.ownership) || ownership });
+    }
+  }
+  return {
+    data: [...unique.values()],
+    hasMore: publicPage.hasMore || privatePage.hasMore,
+    nextToken: publicPage.nextToken || privatePage.nextToken,
+    raw: { private: privatePage.raw, public: publicPage.raw },
+  };
 }
 
 function parseRetryAfter(value: string | null) {

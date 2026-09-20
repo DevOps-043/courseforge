@@ -135,6 +135,21 @@ interface VoicePreset {
   voice_type?: string | null;
 }
 
+interface HeygenSyncStatus {
+  account_label?: string | null;
+  last_sync_error?: string | null;
+  last_sync_request_id?: string | null;
+  last_sync_status?: string | null;
+  last_synced_at?: string | null;
+  updated_at?: string | null;
+}
+
+interface UnavailableCatalog {
+  assets: Array<Record<string, unknown>>;
+  avatars: Array<Record<string, unknown>>;
+  voices: Array<Record<string, unknown>>;
+}
+
 interface LatestJob {
   createdAt?: string | null;
   jobId: string;
@@ -230,6 +245,8 @@ export default function HeygenStudioClient({
   const [voicePresets, setVoicePresets] = useState<VoicePreset[]>([]);
   const [archivedAvatarPresets, setArchivedAvatarPresets] = useState<AvatarPreset[]>([]);
   const [archivedVoicePresets, setArchivedVoicePresets] = useState<VoicePreset[]>([]);
+  const [syncStatus, setSyncStatus] = useState<HeygenSyncStatus | null>(null);
+  const [unavailableCatalog, setUnavailableCatalog] = useState<UnavailableCatalog>({ assets: [], avatars: [], voices: [] });
   const [selectedAvatarPresetId, setSelectedAvatarPresetId] = useState("");
   const [selectedVoicePresetId, setSelectedVoicePresetId] = useState("");
   const [engine, setEngine] = useState<Engine>("avatar_iv");
@@ -298,6 +315,8 @@ export default function HeygenStudioClient({
       setVoicePresets(voices);
       setArchivedAvatarPresets((payload.data?.archivedAvatars || []) as AvatarPreset[]);
       setArchivedVoicePresets((payload.data?.archivedVoices || []) as VoicePreset[]);
+      setSyncStatus((payload.data?.sync || null) as HeygenSyncStatus | null);
+      setUnavailableCatalog((payload.data?.unavailable || { assets: [], avatars: [], voices: [] }) as UnavailableCatalog);
 
       setSelectedAvatarPresetId((current) =>
         current || avatars.find((preset) => preset.is_default)?.id || avatars[0]?.id || "",
@@ -526,8 +545,23 @@ export default function HeygenStudioClient({
       throw new Error(payload.error || "No se pudo sincronizar el catalogo de avatares.");
     }
 
-    return payload.data as { avatarCount?: number; voiceCount?: number };
+    return payload.data as { status?: string; syncRequestId?: string };
   }, []);
+
+  const waitForCatalogSync = useCallback(async (syncRequestId: string) => {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+      const response = await fetch("/api/production/heygen/presets", { cache: "no-store" });
+      const payload = await readApiResponse(response);
+      if (!response.ok || !payload.success) continue;
+      const status = (payload.data?.sync || null) as HeygenSyncStatus | null;
+      if (status?.last_sync_request_id !== syncRequestId) continue;
+      if (!status || status.last_sync_status === "RUNNING" || status.last_sync_status === "NEVER_SYNCED") continue;
+      await loadPresets();
+      return status;
+    }
+    return null;
+  }, [loadPresets]);
 
   const handleSyncCatalog = async () => {
     if (!connection.connected) {
@@ -539,11 +573,17 @@ export default function HeygenStudioClient({
     setErrorMessage(null);
 
     try {
-      const result = await syncCatalog();
-      toast.success(
-        `Catalogo de avatares sincronizado: ${result.avatarCount ?? 0} avatares y ${result.voiceCount ?? 0} voces.`,
-      );
-      await loadPresets();
+      const queued = await syncCatalog();
+      if (!queued.syncRequestId) throw new Error("No se recibió el identificador de sincronización.");
+      toast.info("Sincronización de HeyGen iniciada en segundo plano.");
+      const completed = await waitForCatalogSync(queued.syncRequestId);
+      if (!completed) {
+        toast.info("La sincronización continúa en segundo plano. El estado se actualizará al volver a cargar.");
+      } else if (completed.last_sync_status === "SUCCEEDED") {
+        toast.success("Cuenta, avatares, voces y assets de HeyGen sincronizados.");
+      } else {
+        throw new Error(completed.last_sync_error || "HeyGen no pudo completar la sincronización.");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error al sincronizar el catalogo de avatares.";
       setErrorMessage(message);
@@ -2105,6 +2145,30 @@ export default function HeygenStudioClient({
         items={generatedVideoItems}
         title={isCourseContext ? "Videos de esta generacion" : "Biblioteca de videos"}
       /> : null}
+
+      {syncStatus ? (
+        <section className={`rounded-xl border px-4 py-3 text-sm ${
+          syncStatus.last_sync_status === "SUCCEEDED"
+            ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-800 dark:text-emerald-200"
+            : "border-amber-500/20 bg-amber-500/5 text-amber-800 dark:text-amber-200"
+        }`}>
+          <p className="font-bold">
+            Sincronización HeyGen: {syncStatus.last_sync_status || "NEVER_SYNCED"}
+            {syncStatus.account_label ? ` · ${syncStatus.account_label}` : ""}
+          </p>
+          <p className="mt-1 text-xs opacity-80">
+            {syncStatus.last_synced_at
+              ? `Último snapshot completo: ${new Date(syncStatus.last_synced_at).toLocaleString()}.`
+              : "Aún no existe un snapshot completo de esta cuenta."}
+            {syncStatus.last_sync_error ? ` ${syncStatus.last_sync_error}` : ""}
+          </p>
+          {(unavailableCatalog.avatars.length || unavailableCatalog.voices.length || unavailableCatalog.assets.length) ? (
+            <p className="mt-1 text-xs font-semibold">
+              No disponibles en HeyGen: {unavailableCatalog.avatars.length} avatares, {unavailableCatalog.voices.length} voces y {unavailableCatalog.assets.length} assets. Estos recursos están bloqueados para nuevas generaciones.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 p-4 dark:border-white/10">
         <label className="min-w-64 flex-1 text-xs font-bold uppercase tracking-wide text-gray-400">

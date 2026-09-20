@@ -93,11 +93,26 @@ describe("HeyGen generated asset storage reconciliation", () => {
 });
 
 describe("HeyGen catalog cleanup", () => {
-  it("archives a non-default preset without deleting it", async () => {
-    const fake = createCatalogArchiveFake({ isDefault: false });
+  it("lists only authoritative private presets as active inventory", async () => {
+    const fake = createCatalogListFake();
+    const repository = new HeygenRepository(fake.client as never);
+
+    await repository.listAvatarPresets("22222222-2222-4222-8222-222222222222");
+
+    assert.ok(fake.filters.some(([column, value]) => (
+      column === "ownership" && value === "private"
+    )));
+    assert.ok(fake.filters.some(([column, value]) => (
+      column === "provider_state" && value === "AVAILABLE"
+    )));
+  });
+
+  it("persists a durable exclusion when archiving a preset", async () => {
+    const fake = createCatalogArchiveFake("UPDATED");
     const repository = new HeygenRepository(fake.client as never);
 
     const result = await repository.setCatalogPresetArchived({
+      actorUserId: "11111111-1111-4111-8111-111111111111",
       archived: true,
       kind: "voice",
       organizationId: "22222222-2222-4222-8222-222222222222",
@@ -105,11 +120,20 @@ describe("HeyGen catalog cleanup", () => {
     });
 
     assert.equal(result, "UPDATED");
-    assert.equal(typeof fake.updates[0]?.archived_at, "string");
+    assert.deepEqual(fake.rpcCalls, [{
+      name: "set_heygen_catalog_preset_archived",
+      params: {
+        p_actor_user_id: "11111111-1111-4111-8111-111111111111",
+        p_archived: true,
+        p_organization_id: "22222222-2222-4222-8222-222222222222",
+        p_preset_id: "33333333-3333-4333-8333-333333333333",
+        p_resource_kind: "voice",
+      },
+    }]);
   });
 
   it("protects the default preset from cleanup", async () => {
-    const fake = createCatalogArchiveFake({ isDefault: true });
+    const fake = createCatalogArchiveFake("DEFAULT");
     const repository = new HeygenRepository(fake.client as never);
 
     const result = await repository.setCatalogPresetArchived({
@@ -120,7 +144,22 @@ describe("HeyGen catalog cleanup", () => {
     });
 
     assert.equal(result, "DEFAULT");
-    assert.equal(fake.updates.length, 0);
+    assert.equal(fake.rpcCalls.length, 1);
+  });
+
+  it("keeps cleanup available while the durable exclusion migration is pending", async () => {
+    const fake = createCatalogArchiveCompatibilityFake();
+    const repository = new HeygenRepository(fake.client as never);
+
+    const result = await repository.setCatalogPresetArchived({
+      archived: true,
+      kind: "avatar",
+      organizationId: "22222222-2222-4222-8222-222222222222",
+      presetId: "33333333-3333-4333-8333-333333333333",
+    });
+
+    assert.equal(result, "UPDATED");
+    assert.equal(typeof fake.updates[0]?.archived_at, "string");
   });
 });
 
@@ -199,17 +238,57 @@ function createRepositoryFake(params: {
   return { archivedUpdates, client, listCalls };
 }
 
-function createCatalogArchiveFake(params: { isDefault: boolean }) {
+function createCatalogArchiveFake(result: "DEFAULT" | "NOT_FOUND" | "UPDATED") {
+  const rpcCalls: Array<{ name: string; params: Record<string, unknown> }> = [];
+  const client = {
+    async rpc(name: string, params: Record<string, unknown>) {
+      rpcCalls.push({ name, params });
+      return { data: result, error: null };
+    },
+  };
+  return { client, rpcCalls };
+}
+
+function createCatalogListFake() {
+  const filters: Array<[string, unknown]> = [];
+  const query = {
+    eq(column: string, value: unknown) {
+      filters.push([column, value]);
+      return this;
+    },
+    is(column: string, value: unknown) {
+      filters.push([column, value]);
+      return this;
+    },
+    order() { return this; },
+    async limit() { return { data: [], error: null }; },
+  };
+  const client = {
+    from(table: string) {
+      assert.equal(table, "heygen_avatar_presets");
+      return { select() { return query; } };
+    },
+  };
+  return { client, filters };
+}
+
+function createCatalogArchiveCompatibilityFake() {
   const updates: Array<Record<string, unknown>> = [];
   const readQuery = {
     eq() { return this; },
     async maybeSingle() {
-      return { data: { id: "33333333-3333-4333-8333-333333333333", is_default: params.isDefault }, error: null };
+      return {
+        data: { id: "33333333-3333-4333-8333-333333333333", is_default: false },
+        error: null,
+      };
     },
   };
   const client = {
+    async rpc() {
+      return { data: null, error: { code: "PGRST202" } };
+    },
     from(table: string) {
-      assert.ok(table === "heygen_avatar_presets" || table === "heygen_voice_presets");
+      assert.equal(table, "heygen_avatar_presets");
       return {
         select() { return readQuery; },
         update(payload: Record<string, unknown>) {

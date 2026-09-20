@@ -1,14 +1,10 @@
 import type {
   HeygenAvatarPresetGenerationRow,
-  HeygenAvatarLook,
-  HeygenAvatarPresetRow,
   HeygenGeneratedSpeech,
   HeygenProductionAssetRow,
   HeygenProductionJobRow,
   HeygenSupabaseClient,
-  HeygenVoice,
   HeygenVoicePresetGenerationRow,
-  HeygenVoicePresetRow,
 } from "./heygen.types";
 import { HEYGEN_VIDEO_STORAGE_BUCKET } from "./heygen.types";
 import {
@@ -38,6 +34,10 @@ export class HeygenRepository {
           "preview_image_url",
           "preview_video_url",
           "status",
+          "ownership",
+          "provider_state",
+          "last_seen_at",
+          "missing_since",
           "is_default",
           "metadata",
           "archived_at",
@@ -45,6 +45,8 @@ export class HeygenRepository {
         ].join(", "),
       )
       .eq("organization_id", organizationId)
+      .eq("ownership", "private")
+      .eq("provider_state", "AVAILABLE")
       .is("archived_at", null)
       .order("is_default", { ascending: false })
       .order("synced_at", { ascending: false, nullsFirst: false })
@@ -65,6 +67,10 @@ export class HeygenRepository {
           "language",
           "gender",
           "voice_type",
+          "ownership",
+          "provider_state",
+          "last_seen_at",
+          "missing_since",
           "preview_audio_url",
           "is_default",
           "metadata",
@@ -73,6 +79,8 @@ export class HeygenRepository {
         ].join(", "),
       )
       .eq("organization_id", organizationId)
+      .eq("ownership", "private")
+      .eq("provider_state", "AVAILABLE")
       .is("archived_at", null)
       .order("is_default", { ascending: false })
       .order("synced_at", { ascending: false, nullsFirst: false })
@@ -106,7 +114,297 @@ export class HeygenRepository {
     return data || [];
   }
 
+  async listUnavailableCatalog(organizationId: string) {
+    const [avatars, voices, assets] = await Promise.all([
+      this.supabase.from("heygen_avatar_presets")
+        .select("id, heygen_avatar_look_id, name, provider_state, missing_since, last_seen_at")
+        .eq("organization_id", organizationId).neq("provider_state", "AVAILABLE")
+        .order("updated_at", { ascending: false }).limit(250),
+      this.supabase.from("heygen_voice_presets")
+        .select("id, heygen_voice_id, name, provider_state, missing_since, last_seen_at")
+        .eq("organization_id", organizationId).neq("provider_state", "AVAILABLE")
+        .order("updated_at", { ascending: false }).limit(250),
+      this.supabase.from("heygen_provider_assets")
+        .select("id, heygen_asset_id, name, mime_type, provider_state, missing_since, last_seen_at")
+        .eq("organization_id", organizationId).neq("provider_state", "AVAILABLE")
+        .order("updated_at", { ascending: false }).limit(250),
+    ]);
+    if (avatars.error) throw avatars.error;
+    if (voices.error) throw voices.error;
+    if (assets.error) throw assets.error;
+    return { assets: assets.data || [], avatars: avatars.data || [], voices: voices.data || [] };
+  }
+
+  async getWorkspaceSyncStatus(organizationId: string) {
+    const { data, error } = await this.supabase
+      .from("heygen_workspace_connections")
+      .select("account_label, last_sync_status, last_sync_error, last_sync_request_id, last_synced_at, metadata, updated_at")
+      .eq("organization_id", organizationId)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  }
+
+  async beginCatalogSync(params: { organizationId: string; requestId?: string }) {
+    const staleBefore = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const { error: staleError } = await this.supabase
+      .from("heygen_catalog_sync_runs")
+      .update({
+        completed_at: new Date().toISOString(),
+        error_message: "La sincronización excedió el tiempo máximo y fue cerrada automáticamente.",
+        status: "FAILED",
+      })
+      .eq("organization_id", params.organizationId)
+      .eq("status", "RUNNING")
+      .lt("started_at", staleBefore);
+    if (staleError) throw staleError;
+    const { data, error } = await this.supabase
+      .from("heygen_catalog_sync_runs")
+      .insert({ organization_id: params.organizationId, request_id: params.requestId || null, status: "RUNNING" })
+      .select("id")
+      .single();
+    if (error) throw error;
+    const now = new Date().toISOString();
+    const { error: workspaceError } = await this.supabase
+      .from("heygen_workspace_connections")
+      .upsert({
+        organization_id: params.organizationId,
+        last_sync_request_id: params.requestId || null,
+        last_sync_status: "RUNNING",
+        updated_at: now,
+      }, { onConflict: "organization_id" });
+    if (workspaceError) throw workspaceError;
+    return data.id as string;
+  }
+
+  async reconcileCatalogSnapshot(params: {
+    accountSnapshot: Record<string, unknown>;
+    avatars: Record<string, unknown>[];
+    organizationId: string;
+    syncRunId: string;
+    syncedAt: string;
+    voices: Record<string, unknown>[];
+  }) {
+    const { data, error } = await this.supabase.rpc("reconcile_heygen_private_catalog_snapshot", {
+      p_account_snapshot: params.accountSnapshot,
+      p_avatars: params.avatars,
+      p_organization_id: params.organizationId,
+      p_sync_run_id: params.syncRunId,
+      p_synced_at: params.syncedAt,
+      p_voices: params.voices,
+    });
+    if (error) {
+      if (isMissingRpc(error)) {
+        return this.reconcilePrivateCatalogSnapshotCompat(params);
+      }
+      throw error;
+    }
+    return (data || {}) as {
+      assetCount?: number;
+      missingAssetCount?: number;
+      missingAvatarCount?: number;
+      missingVoiceCount?: number;
+    };
+  }
+
+  private async reconcilePrivateCatalogSnapshotCompat(params: {
+    accountSnapshot: Record<string, unknown>;
+    avatars: Record<string, unknown>[];
+    organizationId: string;
+    syncRunId: string;
+    syncedAt: string;
+    voices: Record<string, unknown>[];
+  }) {
+    const [existingAvatars, existingVoices, workspace] = await Promise.all([
+      this.supabase.from("heygen_avatar_presets")
+        .select("id, heygen_avatar_look_id")
+        .eq("organization_id", params.organizationId)
+        .or("ownership.eq.private,ownership.is.null"),
+      this.supabase.from("heygen_voice_presets")
+        .select("id, heygen_voice_id")
+        .eq("organization_id", params.organizationId)
+        .or("ownership.eq.private,ownership.is.null"),
+      this.getWorkspaceSyncStatus(params.organizationId),
+    ]);
+    if (existingAvatars.error) throw existingAvatars.error;
+    if (existingVoices.error) throw existingVoices.error;
+
+    const avatarRows = params.avatars.map((avatar) => ({
+      avatar_type: readNullableString(avatar.avatar_type),
+      default_voice_id: readNullableString(avatar.default_voice_id),
+      heygen_avatar_group_id: readNullableString(avatar.group_id),
+      heygen_avatar_look_id: readRequiredString(avatar.provider_id, "avatar provider id"),
+      last_seen_at: params.syncedAt,
+      metadata: readRecord(avatar.metadata),
+      missing_since: null,
+      name: readRequiredString(avatar.name, "avatar name"),
+      organization_id: params.organizationId,
+      ownership: "private",
+      preview_image_url: readNullableString(avatar.preview_image_url),
+      preview_video_url: readNullableString(avatar.preview_video_url),
+      provider_state: toAvatarProviderState(avatar.status),
+      status: readNullableString(avatar.status),
+      supported_api_engines: Array.isArray(avatar.supported_api_engines)
+        ? avatar.supported_api_engines
+        : [],
+      synced_at: params.syncedAt,
+      updated_at: params.syncedAt,
+    }));
+    const voiceRows = params.voices.map((voice) => ({
+      gender: readNullableString(voice.gender),
+      heygen_voice_id: readRequiredString(voice.provider_id, "voice provider id"),
+      language: readNullableString(voice.language),
+      last_seen_at: params.syncedAt,
+      metadata: readRecord(voice.metadata),
+      missing_since: null,
+      name: readRequiredString(voice.name, "voice name"),
+      organization_id: params.organizationId,
+      ownership: "private",
+      preview_audio_url: readNullableString(voice.preview_audio_url),
+      provider_state: "AVAILABLE",
+      synced_at: params.syncedAt,
+      updated_at: params.syncedAt,
+      voice_type: readNullableString(voice.voice_type),
+    }));
+
+    if (avatarRows.length > 0) {
+      const { error: avatarError } = await this.supabase.from("heygen_avatar_presets")
+        .upsert(avatarRows, { onConflict: "organization_id,heygen_avatar_look_id" });
+      if (avatarError) throw avatarError;
+    }
+    if (voiceRows.length > 0) {
+      const { error: voiceError } = await this.supabase.from("heygen_voice_presets")
+        .upsert(voiceRows, { onConflict: "organization_id,heygen_voice_id" });
+      if (voiceError) throw voiceError;
+    }
+
+    const avatarIds = new Set(avatarRows.map((row) => row.heygen_avatar_look_id));
+    const voiceIds = new Set(voiceRows.map((row) => row.heygen_voice_id));
+    const missingAvatarRowIds = (existingAvatars.data || [])
+      .filter((row) => !avatarIds.has(String(row.heygen_avatar_look_id)))
+      .map((row) => String(row.id));
+    const missingVoiceRowIds = (existingVoices.data || [])
+      .filter((row) => !voiceIds.has(String(row.heygen_voice_id)))
+      .map((row) => String(row.id));
+
+    if (missingAvatarRowIds.length > 0) {
+      const { error } = await this.supabase.from("heygen_avatar_presets").update({
+        is_default: false,
+        provider_state: "MISSING",
+        updated_at: params.syncedAt,
+      }).in("id", missingAvatarRowIds);
+      if (error) throw error;
+      const { error: timestampError } = await this.supabase.from("heygen_avatar_presets")
+        .update({ missing_since: params.syncedAt })
+        .in("id", missingAvatarRowIds)
+        .is("missing_since", null);
+      if (timestampError) throw timestampError;
+    }
+    if (missingVoiceRowIds.length > 0) {
+      const { error } = await this.supabase.from("heygen_voice_presets").update({
+        is_default: false,
+        provider_state: "MISSING",
+        updated_at: params.syncedAt,
+      }).in("id", missingVoiceRowIds);
+      if (error) throw error;
+      const { error: timestampError } = await this.supabase.from("heygen_voice_presets")
+        .update({ missing_since: params.syncedAt })
+        .in("id", missingVoiceRowIds)
+        .is("missing_since", null);
+      if (timestampError) throw timestampError;
+    }
+
+    const [assets, missingAssets] = await Promise.all([
+      countCatalogRows(this.supabase, "heygen_provider_assets", params.organizationId),
+      countCatalogRows(this.supabase, "heygen_provider_assets", params.organizationId, "MISSING"),
+    ]);
+    const accountUsername = readNullableString(params.accountSnapshot.username);
+    const workspaceMetadata = readRecord(workspace?.metadata);
+    const [runUpdate, workspaceUpdate] = await Promise.all([
+      this.supabase.from("heygen_catalog_sync_runs").update({
+        account_snapshot: params.accountSnapshot,
+        asset_count: assets,
+        avatar_count: avatarRows.length,
+        completed_at: params.syncedAt,
+        error_message: null,
+        missing_asset_count: missingAssets,
+        missing_avatar_count: missingAvatarRowIds.length,
+        missing_voice_count: missingVoiceRowIds.length,
+        status: "SUCCEEDED",
+        voice_count: voiceRows.length,
+      }).eq("id", params.syncRunId).eq("organization_id", params.organizationId),
+      this.supabase.from("heygen_workspace_connections").upsert({
+        account_label: accountUsername || workspace?.account_label || null,
+        last_sync_error: null,
+        last_sync_status: "SUCCEEDED",
+        last_synced_at: params.syncedAt,
+        metadata: { ...workspaceMetadata, account: params.accountSnapshot },
+        organization_id: params.organizationId,
+        updated_at: params.syncedAt,
+      }, { onConflict: "organization_id" }),
+    ]);
+    if (runUpdate.error) throw runUpdate.error;
+    if (workspaceUpdate.error) throw workspaceUpdate.error;
+
+    return {
+      assetCount: assets,
+      missingAssetCount: missingAssets,
+      missingAvatarCount: missingAvatarRowIds.length,
+      missingVoiceCount: missingVoiceRowIds.length,
+    };
+  }
+
+  async markCatalogSyncIncomplete(params: {
+    errorMessage: string;
+    organizationId: string;
+    status: "FAILED" | "PARTIAL";
+    syncRunId: string;
+    syncedAt: string;
+  }) {
+    const safeMessage = params.errorMessage.slice(0, 500);
+    const [run, workspace] = await Promise.all([
+      this.supabase.from("heygen_catalog_sync_runs").update({
+        completed_at: params.syncedAt,
+        error_message: safeMessage,
+        status: params.status,
+      }).eq("id", params.syncRunId).eq("organization_id", params.organizationId),
+      this.supabase.from("heygen_workspace_connections").upsert({
+        organization_id: params.organizationId,
+        last_sync_error: safeMessage,
+        last_sync_status: params.status,
+        updated_at: params.syncedAt,
+      }, { onConflict: "organization_id" }),
+    ]);
+    if (run.error) throw run.error;
+    if (workspace.error) throw workspace.error;
+  }
+
   async setCatalogPresetArchived(params: {
+    actorUserId?: string;
+    archived: boolean;
+    kind: "avatar" | "voice";
+    organizationId: string;
+    presetId: string;
+  }) {
+    const { data, error } = await this.supabase.rpc(
+      "set_heygen_catalog_preset_archived",
+      {
+        p_actor_user_id: params.actorUserId || null,
+        p_archived: params.archived,
+        p_organization_id: params.organizationId,
+        p_preset_id: params.presetId,
+        p_resource_kind: params.kind,
+      },
+    );
+    if (error) {
+      if (isMissingRpc(error)) return this.setCatalogPresetArchivedCompat(params);
+      throw error;
+    }
+    if (data === "NOT_FOUND" || data === "DEFAULT") return data;
+    return "UPDATED" as const;
+  }
+
+  private async setCatalogPresetArchivedCompat(params: {
     archived: boolean;
     kind: "avatar" | "voice";
     organizationId: string;
@@ -133,114 +431,13 @@ export class HeygenRepository {
     return "UPDATED" as const;
   }
 
-  async markWorkspaceSyncSucceeded(organizationId: string, syncedAt: string) {
-    const { error } = await this.supabase
-      .from("heygen_workspace_connections")
-      .upsert(
-        {
-          organization_id: organizationId,
-          last_sync_error: null,
-          last_sync_status: "SUCCEEDED",
-          last_synced_at: syncedAt,
-          updated_at: syncedAt,
-        },
-        { onConflict: "organization_id" },
-      );
-
-    if (error) throw error;
-  }
-
-  async markWorkspaceSyncFailed(params: {
-    errorMessage: string;
-    organizationId: string;
-    syncedAt: string;
-  }) {
-    const { error } = await this.supabase
-      .from("heygen_workspace_connections")
-      .upsert(
-        {
-          organization_id: params.organizationId,
-          last_sync_error: params.errorMessage.slice(0, 500),
-          last_sync_status: "FAILED",
-          last_synced_at: params.syncedAt,
-          updated_at: params.syncedAt,
-        },
-        { onConflict: "organization_id" },
-      );
-
-    if (error) throw error;
-  }
-
-  async upsertAvatarPresets(params: {
-    avatars: HeygenAvatarLook[];
-    organizationId: string;
-    syncedAt: string;
-  }) {
-    if (params.avatars.length === 0) return [];
-
-    const rows = params.avatars.map((avatar) => ({
-      avatar_type: avatar.avatarType || null,
-      default_voice_id: avatar.defaultVoiceId || null,
-      heygen_avatar_group_id: avatar.groupId || null,
-      heygen_avatar_look_id: avatar.id,
-      metadata: avatar.metadata,
-      name: avatar.name,
-      organization_id: params.organizationId,
-      preview_image_url: avatar.previewImageUrl || null,
-      preview_video_url: avatar.previewVideoUrl || null,
-      status: avatar.status || null,
-      supported_api_engines: avatar.supportedApiEngines,
-      synced_at: params.syncedAt,
-      updated_at: params.syncedAt,
-    }));
-
-    const { data, error } = await this.supabase
-      .from("heygen_avatar_presets")
-      .upsert(rows, {
-        onConflict: "organization_id,heygen_avatar_look_id",
-      })
-      .select("id, heygen_avatar_look_id, default_voice_id, is_default");
-
-    if (error) throw error;
-    return (data || []) as HeygenAvatarPresetRow[];
-  }
-
-  async upsertVoicePresets(params: {
-    organizationId: string;
-    syncedAt: string;
-    voices: HeygenVoice[];
-  }) {
-    if (params.voices.length === 0) return [];
-
-    const rows = params.voices.map((voice) => ({
-      gender: voice.gender || null,
-      heygen_voice_id: voice.id,
-      language: voice.language || null,
-      metadata: voice.metadata,
-      name: voice.name,
-      organization_id: params.organizationId,
-      preview_audio_url: voice.previewAudioUrl || null,
-      synced_at: params.syncedAt,
-      updated_at: params.syncedAt,
-      voice_type: voice.type || null,
-    }));
-
-    const { data, error } = await this.supabase
-      .from("heygen_voice_presets")
-      .upsert(rows, {
-        onConflict: "organization_id,heygen_voice_id",
-      })
-      .select("id, heygen_voice_id, is_default");
-
-    if (error) throw error;
-    return (data || []) as HeygenVoicePresetRow[];
-  }
-
   async getDefaultAvatarPresetId(organizationId: string) {
     const { data, error } = await this.supabase
       .from("heygen_avatar_presets")
       .select("id")
       .eq("organization_id", organizationId)
+      .eq("ownership", "private")
+      .eq("provider_state", "AVAILABLE")
       .eq("is_default", true)
       .is("archived_at", null)
       .maybeSingle();
@@ -267,6 +464,8 @@ export class HeygenRepository {
         ].join(", "),
       )
       .eq("organization_id", params.organizationId)
+      .eq("ownership", "private")
+      .eq("provider_state", "AVAILABLE")
       .is("archived_at", null);
 
     query = params.presetId
@@ -286,6 +485,8 @@ export class HeygenRepository {
       .from("heygen_voice_presets")
       .select("id, heygen_voice_id, name, is_default")
       .eq("organization_id", params.organizationId)
+      .eq("ownership", "private")
+      .eq("provider_state", "AVAILABLE")
       .is("archived_at", null);
 
     query = params.presetId
@@ -302,6 +503,8 @@ export class HeygenRepository {
       .from("heygen_voice_presets")
       .select("id")
       .eq("organization_id", organizationId)
+      .eq("ownership", "private")
+      .eq("provider_state", "AVAILABLE")
       .eq("is_default", true)
       .is("archived_at", null)
       .maybeSingle();
@@ -978,4 +1181,51 @@ export function resolveHeygenStorageObjectPath(
   }
 
   return objectPath;
+}
+
+function isMissingRpc(error: unknown) {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === "PGRST202",
+  );
+}
+
+function readNullableString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readRequiredString(value: unknown, field: string) {
+  const normalized = readNullableString(value);
+  if (!normalized) throw new Error(`HeyGen snapshot is missing ${field}.`);
+  return normalized;
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function toAvatarProviderState(status: unknown) {
+  const normalized = readNullableString(status)?.toLowerCase();
+  if (normalized === "processing") return "PROCESSING";
+  if (normalized === "failed") return "FAILED";
+  return "AVAILABLE";
+}
+
+async function countCatalogRows(
+  supabase: HeygenSupabaseClient,
+  table: "heygen_provider_assets",
+  organizationId: string,
+  providerState?: "MISSING",
+) {
+  let query = supabase.from(table)
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId);
+  if (providerState) query = query.eq("provider_state", providerState);
+  const { count, error } = await query;
+  if (error) throw error;
+  return count || 0;
 }

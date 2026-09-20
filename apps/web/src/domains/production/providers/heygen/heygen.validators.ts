@@ -22,15 +22,6 @@ export const heygenApiErrorPayloadSchema = z
   })
   .passthrough();
 
-export const heygenSyncResponseSchema = z.object({
-  avatarCount: z.number().int().min(0),
-  defaultAvatarPresetId: z.string().uuid().nullable(),
-  defaultVoicePresetId: z.string().uuid().nullable(),
-  organizationId: z.string().uuid(),
-  syncedAt: z.string().datetime(),
-  voiceCount: z.number().int().min(0),
-});
-
 export const heygenGenerateVideoRequestSchema = z
   .object({
     aspectRatio: z.enum(["16:9", "9:16"]).default("16:9"),

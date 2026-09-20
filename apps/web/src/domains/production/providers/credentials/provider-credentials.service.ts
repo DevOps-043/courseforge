@@ -109,13 +109,13 @@ export class ProductionProviderCredentialsService {
     organizationId: string;
   }): Promise<ProductionProviderCredentialStatus> {
     const normalizedApiKey = normalizeApiKey(params.apiKey);
-    await validateHeygenApiKey(normalizedApiKey);
+    const validationMetadata = await validateHeygenApiKey(normalizedApiKey);
 
     const saved = await this.repository.upsertActiveCredential({
       createdBy: params.createdBy,
       encryptedSecret: encrypt(normalizedApiKey),
       last4: readLast4(normalizedApiKey),
-      metadata: { validation_provider: "heygen_avatar" },
+      metadata: { validation_provider: "heygen_avatar", ...validationMetadata },
       organizationId: params.organizationId,
       provider: "heygen_avatar",
       validatedAt: new Date().toISOString(),
@@ -141,10 +141,10 @@ export class ProductionProviderCredentialsService {
     }
 
     try {
-      await validateHeygenApiKey(credential.secret);
+      const validationMetadata = await validateHeygenApiKey(credential.secret);
       const validatedAt = new Date().toISOString();
       await this.repository.markCredentialValidationSucceeded({
-        metadata: { validation_provider: "heygen_avatar" },
+        metadata: { validation_provider: "heygen_avatar", ...validationMetadata },
         organizationId: params.organizationId,
         provider: "heygen_avatar",
         validatedAt,
@@ -188,7 +188,24 @@ function normalizeApiKey(apiKey: string) {
 
 async function validateHeygenApiKey(apiKey: string) {
   try {
-    await new HeygenClient({ apiKey }).listAvatarLooks();
+    const client = new HeygenClient({ apiKey });
+    const [account, key, avatars, voices] = await Promise.all([
+      readOptionalHeygenMetadata(() => client.getCurrentUser()),
+      readOptionalHeygenMetadata(() => client.getApiKeySelf()),
+      client.listAvatarLooks(),
+      client.listVoices(),
+    ]);
+    return {
+      account_username: account?.username || null,
+      catalog_access: {
+        assets: false,
+        avatars: Boolean(avatars),
+        voices: Boolean(voices),
+      },
+      key_expires_at: key?.expiresAt || null,
+      scope_mode: key?.scopeMode || null,
+      scopes: key?.scopes || [],
+    };
   } catch (error) {
     if (error instanceof HeygenApiError) {
       throw new ProductionProviderCredentialError(
@@ -204,6 +221,14 @@ async function validateHeygenApiKey(apiKey: string) {
   }
 }
 
+async function readOptionalHeygenMetadata<T>(request: () => Promise<T>): Promise<T | null> {
+  try {
+    return await request();
+  } catch {
+    return null;
+  }
+}
+
 function toCredentialStatus(
   provider: ProductionCredentialProvider,
   credential: ProductionProviderCredentialRow | null,
@@ -213,6 +238,7 @@ function toCredentialStatus(
     last4: credential?.secret_last4 || null,
     lastValidatedAt: credential?.last_validated_at || null,
     lastValidationError: credential?.last_validation_error || null,
+    metadata: credential?.metadata || {},
     provider,
     status: credential?.status || null,
     validationStatus: credential?.validation_status || null,

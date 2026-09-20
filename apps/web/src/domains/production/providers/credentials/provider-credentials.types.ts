@@ -33,6 +33,7 @@ export interface ProductionProviderCredentialStatus {
   last4: string | null;
   lastValidatedAt: string | null;
   lastValidationError: string | null;
+  metadata: Record<string, unknown>;
   provider: ProductionCredentialProvider;
   status: ProductionCredentialStatus | null;
   validationStatus: ProductionCredentialValidationStatus | null;

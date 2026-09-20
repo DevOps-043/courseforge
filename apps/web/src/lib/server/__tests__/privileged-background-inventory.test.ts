@@ -713,3 +713,28 @@ test("SCORM parsing and transformation stay outside requests and behind signed b
   assert.match(parsingBackgroundSource, /parseVerifiedBackgroundBody/);
   assert.match(transformationSource, /claimScormImportJob/);
 });
+
+test("HeyGen catalog reconciliation stays durable and behind signed background boundaries", () => {
+  const webRoot = resolve(process.cwd());
+  const routeSource = readFileSync(
+    join(webRoot, "src", "app", "api", "production", "heygen", "sync", "route.ts"),
+    "utf8",
+  );
+  const backgroundSource = readFileSync(
+    join(webRoot, "netlify", "functions", "heygen-catalog-background.ts"),
+    "utf8",
+  );
+  const schedulerSource = readFileSync(
+    join(webRoot, "netlify", "functions", "heygen-catalog-reconcile.ts"),
+    "utf8",
+  );
+
+  assert.match(routeSource, /beginCatalogSync/);
+  assert.match(routeSource, /callBackgroundFunctionJson/);
+  assert.match(routeSource, /signBackgroundPayload/);
+  assert.doesNotMatch(routeSource, /syncCatalog\(/);
+  assert.match(backgroundSource, /verifyBackgroundPayload/);
+  assert.match(schedulerSource, /headers\["x-nf-event"\]\s*!==\s*"schedule"/);
+  assert.match(schedulerSource, /signBackgroundPayload/);
+  assert.match(schedulerSource, /schedule:\s*"17 \*\/6 \* \* \*"/);
+});
