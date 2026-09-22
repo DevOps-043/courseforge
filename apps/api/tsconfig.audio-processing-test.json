@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".tmp/audio-processing-tests",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": [
+    "src/features/audio-processing/deepfilter-runtime-config.ts",
+    "src/features/audio-processing/__tests__/deepfilter-runtime-config.test.ts"
+  ],
+  "exclude": ["node_modules"]
+}

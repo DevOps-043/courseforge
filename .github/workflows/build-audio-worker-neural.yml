@@ -1,0 +1,104 @@
+name: Build neural audio worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Optional immutable image tag; defaults to the short commit SHA.
+        required: false
+        type: string
+      ffmpeg_package_version:
+        description: Exact Debian FFmpeg package version approved for this image.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    name: Verify DeepFilterNet artifacts and publish candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Configure this GitHub Environment with required reviewers before enabling
+    # the workflow. Its secrets contain only the approved artifact bundle URL
+    # and its independent SHA-256, never the model itself.
+    environment: deepfilter-artifacts
+    env:
+      DEEPFILTER_ARTIFACT_BUNDLE_URL: ${{ secrets.DEEPFILTER_ARTIFACT_BUNDLE_URL }}
+      DEEPFILTER_ARTIFACT_BUNDLE_SHA256: ${{ secrets.DEEPFILTER_ARTIFACT_BUNDLE_SHA256 }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      GCP_ARTIFACT_REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      IMAGE_TAG_INPUT: ${{ inputs.image_tag }}
+      FFMPEG_PACKAGE_VERSION: ${{ inputs.ffmpeg_package_version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate build configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(DEEPFILTER_ARTIFACT_BUNDLE_URL DEEPFILTER_ARTIFACT_BUNDLE_SHA256 GCP_PROJECT_ID GCP_REGION GCP_ARTIFACT_REPOSITORY GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT FFMPEG_PACKAGE_VERSION)
+          for name in "${required[@]}"; do
+            test -n "${!name}" || { echo "Missing protected configuration: $name" >&2; exit 1; }
+          done
+          [[ "$DEEPFILTER_ARTIFACT_BUNDLE_URL" =~ ^https:// ]] || { echo "Artifact bundle URL must use HTTPS." >&2; exit 1; }
+          [[ "$DEEPFILTER_ARTIFACT_BUNDLE_SHA256" =~ ^[a-fA-F0-9]{64}$ ]] || { echo "Artifact bundle SHA-256 is invalid." >&2; exit 1; }
+          [[ "$FFMPEG_PACKAGE_VERSION" =~ ^[A-Za-z0-9.+:~\-]+$ ]] || { echo "FFmpeg package version is invalid." >&2; exit 1; }
+          image_tag="${IMAGE_TAG_INPUT:-${GITHUB_SHA::12}}"
+          [[ "$image_tag" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$ ]] || { echo "Image tag is invalid." >&2; exit 1; }
+          echo "IMAGE_TAG=$image_tag" >> "$GITHUB_ENV"
+
+      - name: Download and unpack approved DeepFilterNet bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_directory="apps/api/third_party/deepfilter"
+          bundle_path="$RUNNER_TEMP/deepfilter-artifacts.tar.gz"
+          rm -rf "$artifact_directory"
+          mkdir -p "$artifact_directory"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --output "$bundle_path" "$DEEPFILTER_ARTIFACT_BUNDLE_URL"
+          printf '%s  %s\n' "$DEEPFILTER_ARTIFACT_BUNDLE_SHA256" "$bundle_path" | sha256sum --check --status
+          expected_entries=$'DeepFilterNet3_onnx.tar.gz\nLICENSE-APACHE\nLICENSE-MIT\ndeep-filter\nmanifest.json'
+          actual_entries="$(tar -tzf "$bundle_path" | LC_ALL=C sort)"
+          test "$actual_entries" = "$expected_entries" || { echo "Artifact bundle has an unexpected file layout." >&2; exit 1; }
+          ! tar -tvzf "$bundle_path" | awk '$1 ~ /^[lh]/ { exit 1 }'
+          tar --extract --gzip --file "$bundle_path" --directory "$artifact_directory" --no-same-owner --no-same-permissions
+          chmod 0555 "$artifact_directory/deep-filter"
+
+      - name: Verify approved artifacts
+        run: |
+          npm ci
+          npm run verify:deepfilter-artifacts --workspace=apps/api
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and publish candidate image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_uri="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$GCP_ARTIFACT_REPOSITORY/courseforge-audio-worker-neural"
+          gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
+          docker build \
+            --file apps/api/Dockerfile.audio-worker-neural \
+            --build-arg "FFMPEG_PACKAGE_VERSION=$FFMPEG_PACKAGE_VERSION" \
+            --tag "$image_uri:$IMAGE_TAG" \
+            --tag "$image_uri:candidate" \
+            .
+          docker push "$image_uri:$IMAGE_TAG"
+          docker push "$image_uri:candidate"

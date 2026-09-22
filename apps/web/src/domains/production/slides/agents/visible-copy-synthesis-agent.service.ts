@@ -6,12 +6,12 @@ import {
   readResponseTextWithLimit,
 } from "../../../../lib/server/outbound-http";
 import { getOptionalGeminiApiKey, getOptionalOpenAIApiKey } from "../../../../lib/server/env";
-import type { SlideSourcePack } from "../content/slide-source-pack.service";
+import { buildSourceInsights, type SlideSourcePack } from "../content/slide-source-pack.service";
 import { validateCourseDeckVisibleCopy } from "../validation/course-deck-qa.service";
 import {
   copyBudgetForSlideType,
-  hasUnexpectedVisibleLanguage,
   limitSlideCopy,
+  normalizedVisibleText,
 } from "../content/slide-copy-policy.service";
 import type { CourseDeckSpec } from "../specs/course-deck.schema";
 import type {
@@ -22,6 +22,8 @@ import type {
 const SYNTHESIS_TIMEOUT_MS = 60_000;
 const SYNTHESIS_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 const SYNTHESIS_ERROR_MAX_BYTES = 32 * 1024;
+const SYNTHESIS_BATCH_SIZE = 4;
+const SYNTHESIS_TOTAL_BUDGET_MS = 7 * 60_000;
 
 const synthesisResponseSchema = z.object({
   slides: z.array(z.unknown()).max(24),
@@ -29,8 +31,28 @@ const synthesisResponseSchema = z.object({
 
 type SynthesisProvider = "gemini" | "openai" | "deterministic_fallback";
 
+export interface VisibleCopySlideAudit {
+  slideId: string;
+  sourceRefs: string[];
+  /** References assigned in planning, not proof of claims used by the model. */
+  sourceReferenceKind?: "PLANNED";
+  status?: "GENERATED" | "VALIDATED_FALLBACK" | "REJECTED";
+  findingCodes?: string[];
+}
+
+export interface VisibleCopySynthesisBatchAudit {
+  applied: boolean;
+  attempts: number;
+  batchNumber: number;
+  model: string;
+  provider: SynthesisProvider;
+  slides: VisibleCopySlideAudit[];
+  warning: string | null;
+}
+
 export interface VisibleCopySynthesisTrace {
   appliedSlideCount: number;
+  batches: VisibleCopySynthesisBatchAudit[];
   model: string;
   provider: SynthesisProvider;
   warning: string | null;
@@ -38,6 +60,8 @@ export interface VisibleCopySynthesisTrace {
 
 interface SynthesizeVisibleCopyParams {
   deckSpec: CourseDeckSpec;
+  acceptedSlides?: CourseDeckSpec["slides"];
+  deadlineAt?: number;
   repairFeedback?: string[];
   model?: SlideAgentModelSettingRecord;
   prompt?: SlideAgentPromptRecord;
@@ -105,9 +129,22 @@ function extractJsonObject(text: string) {
   throw new Error("El proveedor no devolvio un objeto JSON de copy visible.");
 }
 
-function sourceEvidenceForPrompt(sourcePack?: SlideSourcePack) {
-  const insights = sourcePack?.insights || [];
-  return insights.slice(0, 18).map((insight) => ({
+function sourceEvidenceForPrompt(params: SynthesizeVisibleCopyParams) {
+  const insights = params.sourcePack?.insights?.length
+    ? params.sourcePack.insights : buildSourceInsights(params.sourcePack?.items || []);
+  // Retrieve per slide before applying the request budget, so later evidence is
+  // not silently excluded from every batch.
+  const selected = new Set<typeof insights[number]>();
+  for (const slide of params.deckSpec.slides) {
+    const tokens = new Set(normalizedVisibleText(slideVisibleText(slide) + " " + (slide.speakerNotes || "")).split(" ").filter((token) => token.length > 3));
+    const score = (insight: typeof insights[number]) => {
+      const words = new Set(normalizedVisibleText(insight.title + " " + insight.bodyItems.join(" ")).split(" "));
+      return [...tokens].filter((token) => words.has(token)).length
+        + Number(slide.validationHints.sourceRefs.includes(insight.sourceRef));
+    };
+    [...insights].sort((a, b) => score(b) - score(a)).slice(0, 3).forEach((insight) => selected.add(insight));
+  }
+  return [...selected].map((insight) => ({
     sourceRef: insight.sourceRef,
     title: insight.title,
     type: insight.type,
@@ -141,10 +178,11 @@ CONTRATO OBLIGATORIO:
 - Si la evidencia esta en otro idioma, traduce su significado al idioma obligatorio. No copies prosa del idioma de la fuente.
 - Una diapositiva es apoyo visual de una narracion: no transcribas fuentes, guion ni notas del avatar.
 - Conserva la idea pedagogica, pero usa frases nuevas, concretas y breves.
-- Para cada slide: titulo maximo 58 caracteres; hasta 3 bullets; cada bullet maximo 68 caracteres. Portadas: un solo mensaje breve.
+- Para cada slide de contenido: titulo maximo 58 caracteres; desarrolla 2 o 3 bullets concretos de hasta 68 caracteres cada uno, al menos 60 caracteres de explicacion en total. Explica como, por que, un criterio o una consecuencia; no entregues solo etiquetas ni reformules el titulo. Portadas y transiciones: un solo mensaje breve. Graficas: explica su lectura.
 - Usa solo claims respaldados por la evidencia proporcionada. No inventes cifras, ejemplos ni recomendaciones.
 - No menciones guion, storyboard, B-roll, avatar, timecode ni instrucciones de produccion.
-- Si una slide no tiene evidencia suficiente, conserva su idea borrador de forma concisa; no agregues contenido nuevo.
+- El borrador puede contener texto de plantilla como "Idea 18", "Texto de resumen claro" o "Mensaje final motivador": sustituyelo por contenido educativo, nunca lo conserves.
+- Desarrolla la idea usando la evidencia curada y el contexto pedagogico de sectionNarrative. Si ambos son insuficientes, omite esa slide de la respuesta para reportarla como incompleta; nunca inventes contenido para cumplir una cuota.
 - Devuelve una entrada por cada id de slide proporcionado.
 - Cada diapositiva debe desarrollar una idea distinta de su seccion. No repitas titulo y bullets entre slides ni cambies solo el numero para ocultar duplicados.
 - sectionNarrative es contexto pedagogico de esa seccion: sintetiza su idea sin transcribirlo ni mostrar instrucciones de produccion.
@@ -152,7 +190,10 @@ CONTRATO OBLIGATORIO:
 ${params.repairFeedback?.length ? `CORRECCIONES OBLIGATORIAS DEL INTENTO ANTERIOR:\n${JSON.stringify(params.repairFeedback)}` : ""}
 
 EVIDENCIA CURADA:
-${JSON.stringify(sourceEvidenceForPrompt(params.sourcePack))}
+${JSON.stringify(sourceEvidenceForPrompt(params))}
+
+SLIDES YA APROBADAS (no las devuelvas ni repitas sus ideas):
+${JSON.stringify((params.acceptedSlides || []).map((slide) => ({ id: slide.id, copy: slideVisibleText(slide) })))}
 
 BORRADOR DEL DECK:
 ${JSON.stringify(deckDraftForPrompt(params.deckSpec))}`;
@@ -166,12 +207,6 @@ function slideVisibleText(slide: CourseDeckSpec["slides"][number]) {
       ? block.items || []
       : block.text ? [block.text] : []),
   ].join(" ");
-}
-
-function hasDeckLocaleMismatch(deckSpec: CourseDeckSpec) {
-  return deckSpec.slides.some((slide) =>
-    hasUnexpectedVisibleLanguage(slideVisibleText(slide), deckSpec.locale),
-  );
 }
 
 function normalizeSynthesis(params: {
@@ -217,16 +252,10 @@ function normalizeSynthesis(params: {
         .map((item) => limitSlideCopy(item, budget.maxBodyItemCharacters))
         .filter(Boolean)
         .slice(0, budget.maxBodyItems);
-      const currentItems = slide.bodyBlocks.flatMap((block) => block.kind === "bullets"
-        ? block.items || []
-        : block.text ? [block.text] : []);
-
       return {
         ...slide,
         bodyBlocks: [{
-          items: bullets.length > 0
-            ? bullets
-            : currentItems.slice(0, budget.maxBodyItems).map((item) => limitSlideCopy(item, budget.maxBodyItemCharacters)),
+          items: bullets,
           kind: "bullets" as const,
         }],
         subtitle: limitSlideCopy(proposed.subtitle, budget.maxSubtitleCharacters) || undefined,
@@ -288,7 +317,7 @@ async function synthesizeWithGemini(params: SynthesizeVisibleCopyParams, apiKey:
 }
 
 /** Uses the configured visible-copy model, with a deterministic deck as a safe fallback. */
-export async function synthesizeDeckVisibleCopy(params: SynthesizeVisibleCopyParams): Promise<{
+async function synthesizeDeckVisibleCopyBatch(params: SynthesizeVisibleCopyParams): Promise<{
   deckSpec: CourseDeckSpec;
   trace: VisibleCopySynthesisTrace;
 }> {
@@ -303,32 +332,83 @@ export async function synthesizeDeckVisibleCopy(params: SynthesizeVisibleCopyPar
     Boolean(provider) && providers.indexOf(provider) === index,
   );
   const warnings: string[] = [];
+  let attemptCount = 0;
+  const accepted = new Map<string, CourseDeckSpec["slides"][number]>();
+  let repairFeedback: string[] | undefined;
 
   for (const provider of configuredProviders) {
     try {
       const apiKey = provider === "gemini" ? geminiKey : openAiKey;
       if (!apiKey) continue;
-      let repairFeedback: string[] | undefined;
       // One bounded repair per provider, using the same rules as final QA.
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        const request = { ...params, repairFeedback };
-        const result = provider === "gemini"
-          ? await synthesizeWithGemini(request, apiKey)
-          : await synthesizeWithOpenAI(request, apiKey);
-        let deckSpec: CourseDeckSpec | undefined;
-        try {
-          deckSpec = normalizeSynthesis({ deckSpec: params.deckSpec, response: result.response });
-          repairFeedback = validateCourseDeckVisibleCopy(deckSpec)
-            .filter((finding) => finding.severity === "error")
-            .map((finding) => `${finding.slideId || "deck"}: ${finding.code}: ${finding.message}`);
-        } catch (error) {
-          repairFeedback = [error instanceof Error ? error.message : "Respuesta de copy invalida."];
+        if (params.deadlineAt && Date.now() + SYNTHESIS_TIMEOUT_MS > params.deadlineAt) {
+          warnings.push("synthesis_deadline_exceeded");
+          break;
         }
-        if (deckSpec && repairFeedback.length === 0) {
+        attemptCount += 1;
+        const pending = params.deckSpec.slides.filter((slide) => !accepted.has(slide.id));
+        const request = { ...params, repairFeedback,
+          acceptedSlides: [...(params.acceptedSlides || []), ...accepted.values()],
+          deckSpec: { ...params.deckSpec, slides: pending },
+        };
+        let deckSpec: CourseDeckSpec | undefined;
+        let result: Awaited<ReturnType<typeof synthesizeWithOpenAI>> | Awaited<ReturnType<typeof synthesizeWithGemini>> | undefined;
+        try {
+          result = provider === "gemini"
+            ? await synthesizeWithGemini(request, apiKey)
+            : await synthesizeWithOpenAI(request, apiKey);
+          const rawSlides = synthesisResponseSchema.parse(result.response).slides;
+          const responseIds = rawSlides.map((value) => {
+            const raw = asRecord(value);
+            const candidate = Object.keys(asRecord(raw.slide)).length ? asRecord(raw.slide)
+              : Object.keys(asRecord(raw.content)).length ? asRecord(raw.content) : raw;
+            return compactText(candidate.id);
+          });
+          if (new Set(responseIds).size !== responseIds.length || responseIds.some((id) => !pending.some((slide) => slide.id === id))) {
+            throw new Error("invalid_slide_ids");
+          }
+          const invalidIds: string[] = [];
+          const proposed: CourseDeckSpec = { ...request.deckSpec, slides: pending.flatMap((slide) => {
+            const responseIndex = responseIds.indexOf(slide.id);
+            try {
+              if (responseIndex < 0) throw new Error("missing_slide");
+              return normalizeSynthesis({ deckSpec: { ...request.deckSpec, slides: [slide] }, response: { slides: [rawSlides[responseIndex]] } }).slides;
+            } catch {
+              invalidIds.push(slide.id);
+              return [];
+            }
+          }) };
+          const findings = validateCourseDeckVisibleCopy({ ...params.deckSpec,
+            slides: [...request.acceptedSlides, ...proposed.slides],
+          }).filter((finding) => finding.severity === "error");
+          for (const slide of proposed.slides) {
+            if (!findings.some((finding) => !finding.slideId || finding.slideId === slide.id)) accepted.set(slide.id, slide);
+          }
+          repairFeedback = [
+            ...findings.map((finding) => `${finding.slideId || "deck"}: ${finding.code}: ${finding.message}`),
+            ...invalidIds.map((id) => `${id}: missing_or_invalid_slide: completa todos los campos solicitados.`),
+          ];
+          deckSpec = { ...params.deckSpec, slides: params.deckSpec.slides.map((slide) => accepted.get(slide.id) || slide) };
+        } catch (error) {
+          // Do not persist provider response bodies, which can include private data.
+          repairFeedback = [error instanceof SyntaxError ? "invalid_json: devuelve JSON completo." : "provider_or_contract_error: respuesta no disponible o contrato invalido."];
+          warnings.push(`${provider}: ${repairFeedback[0]}`);
+        }
+        if (deckSpec && result && accepted.size === params.deckSpec.slides.length && repairFeedback.length === 0) {
           return {
             deckSpec,
             trace: {
               appliedSlideCount: deckSpec.slides.length,
+              batches: [{
+                applied: true,
+                attempts: attemptCount,
+                batchNumber: 1,
+                model: result.model,
+                provider: result.provider,
+                slides: slideAuditEntries(deckSpec).map((slide) => ({ ...slide, status: "GENERATED", findingCodes: [] })),
+                warning: warnings.length > 0 ? warnings.join(" | ") : null,
+              }],
               model: result.model,
               provider: result.provider,
               warning: warnings.length > 0 ? warnings.join(" | ") : null,
@@ -342,19 +422,97 @@ export async function synthesizeDeckVisibleCopy(params: SynthesizeVisibleCopyPar
     }
   }
 
-  if (hasDeckLocaleMismatch(params.deckSpec)) {
-    throw new Error(
-      `No se pudo sintetizar el deck en ${params.deckSpec.locale}. ${warnings.join(" | ") || "No hay proveedor de IA configurado para traducir las fuentes."}`,
-    );
-  }
+  const fallbackDeck = { ...params.deckSpec, slides: params.deckSpec.slides.map((slide) => accepted.get(slide.id) || slide) };
+  const fallbackErrors = validateCourseDeckVisibleCopy({ ...fallbackDeck,
+    slides: [...(params.acceptedSlides || []), ...fallbackDeck.slides],
+  }).filter((finding) => finding.severity === "error");
+  if (fallbackErrors.length) warnings.push(`fallback_rejected: ${fallbackErrors.map((finding) => `${finding.slideId}:${finding.code}`).join(", ")}`);
 
   return {
-    deckSpec: params.deckSpec,
+    deckSpec: fallbackDeck,
     trace: {
-      appliedSlideCount: 0,
+      appliedSlideCount: accepted.size,
+      batches: [{
+        applied: false,
+        attempts: attemptCount,
+        batchNumber: 1,
+        model: "soflia-engine-deterministic-fallback",
+        provider: "deterministic_fallback",
+        slides: slideAuditEntries(fallbackDeck).map((slide) => ({ ...slide,
+          status: fallbackErrors.some((finding) => !finding.slideId || finding.slideId === slide.slideId)
+            ? "REJECTED" : accepted.has(slide.slideId) ? "GENERATED" : "VALIDATED_FALLBACK",
+          findingCodes: fallbackErrors.filter((finding) => !finding.slideId || finding.slideId === slide.slideId).map((finding) => finding.code),
+        })),
+        warning: warnings.length > 0 ? warnings.join(" | ") : "No hay proveedor de IA configurado para sintetizar copy visible.",
+      }],
       model: "soflia-engine-deterministic-fallback",
       provider: "deterministic_fallback",
       warning: warnings.length > 0 ? warnings.join(" | ") : "No hay proveedor de IA configurado para sintetizar copy visible.",
+    },
+  };
+}
+
+function slideAuditEntries(deckSpec: CourseDeckSpec): VisibleCopySlideAudit[] {
+  return deckSpec.slides.map((slide) => ({
+    slideId: slide.id,
+    sourceRefs: slide.validationHints.sourceRefs,
+    sourceReferenceKind: "PLANNED",
+  }));
+}
+
+/**
+ * Keeps each model request bounded. A failed or malformed response can only
+ * affect its own batch, and the caller still runs the global quality gate over
+ * the assembled deck before any HTML is published.
+ */
+export async function synthesizeDeckVisibleCopy(params: SynthesizeVisibleCopyParams): Promise<{
+  deckSpec: CourseDeckSpec;
+  trace: VisibleCopySynthesisTrace;
+}> {
+  // Reserve worker time for visual assets and persistence after copy generation.
+  if (new Set(params.deckSpec.slides.map((slide) => slide.id)).size !== params.deckSpec.slides.length) {
+    throw new Error("duplicate_slide_id: no se puede sintetizar un deck con identificadores repetidos.");
+  }
+  params = { ...params, deadlineAt: params.deadlineAt ?? Date.now() + SYNTHESIS_TOTAL_BUDGET_MS };
+  if (params.deckSpec.slides.length <= SYNTHESIS_BATCH_SIZE) {
+    return synthesizeDeckVisibleCopyBatch(params);
+  }
+
+  const batches: CourseDeckSpec["slides"][] = [];
+  for (let index = 0; index < params.deckSpec.slides.length; index += SYNTHESIS_BATCH_SIZE) {
+    batches.push(params.deckSpec.slides.slice(index, index + SYNTHESIS_BATCH_SIZE));
+  }
+
+  const results: Array<Awaited<ReturnType<typeof synthesizeDeckVisibleCopyBatch>>> = [];
+  for (const slides of batches) {
+    results.push(await synthesizeDeckVisibleCopyBatch({
+      ...params,
+      deckSpec: { ...params.deckSpec, slides },
+      acceptedSlides: results.flatMap((result) => result.deckSpec.slides)
+        .filter((slide) => !validateCourseDeckVisibleCopy({ ...params.deckSpec, slides: [slide] }).some((finding) => finding.severity === "error")),
+    }));
+  }
+
+  const traces = results.map((result) => result.trace);
+  const batchAudits = traces.flatMap((trace, resultIndex) =>
+    trace.batches.map((batch) => ({ ...batch, batchNumber: resultIndex + 1 })),
+  );
+  const warnings = traces.flatMap((trace, index) =>
+    trace.warning ? [`lote ${index + 1}: ${trace.warning}`] : [],
+  );
+  const usesFallback = traces.some((trace) => trace.provider === "deterministic_fallback");
+
+  return {
+    deckSpec: {
+      ...params.deckSpec,
+      slides: results.flatMap((result) => result.deckSpec.slides),
+    },
+    trace: {
+      appliedSlideCount: traces.reduce((total, trace) => total + trace.appliedSlideCount, 0),
+      batches: batchAudits,
+      model: usesFallback ? "batched-visible-copy-with-fallback" : traces.map((trace) => trace.model).join(","),
+      provider: usesFallback ? "deterministic_fallback" : traces[0]?.provider || "deterministic_fallback",
+      warning: warnings.length > 0 ? warnings.join(" | ") : null,
     },
   };
 }

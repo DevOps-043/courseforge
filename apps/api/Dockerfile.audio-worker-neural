@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1
+#
+# This image is intentionally separate from Dockerfile.audio-worker. Its build
+# context must contain a compliance-approved DeepFilterNet manifest and the
+# exact binary/model referenced by it. The verifier fails closed before either
+# artifact is copied into the runtime image.
+FROM node:20-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+RUN npm ci
+COPY apps/api apps/api
+COPY scripts/verify-deepfilter-artifacts.mjs scripts/verify-deepfilter-artifacts.mjs
+RUN npm run verify:deepfilter-artifacts --workspace=apps/api \
+  && npm run build --workspace=apps/api
+
+FROM node:20-bookworm-slim AS runtime
+ARG FFMPEG_PACKAGE_VERSION
+RUN test -n "$FFMPEG_PACKAGE_VERSION" \
+  && apt-get update \
+  && apt-get install --no-install-recommends -y "ffmpeg=$FFMPEG_PACKAGE_VERSION" ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && ffmpeg -version \
+  && ffprobe -version
+WORKDIR /app
+ENV NODE_ENV=production \
+    DEEPFILTERNET_ENABLED=true \
+    DEEPFILTER_MANIFEST_PATH=/opt/deepfilter/manifest.json
+COPY --from=build /app/package.json /app/package-lock.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/apps/api/package.json apps/api/package.json
+COPY --from=build /app/apps/api/dist apps/api/dist
+COPY --from=build /app/apps/api/third_party/deepfilter /opt/deepfilter
+RUN test -x /opt/deepfilter/deep-filter \
+  && test -r /opt/deepfilter/DeepFilterNet3_onnx.tar.gz \
+  && chown -R node:node /opt/deepfilter
+WORKDIR /app/apps/api
+USER node
+CMD ["node", "dist/features/audio-processing/worker-entry.js"]

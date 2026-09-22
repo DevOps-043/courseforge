@@ -59,6 +59,25 @@ test("supports disabling ducking without changing static track volume", () => {
   assert.equal(document.tracks.find((track) => track.id === "music")?.volume, 0.25);
 });
 
+test("builds non-destructive fade envelopes even when ducking is disabled", () => {
+  const document = createAudioDocument();
+  document.audioMix.ducking.enabled = false;
+  const voice = document.clips.find((clip) => clip.id === "voice-clip")!;
+  voice.fadeInSeconds = 0.5;
+  voice.fadeOutSeconds = 0.75;
+
+  assert.deepEqual(buildCompositionVolumeAutomations(document), [{
+    baselineVolume: 1,
+    points: [
+      { timeSeconds: 3, volume: 0 },
+      { timeSeconds: 3.5, volume: 1 },
+      { timeSeconds: 4.25, volume: 1 },
+      { timeSeconds: 5, volume: 0 },
+    ],
+    targetClipId: "voice-clip",
+  }]);
+});
+
 function createAudioDocument(options: {
   hideVoice?: boolean;
   includeAvatar?: boolean;

@@ -666,6 +666,8 @@ export function applyCompositionEditorPatches(
       delete clip.crop;
       delete clip.colorGrading;
       delete clip.volume;
+      delete clip.fadeInSeconds;
+      delete clip.fadeOutSeconds;
       next.clips = next.clips.filter((candidate) => candidate.id === clip.id || !siblingIds.has(candidate.id));
       next.motion.animations = next.motion.animations.filter((animation) => !siblingIds.has(animation.target.clipId));
       removeTransitionsConnectedToClips(next.transitions, siblingIds);
@@ -966,6 +968,18 @@ export function applyCompositionEditorPatches(
         throw new CompositionEditorPatchError("El volumen individual solo está disponible para clips con una fuente de audio confirmada.");
       }
       clip.volume = operation.volume;
+    }
+
+    if (operation.type === "clip.audio-fades") {
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes cambiar los fades de un track bloqueado.");
+      if (!compositionClipHasConfigurableAudio(clip, currentTrack)) {
+        throw new CompositionEditorPatchError("Los fades solo están disponibles para clips con una fuente de audio confirmada.");
+      }
+      if (operation.fadeInSeconds + operation.fadeOutSeconds > clip.durationSeconds + CLIP_BOUNDARY_EPSILON_SECONDS) {
+        throw new CompositionEditorPatchError("La suma de los fades no puede exceder la duración del clip.");
+      }
+      clip.fadeInSeconds = operation.fadeInSeconds;
+      clip.fadeOutSeconds = operation.fadeOutSeconds;
     }
 
     if (operation.type === "clip.text-content") {

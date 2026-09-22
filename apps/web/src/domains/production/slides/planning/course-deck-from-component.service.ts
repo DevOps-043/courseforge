@@ -29,7 +29,7 @@ import {
   createSlideSourceAllocator,
   type SlideSourcePack,
 } from "../content/slide-source-pack.service";
-import { buildScriptSlideSegments } from "./slide-coverage-policy.service";
+import { buildScriptSlideSegments, MAX_SLIDES_PER_DECK, scriptSlideId, storyboardSlideId } from "./slide-coverage-policy.service";
 import type { VideoDurationContract } from "@/domains/video-duration/video-duration-policy";
 
 interface BuildCourseDeckSpecParams {
@@ -175,7 +175,9 @@ function coverLeadFromContent(
   ]);
 
   return limitSlideCopy(
-    lead || "Contenido pendiente de sintetizar desde fuentes aprobadas para esta leccion.",
+    // A title-only cover is valid. Publishing an internal pending-content
+    // message is not: the global QA rejects such text before HTML upload.
+    lead,
     copyBudgetForSlideType("cover").maxBodyItemCharacters,
   );
 }
@@ -391,10 +393,7 @@ function buildSlidesFromScript(
   }))).map((segment, index): CourseSlideSpec => {
     const section = sections[segment.sectionIndex]!;
     const narration = compactText(section.narration_text);
-    const sectionNumber = section.section_number || segment.sectionIndex + 1;
-    const id = segment.part === 1
-      ? `script-section-${sectionNumber}`
-      : `script-section-${sectionNumber}-part-${segment.part}`;
+    const id = scriptSlideId(segment.sectionIndex, segment.part);
     const plannedSlide = plannedSlideById(slidePlan, id);
     const baseVisibleLines = sectionBeatLines[segment.sectionIndex] || [];
     const resolvedSlideType = plannedSlide?.type || (index === 0 ? "concept" : "worked_example");
@@ -435,7 +434,8 @@ function buildSlidesFromScript(
     };
   });
   const coverSourceRefs = sourceRefsForSlide(slidePlan, "cover", ["component.content.script"]);
-  const chartSlides = buildChartSlides(content, contentSlides.length + 2, sourcePack);
+  const chartSlides = buildChartSlides(content, contentSlides.length + 2, sourcePack)
+    .slice(0, Math.max(0, MAX_SLIDES_PER_DECK - contentSlides.length - 1));
   const additionalEvidenceSlides = buildAdditionalEvidenceSlides({
     existingSlides: [...contentSlides, ...chartSlides],
     sourcePack,
@@ -485,7 +485,7 @@ function buildSlidesFromStoryboard(
   const coverSourceRefs = sourceRefsForSlide(slidePlan, "cover", ["component.content.storyboard"]);
   const sourceLinesForSlide = createSlideSourceAllocator(sourcePack);
 
-  return [
+  const slides: CourseSlideSpec[] = [
     {
       bodyBlocks: [{
         kind: "paragraph",
@@ -502,9 +502,9 @@ function buildSlidesFromStoryboard(
         sourceRefs: coverSourceRefs,
       },
     },
-    ...storyboard.slice(0, 10).map((item, index): CourseSlideSpec => {
+    ...storyboard.slice(0, MAX_SLIDES_PER_DECK - 1).map((item, index): CourseSlideSpec => {
       const visibleLines = buildVisibleLinesFromStoryboardItem(item);
-      const id = `storyboard-${item.take_number || index + 1}`;
+      const id = storyboardSlideId(index);
       const plannedSlide = plannedSlideById(slidePlan, id);
       const resolvedSlideType = plannedSlide?.type || "concept";
       const sourceVisibleLines = sourceLinesForSlide(resolvedSlideType);
@@ -540,6 +540,10 @@ function buildSlidesFromStoryboard(
       };
     }),
   ];
+  return [...slides, ...buildAdditionalEvidenceSlides({
+    existingSlides: slides.slice(1), sourcePack,
+    startOrder: slides.length + 1, targetSlideCount: slidePlan.targetSlideCount,
+  })];
 }
 
 function fallbackSlides(title: string, visualAssignments: VisualAssignmentMap): CourseSlideSpec[] {

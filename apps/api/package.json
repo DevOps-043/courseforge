@@ -6,6 +6,9 @@
     "dev": "ts-node-dev src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "start:audio-worker": "node dist/features/audio-processing/worker-entry.js",
+    "test:audio-processing": "tsc -p tsconfig.audio-processing-test.json && node .tmp/audio-processing-tests/features/audio-processing/__tests__/deepfilter-runtime-config.test.js",
+    "verify:deepfilter-artifacts": "node ../../scripts/verify-deepfilter-artifacts.mjs",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

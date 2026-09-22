@@ -299,6 +299,18 @@ export async function generateCourseDeckWithCopySynthesisQualityGate(
         deckSpec: draft.deckSpec,
         trace: {
           appliedSlideCount: 0,
+          batches: [{
+            applied: false,
+            attempts: 0,
+            batchNumber: 1,
+            model: "manual-input",
+            provider: "deterministic_fallback" as const,
+            slides: draft.deckSpec.slides.map((slide) => ({
+              slideId: slide.id,
+              sourceRefs: slide.validationHints.sourceRefs,
+            })),
+            warning: "El copy manual se conserva sin reescritura automatica.",
+          }],
           model: "manual-input",
           provider: "deterministic_fallback" as const,
           warning: "El copy manual se conserva sin reescritura automatica.",
@@ -311,13 +323,14 @@ export async function generateCourseDeckWithCopySynthesisQualityGate(
         sourcePack: params.component.sourcePack,
       });
   const manualCopy = synthesis.trace.model === "manual-input";
+  const modelExecuted = synthesis.trace.batches.some((batch) => batch.attempts > 0);
   const deterministicFallback = synthesis.trace.provider === "deterministic_fallback" && !manualCopy;
   console.info("[SlideGenerator] Visible copy synthesis completed", {
     appliedSlideCount: synthesis.trace.appliedSlideCount,
     componentId: params.component.id,
     event: "slide_visible_copy_synthesized",
     model: synthesis.trace.model,
-    modelExecuted: synthesis.trace.provider !== "deterministic_fallback",
+    modelExecuted,
     provider: synthesis.trace.provider,
     usedFallback: deterministicFallback,
     warningPresent: Boolean(synthesis.trace.warning),
@@ -340,9 +353,10 @@ export async function generateCourseDeckWithCopySynthesisQualityGate(
         output: {
           ...agentStageOutput(params, "visibleCopy"),
           appliedSlideCount: synthesis.trace.appliedSlideCount,
+          batches: synthesis.trace.batches,
           executionMode: manualCopy ? "MANUAL" : deterministicFallback ? "DETERMINISTIC_FALLBACK" : "MODEL",
           model: synthesis.trace.model,
-          modelExecuted: synthesis.trace.provider !== "deterministic_fallback",
+          modelExecuted,
           provider: synthesis.trace.provider,
           warning: synthesis.trace.warning,
         },

@@ -11,6 +11,7 @@ import {
   copyBudgetForSlideType,
   hasUnexpectedVisibleLanguage,
   textLengthForVisibleSlide,
+  normalizedVisibleText,
 } from "../content/slide-copy-policy.service";
 
 export type CourseDeckQaSeverity = "error" | "warning";
@@ -51,6 +52,22 @@ export interface CourseDeckQaReport {
 
 const MAX_RECOMMENDED_SLIDE_TEXT_CHARS = 260;
 const MAX_BLOCKING_SLIDE_TEXT_CHARS = 340;
+const MIN_CONTENT_EXPLANATION_CHARS = 60;
+
+// Internal recovery messages must never become learner-facing content. This is
+// intentionally narrow so concise but valid educational copy remains allowed.
+const VISIBLE_PLACEHOLDER_PATTERNS = [
+  /^\s*(?:idea|escena)\s+\d+\s*$/i,
+  /\btexto de resumen claro\b/i,
+  /\bmensaje final motivador\b/i,
+  /\bcontenido pendiente de sintetizar\b/i,
+  /\bcontenido personalizado pendiente de ampliar\b/i,
+  /^\s*idea clave de la lecci[oó]n\s*$/i,
+  /^\s*apoyo visual de la lecci[oó]n\s*$/i,
+  /^\s*presentaci[oó]n del objetivo de aprendizaje\.?\s*$/i,
+  /^\s*explicaci[oó]n breve de los puntos clave\.?\s*$/i,
+  /^\s*cierre con una acci[oó]n o reflexi[oó]n para el estudiante\.?\s*$/i,
+];
 
 function textLengthForSlide(slide: CourseSlideSpec) {
   return textLengthForVisibleSlide(slide);
@@ -84,6 +101,14 @@ function validateSlideOrder(
   findings: CourseDeckQaFinding[],
 ) {
   const orders = deckSpec.slides.map((slide) => slide.order);
+  const ids = deckSpec.slides.map((slide) => slide.id);
+  if (new Set(ids).size !== ids.length) {
+    pushFinding(findings, {
+      code: "duplicate_slide_id",
+      message: "El deck contiene identificadores de diapositiva duplicados.",
+      severity: "error",
+    });
+  }
   const uniqueOrders = new Set(orders);
   const expectedOrders = Array.from(
     { length: deckSpec.slides.length },
@@ -225,6 +250,56 @@ function validateTextDensity(
   }
 }
 
+function isVisiblePlaceholder(value: string) {
+  return VISIBLE_PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(value.trim()));
+}
+
+/** Prevent internal recovery copy from being published as a completed deck. */
+function validateSubstantiveVisibleCopy(
+  deckSpec: CourseDeckSpec,
+  findings: CourseDeckQaFinding[],
+) {
+  for (const slide of deckSpec.slides) {
+    const bodyItems = slide.bodyBlocks.flatMap((block) =>
+      block.kind === "bullets" ? block.items || [] : block.text ? [block.text] : [],
+    ).filter((item) => item.trim().length > 0);
+    const candidateText = [slide.title, slide.subtitle || "", ...bodyItems];
+
+    if (candidateText.some(isVisiblePlaceholder)) {
+      pushFinding(findings, {
+        code: "placeholder_visible_copy",
+        message: "La diapositiva contiene texto interno pendiente de completar.",
+        severity: "error",
+        slideId: slide.id,
+      });
+    }
+
+    // Covers may intentionally be title-only, but every content slide needs
+    // at least one learner-facing statement.
+    if (slide.type !== "cover" && !slide.chart && !slide.subtitle?.trim() && bodyItems.length === 0) {
+      pushFinding(findings, {
+        code: "empty_slide_body",
+        message: "La diapositiva no contiene copy visible para el estudiante.",
+        severity: "error",
+        slideId: slide.id,
+      });
+    }
+    // Measure the explanation, not the heading: a long title cannot compensate
+    // for a body consisting only of a label. Covers, transitions and charts
+    // have different instructional contracts and intentionally remain exempt.
+    const explanation = normalizedVisibleText([slide.subtitle || "", ...bodyItems].join(" "));
+    if (!["cover", "transition"].includes(slide.type) && !slide.chart
+      && explanation.length > 0 && explanation.length < MIN_CONTENT_EXPLANATION_CHARS) {
+      pushFinding(findings, {
+        code: "insufficient_slide_explanation",
+        message: "Desarrolla la idea con 2 o 3 puntos concretos respaldados por el contexto; no basta una etiqueta o reformular el titulo (minimo 60 caracteres de explicacion).",
+        severity: "error",
+        slideId: slide.id,
+      });
+    }
+  }
+}
+
 function validateChartContracts(
   deckSpec: CourseDeckSpec,
   html: string,
@@ -285,16 +360,6 @@ function validateChartContracts(
       });
     }
   }
-}
-
-function normalizedVisibleText(value: string) {
-  return value
-    .toLocaleLowerCase("es")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function validateCoverage(
@@ -490,6 +555,8 @@ function buildChecks(findings: CourseDeckQaFinding[]) {
         "long_slide_point",
         "long_slide_subtitle",
         "long_slide_title",
+        "placeholder_visible_copy",
+        "empty_slide_body",
         "too_many_slide_points",
       ].includes(finding.code),
     ),
@@ -516,7 +583,7 @@ function buildChecks(findings: CourseDeckQaFinding[]) {
     ),
     slideOrder: !findings.some((finding) =>
       finding.severity === "error" &&
-      ["duplicate_slide_order", "non_contiguous_slide_order"].includes(finding.code),
+      ["duplicate_slide_id", "duplicate_slide_order", "non_contiguous_slide_order"].includes(finding.code),
     ),
     textDensity: !findings.some((finding) =>
       finding.severity === "error" && [
@@ -526,6 +593,9 @@ function buildChecks(findings: CourseDeckQaFinding[]) {
         "long_slide_subtitle",
         "long_slide_title",
         "repeated_card_copy",
+        "insufficient_slide_explanation",
+        "placeholder_visible_copy",
+        "empty_slide_body",
         "too_many_slide_points",
       ].includes(finding.code),
     ),
@@ -561,6 +631,7 @@ function resolveStatus(findings: CourseDeckQaFinding[]): CourseDeckQaStatus {
 export function validateCourseDeckVisibleCopy(deckSpec: CourseDeckSpec): CourseDeckQaFinding[] {
   const findings: CourseDeckQaFinding[] = [];
   validateTextDensity(deckSpec, findings);
+  validateSubstantiveVisibleCopy(deckSpec, findings);
   validateContentUniqueness(deckSpec, findings);
   validateVisibleLanguage(deckSpec, findings);
   validateNarrationLeakage(deckSpec, findings);

@@ -22,6 +22,11 @@ const PROVIDERS: ProductionProviderDefinition[] = [
     ],
   },
   {
+    key: PRODUCTION_PROVIDERS.FFMPEG,
+    name: "FFmpeg Audio Worker",
+    jobTypes: [PRODUCTION_JOB_TYPES.AUDIO_PROCESSING],
+  },
+  {
     key: PRODUCTION_PROVIDERS.GEMINI,
     name: "Gemini",
     jobTypes: [PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION],

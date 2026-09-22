@@ -109,6 +109,12 @@ const clipVolumeOperationSchema = z.object({
   volume: z.number().finite().min(0).max(1),
 }).strict();
 
+const clipAudioFadesOperationSchema = z.object({
+  fadeInSeconds: z.number().finite().min(0).max(30),
+  fadeOutSeconds: z.number().finite().min(0).max(30),
+  type: z.literal("clip.audio-fades"),
+}).strict();
+
 const clipTextContentOperationSchema = z.object({
   text: z.string().min(1).max(4_000),
   type: z.literal("clip.text-content"),
@@ -324,6 +330,7 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipResetAssetOperationSchema,
   clipVisibilityOperationSchema,
   clipVolumeOperationSchema,
+  clipAudioFadesOperationSchema,
   clipTextContentOperationSchema,
   clipTextStyleOperationSchema,
 ]).and(z.object({ clipId: editorIdSchema }).strict());

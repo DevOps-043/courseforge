@@ -1,7 +1,7 @@
 import type { CourseSlideSpec, SlideDeckGenerateInput } from "../specs/course-deck.schema";
 import type { DeckBrief } from "./deck-brief-agent.service";
 import type { EvidencePack } from "./lesson-evidence-agent.service";
-import { buildScriptSlideSegments } from "../planning/slide-coverage-policy.service";
+import { buildScriptSlideSegments, MAX_SLIDES_PER_DECK, scriptSlideId, storyboardSlideId } from "../planning/slide-coverage-policy.service";
 
 export interface PlannedSlide {
   id: string;
@@ -300,11 +300,8 @@ function planScriptSlides(
       visibleBeatCount: visualBeatCount(section),
     }))).map((segment, index): PlannedSlide => {
       const section = sections[segment.sectionIndex]!;
-      const sectionNumber = section.section_number || segment.sectionIndex + 1;
       return {
-        id: segment.part === 1
-          ? `script-section-${sectionNumber}`
-          : `script-section-${sectionNumber}-part-${segment.part}`,
+        id: scriptSlideId(segment.sectionIndex, segment.part),
         order: index + 2,
         purpose: segment.totalParts === 1
           ? "Convertir una seccion del guion en apoyo visual breve."
@@ -332,8 +329,8 @@ function planStoryboardSlides(
       sourceRefs: ["component.content.storyboard", ...evidenceRefsForSlide(evidence)],
       type: "cover",
     },
-    ...storyboard.slice(0, 10).map((item, index): PlannedSlide => ({
-      id: `storyboard-${item.take_number || index + 1}`,
+    ...storyboard.slice(0, MAX_SLIDES_PER_DECK - 1).map((item, index): PlannedSlide => ({
+      id: storyboardSlideId(index),
       order: index + 2,
       purpose: "Transformar una toma del storyboard en apoyo visual.",
       sourceRefs: ["component.content.storyboard", ...evidenceRefsForSlide(evidence)],

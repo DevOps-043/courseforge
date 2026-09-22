@@ -1,0 +1,21 @@
+{
+  "deepFilterNet": {
+    "commit": "REPLACE_WITH_APPROVED_COMMIT",
+    "releaseTag": "REPLACE_WITH_APPROVED_RELEASE"
+  },
+  "artifacts": {
+    "binary": {
+      "path": "deep-filter",
+      "sha256": "REPLACE_WITH_64_CHARACTER_SHA256"
+    },
+    "model": {
+      "id": "deepfilternet3-onnx",
+      "path": "DeepFilterNet3_onnx.tar.gz",
+      "sha256": "REPLACE_WITH_64_CHARACTER_SHA256"
+    }
+  },
+  "compliance": {
+    "modelRedistributionApproved": false,
+    "reviewReference": "REPLACE_WITH_LEGAL_OR_COMPLIANCE_REFERENCE"
+  }
+}

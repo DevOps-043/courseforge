@@ -33,19 +33,18 @@ export function buildCompositionVolumeAutomations(
   document: CompositionEditorDocument,
 ): CompositionClipVolumeAutomation[] {
   const { ducking } = document.audioMix;
-  if (!ducking.enabled || ducking.duckedVolumeRatio >= 1) return [];
-
   const tracksById = new Map(document.tracks.map((track) => [track.id, track]));
   const triggerRoles = new Set<CompositionTrackRole>(ducking.triggerRoles);
   const triggerIntervals = mergeTriggerIntervals(
-    document.clips
+    ducking.enabled && ducking.duckedVolumeRatio < 1
+      ? document.clips
       .filter((clip) => isAudibleTriggerClip(clip, tracksById.get(clip.trackId), triggerRoles))
-      .map(toInterval),
+      .map(toInterval)
+      : [],
     ducking.attackSeconds + ducking.releaseSeconds,
   );
-  if (triggerIntervals.length === 0) return [];
 
-  return document.clips.flatMap((clip) => {
+  const duckingAutomations = triggerIntervals.length === 0 ? [] : document.clips.flatMap((clip) => {
     const track = tracksById.get(clip.trackId);
     if (!isDuckingTargetClip(clip, track, ducking.targetRole)) return [];
     const baselineVolume = resolveCompositionClipAudioVolume(clip, track);
@@ -86,6 +85,63 @@ export function buildCompositionVolumeAutomations(
 
     return [{ baselineVolume, points, targetClipId: clip.id }];
   });
+
+  const duckingByClipId = new Map(duckingAutomations.map((automation) => [automation.targetClipId, automation]));
+  return document.clips.flatMap((clip) => {
+    const track = tracksById.get(clip.trackId);
+    if (!compositionClipHasConfigurableAudio(clip, track) || clip.hidden || track?.hidden || track?.muted) return [];
+    const fadeInSeconds = clip.fadeInSeconds || 0;
+    const fadeOutSeconds = clip.fadeOutSeconds || 0;
+    const duckingAutomation = duckingByClipId.get(clip.id);
+    if (fadeInSeconds <= 0 && fadeOutSeconds <= 0) return duckingAutomation ? [duckingAutomation] : [];
+
+    const baselineVolume = resolveCompositionClipAudioVolume(clip, track);
+    if (baselineVolume === 0) return [];
+    const interval = toInterval(clip);
+    const breakpointTimes = new Set<number>([
+      interval.startSeconds,
+      interval.endSeconds,
+      ...(duckingAutomation?.points.map((point) => point.timeSeconds) || []),
+    ]);
+    if (fadeInSeconds > 0) breakpointTimes.add(interval.startSeconds + fadeInSeconds);
+    if (fadeOutSeconds > 0) breakpointTimes.add(interval.endSeconds - fadeOutSeconds);
+    const points = [...breakpointTimes]
+      .sort((left, right) => left - right)
+      .map((timeSeconds) => {
+        const duckedVolume = duckingAutomation
+          ? interpolateAutomationVolume(duckingAutomation.points, timeSeconds)
+          : baselineVolume;
+        return {
+          timeSeconds: roundSeconds(timeSeconds),
+          volume: roundVolume(duckedVolume * resolveFadeGain(interval, fadeInSeconds, fadeOutSeconds, timeSeconds)),
+        };
+      });
+    return [{ baselineVolume, points, targetClipId: clip.id }];
+  });
+}
+
+function interpolateAutomationVolume(points: CompositionVolumePoint[], timeSeconds: number) {
+  const first = points[0];
+  if (!first) return 1;
+  if (timeSeconds <= first.timeSeconds) return first.volume;
+  for (let index = 1; index < points.length; index += 1) {
+    const next = points[index]!;
+    const previous = points[index - 1]!;
+    if (timeSeconds > next.timeSeconds) continue;
+    const duration = next.timeSeconds - previous.timeSeconds;
+    return duration <= 0 ? next.volume : interpolate(previous.volume, next.volume, (timeSeconds - previous.timeSeconds) / duration);
+  }
+  return points[points.length - 1]!.volume;
+}
+
+function resolveFadeGain(interval: TimeInterval, fadeInSeconds: number, fadeOutSeconds: number, timeSeconds: number) {
+  const fadeInGain = fadeInSeconds > 0
+    ? Math.min(1, Math.max(0, (timeSeconds - interval.startSeconds) / fadeInSeconds))
+    : 1;
+  const fadeOutGain = fadeOutSeconds > 0
+    ? Math.min(1, Math.max(0, (interval.endSeconds - timeSeconds) / fadeOutSeconds))
+    : 1;
+  return Math.min(fadeInGain, fadeOutGain);
 }
 
 function isAudibleTriggerClip(

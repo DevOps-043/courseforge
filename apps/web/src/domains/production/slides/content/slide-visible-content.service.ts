@@ -107,29 +107,19 @@ function educationalLinesFromText(value: unknown) {
   return splitVisibleText(compactText(value)).filter((line) => !isProductionDirectionText(line));
 }
 
-function tokenSet(value: string) {
-  return new Set(
-    normalizeForTextAnalysis(value)
-      .split(" ")
-      .filter((token) => token.length >= 4),
-  );
-}
+const NARRATION_MATCH_WORDS = 8;
+const NARRATION_COPIED_RATIO = 0.6;
 
-function similarityRatio(left: string, right: string) {
-  const leftTokens = tokenSet(left);
-  const rightTokens = tokenSet(right);
-  if (leftTokens.size === 0 || rightTokens.size === 0) {
-    return 0;
+function copiedPhraseRatio(visible: string, narration: string) {
+  const words = normalizeForTextAnalysis(visible).split(" ");
+  const source = ` ${normalizeForTextAnalysis(narration)} `;
+  const copied = new Set<number>();
+  for (let start = 0; start <= words.length - NARRATION_MATCH_WORDS; start += 1) {
+    const phrase = words.slice(start, start + NARRATION_MATCH_WORDS).join(" ");
+    if (!source.includes(` ${phrase} `)) continue;
+    for (let index = start; index < start + NARRATION_MATCH_WORDS; index += 1) copied.add(index);
   }
-
-  let overlap = 0;
-  for (const token of leftTokens) {
-    if (rightTokens.has(token)) {
-      overlap += 1;
-    }
-  }
-
-  return overlap / Math.min(leftTokens.size, rightTokens.size);
+  return copied.size / words.length;
 }
 
 export function isLikelyNarrationLeak(params: {
@@ -146,7 +136,9 @@ export function isLikelyNarrationLeak(params: {
     return true;
   }
 
-  return visibleText.length > 120 && similarityRatio(visibleText, narration) >= 0.72;
+  // Shared vocabulary is expected in a grounded summary. Require copied phrases,
+  // not bag-of-words similarity, to avoid rejecting legitimate explanations.
+  return visibleText.length > 120 && copiedPhraseRatio(visibleText, narration) >= NARRATION_COPIED_RATIO;
 }
 
 export function buildVisibleLinesFromScriptSection(

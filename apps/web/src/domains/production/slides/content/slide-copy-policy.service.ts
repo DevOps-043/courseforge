@@ -8,6 +8,12 @@ export interface SlideCopyBudget {
   maxTitleCharacters: number;
 }
 
+export function normalizedVisibleText(value: string) {
+  return value.toLocaleLowerCase("es").normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
+}
+
 const DEFAULT_BUDGET: SlideCopyBudget = {
   maxBodyCharacters: 210,
   maxBodyItems: 3,

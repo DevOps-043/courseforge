@@ -209,6 +209,7 @@ function renderFrameworkSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isAc
 
 function renderClosingSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActive: boolean) {
   const lead = slide.subtitle || firstTextBlock(slide);
+  const points = bulletItems(slide).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
   return `<section class="slide ${isActive ? "active " : ""}s-center closing-slide" data-screen-label="${String(slide.order).padStart(2, "0")} ${escapeHtml(slide.title)}" data-title="${escapeHtml(slide.title)}">
     ${renderBackgroundPane(slide)}
     <div class="ch-tl crosshair"></div><div class="ch-br crosshair"></div>
@@ -216,6 +217,7 @@ function renderClosingSlide(slide: CourseSlideSpec, deck: CourseDeckSpec, isActi
       <div class="kicker">${escapeHtml(deck.designSystem.brandLabel)}</div>
       <h2 class="display-huge"><span class="anim-typewriter">${escapeHtml(slide.title)}</span></h2>
       ${lead ? `<p class="lead max-center">${escapeHtml(lead)}</p>` : ""}
+      ${points ? `<ul class="center-points">${points}</ul>` : ""}
     </div>
     ${renderNotes(slide)}
   </section>`;
@@ -692,7 +694,7 @@ html, body {
     var(--blue-deep);
   background-size: 120px 120px;
 }
-.closing-slide .display-huge, .closing-slide .lead, .closing-slide .kicker { color: var(--shell); }
+.closing-slide .display-huge, .closing-slide .lead, .closing-slide .kicker, .closing-slide .center-points { color: var(--shell); }
 .closing-slide .crosshair::before, .closing-slide .crosshair::after { background: var(--accent); opacity: .9; }
 .bg-pane { position: absolute; inset: 0; background: var(--bg); z-index: 0; overflow: hidden; }
 .bg-pane.has-generated-background > img {

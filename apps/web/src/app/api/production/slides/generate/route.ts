@@ -52,7 +52,7 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const BUCKET = "production-assets";
-const SLIDE_COPY_PIPELINE_VERSION = "visible-copy-synthesis-v6";
+const SLIDE_COPY_PIPELINE_VERSION = "visible-copy-synthesis-v9";
 const MAX_SLIDE_GENERATION_REQUEST_BYTES = 64 * 1024;
 
 export const slideDeckGenerationRequestSchema = slideDeckGenerateInputSchema.extend({
@@ -62,6 +62,22 @@ export const slideDeckGenerationRequestSchema = slideDeckGenerateInputSchema.ext
   regenerationRequestId: z.string().uuid().optional(),
   slideTemplateRunId: z.string().uuid().optional(),
 });
+
+function validateManualSlideContent(
+  customSlides: z.infer<typeof slideDeckGenerateInputSchema>["customSlides"],
+) {
+  if (!customSlides?.length) return null;
+
+  const incompleteSlide = customSlides.find((slide) => {
+    const hasBullets = Boolean(slide.bullets?.some((bullet) => bullet.trim().length > 0));
+    const hasSubtitle = Boolean(slide.subtitle?.trim());
+    return !slide.chart && !hasBullets && !hasSubtitle;
+  });
+
+  return incompleteSlide
+    ? `La diapositiva manual \"${incompleteSlide.title}\" necesita al menos un punto o subtitulo.`
+    : null;
+}
 
 function deckBasePath(componentId: string) {
   return `slides/${componentId}-soflia-engine-deck`;
@@ -286,6 +302,15 @@ export async function POST(request: Request) {
       status: parsed.reason === "too_large" ? 413 : 400,
     });
   }
+  const manualSlideError = validateManualSlideContent(parsed.data.customSlides);
+  if (manualSlideError) {
+    return apiErrorResponse({
+      code: API_ERROR_CODE.invalidRequest,
+      message: manualSlideError,
+      requestId,
+      status: 400,
+    });
+  }
 
   try {
   const { componentId } = parsed.data;
@@ -320,6 +345,7 @@ export async function POST(request: Request) {
   }
 
   const queueInputSnapshot = {
+    copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
     component_id: componentId,
     job_type: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
     request: parsed.data,
@@ -487,6 +513,7 @@ export async function runSlideDeckGeneration(params: {
         provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
       });
   let failedQaReport: ReturnType<typeof validateCourseDeckQuality> | null = null;
+  let generationStages: unknown[] = [];
 
   if (
     !forceRegenerate &&
@@ -599,6 +626,8 @@ export async function runSlideDeckGeneration(params: {
           input,
         });
     const { deckSpec: generatedDeckSpec, stages } = deckGeneration;
+    generationStages = stages;
+    failedQaReport = deckGeneration.qaReport;
     if (
       !input.customSlides?.length &&
       context.videoDurationContract &&
@@ -863,11 +892,15 @@ export async function runSlideDeckGeneration(params: {
     await failProductionJob({
       error,
       jobId: job.id,
-      outputSnapshot: failedQaReport ? {
-        qa_report: failedQaReport,
-        qa_status: failedQaReport.status,
-        slide_count: failedQaReport.summary.slideCount,
-      } : undefined,
+      outputSnapshot: {
+        stages: generationStages,
+        copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
+        ...(failedQaReport ? {
+          qa_report: failedQaReport,
+          qa_status: failedQaReport.status,
+          slide_count: failedQaReport.summary.slideCount,
+        } : {}),
+      },
       supabase: authorizedComponent.admin,
     });
     createOperationalLogger("production.slides.generation_worker", { jobId: job.id })

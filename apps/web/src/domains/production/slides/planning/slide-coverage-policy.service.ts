@@ -4,6 +4,16 @@
  */
 export const MAX_SLIDES_PER_DECK = 24;
 
+/** Source numbering is editorial metadata and may repeat after script expansion. */
+export function scriptSlideId(sectionIndex: number, part: number) {
+  const base = `script-section-${sectionIndex + 1}`;
+  return part === 1 ? base : `${base}-part-${part}`;
+}
+
+export function storyboardSlideId(itemIndex: number) {
+  return `storyboard-${itemIndex + 1}`;
+}
+
 export interface ScriptCoverageSection {
   visibleBeatCount?: number;
 }

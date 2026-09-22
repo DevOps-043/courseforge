@@ -189,6 +189,9 @@ export const compositionClipSchema = z.object({
   sceneId: z.string().min(1).max(160).optional(),
   crop: compositionVisualCropSchema.optional(),
   durationSeconds: boundedSecondsSchema.positive(),
+  /** Non-destructive, linear gain ramps applied at the clip boundaries. */
+  fadeInSeconds: boundedSecondsSchema.optional(),
+  fadeOutSeconds: boundedSecondsSchema.optional(),
   hidden: z.boolean().default(false),
   hfId: editorIdSchema,
   id: editorIdSchema,
@@ -213,6 +216,12 @@ export const compositionClipSchema = z.object({
   /** Per-clip source audio multiplier; track volume remains the master gain. */
   volume: finiteNumberSchema.min(0).max(1).optional(),
 }).strict().superRefine((clip, context) => {
+  if ((clip.fadeInSeconds || 0) + (clip.fadeOutSeconds || 0) > clip.durationSeconds + COMPOSITION_TIMELINE_BOUNDARY_EPSILON_SECONDS) {
+    context.addIssue({
+      code: "custom",
+      message: "La suma de los fades no puede exceder la duración del clip.",
+    });
+  }
   if (clip.startSeconds + clip.durationSeconds > COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS) {
     context.addIssue({ code: "custom", message: "El clip excede la duración máxima de la composición." });
   }
