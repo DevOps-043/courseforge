@@ -504,8 +504,9 @@ test("critical public APIs preserve the shared response and request-boundary con
   );
   assert.match(
     legacySlideFontsRoute,
-    /export\s*\{\s*GET\s*,\s*POST\s*,\s*runtime\s*\}\s*from\s*["']\.\.\/\.\.\/fonts\/route["']/,
+    /export\s*\{\s*GET\s*,\s*POST\s*\}\s*from\s*["']\.\.\/\.\.\/fonts\/route["']/,
   );
+  assert.match(legacySlideFontsRoute, /export const runtime = "nodejs"/);
 
   const binaryDownloadRoutes = auditedRoutes.filter((path) => path.includes("bundle-agent\\base-bundle") || path.endsWith("download\\route.ts"));
   for (const path of binaryDownloadRoutes) {
