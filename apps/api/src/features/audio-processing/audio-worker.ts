@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { assertSupportedAudioProfile } from "./worker-capabilities";
 
 const execFileAsync = promisify(execFile);
 const MAX_INPUT_BYTES = 50 * 1024 * 1024;
@@ -34,10 +35,12 @@ type ClaimedJob = z.infer<typeof claimedJobSchema>;
 export async function processClaimedAudioJob(params: {
   job: unknown;
   supabase: SupabaseClient<any, any, any>;
+  supportedProfiles: readonly string[];
 }) {
   const job = claimedJobSchema.parse(params.job);
   let workDirectory: string | null = null;
   try {
+    assertSupportedAudioProfile(job.input_snapshot.profile.id, params.supportedProfiles);
     if (!ALLOWED_SOURCE_BUCKETS.has(job.input_snapshot.source.storageBucket)) {
       throw new AudioProcessingTerminalError("AUDIO_SOURCE_BUCKET_NOT_ALLOWED");
     }
@@ -100,13 +103,19 @@ export async function processClaimedAudioJob(params: {
   }
 }
 
-export async function processAudioProcessingBatch(supabase: SupabaseClient<any, any, any>, limit = 1) {
-  const { data, error } = await supabase.rpc("claim_audio_processing_jobs", {
+export async function processAudioProcessingBatch(
+  supabase: SupabaseClient<any, any, any>,
+  supportedProfiles: readonly string[],
+  limit = 1,
+) {
+  if (supportedProfiles.length === 0) throw new Error("AUDIO_PROCESSING_PROFILES_REQUIRED");
+  const { data, error } = await supabase.rpc("claim_audio_processing_jobs_by_profile", {
     p_lease_seconds: 900,
     p_limit: Math.min(Math.max(limit, 1), 4),
+    p_profile_ids: supportedProfiles,
   });
   if (error) throw new Error("AUDIO_CLAIM_FAILED");
-  const results = await Promise.allSettled((data || []).map((job: unknown) => processClaimedAudioJob({ job, supabase })));
+  const results = await Promise.allSettled((data || []).map((job: unknown) => processClaimedAudioJob({ job, supabase, supportedProfiles })));
   return { claimed: results.length, failed: results.filter((result) => result.status === "rejected").length };
 }
 

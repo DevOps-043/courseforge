@@ -29,5 +29,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify
+      - run: node apps/api/native/rnnoise/test/test-adapter.mjs
+      - run: node scripts/verify-rnnoise-artifacts.test.mjs
       - run: npm run build
       - run: npm audit --omit=dev --audit-level=high
