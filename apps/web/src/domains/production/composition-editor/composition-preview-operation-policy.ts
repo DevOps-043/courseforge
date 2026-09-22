@@ -16,6 +16,7 @@ const OPERATION_STRATEGIES: Record<CompositionEditorPatchOperation["type"], Comp
   "animation.update-timing": "LIVE_TIMELINE",
   "audio-mix.update": "LIVE_TIMELINE",
   "clip.add": "FULL_RELOAD",
+  "clip.audio-fades": "FULL_RELOAD",
   "clip.caption-cues": "FULL_RELOAD",
   "clip.crop": "LIVE_DOM",
   "clip.color-grading": "LIVE_DOM",
