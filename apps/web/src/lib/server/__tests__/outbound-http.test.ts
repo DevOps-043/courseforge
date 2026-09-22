@@ -20,7 +20,17 @@ function installStalledFetch() {
         reject(signal.reason);
         return;
       }
-      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      const onAbort = () => {
+        clearTimeout(watchdog);
+        reject(signal.reason);
+      };
+      // AbortSignal.timeout does not keep Node's event loop alive. Simulate the
+      // pending network handle, with a bounded failure if cancellation breaks.
+      const watchdog = setTimeout(() => {
+        signal.removeEventListener("abort", onAbort);
+        reject(new Error("The stalled fetch did not receive an abort signal"));
+      }, 2_000);
+      signal.addEventListener("abort", onAbort, { once: true });
     })) as typeof fetch;
 }
 
