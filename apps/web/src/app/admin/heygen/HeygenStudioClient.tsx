@@ -2158,13 +2158,17 @@ export default function HeygenStudioClient({
           </p>
           <p className="mt-1 text-xs opacity-80">
             {syncStatus.last_synced_at
-              ? `Último snapshot completo: ${new Date(syncStatus.last_synced_at).toLocaleString()}.`
-              : "Aún no existe un snapshot completo de esta cuenta."}
+              ? `Última sincronización completa: ${new Date(syncStatus.last_synced_at).toLocaleString()}.`
+              : "Aún no existe una sincronización completa de esta cuenta."}
             {syncStatus.last_sync_error ? ` ${syncStatus.last_sync_error}` : ""}
+          </p>
+          <p className="mt-1 text-xs font-semibold">
+            Disponibles en el catálogo: {avatarPresets.length} variantes de avatar y {voicePresets.length} voces.
+            {" "}Cada variante de un mismo avatar se muestra como una tarjeta independiente.
           </p>
           {(unavailableCatalog.avatars.length || unavailableCatalog.voices.length || unavailableCatalog.assets.length) ? (
             <p className="mt-1 text-xs font-semibold">
-              No disponibles en HeyGen: {unavailableCatalog.avatars.length} avatares, {unavailableCatalog.voices.length} voces y {unavailableCatalog.assets.length} assets. Estos recursos están bloqueados para nuevas generaciones.
+              Excluidos por no estar disponibles en HeyGen: {unavailableCatalog.avatars.length} variantes de avatar, {unavailableCatalog.voices.length} voces y {unavailableCatalog.assets.length} recursos. No aparecen en el catálogo disponible ni se pueden usar para nuevas generaciones.
             </p>
           ) : null}
         </section>
@@ -2176,7 +2180,7 @@ export default function HeygenStudioClient({
           <input value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Nombre, idioma o ID" className="mt-1.5 h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none focus:border-rose-500 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white" />
         </label>
         <SelectField label="Propiedad de avatar" value={catalogOwnership} onChange={setCatalogOwnership} options={[{ label: "Todos", value: "all" }, { label: "Propios", value: "private" }, { label: "Públicos", value: "public" }]} />
-        <span className="pb-2 text-xs font-semibold text-gray-500">{filteredAvatars.length} avatares · {filteredVoices.length} voces</span>
+        <span className="pb-2 text-xs font-semibold text-gray-500">Mostrando {filteredAvatars.length} de {avatarPresets.length} variantes de avatar · {filteredVoices.length} de {voicePresets.length} voces</span>
       </div>
 
       <section className="engine-catalog-grid">
@@ -2193,7 +2197,7 @@ export default function HeygenStudioClient({
           kind="avatar"
           onArchive={(presetId) => handlePresetArchived("avatar", presetId, true)}
           paginationKey={`${normalizedCatalogQuery}:${catalogOwnership}`}
-          title="Avatares"
+          title="Variantes de avatar"
           updatingPresetId={updatingPresetId}
         />
         <PresetList
