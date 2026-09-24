@@ -1,6 +1,6 @@
 # Plan de integración: DeepFilterNet para limpieza neural de voz
 
-**Estado:** POC bloqueado para producción hasta validar la redistribución de los pesos ONNX.
+**Estado:** integración y POC técnico preparables; imagen publicable y uso en producción sujetos a la revisión de los términos del modelo ONNX.
 
 ## Decisión
 
@@ -47,10 +47,12 @@ El job y el asset derivado deben conservar `deepfilter_version`, `model_id`,
 ## Gate de licenciamiento
 
 El checkout local declara que el **código** está disponible bajo MIT o
-Apache-2.0. Los archivos de modelo `.tar.gz` inspeccionados no incluyen una
-licencia separada. Antes de copiar pesos al contenedor o distribuirlos se debe
-obtener una confirmación documental para el modelo/tag exactos y revisar las
-licencias de dependencias incluidas en el binario final.
+Apache-2.0; Courseforge selecciona Apache-2.0 y el bundle conserva ambos textos.
+El modelo ONNX está en el repositorio y puede evaluarse técnicamente, pero el
+README no nombra expresamente los pesos en su declaración de licencia. Antes
+de publicar una imagen con el modelo se debe registrar una decisión documental
+para el archivo/tag exactos y revisar las licencias de dependencias del binario.
+Véase [el registro de licencias de audio](./compliance/audio-model-licenses.md).
 
 No se deben empaquetar las muestras ni datasets de entrenamiento; algunos
 assets del repositorio tienen licencias Creative Commons ajenas a la inferencia.

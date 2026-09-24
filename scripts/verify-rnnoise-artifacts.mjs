@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const PINNED_RNNOISE_COMMIT = "70f1d256acd4b34a572f999a05c87bf00b67730d";
 export const PINNED_MODEL_ARCHIVE_SHA256 = "0a8755f8e2d834eff6a54714ecc7d75f9932e845df35f8b59bc52a7cfe6e8b37";
+export const PINNED_CODE_LICENSE_SHA256 = "45d37ca1cdb278c088e1aa85e0e65ca3a534ed86a28dcc96ca16810248a61d35";
 
 const expectedArtifacts = {
   archive: { filename: "rnnoise-data.tar.gz", maxBytes: 100 * 1024 * 1024 },
@@ -13,6 +14,7 @@ const expectedArtifacts = {
   header: { filename: "rnnoise_data.h", maxBytes: 10 * 1024 * 1024 },
   blob: { filename: "weights_blob.bin", maxBytes: 100 * 1024 * 1024 },
   modelLicense: { filename: "MODEL-LICENSE", maxBytes: 1024 * 1024 },
+  codeLicense: { filename: "COPYING", maxBytes: 1024 * 1024 },
 };
 
 export async function verifyRnnoiseArtifacts(
@@ -26,6 +28,10 @@ export async function verifyRnnoiseArtifacts(
     throw new Error("RNNOISE_SOURCE_COMMIT_MISMATCH");
   }
   if (manifest?.compliance?.imageRedistributionApproved !== true
+    || manifest?.compliance?.codeLicense !== "BSD-3-Clause"
+    || typeof manifest?.compliance?.modelLicense !== "string"
+    || !manifest.compliance.modelLicense.trim()
+    || manifest.compliance.modelLicense.trim() === "PENDING_REVIEW"
     || typeof manifest?.compliance?.reviewReference !== "string"
     || manifest.compliance.reviewReference.trim().length < 8) {
     throw new Error("RNNOISE_MODEL_REDISTRIBUTION_NOT_APPROVED");
@@ -38,6 +44,9 @@ export async function verifyRnnoiseArtifacts(
     }
     if (name === "archive" && entry.sha256 !== expected.archiveSha256) {
       throw new Error("RNNOISE_MODEL_ARCHIVE_VERSION_MISMATCH");
+    }
+    if (name === "codeLicense" && entry.sha256 !== PINNED_CODE_LICENSE_SHA256) {
+      throw new Error("RNNOISE_CODE_LICENSE_VERSION_MISMATCH");
     }
     const artifactPath = join(artifactRoot, contract.filename);
     await assertRegularFile(artifactPath, contract.maxBytes);

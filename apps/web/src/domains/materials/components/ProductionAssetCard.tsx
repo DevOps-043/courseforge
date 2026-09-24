@@ -32,6 +32,7 @@ import {
   type SlideTemplateLibraryItem,
 } from "@/domains/production/slides/slide-template-library.actions";
 import { ProductionMediaPreview } from "./ProductionMediaPreview";
+import { MaterialDownloadsPanel } from "./MaterialDownloadsPanel";
 
 interface ProductionAssetCardProps {
   component: MaterialComponent;
@@ -275,6 +276,8 @@ export function ProductionAssetCard({
       />
 
       <div className="p-6">
+        <MaterialDownloadsPanel componentId={component.id} />
+
         {component.type.includes("VIDEO") && (
           <h4 className="mb-4 text-xs font-bold uppercase tracking-wider text-gray-500">
             Recursos del Video

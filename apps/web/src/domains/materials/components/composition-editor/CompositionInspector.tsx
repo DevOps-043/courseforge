@@ -103,6 +103,69 @@ export function CompositionInspector({ animations, clip, colorGradingStatus, com
     && clip.source.type === "PRODUCTION_ASSET"
     ? clip.source.productionAssetId
     : null;
+  if (clip.kind === "AUDIO") {
+    const audioDisabled = saving || separatingAudio || Boolean(track?.locked);
+    const saveAudioChanges = async () => {
+      const start = parseCompositionTimecode(startSeconds);
+      const duration = parseCompositionTimecode(durationSeconds);
+      if (start === null || duration === null || duration < 0.05
+        || !Number.isFinite(volume) || volume < 0 || volume > 1
+        || !Number.isFinite(fadeInSeconds) || fadeInSeconds < 0
+        || !Number.isFinite(fadeOutSeconds) || fadeOutSeconds < 0
+        || fadeInSeconds + fadeOutSeconds > duration) {
+        setValidationError("Revisa inicio, duración, volumen y fades. La suma de los fades no puede exceder el clip.");
+        return;
+      }
+      setValidationError(null);
+      await onPatch([
+        { clipId: clip.id, durationSeconds: duration, type: "clip.duration" },
+        { clipId: clip.id, startSeconds: start, type: "clip.move" },
+        { clipId: clip.id, type: "clip.volume", volume },
+        { clipId: clip.id, fadeInSeconds, fadeOutSeconds, type: "clip.audio-fades" },
+      ], `Ajustó el audio de ${clip.label}.`);
+    };
+    const resetAudioAsset = async () => {
+      if (!window.confirm(`¿Reiniciar ${clip.label}? Se restaurarán su tiempo y volumen originales y se quitarán los fragmentos derivados.`)) return;
+      await onPatch([{ clipId: clip.id, type: "clip.reset-asset" }], `Reinició el audio de ${clip.label}.`);
+    };
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p>
+            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">Audio · pista {clip.trackId}</p>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            <button type="button" disabled={audioDisabled} onClick={() => void onPatch([{ clipId: clip.id, hidden: !clip.hidden, type: "clip.visibility" }], `${clip.hidden ? "Activó" : "Silenció"} ${clip.label}.`)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200">
+              {clip.hidden ? <Eye size={13} /> : <EyeOff size={13} />}{clip.hidden ? "Activar" : "Silenciar"}
+            </button>
+            <button type="button" disabled={audioDisabled} onClick={() => void onRemove(clip)} className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 disabled:opacity-50 dark:border-red-400/40 dark:text-red-200">
+              <Trash2 size={13} /> Quitar
+            </button>
+          </div>
+        </div>
+        <p className="rounded-md bg-slate-50 px-2 py-1.5 text-[10px] text-slate-500 dark:bg-white/5 dark:text-gray-400">Quitar solo retira este clip de la línea de tiempo; el archivo original permanece disponible.</p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <TimecodeField label="Inicio (mm:ss)" value={startSeconds} onChange={setStartSeconds} />
+          <TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} />
+        </div>
+        <p className="text-[10px] text-slate-500 dark:text-gray-400">Formato: 01:05 = 1 minuto y 5 segundos; 00:01.050 incluye milisegundos.</p>
+        <section className="border-t border-slate-200 pt-3 dark:border-white/10">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Audio del clip</p>
+          <VolumeSlider accentClassName="accent-cyan-500" ariaLabel={`Volumen de ${clip.label}`} disabled={audioDisabled} label="Volumen individual" onChange={setVolume} value={volume} />
+          <AudioFadeControls disabled={audioDisabled} fadeInSeconds={fadeInSeconds} fadeOutSeconds={fadeOutSeconds} onFadeInChange={setFadeInSeconds} onFadeOutChange={setFadeOutSeconds} />
+          <p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Los fades son no destructivos y se aplican en preview y render. El volumen de la pista continúa funcionando como control maestro.</p>
+        </section>
+        {voiceSourceAssetId !== null && <AudioProcessingControls componentId={componentId} disabled={audioDisabled} sourceAssetId={voiceSourceAssetId} sourcePreviewUrl={sourcePreviewUrl} />}
+        {validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={audioDisabled} onClick={() => void saveAudioChanges()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar audio</button>
+          <button type="button" disabled={audioDisabled || clip.source.type !== "PRODUCTION_ASSET"} onClick={() => void resetAudioAsset()} className="inline-flex items-center gap-1 rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-bold text-amber-800 disabled:opacity-50 dark:border-amber-400/40 dark:text-amber-200"><RotateCcw size={13} /> Reiniciar audio</button>
+          {saving && <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-gray-400"><Loader2 className="animate-spin" size={13} /> Actualizando preview…</span>}
+        </div>
+      </div>
+    );
+  }
   const saveAllChanges = async () => {
     const start = parseCompositionTimecode(startSeconds);
     const duration = parseCompositionTimecode(durationSeconds);

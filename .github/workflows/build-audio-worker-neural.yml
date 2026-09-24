@@ -69,7 +69,7 @@ jobs:
           mkdir -p "$artifact_directory"
           curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --output "$bundle_path" "$DEEPFILTER_ARTIFACT_BUNDLE_URL"
           printf '%s  %s\n' "$DEEPFILTER_ARTIFACT_BUNDLE_SHA256" "$bundle_path" | sha256sum --check --status
-          expected_entries=$'DeepFilterNet3_onnx.tar.gz\nLICENSE-APACHE\nLICENSE-MIT\ndeep-filter\nmanifest.json'
+          expected_entries=$'DeepFilterNet3_onnx.tar.gz\nLICENSE-APACHE\nLICENSE-MIT\nTHIRD_PARTY_LICENSES.txt\ndeep-filter\nmanifest.json'
           actual_entries="$(tar -tzf "$bundle_path" | LC_ALL=C sort)"
           test "$actual_entries" = "$expected_entries" || { echo "Artifact bundle has an unexpected file layout." >&2; exit 1; }
           ! tar -tvzf "$bundle_path" | awk '$1 ~ /^[lh]/ { exit 1 }'

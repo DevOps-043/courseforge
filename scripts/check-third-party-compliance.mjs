@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 
 const root = process.cwd();
@@ -10,18 +11,30 @@ const readJson = (path) => JSON.parse(readFileSync(path, "utf8").replace(/^\uFEF
 
 const noticesPath = resolve(root, "THIRD_PARTY_NOTICES.md");
 const apachePath = resolve(root, "licenses", "Apache-2.0.txt");
+const rnnoiseLicensePath = resolve(root, "licenses", "RNNoise-BSD-3-Clause.txt");
 const sbomPath = resolve(root, "compliance", "sbom", "courseforge.cdx.json");
 const webPackage = readJson(resolve(root, "apps", "web", "package.json"));
 const lockfile = readJson(resolve(root, "package-lock.json"));
 
 if (!existsSync(noticesPath)) fail("falta THIRD_PARTY_NOTICES.md.");
 if (!existsSync(apachePath)) fail("falta licenses/Apache-2.0.txt.");
+if (!existsSync(rnnoiseLicensePath)) fail("falta el texto BSD-3-Clause de RNNoise.");
 if (!existsSync(sbomPath)) fail("falta el SBOM; ejecute npm run compliance:sbom.");
 
 const notices = existsSync(noticesPath) ? readFileSync(noticesPath, "utf8") : "";
 const apache = existsSync(apachePath) ? readFileSync(apachePath, "utf8") : "";
 if (!apache.includes("Apache License") || !apache.includes("Version 2.0, January 2004")) {
   fail("el texto de Apache-2.0 no es reconocible.");
+}
+if (existsSync(rnnoiseLicensePath)) {
+  const digest = createHash("sha256").update(readFileSync(rnnoiseLicensePath)).digest("hex");
+  if (digest !== "45d37ca1cdb278c088e1aa85e0e65ca3a534ed86a28dcc96ca16810248a61d35") {
+    fail("el texto BSD-3-Clause de RNNoise no coincide con el commit fijado.");
+  }
+}
+if (!notices.includes("## Workers de audio opcionales")
+  || !notices.includes("licenses/RNNoise-BSD-3-Clause.txt")) {
+  fail("THIRD_PARTY_NOTICES.md no registra los workers de audio y el aviso RNNoise.");
 }
 
 const hyperframesDependencies = Object.entries(webPackage.dependencies || {})
@@ -55,5 +68,5 @@ if (existsSync(sbomPath)) {
 }
 
 if (!process.exitCode) {
-  console.log(`Cumplimiento de avisos verificado para ${hyperframesDependencies.length} dependencia(s) HyperFrames.`);
+  console.log(`Avisos verificados para ${hyperframesDependencies.length} dependencia(s) HyperFrames y texto de licencia RNNoise.`);
 }

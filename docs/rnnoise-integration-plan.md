@@ -38,7 +38,9 @@ POST de job autorizado → production_jobs (PENDING)
 | 5. API y QA | Habilitar el perfil solo mediante configuración de servidor; mostrarlo únicamente a usuarios autorizados; recuperar original y derivado con acceso temporal; registrar aprobación explícita antes de usar el resultado en el timeline. | Ruta `/api/production/audio-processing/jobs`, controles del editor y flujo de QA | Nadie puede pedir RNNoise mediante payload arbitrario ni consumir un asset de otra organización. |
 | 6. POC y rollout | Comparar RNNoise con original, FFmpeg base y DeepFilterNet usando narraciones en español; activar primero para un grupo interno, medir y decidir. | Fixtures autorizados, telemetría, checklist de QA | Aprobación del especialista de audio y operación; rollback mediante desactivar perfil sin perder fuentes. |
 
-Las fases 1 y el diseño del adaptador pueden prepararse antes de resolver la licencia de los pesos. Las fases de build distribuible, prueba con el modelo oficial y activación dependen de la fase 0.
+Las fases 1 y 2 y un POC técnico interno pueden prepararse mientras se documentan
+los términos del modelo. La publicación de la imagen y activación del perfil
+requieren completar la fase 0. Véase [el registro de licencias de audio](./compliance/audio-model-licenses.md).
 
 **Avance de la fase 1 (2026-09-22):** se agregó el RPC de claim por perfil, se restringió el RPC anterior al perfil base y el worker declara/verifica sus capacidades. Pasaron pruebas unitarias y build del backend; queda pendiente aplicar y probar la migración contra PostgreSQL antes de desplegar workers nuevos.
 

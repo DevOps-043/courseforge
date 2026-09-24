@@ -1,55 +1,78 @@
 import { createHash } from "node:crypto";
-import { access, readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { access, lstat, readFile } from "node:fs/promises";
 import { constants } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const manifestPath = resolve(process.env.DEEPFILTER_MANIFEST_PATH
-  || "apps/api/third_party/deepfilter/manifest.json");
+const expectedArtifacts = {
+  binary: { filename: "deep-filter", maxBytes: 100 * 1024 * 1024, executable: true },
+  model: { filename: "DeepFilterNet3_onnx.tar.gz", maxBytes: 100 * 1024 * 1024 },
+  apacheLicense: { filename: "LICENSE-APACHE", maxBytes: 100 * 1024 },
+  mitLicense: { filename: "LICENSE-MIT", maxBytes: 100 * 1024 },
+  thirdPartyLicenses: { filename: "THIRD_PARTY_LICENSES.txt", maxBytes: 2 * 1024 * 1024 },
+};
 
-let manifest;
-try {
-  manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-} catch {
-  fail(`No se pudo leer el manifiesto de DeepFilterNet: ${manifestPath}`);
+export async function verifyDeepfilterArtifacts(manifestPath) {
+  const manifestFile = resolve(manifestPath);
+  await assertRegularFile(manifestFile, 1024 * 1024);
+  const manifest = JSON.parse(await readFile(manifestFile, "utf8"));
+  const releaseTag = nonEmptyString(manifest?.deepFilterNet?.releaseTag);
+  const commit = manifest?.deepFilterNet?.commit;
+  const reviewReference = nonEmptyString(manifest?.compliance?.reviewReference);
+  const modelLicense = nonEmptyString(manifest?.compliance?.modelLicense);
+
+  if (!releaseTag || !/^[a-f0-9]{40}$/.test(commit || "") || !reviewReference
+    || manifest?.compliance?.modelRedistributionApproved !== true
+    || manifest?.compliance?.codeLicense !== "Apache-2.0"
+    || !modelLicense || modelLicense === "PENDING_REVIEW") {
+    throw new Error("DEEPFILTER_COMPLIANCE_NOT_APPROVED");
+  }
+
+  const artifactRoot = dirname(manifestFile);
+  for (const [name, contract] of Object.entries(expectedArtifacts)) {
+    const entry = manifest?.artifacts?.[name];
+    if (entry?.path !== contract.filename || !/^[a-f0-9]{64}$/.test(entry?.sha256 || "")) {
+      throw new Error(`DEEPFILTER_${name.toUpperCase()}_MANIFEST_INVALID`);
+    }
+    const artifactPath = join(artifactRoot, contract.filename);
+    await assertRegularFile(artifactPath, contract.maxBytes, contract.executable);
+    const hash = createHash("sha256");
+    for await (const chunk of createReadStream(artifactPath)) hash.update(chunk);
+    if (hash.digest("hex") !== entry.sha256) {
+      throw new Error(`DEEPFILTER_${name.toUpperCase()}_CHECKSUM_MISMATCH`);
+    }
+  }
+
+  const apacheText = await readFile(join(artifactRoot, expectedArtifacts.apacheLicense.filename), "utf8");
+  const mitText = await readFile(join(artifactRoot, expectedArtifacts.mitLicense.filename), "utf8");
+  if (!apacheText.includes("Apache License") || !apacheText.includes("Version 2.0, January 2004")
+    || !mitText.includes("The MIT License (MIT)")) {
+    throw new Error("DEEPFILTER_LICENSE_TEXT_INVALID");
+  }
+  return { releaseTag, commit, reviewReference };
 }
 
-const releaseTag = nonEmptyString(manifest?.deepFilterNet?.releaseTag);
-const commit = nonEmptyString(manifest?.deepFilterNet?.commit);
-const reviewReference = nonEmptyString(manifest?.compliance?.reviewReference);
-if (!releaseTag || !commit || !reviewReference || manifest?.compliance?.modelRedistributionApproved !== true) {
-  fail("El manifiesto no registra un release, commit y aprobación de redistribución del modelo.");
-}
-
-const artifactDirectory = dirname(manifestPath);
-await verifyArtifact("binary", manifest?.artifacts?.binary, artifactDirectory, true, "deep-filter");
-await verifyArtifact("model", manifest?.artifacts?.model, artifactDirectory, false, "DeepFilterNet3_onnx.tar.gz");
-console.log(`DeepFilterNet artifacts verified: ${releaseTag} (${commit.slice(0, 12)})`);
-
-async function verifyArtifact(name, artifact, artifactDirectory, executable, expectedPath) {
-  const relativePath = nonEmptyString(artifact?.path);
-  const expectedHash = nonEmptyString(artifact?.sha256)?.toLowerCase();
-  if (relativePath !== expectedPath || !/^[a-f0-9]{64}$/.test(expectedHash || "")) {
-    fail(`El artefacto ${name} no tiene ruta o SHA-256 válido.`);
+async function assertRegularFile(path, maxBytes, executable = false) {
+  const info = await lstat(path);
+  if (!info.isFile() || info.size === 0 || info.size > maxBytes) {
+    throw new Error("DEEPFILTER_ARTIFACT_TYPE_OR_SIZE_INVALID");
   }
-  const path = resolve(artifactDirectory, relativePath);
-  const relativePathFromRoot = relative(artifactDirectory, path);
-  if (relativePathFromRoot === "" || relativePathFromRoot.split(/[\\/]/)[0] === "..") {
-    fail(`La ruta del artefacto ${name} sale del directorio aprobado.`);
-  }
-  try {
-    await access(path, executable ? constants.R_OK | constants.X_OK : constants.R_OK);
-  } catch {
-    fail(`El artefacto ${name} no existe o no tiene permisos correctos: ${path}`);
-  }
-  const hash = createHash("sha256").update(await readFile(path)).digest("hex");
-  if (hash !== expectedHash) fail(`El checksum de ${name} no coincide.`);
+  if (executable) await access(path, constants.X_OK);
 }
 
 function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function fail(message) {
-  console.error(`DeepFilterNet artifact verification failed: ${message}`);
-  process.exit(1);
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const manifestPath = process.env.DEEPFILTER_MANIFEST_PATH
+    || resolve(dirname(fileURLToPath(import.meta.url)), "../apps/api/third_party/deepfilter/manifest.json");
+  try {
+    const result = await verifyDeepfilterArtifacts(manifestPath);
+    console.info(`DeepFilterNet artifacts verified: ${result.releaseTag} (${result.commit.slice(0, 12)})`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "DEEPFILTER_VERIFICATION_FAILED");
+    process.exitCode = 1;
+  }
 }

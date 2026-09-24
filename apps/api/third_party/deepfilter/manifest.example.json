@@ -12,9 +12,23 @@
       "id": "deepfilternet3-onnx",
       "path": "DeepFilterNet3_onnx.tar.gz",
       "sha256": "REPLACE_WITH_64_CHARACTER_SHA256"
+    },
+    "apacheLicense": {
+      "path": "LICENSE-APACHE",
+      "sha256": "REPLACE_WITH_64_CHARACTER_SHA256"
+    },
+    "mitLicense": {
+      "path": "LICENSE-MIT",
+      "sha256": "REPLACE_WITH_64_CHARACTER_SHA256"
+    },
+    "thirdPartyLicenses": {
+      "path": "THIRD_PARTY_LICENSES.txt",
+      "sha256": "REPLACE_WITH_64_CHARACTER_SHA256"
     }
   },
   "compliance": {
+    "codeLicense": "Apache-2.0",
+    "modelLicense": "PENDING_REVIEW",
     "modelRedistributionApproved": false,
     "reviewReference": "REPLACE_WITH_LEGAL_OR_COMPLIANCE_REFERENCE"
   }

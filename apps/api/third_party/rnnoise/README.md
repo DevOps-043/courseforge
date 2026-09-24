@@ -7,10 +7,18 @@ SHA-256 indicado en `model_version`.
 
 Un paquete aprobado deberá contener exactamente el tarball original, los
 archivos `rnnoise_data.c` y `rnnoise_data.h` extraídos de él, el blob binario
-derivado con `dump_weights_blob`, un aviso `MODEL-LICENSE` aplicable al modelo
-exacto y `manifest.json` con hashes verificables y referencia de aprobación.
+derivado con `dump_weights_blob`, el `COPYING` original del código, un aviso
+`MODEL-LICENSE` aplicable al modelo exacto y `manifest.json` con hashes
+verificables y referencia de aprobación. El `COPYING` correspondiente al commit
+fijado se conserva también en `licenses/RNNoise-BSD-3-Clause.txt`; su SHA-256
+canónico es `45d37ca1cdb278c088e1aa85e0e65ca3a534ed86a28dcc96ca16810248a61d35`.
 La correspondencia entre tarball, C/header y blob deberá comprobarse durante
 la compilación; verificar solo hashes individuales no demuestra esa relación.
+
+`codeLicense` debe ser `BSD-3-Clause`. `modelLicense` permanece en
+`PENDING_REVIEW` hasta documentar los términos del tarball exacto. El texto
+`MODEL-LICENSE` debe provenir de esa evidencia; no se debe copiar la licencia
+del código y presentarla como permiso del modelo sin una decisión documentada.
 
 `node scripts/verify-rnnoise-artifacts.mjs` valida el manifiesto y falla si
 falta la aprobación explícita de redistribución de la imagen. El verificador

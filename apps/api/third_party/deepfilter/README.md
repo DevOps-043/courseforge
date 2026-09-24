@@ -8,12 +8,20 @@ Archivos esperados:
 
 - `deep-filter`: binario Linux ejecutable;
 - `DeepFilterNet3_onnx.tar.gz`: modelo ONNX aprobado;
-- `LICENSE-MIT`, `LICENSE-APACHE` y notices aplicables;
+- `LICENSE-MIT` y `LICENSE-APACHE` originales del commit seleccionado;
+- `THIRD_PARTY_LICENSES.txt`: inventario y avisos de dependencias Rust del binario;
 - `manifest.json`: procedencia, checksums y aprobación de cumplimiento.
 
 Los nombres están fijados por contrato: `deep-filter` y
 `DeepFilterNet3_onnx.tar.gz`. Esto elimina ambigüedades entre el manifiesto,
 el build y el worker.
+
+El manifiesto declara `codeLicense: "Apache-2.0"` y exige el SHA-256 de ambos
+textos de licencia. `modelLicense` empieza en `PENDING_REVIEW`; se reemplaza por
+el identificador aprobado para el modelo exacto y se registra el dictamen en
+`reviewReference` antes de establecer `modelRedistributionApproved: true`.
+La presencia de `LICENSE-APACHE` para el código no demuestra por sí sola los
+términos del modelo ONNX.
 
 `Dockerfile.audio-worker-neural` ejecuta esta verificación durante el build y
 falla antes de copiar los artefactos a la imagen final:
@@ -40,8 +48,9 @@ general. Debe ejecutarse únicamente desde el Environment protegido
 
 El bundle HTTPS, que no vive en Git, debe contener exclusivamente
 `manifest.json`, `deep-filter`, `DeepFilterNet3_onnx.tar.gz`, `LICENSE-MIT` y
-`LICENSE-APACHE`. El workflow valida primero el checksum del bundle y después
-el manifiesto y hashes individuales. El build tiene dos barreras independientes:
+`LICENSE-APACHE`, además de `THIRD_PARTY_LICENSES.txt`. El workflow valida primero el checksum del bundle y después
+el manifiesto y los hashes individuales, incluidos los avisos. El build tiene
+dos barreras independientes:
 
 1. `verify:deepfilter-artifacts` comprueba el manifiesto, aprobación y hashes.
 2. El Dockerfile exige una versión exacta de FFmpeg mediante el input manual

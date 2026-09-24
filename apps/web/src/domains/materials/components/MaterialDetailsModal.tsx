@@ -17,6 +17,7 @@ import {
   ComponentType,
 } from "../types/materials.types";
 import { ComponentViewer } from "./ComponentViewer";
+import { MaterialDownloadsPanel } from "./MaterialDownloadsPanel";
 import { IterationPanel } from "./IterationPanel";
 import { MaterialsDodChecklist } from "./MaterialsDodChecklist";
 import { VideoDurationReviewPanel } from "./VideoDurationReviewPanel";
@@ -192,6 +193,7 @@ export function MaterialDetailsModal({
                         onRegenerate={onIterationStart}
                       />
                     ) : null}
+                    <MaterialDownloadsPanel componentId={selectedComponent.id} />
                     <div className="material-content-wrapper p-6 rounded-2xl shadow-xl 
                         bg-white dark:bg-[var(--engine-surface-hover)] border border-gray-200 dark:border-white/5 text-gray-900 dark:text-gray-200">
                       <ComponentViewer

@@ -7,9 +7,12 @@
     "sourceC": { "path": "rnnoise_data.c", "sha256": "REPLACE_WITH_SHA256" },
     "header": { "path": "rnnoise_data.h", "sha256": "REPLACE_WITH_SHA256" },
     "blob": { "path": "weights_blob.bin", "sha256": "REPLACE_WITH_SHA256" },
-    "modelLicense": { "path": "MODEL-LICENSE", "sha256": "REPLACE_WITH_SHA256" }
+    "modelLicense": { "path": "MODEL-LICENSE", "sha256": "REPLACE_WITH_SHA256" },
+    "codeLicense": { "path": "COPYING", "sha256": "45d37ca1cdb278c088e1aa85e0e65ca3a534ed86a28dcc96ca16810248a61d35" }
   },
   "compliance": {
+    "codeLicense": "BSD-3-Clause",
+    "modelLicense": "PENDING_REVIEW",
     "imageRedistributionApproved": false,
     "reviewReference": "REPLACE_WITH_APPROVAL_REFERENCE"
   }
