@@ -20,21 +20,29 @@ export function MaterialDownloadsPanel({ componentId }: MaterialDownloadsPanelPr
   const [assets, setAssets] = useState<DownloadableAsset[]>([]);
   const [contentExportUrl, setContentExportUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [requiresLogin, setRequiresLogin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
   async function openCatalogue() {
     setIsOpen(true);
-    if (contentExportUrl || isLoading) return;
+    if (isLoading) return;
     setIsLoading(true);
     setError(null);
+    setRequiresLogin(false);
     try {
       const response = await fetch(`/api/materials/components/${encodeURIComponent(componentId)}/downloads`, { cache: "no-store" });
+      if (response.status === 401) {
+        setRequiresLogin(true);
+        throw new Error("Tu sesión no está disponible o ha vencido. Inicia sesión de nuevo y vuelve a actualizar las descargas.");
+      }
       const body = await response.json();
       if (!response.ok || !body.success) throw new Error(body.message || "No se pudieron cargar las descargas.");
       setAssets(body.data.assets || []);
       setContentExportUrl(body.data.contentExportUrl || null);
     } catch (cause) {
+      setAssets([]);
+      setContentExportUrl(null);
       setError(cause instanceof Error ? cause.message : "No se pudieron cargar las descargas.");
     } finally {
       setIsLoading(false);
@@ -65,7 +73,8 @@ export function MaterialDownloadsPanel({ componentId }: MaterialDownloadsPanelPr
             </div>
           ))}
           {!isLoading && assets.length === 0 && contentExportUrl && <p className="text-xs text-slate-500 dark:text-slate-400">No hay archivos binarios registrados todavía; el contenido editorial sí puede exportarse.</p>}
-          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+          {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+          {requiresLogin && <a className="inline-flex text-sm font-medium text-indigo-700 underline dark:text-indigo-300" href="/login" target="_blank" rel="noopener noreferrer">Iniciar sesión en otra pestaña</a>}
         </div>
       )}
     </section>

@@ -1,7 +1,7 @@
 import {
   buildVideoNarrationCharacterBudget,
   VIDEO_NARRATION_CHARACTERS_PER_MINUTE,
-  VIDEO_NARRATION_TARGET_TOLERANCE_RATIO,
+  buildVideoDurationAcceptanceRange,
   type VideoDurationContract,
 } from "./video-duration-policy";
 
@@ -122,30 +122,14 @@ export function validateVideoDurationContent(
   );
   const issues: VideoDurationValidationIssue[] = [];
 
+  const acceptanceRange = buildVideoDurationAcceptanceRange(contract);
   if (
-    scriptDurationSeconds < contract.minimumDurationSeconds ||
-    scriptDurationSeconds > contract.maximumDurationSeconds
+    scriptDurationSeconds < acceptanceRange.minimumDurationSeconds ||
+    scriptDurationSeconds > acceptanceRange.maximumDurationSeconds
   ) {
     issues.push({
       code: "SCRIPT_DURATION_OUT_OF_RANGE",
-      message: `El guion declara ${scriptDurationSeconds}s; debe quedar entre ${contract.minimumDurationSeconds}s y ${contract.maximumDurationSeconds}s.`,
-    });
-  }
-
-  const targetDurationToleranceSeconds = Math.max(
-    5,
-    Math.round(contract.targetDurationSeconds * VIDEO_NARRATION_TARGET_TOLERANCE_RATIO),
-  );
-  const minimumTargetDuration = Math.max(contract.minimumDurationSeconds,
-    contract.targetDurationSeconds - targetDurationToleranceSeconds);
-  const maximumTargetDuration = Math.min(contract.maximumDurationSeconds,
-    contract.targetDurationSeconds + (contract.targetOverrunSeconds ?? targetDurationToleranceSeconds));
-  if (
-    scriptDurationSeconds < minimumTargetDuration || scriptDurationSeconds > maximumTargetDuration
-  ) {
-    issues.push({
-      code: "SCRIPT_TARGET_DURATION_MISMATCH",
-      message: `Las secciones suman ${scriptDurationSeconds}s; el objetivo es ${contract.targetDurationSeconds}s y el rango permitido es ${minimumTargetDuration}-${maximumTargetDuration}s.`,
+      message: `El guion declara ${scriptDurationSeconds}s; debe quedar entre ${acceptanceRange.minimumDurationSeconds}s y ${acceptanceRange.maximumDurationSeconds}s, incluido el margen editorial.`,
     });
   }
 
@@ -163,24 +147,14 @@ export function validateVideoDurationContent(
   if (narrationCharacterCount < minimumCharacterCount) {
     issues.push({
       code: "INSUFFICIENT_NARRATION",
-      message: `La narración contiene ${narrationCharacterCount} caracteres editoriales (${narrationWordCount} palabras) y equivale a aproximadamente ${estimatedNarrationDurationSeconds}s a ${VIDEO_NARRATION_CHARACTERS_PER_MINUTE} caracteres por minuto; requiere al menos ${minimumCharacterCount} caracteres (${contract.minimumDurationSeconds}s). Hace falta información sustantiva, ejemplos o desarrollo pedagógico para alcanzar la duración sin repeticiones.`,
+      message: `La narración contiene ${narrationCharacterCount} caracteres editoriales (${narrationWordCount} palabras) y equivale a aproximadamente ${estimatedNarrationDurationSeconds}s a ${VIDEO_NARRATION_CHARACTERS_PER_MINUTE} caracteres por minuto; requiere al menos ${minimumCharacterCount} caracteres (${acceptanceRange.minimumDurationSeconds}s). Hace falta información sustantiva, ejemplos o desarrollo pedagógico para alcanzar la duración sin repeticiones.`,
     });
   } else if (narrationCharacterCount > maximumCharacterCount) {
     issues.push({
       code: "EXCESSIVE_NARRATION",
-      message: `La narración contiene ${narrationCharacterCount} caracteres editoriales y supera el máximo de ${maximumCharacterCount} caracteres (${contract.maximumDurationSeconds}s). Debe condensarse sin perder contenido esencial.`,
+      message: `La narración contiene ${narrationCharacterCount} caracteres editoriales y supera el máximo de ${maximumCharacterCount} caracteres (${acceptanceRange.maximumDurationSeconds}s). Debe condensarse sin perder contenido esencial.`,
     });
   }
-  if (
-    narrationCharacterCount < characterBudget.targetMinimum
-    || narrationCharacterCount > characterBudget.targetMaximum
-  ) {
-    issues.push({
-      code: "NARRATION_TARGET_MISMATCH",
-      message: `La narración contiene ${narrationCharacterCount} caracteres editoriales; debe aproximarse al objetivo de ${characterBudget.target} caracteres dentro del rango permitido ${characterBudget.targetMinimum}-${characterBudget.targetMaximum}.`,
-    });
-  }
-
   const scriptTimelineIssue = findTimelineIssue(sections, scriptDurationSeconds);
   if (scriptTimelineIssue) {
     issues.push({

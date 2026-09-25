@@ -13,7 +13,7 @@ export const videoDurationPolicySchema = z.object({
   minimumDurationSeconds: z.number().int().min(60).max(3_600),
   narrationWordsPerMinute: z.number().int().min(90).max(220),
   targetDurationSeconds: z.number().int().min(60).max(3_600),
-  // Optional upper margin; legacy contracts retain the editorial 5% tolerance.
+  // Legacy field retained for stored contracts; acceptance now uses both range endpoints.
   targetOverrunSeconds: z.number().int().min(0).max(3_600).optional(),
   version: z.literal(1),
   visualBeatCadenceSeconds: z.number().int().min(10).max(90),
@@ -69,8 +69,8 @@ export type VideoDurationContract = z.infer<typeof videoDurationContractSchema>;
 
 /** Editorial pacing used by the materials prompt before real TTS audio exists. */
 export const VIDEO_NARRATION_CHARACTERS_PER_MINUTE = 900;
-/** Narrow editorial tolerance around the configured target before timeline generation. */
-export const VIDEO_NARRATION_TARGET_TOLERANCE_RATIO = 0.05;
+/** Editorial tolerance applied to the configured minimum and maximum durations. */
+export const VIDEO_NARRATION_RANGE_TOLERANCE_RATIO = 0.05;
 
 export interface VideoNarrationCharacterBudget {
   absoluteMaximum: number;
@@ -80,23 +80,33 @@ export interface VideoNarrationCharacterBudget {
   targetMinimum: number;
 }
 
+/** Shared acceptance window for prompts, narration validation and script timing. */
+export function buildVideoDurationAcceptanceRange(
+  contract: Pick<VideoDurationContract, "minimumDurationSeconds" | "maximumDurationSeconds">,
+) {
+  return {
+    minimumDurationSeconds: Math.round(contract.minimumDurationSeconds * (1 - VIDEO_NARRATION_RANGE_TOLERANCE_RATIO)),
+    maximumDurationSeconds: Math.round(contract.maximumDurationSeconds * (1 + VIDEO_NARRATION_RANGE_TOLERANCE_RATIO)),
+  };
+}
+
 export function buildVideoNarrationCharacterBudget(
   contract: Pick<VideoDurationContract, "maximumDurationSeconds" | "minimumDurationSeconds" | "targetDurationSeconds" | "targetOverrunSeconds">,
 ): VideoNarrationCharacterBudget {
   const charactersForDuration = (seconds: number) => Math.round(
     (seconds / 60) * VIDEO_NARRATION_CHARACTERS_PER_MINUTE,
   );
-  const target = charactersForDuration(contract.targetDurationSeconds);
+  const range = buildVideoDurationAcceptanceRange(contract);
+  const minimum = charactersForDuration(range.minimumDurationSeconds);
+  const maximum = charactersForDuration(range.maximumDurationSeconds);
 
   return {
-    absoluteMaximum: charactersForDuration(contract.maximumDurationSeconds),
-    absoluteMinimum: charactersForDuration(contract.minimumDurationSeconds),
-    target,
-    targetMaximum: Math.min(charactersForDuration(contract.maximumDurationSeconds),
-      contract.targetOverrunSeconds === undefined
-        ? Math.round(target * (1 + VIDEO_NARRATION_TARGET_TOLERANCE_RATIO))
-        : charactersForDuration(contract.targetDurationSeconds + contract.targetOverrunSeconds)),
-    targetMinimum: Math.max(charactersForDuration(contract.minimumDurationSeconds), Math.round(target * (1 - VIDEO_NARRATION_TARGET_TOLERANCE_RATIO))),
+    absoluteMaximum: maximum,
+    absoluteMinimum: minimum,
+    target: charactersForDuration(contract.targetDurationSeconds),
+    // Keep the existing budget shape for prompt consumers, with one acceptance window.
+    targetMaximum: maximum,
+    targetMinimum: minimum,
   };
 }
 

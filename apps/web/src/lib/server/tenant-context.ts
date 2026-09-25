@@ -10,7 +10,7 @@ import {
   mapOrganizationRoleToPlatformRole,
   normalizePlatformRole,
 } from "@/utils/auth/platform-role";
-import { runTenantLookupWithRetry } from "@/lib/server/tenant-lookup-retry";
+import { isTransientTenantLookupError, runTenantLookupWithRetry } from "@/lib/server/tenant-lookup-retry";
 
 export interface TenantContext {
   organizationId: string;
@@ -62,18 +62,9 @@ function getErrorMessage(error: unknown) {
   return String(error);
 }
 
-function isTransientFetchError(error: unknown) {
-  const message = getErrorMessage(error).toLowerCase();
-  return (
-    message.includes("fetch failed") ||
-    message.includes("econnreset") ||
-    message.includes("terminated")
-  );
-}
-
 function logTenantLookupError(label: string, error: unknown) {
   const message = getErrorMessage(error);
-  if (isTransientFetchError(error)) {
+  if (isTransientTenantLookupError(error)) {
     console.warn(`[TenantContext] ${label}: ${message}`);
     return;
   }
@@ -97,12 +88,13 @@ function getOrganizationBySlug(
 }
 
 const getProfilePlatformRole = cache(async (userId: string) => {
-  const { data, error } = await runTenantLookupWithRetry(async () => {
+  const { data, error } = await runTenantLookupWithRetry(async (signal) => {
     const admin = getAdminClient();
     return admin
       .from("profiles")
       .select("platform_role")
       .eq("id", userId)
+      .abortSignal(signal)
       .maybeSingle();
   });
 
@@ -118,13 +110,14 @@ export const getOrganizationPlatformRole = cache(async (
   userId: string,
   organizationId: string,
 ) => {
-  const { data, error } = await runTenantLookupWithRetry(async () => {
+  const { data, error } = await runTenantLookupWithRetry(async (signal) => {
     const admin = getAdminClient();
     return admin
       .from("organization_user_roles")
       .select("platform_role")
       .eq("user_id", userId)
       .eq("organization_id", organizationId)
+      .abortSignal(signal)
       .maybeSingle();
   });
 

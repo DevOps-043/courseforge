@@ -41,33 +41,51 @@ test("accepts a safe custom duration policy", () => {
   assert.equal(buildVideoDurationContract(custom).minimumStoryboardTakes, 18);
 });
 
-test("an explicit upper margin accepts 8:30 while retaining the 7-minute target and lower bound", () => {
+function validateNarrationLength(characters: number, contract: VideoDurationContract) {
+  const firstLength = Math.floor(characters / 2);
+  const content = normalizeVideoDurationContent({ script: { sections: [
+    { narration_text: "a".repeat(firstLength), on_screen_text: "1\n2\n3" },
+    { narration_text: "a".repeat(characters - firstLength - 1), on_screen_text: "4\n5\n6" },
+  ] } }, contract);
+  return validateVideoDurationContent(content, contract, "script");
+}
+
+test("accepts both configured endpoints and their 5% margins for every video type", () => {
+  for (const type of ["VIDEO_DEMO", "VIDEO_GUIDE", "VIDEO_THEORETICAL"] as const) {
+    const contract = { ...buildVideoDurationContract(null, type), minimumSlideCount: 1 };
+    assert.deepEqual(buildVideoNarrationCharacterBudget(contract), {
+      target: 6300, targetMinimum: 5130, targetMaximum: 7560,
+      absoluteMinimum: 5130, absoluteMaximum: 7560,
+    });
+    for (const characters of [5130, 5400, 5984, 6300, 6875, 7200, 7560]) {
+      assert.equal(validateNarrationLength(characters, contract).valid, true, `${type}: ${characters}`);
+    }
+    for (const characters of [5129, 7561]) {
+      const result = validateNarrationLength(characters, contract);
+      assert.equal(result.valid, false, "a single character beyond the limit must fail despite time rounding");
+      assert.ok(result.issues.some(issue => ["INSUFFICIENT_NARRATION", "EXCESSIVE_NARRATION"].includes(issue.code)));
+    }
+    for (const characters of [5115, 7575]) {
+      assert.ok(validateNarrationLength(characters, contract).issues.some(issue => issue.code === "SCRIPT_DURATION_OUT_OF_RANGE"));
+    }
+  }
+});
+
+test("acceptance depends on endpoints, not the target or a legacy overrun override", () => {
   const contract = buildVideoDurationContract({
     ...DEFAULT_VIDEO_DURATION_POLICY, maximumDurationSeconds: 510, targetOverrunSeconds: 90,
   }, "VIDEO_DEMO");
   const budget = buildVideoNarrationCharacterBudget(contract);
-  assert.equal(contract.targetDurationSeconds, 420);
   assert.equal(budget.target, 6300);
-  assert.equal(budget.targetMaximum, 7650);
-  assert.equal(budget.targetMinimum, 5985);
-  const validate = (characters: number, currentContract = contract) => {
-    const firstLength = Math.floor(characters / 2);
-    const content = normalizeVideoDurationContent({ script: { sections: [
-      { narration_text: "a".repeat(firstLength), on_screen_text: "1\n2\n3" },
-      { narration_text: "a".repeat(characters - firstLength - 1), on_screen_text: "4\n5\n6" },
-    ] } }, currentContract);
-    return validateVideoDurationContent(content, currentContract, "script");
-  };
-  for (const characters of [6875, 7452, 7650]) {
-    assert.equal(validate(characters).valid, true, `${characters} characters should be allowed`);
+  assert.equal(budget.targetMinimum, 5130);
+  assert.equal(budget.targetMaximum, 8040); // 535.5 seconds rounded once to 536.
+  assert.equal(validateNarrationLength(7650, contract).valid, true);
+  assert.deepEqual(buildVideoNarrationCharacterBudget({ ...contract, targetOverrunSeconds: 600 }), budget);
+  for (const targetDurationSeconds of [360, 510]) {
+    const changed = buildVideoNarrationCharacterBudget({ ...contract, targetDurationSeconds });
+    assert.equal(changed.targetMinimum, budget.targetMinimum);
+    assert.equal(changed.targetMaximum, budget.targetMaximum);
   }
-  assert.equal(validate(7651).valid, false, "character limit still rejects rounded 8:30 overflow");
-  assert.equal(validate(7665).valid, false, "8:31 remains outside the limit");
-  assert.equal(validate(5984).valid, false, "lower tolerance is unchanged");
-  assert.equal(validate(6875, buildVideoDurationContract(null, "VIDEO_DEMO")).valid, false,
-    "other courses keep the existing 5% tolerance");
-  assert.equal(buildVideoNarrationCharacterBudget({ ...contract, targetOverrunSeconds: 600 }).targetMaximum, 7650,
-    "the explicit margin cannot exceed the absolute maximum");
 });
 
 test("requires the target duration to stay between the minimum and maximum", () => {
@@ -244,7 +262,7 @@ test("reports concrete duration and timeline values", () => {
     (issue) => issue.code === "INVALID_STORYBOARD_TIMECODES",
   );
   assert.match(declaredMismatch?.message || "", /declara 420s.*suman 360s/);
-  assert.ok(result.issues.some((issue) => issue.code === "SCRIPT_TARGET_DURATION_MISMATCH"));
+  assert.ok(!result.issues.some((issue) => issue.code === "SCRIPT_DURATION_OUT_OF_RANGE"));
   assert.match(scriptTimeline?.message || "", /comienza en 5s.*debía comenzar en 0s/);
   assert.match(storyboardTimeline?.message || "", /finaliza en 350s.*debía finalizar en 360s/);
 });
@@ -367,7 +385,6 @@ test("does not preserve an invented 558-second timeline for short narration", ()
   assert.equal(result.scriptDurationSeconds, 337);
   assert.equal(result.estimatedNarrationDurationSeconds, 337);
   assert.ok(result.issues.some((issue) => issue.code === "INSUFFICIENT_NARRATION"));
-  assert.ok(result.issues.some((issue) => issue.code === "NARRATION_TARGET_MISMATCH"));
   assert.ok(!result.issues.some((issue) => issue.code === "INVALID_STORYBOARD_TIMECODES"));
   assert.ok(!result.issues.some((issue) => issue.code === "STORYBOARD_COVERAGE_MISMATCH"));
 });

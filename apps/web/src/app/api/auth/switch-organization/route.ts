@@ -6,6 +6,7 @@ import { getCourseforgeJwtSecret, isProductionEnvironment } from '@/lib/server/e
 import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract'
 import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response'
 import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger'
+import { getRemainingSessionLifetime } from '@/utils/auth/session-expiration'
 
 interface OrganizationSummary {
   id: string
@@ -98,6 +99,10 @@ export async function POST(request: NextRequest) {
     }
 
     const now = Math.floor(Date.now() / 1000)
+    const remainingSessionLifetime = getRemainingSessionLifetime(payload.exp, now)
+    if (remainingSessionLifetime === null) {
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'Token inválido o expirado.', requestId, status: 401 })
+    }
     const newAccessToken = await new SignJWT({
       aud: payload.aud,
       role: payload.role,
@@ -112,7 +117,7 @@ export async function POST(request: NextRequest) {
     })
       .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
       .setIssuedAt(now)
-      .setExpirationTime(now + 3600)
+      .setExpirationTime(now + remainingSessionLifetime)
       .setNotBefore(now)
       .sign(secretKey)
 
@@ -123,7 +128,7 @@ export async function POST(request: NextRequest) {
     cookieStore.set({
       name: 'cf_access_token',
       value: newAccessToken,
-      maxAge: 3600,
+      maxAge: remainingSessionLifetime,
       path: '/',
       httpOnly: true,
       secure: isProduction,

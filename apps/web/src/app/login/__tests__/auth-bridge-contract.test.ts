@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
+import { getRemainingSessionLifetime } from "../../../utils/auth/session-expiration";
 import {
   authenticateSofliaPassword,
   mapSofliaAuthFailure,
@@ -27,6 +28,20 @@ function authClient(result: Awaited<ReturnType<SupabasePasswordAuthClient["auth"
 }
 
 describe("Auth Bridge contract", () => {
+  it("preserves the session deadline when switching organizations", () => {
+    const now = 1_800_000_000;
+    const expiresAt = now + 7 * 24 * 60 * 60;
+    assert.equal(getRemainingSessionLifetime(expiresAt, now), 604800);
+    assert.equal(getRemainingSessionLifetime(expiresAt, now + 600), 604200);
+    assert.equal(getRemainingSessionLifetime(now + 30, now), 30);
+  });
+
+  it("rejects expired or missing session deadlines", () => {
+    const now = 1_800_000_000;
+    for (const expiresAt of [undefined, null, "1800000030", NaN, Infinity, now, now - 1]) {
+      assert.equal(getRemainingSessionLifetime(expiresAt, now), null);
+    }
+  });
   it("selects the migrated Learning profile contract", () => {
     assert.match(SOFLIA_USER_SELECT, /platform_role/);
     assert.doesNotMatch(SOFLIA_USER_SELECT, /cargo_rol/);

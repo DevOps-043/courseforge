@@ -248,10 +248,10 @@ test("takes preserve section boundaries, positive durations and literal narratio
   }
 });
 
-test("character target ranges also respect absolute limits for custom policies", () => {
+test("equal duration endpoints still receive the editorial margin", () => {
   const exact = buildVideoNarrationCharacterBudget({ minimumDurationSeconds: 600, targetDurationSeconds: 600, maximumDurationSeconds: 600 });
-  assert.equal(exact.targetMinimum, 9_000);
-  assert.equal(exact.targetMaximum, 9_000);
+  assert.equal(exact.targetMinimum, 8_550);
+  assert.equal(exact.targetMaximum, 9_450);
 });
 
 test("a failed video keeps the other generated materials and returns a failed lesson result", async () => {

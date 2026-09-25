@@ -16,7 +16,7 @@ test("appends non-overridable video guardrails for organizations with custom pro
 
   assert.match(guardrails, /no son personalizables/);
   assert.match(guardrails, /objetivo editorial 6300/);
-  assert.match(guardrails, /5985-6615/);
+  assert.match(guardrails, /5130-7560/);
   assert.match(guardrails, /se derivarán en servidor/);
   assert.match(guardrails, /3 B-roll/);
 });

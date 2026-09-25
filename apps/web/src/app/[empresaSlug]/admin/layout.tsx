@@ -5,7 +5,8 @@ import { logoutAction } from '@/app/login/actions';
 import AdminLayoutClient from '@/app/admin/AdminLayoutClient';
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 import { resolveSidebarProfile } from '@/components/layout/layout.types';
-import { resolveTenantContext } from '@/lib/server/tenant-context';
+import { resolveTenantContext, TenantContextLookupError } from '@/lib/server/tenant-context';
+import { TenantLookupUnavailable } from '@/app/_components/TenantLookupUnavailable';
 import { userHasPlatformPermission } from '@/lib/server/platform-authorization';
 import { PLATFORM_PERMISSIONS } from '@/utils/auth/platform-permissions';
 
@@ -17,7 +18,13 @@ export default async function TenantAdminLayout({
   params: Promise<unknown>;
 }) {
   const { empresaSlug } = (await params) as { empresaSlug: string };
-  const tenant = await resolveTenantContext(empresaSlug);
+  let tenant;
+  try {
+    tenant = await resolveTenantContext(empresaSlug);
+  } catch (error) {
+    if (error instanceof TenantContextLookupError) return <TenantLookupUnavailable />;
+    throw error;
+  }
   if (!tenant) {
     notFound();
   }

@@ -3,7 +3,8 @@ import { ClipboardCheck, Code, Rocket, Users } from 'lucide-react';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { createClient } from '@/utils/supabase/server';
 import { getSofliaInboxEnv } from '@/lib/server/env';
-import { resolveTenantContext } from '@/lib/server/tenant-context';
+import { resolveTenantContext, TenantContextLookupError } from '@/lib/server/tenant-context';
+import { TenantLookupUnavailable } from '@/app/_components/TenantLookupUnavailable';
 import { getAdminDashboardData } from '@/domains/admin-dashboard/dashboard-data';
 import { DashboardStatCard } from '@/domains/admin-dashboard/components/DashboardStatCard';
 import { CreationTrendChart, PipelineDistributionBars } from '@/domains/admin-dashboard/components/PipelineCharts';
@@ -17,7 +18,13 @@ export default async function TenantAdminPage({
   params: Promise<{ empresaSlug: string }>;
 }) {
   const { empresaSlug } = await params;
-  const tenant = await resolveTenantContext(empresaSlug);
+  let tenant;
+  try {
+    tenant = await resolveTenantContext(empresaSlug);
+  } catch (error) {
+    if (error instanceof TenantContextLookupError) return <TenantLookupUnavailable />;
+    throw error;
+  }
   if (!tenant) notFound();
 
   const supabase = await createClient();
