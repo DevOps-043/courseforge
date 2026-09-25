@@ -1,3 +1,4 @@
+import { loadAptaSources } from "./materials-source-context";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   ComponentType,
@@ -58,29 +59,6 @@ export async function loadLessonPlans(
     .single();
   if (error) throw error;
   return (planRecord?.lesson_plans || []) as LessonPlanRecord[];
-}
-
-export async function loadAptaSources(
-  supabase: SupabaseClient,
-  artifactId: string,
-): Promise<CurationRowRecord[]> {
-  const { data: curationRecord, error: curationError } = await supabase
-    .from("curation")
-    .select("id")
-    .eq("artifact_id", artifactId)
-    .maybeSingle();
-  if (curationError) throw curationError;
-  if (!curationRecord) {
-    return [];
-  }
-
-  const { data: rows, error: rowsError } = await supabase
-    .from("curation_rows")
-    .select("id, lesson_id, lesson_title, source_title, source_ref, cobertura_completa, source_kind, validation_report")
-    .eq("curation_id", curationRecord.id)
-    .eq("apta", true);
-  if (rowsError) throw rowsError;
-  return (rows || []).filter((row) => !row.validation_report?.status || row.validation_report.status === "valid") as CurationRowRecord[];
 }
 
 export async function loadMaterialsGenerationContext(

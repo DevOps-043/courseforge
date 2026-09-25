@@ -1,69 +1,11 @@
-import { runInlineValidation, type MaterialsRecord, type MaterialLessonRecord, type MaterialComponentRecord, type MaterialSourceValidationContext } from './shared/materials-lesson-validation';
+import { runInlineValidation, type MaterialsRecord, type MaterialLessonRecord, type MaterialComponentRecord } from './shared/materials-lesson-validation';
 import { Handler } from '@netlify/functions';
 import { createServiceRoleClient } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
 import { backgroundGuardFailureResponse, methodNotAllowedResponse, parseVerifiedBackgroundBody } from './shared/http';
 import { selectLatestComponentsByType } from '../../src/domains/materials/lib/material-component-versions';
-import { buildLessonsToProcess } from './shared/unified-curation-helpers';
+import { loadMaterialSourceValidationContext } from './shared/materials-source-context';
 import { generationFailureMessage } from '../../src/lib/pipeline-generation-policy';
-
-function normalizeLessonKey(value: string | null | undefined) {
-    return (value || '')
-        .trim()
-        .toLowerCase()
-        .normalize('NFKD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+/g, ' ');
-}
-
-async function loadMaterialSourceValidationContext(
-    supabase: ReturnType<typeof createServiceRoleClient>,
-    artifactId: string,
-): Promise<MaterialSourceValidationContext> {
-    const [syllabusResult, planResult, curationResult] = await Promise.all([
-        supabase.from('syllabus').select('route').eq('artifact_id', artifactId).single(),
-        supabase.from('instructional_plans').select('lesson_plans').eq('artifact_id', artifactId).single(),
-        supabase.from('curation').select('id').eq('artifact_id', artifactId).maybeSingle(),
-    ]);
-    if (syllabusResult.error) throw syllabusResult.error;
-    if (planResult.error) throw planResult.error;
-    if (curationResult.error) throw curationResult.error;
-
-    const lessons = buildLessonsToProcess(planResult.data.lesson_plans);
-    const requiredSourcesByLesson = new Map(
-        lessons.map((lesson) => [lesson.lesson_id, lesson.required_sources]),
-    );
-    const validSourceIdsByLesson = new Map<string, Set<string>>();
-    const requiresSources = syllabusResult.data.route !== 'B_NO_SOURCE';
-    if (!requiresSources || !curationResult.data?.id) {
-        return { requiredSourcesByLesson, requiresSources, validSourceIdsByLesson };
-    }
-
-    const lessonIdByTitle = new Map(
-        lessons.map((lesson) => [normalizeLessonKey(lesson.lesson_title), lesson.lesson_id]),
-    );
-    const knownLessonIds = new Set(lessons.map((lesson) => lesson.lesson_id));
-    const { data: rows, error: rowsError } = await supabase
-        .from('curation_rows')
-        .select('id, lesson_id, lesson_title, apta, validation_report')
-        .eq('curation_id', curationResult.data.id)
-        .eq('apta', true);
-    if (rowsError) throw rowsError;
-
-    for (const row of rows || []) {
-        const report = row.validation_report as { status?: string } | null;
-        if (report?.status && report.status !== 'valid') continue;
-        const lessonId = knownLessonIds.has(row.lesson_id)
-            ? row.lesson_id
-            : lessonIdByTitle.get(normalizeLessonKey(row.lesson_title));
-        if (!lessonId) continue;
-        const ids = validSourceIdsByLesson.get(lessonId) || new Set<string>();
-        ids.add(row.id);
-        validSourceIdsByLesson.set(lessonId, ids);
-    }
-
-    return { requiredSourcesByLesson, requiresSources, validSourceIdsByLesson };
-}
 
 export const handler: Handler = async (event) => {
     if (event.httpMethod !== 'POST') {
@@ -135,10 +77,6 @@ export const handler: Handler = async (event) => {
             return { statusCode: 409, body: JSON.stringify({ error: 'Los materiales no están disponibles para validar en su estado actual.' }) };
         }
         validationExecution = materials;
-        const sourceValidationContext = await loadMaterialSourceValidationContext(
-            supabase,
-            materials.artifact_id,
-        );
         // 2. Get all lessons for this materials record
         const { data: lessons, error: lessonsError } = await supabase
             .from('material_lessons')
@@ -149,6 +87,10 @@ export const handler: Handler = async (event) => {
         if (lessons?.some((lesson) => lesson.state === 'GENERATING')) {
             return { statusCode: 409, body: JSON.stringify({ error: 'Espera a que termine la regeneración antes de validar.' }) };
         }
+
+        const sourceValidationContext = await loadMaterialSourceValidationContext(
+            supabase, materials.artifact_id, lessons || [],
+        );
 
         console.log(`[Validate Materials] Found ${lessons?.length || 0} lessons to validate`);
 
@@ -280,7 +222,7 @@ async function validateSingleLesson(lessonId: string) {
                 body: JSON.stringify({ success: false, error: 'Lesson not found' })
             };
         }
-        if (!['GENERATED', 'APPROVABLE'].includes(lesson.state)) {
+        if (!['GENERATED', 'APPROVABLE', 'NEEDS_FIX'].includes(lesson.state)) {
             return { statusCode: 409, body: JSON.stringify({ error: 'La lección debe terminar su generación antes de validar.' }) };
         }
 
@@ -293,8 +235,7 @@ async function validateSingleLesson(lessonId: string) {
             throw new Error(materialsError?.message || 'Materials not found');
         }
         const sourceValidationContext = await loadMaterialSourceValidationContext(
-            supabase,
-            materials.artifact_id,
+            supabase, materials.artifact_id, [lesson],
         );
 
         // Fetch components

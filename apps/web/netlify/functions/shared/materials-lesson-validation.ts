@@ -120,9 +120,10 @@ export function runInlineValidation(
         const unknownSourceIds = [...usedSourceIds].filter(
             (sourceId) => !validSourceIds.has(sourceId),
         );
-        if (usedSourceIds.size < requiredSources) {
+        const validUsedCount = usedSourceIds.size - unknownSourceIds.length;
+        if (validUsedCount < requiredSources) {
             sourceErrors.push(
-                `La lección utiliza ${usedSourceIds.size}/${requiredSources} fuentes validadas requeridas`,
+                `La lección utiliza ${validUsedCount}/${requiredSources} fuentes validadas requeridas`,
             );
         }
         if (unknownSourceIds.length > 0) {
