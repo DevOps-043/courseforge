@@ -144,3 +144,5 @@ Cargar un archivo registra una fuente en la biblioteca y no equivale a insertarl
 La pantalla previa de carga sigue disponible; su eliminación y la carga dentro del editor no forman parte de este ajuste. El cambio resuelve la selección progresiva desde la biblioteca del editor.
 
 Validación de esta iteración: 184 pruebas aprobadas (regresiones del editor, fuentes y render, más inicio vacío, sincronización sin inserción, eliminación/reinserción y rechazo de fuentes HTML alteradas). Pendiente la comprobación visual con un proyecto autenticado y Storage desplegado. No requiere una nueva migración de tablas: la política se guarda en el documento JSON versionado.
+
+Revisión adicional: se impide que la sincronización reaplique tiempos de escenas a clips de un documento con inserción manual. Se conservan inicio, duración y posición elegidos, incluso para medios heredados. Compilación TypeScript de pruebas correcta y 185 pruebas aprobadas, cero fallos.

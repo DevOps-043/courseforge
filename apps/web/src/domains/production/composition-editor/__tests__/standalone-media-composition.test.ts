@@ -213,3 +213,24 @@ test("manual mode preserves previously edited standalone clips and rejects forge
   assert.equal(hasCanonicalHtmlSource(forged, deckDocument.clips), false);
   assert.equal(hasCanonicalHtmlSource(clip, []), false);
 });
+
+
+test("standalone synchronization preserves manual placement even for legacy scene assets", () => {
+  const asset = { mimeType: "video/mp4", timelineRole: "AVATAR" as const, productionAssetId: htmlAssetA,
+    sceneClipId: "scene-one", sceneOrder: 1, durationSeconds: 10, hasAudio: true,
+    checksum: "a".repeat(64), fileSizeBytes: 100, storageBucket: "production-assets", storagePath: "production-assets/test.mp4", publicUrl: null };
+  const document = createInitialCompositionDocument({ animatedDeck: null, assets: [asset],
+    plan: { title: "Existing standalone", subtitle: "", durationSeconds: 10, accentColor: "#000000" } });
+  document.sourceInsertionMode = "MANUAL";
+  document.canvas.durationSeconds = 20;
+  document.clips[0].startSeconds = 7;
+  document.clips[0].durationSeconds = 3;
+  document.clips[0].layout.x = 42;
+  const newAsset = { ...asset, productionAssetId: htmlAssetB, sceneClipId: "scene-two", sceneOrder: 2 };
+  const reconciled = reconcileCompositionDocument({ document, productionAssets: [asset, newAsset], deckDependencyAssetIds: new Set() }).document;
+  assert.equal(reconciled.clips.length, 1);
+  assert.equal(reconciled.clips[0].startSeconds, 7);
+  assert.equal(reconciled.clips[0].durationSeconds, 3);
+  assert.equal(reconciled.clips[0].layout.x, 42);
+  assert.equal(reconciled.canvas.durationSeconds, 20);
+});

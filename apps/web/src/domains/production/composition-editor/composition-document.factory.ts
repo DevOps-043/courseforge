@@ -223,7 +223,7 @@ export function reconcileCompositionDocument(params: {
     const sourceAudioChanged = clip.source.hasAudio !== source.hasAudio;
     const synchronizedLabel = resolveProductionAssetClipLabel(source, clip.label);
     const labelChanged = clip.label !== synchronizedLabel;
-    const synchronizedSceneTiming = clip.timingSource === "ESTIMATED"
+    const synchronizedSceneTiming = params.document.sourceInsertionMode !== "MANUAL" && clip.timingSource === "ESTIMATED"
       ? sceneTimingByAssetId.get(source.productionAssetId)
       : undefined;
     const synchronizedSourceDuration = source.durationSeconds && source.durationSeconds > 0
