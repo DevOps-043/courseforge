@@ -19,7 +19,7 @@ export interface HyperframesProjectAsset extends HyperframesAssetManifestItem {
   sourceHeight?: number;
   sourceWidth?: number;
   storageBucket: string;
-  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
+  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "MEDIA" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";
 }
 

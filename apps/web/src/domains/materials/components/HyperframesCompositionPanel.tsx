@@ -28,7 +28,7 @@ interface VideoAsset {
   fileSizeBytes: number;
   hasAudio?: boolean;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
-  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
+  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "MEDIA" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";
   validationErrors: string[];
 }
@@ -64,6 +64,7 @@ export function HyperframesCompositionPanel({
   onVideoCompleted?: () => void;
   selectedLessonId: string | null;
 }) {
+  const [htmlAssets, setHtmlAssets] = useState<CompositionStudioAsset[]>([]);
   const [assets, setAssets] = useState<VideoAsset[]>([]);
   const [composition, setComposition] = useState<VideoComposition | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
@@ -90,7 +91,7 @@ export function HyperframesCompositionPanel({
       .reduce((total, asset) => total + asset.fileSizeBytes, 0)
   ), [activeTimelineAssets]);
   const blockedAssets = useMemo(() => activeTimelineAssets.filter((asset) => !asset.eligibleForRevision), [activeTimelineAssets]);
-  const studioAssets = useMemo<CompositionStudioAsset[]>(() => activeTimelineAssets.map((asset) => ({
+  const studioAssets = useMemo<CompositionStudioAsset[]>(() => [...htmlAssets, ...activeTimelineAssets.map((asset) => ({
     durationSeconds: asset.durationSeconds,
     detachedFromAssetId: asset.metadata.detached_from_asset_id || undefined,
     detachedFromClipId: asset.metadata.detached_from_clip_id || undefined,
@@ -107,7 +108,7 @@ export function HyperframesCompositionPanel({
     timelineRole: asset.timelineRole,
     timelineVariant: asset.timelineVariant,
     valid: asset.eligibleForRevision,
-  })), [activeTimelineAssets, draftId]);
+  }))], [activeTimelineAssets, draftId, htmlAssets]);
   const hasAssetSizeErrors = blockedAssets.length > 0;
   const sizeErrorMessage = useMemo(() => {
     const names = blockedAssets.map((asset) => asset.metadata.file_name || asset.mimeType);
@@ -120,6 +121,11 @@ export function HyperframesCompositionPanel({
     const response = await fetch(`/api/production/hyperframes/assets?componentId=${encodeURIComponent(componentId)}&t=${Date.now()}`, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "No se pudieron actualizar los assets del editor.");
+    setHtmlAssets((payload.htmlClips || []).map((clip: NonNullable<CompositionStudioAsset["deckClip"]>) => ({
+      id: clip.id, label: clip.label, deckClip: clip, mimeType: "text/html", durationSeconds: 5,
+      isEditable: true, valid: true, previewUrl: null, sizeLabel: "HTML", sourceLabel: "Diapositiva HTML",
+      timelineRole: "MEDIA", sourceWidth: clip.layout.width, sourceHeight: clip.layout.height,
+    })));
     return payload.data as VideoAsset[];
   }, [componentId]);
 

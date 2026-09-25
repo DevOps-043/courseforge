@@ -156,7 +156,7 @@ export async function compileCompositionPreview(params: {
     .sort((left, right) => left.layout.zIndex - right.layout.zIndex || left.startSeconds - right.startSeconds)
     .map((clip) => renderClip(
       clip,
-      document.canvas,
+      clip.source.type === "DECK_SLIDE" ? { width: clip.source.sourceWidth || document.deckStyles?.sourceWidth || document.canvas.width, height: clip.source.sourceHeight || document.deckStyles?.sourceHeight || document.canvas.height } : document.canvas,
       tracksById.get(clip.trackId),
       params.assetVariableNames,
       params.assetUrls,
@@ -292,7 +292,7 @@ function renderClip(
   }
   if (clip.source.type === "DECK_SLIDE") {
     const deckContainStyle = renderDeckContainStyle(clip, canvas);
-    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope" data-appearance="${deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
+    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"${clip.source.htmlAssetId ? ` data-html-asset="${escapeAttribute(clip.source.htmlAssetId)}"` : ""} data-appearance="${clip.source.appearance || deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
   const mediaAssetId = getCompositionClipMediaAssetId(clip);
   if (!mediaAssetId) throw new CompositionPreviewCompilerError(`El clip ${clip.id} no tiene un asset multimedia válido.`);

@@ -37,6 +37,7 @@ export type ActiveCompositionAssembly = {
 };
 
 interface CompositionDeliveryPanelProps {
+  canvas?: { width: number; height: number };
   assembly: ActiveCompositionAssembly | null;
   busy: boolean;
   compact?: boolean;
@@ -60,7 +61,7 @@ interface CompositionDeliveryPanelProps {
   selectedRenderProfileId: HyperframesRenderProfileId;
 }
 
-export function CompositionDeliveryPanel({ diagnostics, importStatus, assembly, busy, compact = false, durationSeconds, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: CompositionDeliveryPanelProps) {
+export function CompositionDeliveryPanel({ canvas, diagnostics, importStatus, assembly, busy, compact = false, durationSeconds, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: CompositionDeliveryPanelProps) {
   const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
   const renderBudget = estimateHyperframesRenderBudget({ durationSeconds, renderProfile: selectedProfile });
   const profileMatchesAssembly = !assembly || sameHyperframesRenderSettings(assembly.renderProfile, selectedProfile);
@@ -93,7 +94,7 @@ export function CompositionDeliveryPanel({ diagnostics, importStatus, assembly, 
     <div className={styles.deliveryBody}>
       <div className={styles.outputMetrics} aria-label="Datos de la salida">
         <span><small>Archivo</small><strong>{assembly ? formatAssemblyBytes(assembly.projectArchiveSizeBytes) : "—"}</strong></span>
-        <span><small>Resolución</small><strong>1080p</strong></span>
+        <span><small>Resolución</small><strong>{canvas ? `${canvas.width} × ${canvas.height}` : "1080p"}</strong></span>
         <span><small>Cuadros</small><strong>{assembly?.renderProfile?.fps || selectedProfile.fps} FPS</strong></span>
         <span><small>Calidad</small><strong>{renderQualityLabel(assembly?.renderProfile?.quality || selectedProfile.quality)}</strong></span>
         <span><small>Salida estimada</small><strong>{formatRenderBudgetBytes(renderBudget.estimatedOutputBytes)}</strong></span>

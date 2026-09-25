@@ -1,4 +1,4 @@
-import type { CompositionEditorDocument, CompositionTrack } from "@/domains/production/composition-editor/composition-document.types";
+import type { CompositionClip, CompositionEditorDocument, CompositionTrack } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionAgentProposalEnvelope } from "@/domains/production/composition-editor/composition-agent-proposal.types";
 import type { CompositionAgentRecoveryMetadata } from "@/domains/production/composition-editor/composition-agent-recovery.service";
 
@@ -16,6 +16,7 @@ export interface CompositionDocumentPayload {
 }
 
 export type CompositionTrackSettings = {
+  label?: string;
   hidden?: boolean;
   locked?: boolean;
   muted?: boolean;
@@ -36,6 +37,7 @@ export interface CompositionStudioLesson {
 }
 
 export interface CompositionStudioAsset {
+  deckClip?: CompositionClip;
   detachedFromAssetId?: string;
   detachedFromClipId?: string;
   durationSeconds?: number;
@@ -49,7 +51,7 @@ export interface CompositionStudioAsset {
   sourceWidth?: number;
   sizeLabel: string;
   sourceLabel: string;
-  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
+  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "MEDIA" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";
   valid: boolean;
 }

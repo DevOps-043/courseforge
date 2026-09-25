@@ -1,5 +1,7 @@
 "use client";
 
+import { COMPOSITION_CANVAS_FORMATS, resolveCompositionCanvasFormat } from "@/domains/production/composition-editor/composition-canvas-format";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { AlertTriangle, GripHorizontal, Loader2, X } from "lucide-react";
@@ -129,6 +131,7 @@ type CompositionRenderRecoveryState = {
   latestRender: RenderAttemptSummary | null;
 };
 const DURATION_SOURCE_LABELS: Record<NonNullable<CompositionEditorDocument["canvas"]["durationSource"]>, string> = {
+  media: "Medios",
   avatar_clips: "clips de avatar",
   avatar_full: "avatar completo",
   b_roll: "B-roll",
@@ -1299,8 +1302,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   async function addAssetToTimeline(asset: CompositionStudioAsset) {
     const currentPayload = payloadRef.current;
     if (!currentPayload || !asset.isEditable) return;
-    const baseClipId = `asset-${asset.id}`;
-    const existing = currentPayload.document.clips.find((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === asset.id);
+    const baseClipId = asset.deckClip?.id || `asset-${asset.id}`;
+    const existing = currentPayload.document.clips.find((clip) => asset.deckClip
+      ? clip.source.type === "DECK_SLIDE" && asset.deckClip.source.type === "DECK_SLIDE" && clip.source.slideKey === asset.deckClip.source.slideKey
+      : clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === asset.id);
     if (existing) {
       selectClip(existing.hfId);
       return;
@@ -1317,7 +1322,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       identitySuffix += 1;
     }
 
-    const trackDefinition = resolveCompositionTrackDefinition(asset);
+    const trackDefinition = asset.deckClip
+      ? { ...getCompositionTrackDefinition("DECK"), id: asset.deckClip.trackId, label: "HTML" }
+      : resolveCompositionTrackDefinition(asset);
     const trackId = trackDefinition.id;
     const isAudio = trackDefinition.kind === "AUDIO";
     const isBackgroundAudio = trackDefinition.semanticRole === "MUSIC";
@@ -1326,7 +1333,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     const occupiedUntil = currentPayload.document.clips
       .filter((candidate) => candidate.trackId === trackId)
       .reduce((latest, candidate) => Math.max(latest, candidate.startSeconds + candidate.durationSeconds), 0);
-    const insertionTiming = resolveCompositionAssetInsertionTiming({
+    const insertionTiming = currentPayload.document.sourceInsertionMode === "MANUAL"
+      ? { startSeconds: Math.max(occupiedUntil, playheadSecondsRef.current), durationSeconds: preferredDuration, overlapsExistingClips: false }
+      : resolveCompositionAssetInsertionTiming({
       canvasDurationSeconds: currentPayload.document.canvas.durationSeconds,
       extendCanvasForSequentialAsset: trackDefinition.semanticRole === "VOICE",
       isSequential,
@@ -1334,7 +1343,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       playheadSeconds: playheadSecondsRef.current,
       preferredDurationSeconds: preferredDuration,
     });
-    const clipKind: CompositionClip["kind"] = isAudio ? "AUDIO" : asset.mimeType.startsWith("video/") ? "VIDEO" : "IMAGE";
+    const clipKind: CompositionClip["kind"] = asset.deckClip ? "DECK_SLIDE" : isAudio ? "AUDIO" : asset.mimeType.startsWith("video/") ? "VIDEO" : "IMAGE";
     const sourceDimensions = asset.sourceWidth && asset.sourceHeight
       ? { height: asset.sourceHeight, width: asset.sourceWidth }
       : null;
@@ -1347,7 +1356,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       label: asset.label,
       layout: resolveDefaultCompositionClipLayout({ canvas: currentPayload.document.canvas, clipKind, sourceDimensions, track: trackDefinition }),
       mediaFit: resolveDefaultCompositionMediaFit({ clipKind, track: trackDefinition }),
-      source: {
+      source: asset.deckClip?.source || {
         ...(asset.hasAudio !== undefined ? { hasAudio: asset.hasAudio } : {}),
         productionAssetId: asset.id,
         ...(sourceDimensions ? { sourceHeight: sourceDimensions.height, sourceWidth: sourceDimensions.width } : {}),
@@ -1359,7 +1368,12 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       timingSource: "ESTIMATED",
       trackId,
     };
-    const added = await savePatch([{
+    const insertionOperations: CompositionEditorPatchOperation[] = [];
+    const insertedEnd = clip.startSeconds + clip.durationSeconds;
+    if (currentPayload.document.sourceInsertionMode === "MANUAL" && insertedEnd > currentPayload.document.canvas.durationSeconds) {
+      insertionOperations.push({ type: "composition.canvas-duration", clipId: "canvas", durationSeconds: insertedEnd, durationMode: "USER_EDITED", durationSource: "media" });
+    }
+    const added = await savePatch([...insertionOperations, {
       clip,
       clipId,
       // The patch service ignores this when the track already exists and uses
@@ -2155,7 +2169,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         : undefined;
       const response = await fetch("/api/production/hyperframes/renders", {
         body: JSON.stringify({
-          aspectRatio: "16:9",
+          aspectRatio: resolveCompositionCanvasFormat(payload!.document.canvas),
           attemptId,
           ...toHyperframesRenderSettings(assembly.renderProfile),
           revisionId: assembly.revisionId,
@@ -2238,6 +2252,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
   const deliveryMenu = (
     <CompositionDeliveryPanel
+      canvas={payload?.document.canvas}
       compact
       assembly={assembly}
       busy={assembling}
@@ -2323,10 +2338,14 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         } as CSSProperties}
         className={`${styles.editorGrid} ${!libraryOpen ? styles.editorGridWithoutLibrary : ""} ${inspectorOpen ? styles.editorGridWithInspector : ""}`}
       >
-        <CompositionStudioLibrary assets={assets} captionTranscriptWordCount={captionTranscriptWordCount} delivery={deliveryMenu} introAssetId={payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO" ? [clip.source.productionAssetId] : [])[0] || null} libraryOpen={libraryOpen} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onAddCaptionLayer={() => void addNativeOverlay("CAPTION")} onGenerateTranscriptCaptions={() => void generateTranscriptCaptions()} onAddSoundEffect={addSoundEffectToTimeline} onAddTextLayer={() => void addNativeOverlay("TEXT")} onClearIntro={clearProductionIntro} onSelectLesson={onSelectLesson} onSelectAsset={selectClip} onSetIntro={setProductionIntro} selectedLessonId={selectedLessonId} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []))} />
+        <CompositionStudioLibrary assets={assets} captionTranscriptWordCount={captionTranscriptWordCount} delivery={deliveryMenu} introAssetId={payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO" ? [clip.source.productionAssetId] : [])[0] || null} libraryOpen={libraryOpen} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onAddCaptionLayer={() => void addNativeOverlay("CAPTION")} onGenerateTranscriptCaptions={() => void generateTranscriptCaptions()} onAddSoundEffect={addSoundEffectToTimeline} onAddTextLayer={() => void addNativeOverlay("TEXT")} onClearIntro={clearProductionIntro} onSelectLesson={onSelectLesson} onSelectAsset={selectClip} onSetIntro={setProductionIntro} selectedLessonId={selectedLessonId} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : clip.source.type === "DECK_SLIDE" ? [clip.source.htmlAssetId ? `html-${clip.source.htmlAssetId}-${clip.source.sourceSlideIndex}` : `deck-slide-${clip.source.slideIndex}`] : []))} />
 
         <section ref={previewShellRef} className={`${styles.previewPanel} ${previewFullscreen ? styles.previewFullscreen : ""}`}>
+          {payload.document.sourceInsertionMode === "MANUAL" && payload.document.clips.length === 0 &&
+            <p role="status" className="px-4 py-2 text-sm text-slate-500">Tu timeline está vacío. Elige un archivo de la biblioteca y pulsa «Añadir a timeline».</p>}
           <CompositionPreviewToolbar
+            canvas={payload.document.canvas}
+            onCanvasFormatChange={(format) => void savePatch([{ type: "composition.canvas-size", ...COMPOSITION_CANVAS_FORMATS[format] }], `Cambió el lienzo a ${format}; conserva el encuadre para ajuste manual.`)}
             agentProposalActive={Boolean(agentProposal)}
             comparisonActive={comparisonActive}
             currentVersion={payload.version}

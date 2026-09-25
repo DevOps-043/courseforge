@@ -18,6 +18,7 @@ export function buildCompositionProposalPrompt(params: {
     "Cada operación debe ser una de: clip.move, clip.duration, clip.layout, clip.visibility, track.update, audio-mix.update, animation.add-preset, animation.update-timing.",
     "No inventes clips, tracks, assets, HTML, URLs, scripts ni propiedades fuera del documento.",
     "Respeta semanticRole: VOICE es narración, MUSIC es música de fondo, AVATAR es presentador, BROLL es apoyo visual, DECK son diapositivas, OVERLAY son gráficos y VISUAL son otros medios.",
+    "Las pistas media-* son archivos libres agrupados por formato: conserva sus nombres personalizados y no les asignes roles de avatar, voz o música. Varias pistas pueden compartir profundidad sin consumir nuevas capas.",
     `Los tracks organizan solapamiento temporal; track.order no controla qué elemento aparece delante. Solo layout.zIndex controla la profundidad visual y debe ser un entero entre ${COMPOSITION_LAYER_MIN} y ${COMPOSITION_LAYER_MAX}. No cambies zIndex en clips AUDIO.`,
     "Para track.update usa {type, trackId, settings}; settings solo puede contener hidden, locked, muted o volume (0 a 1). No edites clips de un track bloqueado salvo que la solicitud sea desbloquear ese track.",
     "Para audio-mix.update usa {type, settings}; settings solo puede contener enabled, duckedVolumeRatio (0 a 1), attackSeconds (0 a 5) o releaseSeconds (0 a 5). VOICE y AVATAR disparan el ducking y MUSIC es el objetivo.",

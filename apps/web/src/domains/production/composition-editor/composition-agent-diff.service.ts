@@ -21,6 +21,7 @@ const LAYOUT_FIELDS = [
   "zIndex",
 ] as const;
 const TRACK_FIELDS = [
+  "label",
   "hidden",
   "locked",
   "muted",
@@ -185,7 +186,7 @@ function mergeRanges(ranges: CompositionAgentAffectedRange[]) {
   return merged;
 }
 
-function normalizeOptionalTrackValue(field: typeof TRACK_FIELDS[number], value: boolean | number | undefined) {
+function normalizeOptionalTrackValue(field: typeof TRACK_FIELDS[number], value: boolean | number | string | undefined) {
   if (value !== undefined) return value;
   return field === "volume" ? 1 : false;
 }

@@ -54,9 +54,9 @@ export function StandaloneAssemblyEditor({
     return <EditorUnavailable backHref={backHref} message={error || "Proyecto no encontrado."} />;
   }
 
-  const readiness = getStandaloneAssemblyReadiness(project.component.assets);
+  const readiness = getStandaloneAssemblyReadiness(project.component.assets, project.media.length);
   if (!readiness.canOpenEditor) {
-    return <EditorUnavailable backHref={backHref} message="Este proyecto todavía necesita voz, avatar, B-roll con duración o un deck de slides antes de abrir el editor." />;
+    return <EditorUnavailable backHref={backHref} message="Añade una imagen, video, audio o diapositivas HTML antes de abrir el editor." />;
   }
 
   return (
