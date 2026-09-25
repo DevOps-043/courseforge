@@ -8,7 +8,8 @@ import { VIDEO_GENERATION_LIMITS, VideoModelResponseError, type VideoModelReques
 import { buildStoryboardNarration, assembleStoryboard, type StoryboardNarrationTake } from "../video-storyboard-timeline";
 import { generateMaterialsByComponent } from "../materials-generation.service";
 import { buildMaterialComponentWrites } from "../material-component-write";
-import { buildNarrationRevisionBudget } from "../video-generation.prompts";
+import { buildNarrationRevisionBudget, buildDemoNarrationBudget, buildStagedVideoPrompt } from "../video-generation.prompts";
+import { applyVideoNarrationRevision } from "../video-generation.contracts";
 
 test("revision budgets use measured narration and account for section separators", () => {
   const budget = buildNarrationRevisionBudget(scriptDraft(8_650), 6_300).join("\n");
@@ -17,6 +18,12 @@ test("revision budgets use measured narration and account for section separators
   assert.equal(targets.length, 8);
   assert.equal(targets.reduce((sum, count) => sum + count, 0) + targets.length - 1, 6_300);
   assert.deepEqual(buildNarrationRevisionBudget({}, 6_300), []);
+});
+
+test("demo opening, development and closing share one total narration budget", () => {
+  const targets = [...buildDemoNarrationBudget(6300).join("\n").matchAll(/: (\d+) caracteres/g)].map((match) => Number(match[1]));
+  assert.equal(targets.reduce((sum, count) => sum + count, 0) + targets.length - 1, 6300);
+  assert.equal(targets.length, 7);
 });
 
 const contract = buildVideoDurationContract({ ...DEFAULT_VIDEO_DURATION_POLICY, minimumDurationSeconds: 600, targetDurationSeconds: 660, maximumDurationSeconds: 720 }, "VIDEO_DEMO");
@@ -105,6 +112,39 @@ test("exhausted narration retries fail without creating or accepting a storyboar
   assert.ok(result.attempts.every((attempt) => attempt.issueCodes.includes("INSUFFICIENT_NARRATION")));
 });
 
+test("oversized demo is corrected through narration-only revisions before storyboard generation", async () => {
+  let scripts = 0;
+  const oversized = scriptDraft(15_000);
+  const corrected = scriptDraft(9_900);
+  const result = await generateVideoInStages({
+    input, contract, componentType: "VIDEO_DEMO", prompts, models: ["primary"],
+    request: async ({ prompt }) => {
+      if (prompt.includes("ETAPA ACTUAL: GUION")) {
+        if (++scripts === 1) return { content: oversized };
+        assert.match(prompt, /EXCESSIVE_NARRATION/);
+        assert.match(prompt, /narration_sections/);
+        return { content: { narration_sections: corrected.script.sections.map((section, index) => ({
+          section_number: index + 1, narration_text: section.narration_text,
+        })) } };
+      }
+      return { content: storyboardDraft(takesFromPrompt(prompt)) };
+    },
+  });
+  assert.ok(result.success);
+  assert.deepEqual(result.sourceRefs, oversized.source_refs_used);
+  assert.equal(result.content.script.sections[0].visual_notes, oversized.script.sections[0].visual_notes);
+  assert.equal(validateVideoDurationContent(result.content, contract).valid, true);
+  const duplicate = { narration_sections: corrected.script.sections.map((section) => ({ section_number: 1, narration_text: section.narration_text })) };
+  assert.throws(() => applyVideoNarrationRevision(duplicate, oversized), /SCRIPT_SECTION_MAPPING/);
+});
+
+test("script visual errors allow restructuring instead of restricting correction to narration", () => {
+  const prompt = buildStagedVideoPrompt({ input, contract, componentType: "VIDEO_DEMO", prompts, stage: "script",
+    previousDraft: scriptDraft(9_900), feedback: ["INSUFFICIENT_SLIDE_COVERAGE: Faltan beats visuales."] });
+  assert.doesNotMatch(prompt, /devuelve únicamente narration_sections/);
+  assert.match(prompt, /on_screen_text/);
+});
+
 test("corrects visual coverage without regenerating a valid script", async () => {
   let scripts = 0;
   let storyboards = 0;
@@ -189,6 +229,21 @@ test("permanent provider errors skip the unavailable primary for subsequent stag
   assert.deepEqual(result.attempts[0].issueCodes, ["MODEL_HTTP_403"]);
 });
 
+test("an unavailable primary does not consume the fallback narration correction attempt", async () => {
+  let fallbackScripts = 0;
+  const result = await generateVideoInStages({
+    input, contract, componentType: "VIDEO_DEMO", prompts, models: ["primary", "fallback"],
+    request: async ({ model, prompt }) => {
+      if (model === "primary") throw Object.assign(new Error("unavailable"), { status: 403 });
+      if (prompt.includes("ETAPA ACTUAL: GUION")) return { content: scriptDraft(++fallbackScripts === 1 ? 15_000 : 9_900) };
+      return { content: storyboardDraft(takesFromPrompt(prompt)) };
+    },
+  });
+  assert.ok(result.success);
+  assert.equal(fallbackScripts, 2);
+  assert.deepEqual(result.attempts.map((attempt) => attempt.model), ["primary", "fallback", "fallback", "fallback"]);
+});
+
 test("retry backoff and provider timeouts share the remaining lesson budget", async () => {
   let clockMs = 0;
   const waits: number[] = [];
@@ -248,6 +303,18 @@ test("takes preserve section boundaries, positive durations and literal narratio
   }
 });
 
+test("short sections do not force two takes and inflate a five-minute video to 30 takes", () => {
+  const video = { script: { sections: Array.from({ length: 15 }, (_, index) => ({
+    section_number: index + 1, narration_text: "Un paso concreto con evidencia observable del resultado esperado.",
+    duration_seconds: 20, visual_notes: "Resultado",
+  })) } } as VideoGuideContent;
+  const policy = buildVideoDurationContract({ ...DEFAULT_VIDEO_DURATION_POLICY, minimumDurationSeconds: 180, targetDurationSeconds: 300, maximumDurationSeconds: 420 }, "VIDEO_DEMO");
+  const takes = buildStoryboardNarration(video, policy);
+  assert.equal(takes.length, 15);
+  assert.equal(takes.at(-1)?.timecode_end, "05:00");
+  assert.equal(takes.map((take) => take.narration_text).join(" "), video.script.sections.map((section) => section.narration_text).join(" "));
+});
+
 test("character target ranges also respect absolute limits for custom policies", () => {
   const exact = buildVideoNarrationCharacterBudget({ minimumDurationSeconds: 600, targetDurationSeconds: 600, maximumDurationSeconds: 600 });
   assert.equal(exact.targetMinimum, 9_000);
@@ -277,6 +344,17 @@ test("video-only regeneration does not call the standard generator", async () =>
   });
   assert.ok(result.success);
   assert.deepEqual(Object.keys(result.content.components), ["VIDEO_DEMO"]);
+});
+
+test("a thrown provider error preserves already generated materials", async () => {
+  const reading: ReadingContent = { title: "Lectura", body_html: "Texto", sections: [], estimated_reading_time_min: 1, key_points: [], reflection_question: "Pregunta" };
+  const result = await generateMaterialsByComponent({
+    input: { ...input, lesson: { ...input.lesson, components: [...input.lesson.components, { type: "READING", summary: "Refuerzo" }] } },
+    generateStandard: async () => ({ success: true, content: { components: { READING: reading }, source_refs_used: ["source-1"] } }),
+    generateVideo: async () => { throw new Error("provider unavailable"); },
+  });
+  assert.equal(result.success, false);
+  assert.deepEqual(result.content?.components, { READING: reading });
 });
 
 test("write preflight rejects invalid videos and writes only the successful selected component", async () => {

@@ -1,69 +1,11 @@
-import { validateSofliaDialogueContent } from "../../src/domains/materials/validators/materials-control3.validators";
+import { runInlineValidation, type MaterialsRecord, type MaterialLessonRecord, type MaterialComponentRecord, type MaterialSourceValidationContext } from './shared/materials-lesson-validation';
 import { Handler } from '@netlify/functions';
 import { createServiceRoleClient } from './shared/bootstrap';
 import { getErrorMessage } from './shared/errors';
 import { backgroundGuardFailureResponse, methodNotAllowedResponse, parseVerifiedBackgroundBody } from './shared/http';
 import { selectLatestComponentsByType } from '../../src/domains/materials/lib/material-component-versions';
-import {
-    hasSubstantiveQuizOptionText,
-    hasValidQuizCorrectAnswer,
-    stripQuizOptionPrefix,
-} from '../../src/domains/materials/lib/quiz-option-format';
-import { collectMaterialVideoValidationErrors } from '../../src/domains/materials/validators/material-video.validators';
 import { buildLessonsToProcess } from './shared/unified-curation-helpers';
-
-interface LessonDod {
-    control3_consistency: 'PASS' | 'FAIL' | 'PENDING';
-    control4_sources: 'PASS' | 'FAIL' | 'PENDING';
-    control5_quiz: 'PASS' | 'FAIL' | 'PENDING';
-    errors: string[];
-}
-
-interface MaterialsRecord {
-    artifact_id: string;
-    id: string;
-    version: number;
-}
-
-interface LessonQuizSpec {
-    min_questions?: number;
-}
-
-interface MaterialLessonRecord {
-    iteration_count?: number;
-    expected_components?: string[] | null;
-    id: string;
-    lesson_id: string;
-    lesson_title?: string | null;
-    materials_id: string;
-    quiz_spec?: LessonQuizSpec | null;
-    state?: string | null;
-}
-
-interface QuizItem {
-    correct_answer?: unknown;
-    explanation?: string | null;
-    options?: string[];
-    type?: string;
-}
-
-interface MaterialComponentRecord {
-    assets?: Record<string, unknown> | null;
-    content?: Record<string, unknown> | null;
-    id: string;
-    source_refs?: string[] | null;
-    iteration_number?: number | null;
-    type: string;
-    validation_errors?: string[] | null;
-    validation_status?: string | null;
-}
-
-interface MaterialSourceValidationContext {
-    requiredSourcesByLesson: Map<string, number>;
-    requiresSources: boolean;
-    validSourceIdsByLesson: Map<string, Set<string>>;
-}
-
+import { generationFailureMessage } from '../../src/lib/pipeline-generation-policy';
 
 function normalizeLessonKey(value: string | null | undefined) {
     return (value || '')
@@ -147,6 +89,7 @@ export const handler: Handler = async (event) => {
         return backgroundGuardFailureResponse(error);
     }
 
+    let validationExecution: MaterialsRecord | undefined;
     try {
         const { materialsId, artifactId, lessonId, markForFix } = body;
 
@@ -170,7 +113,7 @@ export const handler: Handler = async (event) => {
         if (materialsId) {
             const { data, error } = await supabase
                 .from('materials')
-                .select('id, artifact_id, version')
+                .select('id, artifact_id, version, state, updated_at')
                 .eq('id', materialsId)
                 .single();
             if (error) throw new Error(`Materials not found: ${error.message}`);
@@ -178,7 +121,7 @@ export const handler: Handler = async (event) => {
         } else {
             const { data, error } = await supabase
                 .from('materials')
-                .select('id, artifact_id, version')
+                .select('id, artifact_id, version, state, updated_at')
                 .eq('artifact_id', artifactId)
                 .single();
             if (error) throw new Error(`Materials not found: ${error.message}`);
@@ -188,6 +131,10 @@ export const handler: Handler = async (event) => {
         if (body.version !== undefined && materials.version !== body.version) {
             return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
         }
+        if (['PHASE3_GENERATING', 'PHASE3_DRAFT', 'PHASE3_APPROVED'].includes(materials.state)) {
+            return { statusCode: 409, body: JSON.stringify({ error: 'Los materiales no están disponibles para validar en su estado actual.' }) };
+        }
+        validationExecution = materials;
         const sourceValidationContext = await loadMaterialSourceValidationContext(
             supabase,
             materials.artifact_id,
@@ -195,10 +142,13 @@ export const handler: Handler = async (event) => {
         // 2. Get all lessons for this materials record
         const { data: lessons, error: lessonsError } = await supabase
             .from('material_lessons')
-            .select('id, materials_id, lesson_id, lesson_title, expected_components, quiz_spec, state, iteration_count')
+            .select('id, materials_id, lesson_id, lesson_title, expected_components, quiz_spec, state, iteration_count, updated_at')
             .eq('materials_id', materials.id);
 
         if (lessonsError) throw new Error(`Error fetching lessons: ${lessonsError.message}`);
+        if (lessons?.some((lesson) => lesson.state === 'GENERATING')) {
+            return { statusCode: 409, body: JSON.stringify({ error: 'Espera a que termine la regeneración antes de validar.' }) };
+        }
 
         console.log(`[Validate Materials] Found ${lessons?.length || 0} lessons to validate`);
 
@@ -241,7 +191,7 @@ export const handler: Handler = async (event) => {
             }
 
             // Update lesson
-            const { error: lessonError } = await supabase
+            const { data: saved, error: lessonError } = await supabase
                 .from('material_lessons')
                 .update({
                     dod,
@@ -249,24 +199,38 @@ export const handler: Handler = async (event) => {
                     updated_at: new Date().toISOString(),
                 })
                 .eq('id', lesson.id).eq('state', lesson.state)
-                .eq('iteration_count', lesson.iteration_count);
+                .eq('iteration_count', lesson.iteration_count).eq('updated_at', lesson.updated_at)
+                .select('id').maybeSingle();
             if (lessonError) throw lessonError;
+            if (!saved) {
+                allApprovable = false;
+                continue;
+            }
 
             validatedCount++;
             console.log(`[Validate Materials] Lesson ${lesson.lesson_title}: ${newState}`);
         }
 
         // 4. Update global materials state
+        const { data: currentLessons, error: currentError } = await supabase.from('material_lessons')
+            .select('state').eq('materials_id', materials.id);
+        if (currentError) throw currentError;
+        allApprovable = Boolean(currentLessons?.length) && currentLessons!.every((lesson) => lesson.state === 'APPROVABLE');
+        if (currentLessons?.some((lesson) => lesson.state === 'GENERATING')) {
+            return { statusCode: 200, body: JSON.stringify({ superseded: true, validated: validatedCount }) };
+        }
         const newGlobalState = allApprovable ? 'PHASE3_READY_FOR_QA' : 'PHASE3_NEEDS_FIX';
 
-        const { error: completionError } = await supabase
+        const { data: completed, error: completionError } = await supabase
             .from('materials')
             .update({
                 state: newGlobalState,
                 updated_at: new Date().toISOString(),
             })
-            .eq('id', materials.id).eq('version', materials.version).neq('state', 'PHASE3_DRAFT');
+            .eq('id', materials.id).eq('version', materials.version)
+            .eq('state', materials.state).eq('updated_at', materials.updated_at).select('id').maybeSingle();
         if (completionError) throw completionError;
+        if (!completed) return { statusCode: 200, body: JSON.stringify({ superseded: true, validated: validatedCount }) };
 
         console.log(`[Validate Materials] Complete. Global state: ${newGlobalState}`);
 
@@ -282,155 +246,21 @@ export const handler: Handler = async (event) => {
 
     } catch (error: unknown) {
         console.error('[Validate Materials] Error:', error);
+        if (validationExecution) {
+            const now = new Date().toISOString();
+            const { error: recoveryError } = await createServiceRoleClient().from('materials').update({
+                state: 'PHASE3_NEEDS_FIX', updated_at: now,
+                qa_decision: { decision: 'REJECTED', notes: generationFailureMessage(error), reviewed_by: 'system', reviewed_at: now },
+            }).eq('id', validationExecution.id).eq('version', validationExecution.version)
+                .eq('state', validationExecution.state).eq('updated_at', validationExecution.updated_at);
+            if (recoveryError) console.error('[Validate Materials] Error saving validation failure:', recoveryError);
+        }
         return {
             statusCode: 500,
             body: JSON.stringify({ success: false, error: getErrorMessage(error) }),
         };
     }
 };
-
-// Inline validation function (simplified version of the full validator)
-function runInlineValidation(
-    lesson: MaterialLessonRecord,
-    components: MaterialComponentRecord[],
-    sourceContext: MaterialSourceValidationContext,
-): LessonDod {
-    const errors: string[] = [];
-
-    // Control 3: Components Complete
-    const expectedTypes = lesson.expected_components || [];
-    const generatedTypes = components.map((component) => component.type);
-    const missing = expectedTypes.filter((type: string) => !generatedTypes.includes(type));
-
-    if (missing.length > 0) {
-        errors.push(`Faltan componentes: ${missing.join(', ')}`);
-    }
-
-    // Control 4: every source-required lesson must cite enough currently valid
-    // curation rows belonging to that same lesson.
-    const sourceErrors: string[] = [];
-    if (sourceContext.requiresSources) {
-        const requiredSources = Math.max(
-            1,
-            sourceContext.requiredSourcesByLesson.get(lesson.lesson_id) || 0,
-        );
-        const validSourceIds =
-            sourceContext.validSourceIdsByLesson.get(lesson.lesson_id) ||
-            new Set<string>();
-        const usedSourceIds = new Set(
-            components.flatMap((component) => component.source_refs || []),
-        );
-        const unknownSourceIds = [...usedSourceIds].filter(
-            (sourceId) => !validSourceIds.has(sourceId),
-        );
-        if (usedSourceIds.size < requiredSources) {
-            sourceErrors.push(
-                `La lección utiliza ${usedSourceIds.size}/${requiredSources} fuentes validadas requeridas`,
-            );
-        }
-        if (unknownSourceIds.length > 0) {
-            sourceErrors.push(
-                `${unknownSourceIds.length} referencia(s) no pertenecen a las fuentes válidas de la lección`,
-            );
-        }
-    }
-    errors.push(...sourceErrors);
-
-    // Control 5: Quiz Validation (if expected)
-    const quizComponent = components.find((component) => component.type === 'QUIZ');
-    const expectsQuiz = expectedTypes.includes('QUIZ');
-
-    if (expectsQuiz && !quizComponent) {
-        errors.push('Se esperaba QUIZ pero no fue generado');
-    } else if (quizComponent) {
-        const content = quizComponent.content || {};
-        const items = Array.isArray(content.items)
-            ? (content.items as QuizItem[])
-            : [];
-
-        const minQuestions = lesson.quiz_spec?.min_questions || 3;
-        if (items.length < minQuestions) {
-            errors.push(`Quiz tiene ${items.length} preguntas, mínimo requerido: ${minQuestions}`);
-        }
-
-        // Check explanations
-        const withoutExplanation = items.filter(
-            (item) => !item.explanation || item.explanation.length < 10,
-        );
-        if (withoutExplanation.length > 0) {
-            errors.push(`${withoutExplanation.length} pregunta(s) sin explicación adecuada`);
-        }
-
-        const emptyOptions = items.flatMap((item) => {
-            const rawOptions = Array.isArray(item.options) ? item.options : [];
-            return rawOptions.filter((option) => !hasSubstantiveQuizOptionText(option));
-        });
-        if (emptyOptions.length > 0) {
-            errors.push(
-                `${emptyOptions.length} opcion(es) de quiz sin contenido real; no basta con A, B, C, D`,
-            );
-        }
-
-        const withoutCorrectAnswer = items.filter((item) => {
-            const rawOptions = Array.isArray(item.options) ? item.options : [];
-            const cleanOptions = rawOptions.map(stripQuizOptionPrefix);
-
-            return !hasValidQuizCorrectAnswer({
-                rawCorrect: item.correct_answer,
-                rawOptions,
-                cleanOptions,
-                questionType: item.type,
-            });
-        });
-        if (withoutCorrectAnswer.length > 0) {
-            errors.push(`${withoutCorrectAnswer.length} pregunta(s) sin correct_answer valido`);
-        }
-    }
-
-    const dialogueErrors = validateSofliaDialogueRuntimeInline(
-        expectedTypes,
-        components,
-    );
-    errors.push(...dialogueErrors);
-
-    const videoErrors = collectMaterialVideoValidationErrors(components);
-    errors.push(...videoErrors);
-
-    // Determine control states
-    const hasCtrl3Error = missing.length > 0 || dialogueErrors.length > 0 || videoErrors.length > 0;
-    const hasCtrl4Error = sourceErrors.length > 0;
-    const hasCtrl5Error = errors.some(e => e.includes('Quiz') || e.includes('QUIZ') || e.includes('pregunta'));
-
-    return {
-        control3_consistency: hasCtrl3Error ? 'FAIL' : 'PASS',
-        control4_sources: hasCtrl4Error ? 'FAIL' : 'PASS',
-        control5_quiz: hasCtrl5Error ? 'FAIL' : 'PASS',
-        errors,
-    };
-}
-
-function validateSofliaDialogueRuntimeInline(
-    expectedTypes: string[],
-    components: MaterialComponentRecord[],
-) {
-    const errors: string[] = [];
-
-    if (!expectedTypes.includes('DIALOGUE')) {
-        return errors;
-    }
-
-    const dialogueComponent = components.find((component) => component.type === 'DIALOGUE');
-    if (!dialogueComponent) {
-        errors.push('Se esperaba DIALOGUE pero no fue generado');
-        return errors;
-    }
-
-    errors.push(...validateSofliaDialogueContent(dialogueComponent.content));
-
-    return errors.length > 0
-        ? [`Contrato SOFLIA_DIALOGUE invalido: ${errors.join('; ')}`]
-        : [];
-}
 
 // Single lesson validation
 async function validateSingleLesson(lessonId: string) {
@@ -440,7 +270,7 @@ async function validateSingleLesson(lessonId: string) {
         // Fetch lesson
         const { data: lesson, error: lessonError } = await supabase
             .from('material_lessons')
-            .select('id, materials_id, lesson_id, lesson_title, expected_components, quiz_spec, state')
+            .select('id, materials_id, lesson_id, lesson_title, expected_components, quiz_spec, state, iteration_count, updated_at')
             .eq('id', lessonId)
             .single();
 
@@ -449,6 +279,9 @@ async function validateSingleLesson(lessonId: string) {
                 statusCode: 404,
                 body: JSON.stringify({ success: false, error: 'Lesson not found' })
             };
+        }
+        if (!['GENERATED', 'APPROVABLE'].includes(lesson.state)) {
+            return { statusCode: 409, body: JSON.stringify({ error: 'La lección debe terminar su generación antes de validar.' }) };
         }
 
         const { data: materials, error: materialsError } = await supabase
@@ -465,10 +298,11 @@ async function validateSingleLesson(lessonId: string) {
         );
 
         // Fetch components
-        const { data: components } = await supabase
+        const { data: components, error: componentsError } = await supabase
             .from('material_components')
             .select('id, type, content, source_refs, assets, validation_status, validation_errors, iteration_number')
             .eq('material_lesson_id', lessonId);
+        if (componentsError) throw componentsError;
 
         const activeComponents = selectLatestComponentsByType(
             (components || []) as MaterialComponentRecord[],
@@ -484,14 +318,18 @@ async function validateSingleLesson(lessonId: string) {
         const newState = hasErrors ? 'NEEDS_FIX' : 'APPROVABLE';
 
         // Update lesson
-        await supabase
+        const { data: saved, error: saveError } = await supabase
             .from('material_lessons')
             .update({
                 dod,
                 state: newState,
                 updated_at: new Date().toISOString(),
             })
-            .eq('id', lessonId);
+            .eq('id', lessonId).eq('state', lesson.state)
+            .eq('iteration_count', lesson.iteration_count).eq('updated_at', lesson.updated_at)
+            .select('id').maybeSingle();
+        if (saveError) throw saveError;
+        if (!saved) return { statusCode: 409, body: JSON.stringify({ error: 'La lección cambió durante la validación. Actualiza e inténtalo de nuevo.' }) };
 
         console.log(`[Validate Single Lesson] ${lesson.lesson_title}: ${newState}`);
 

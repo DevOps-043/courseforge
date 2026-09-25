@@ -314,16 +314,34 @@ export async function validateMaterialsAction(artifactId: string) {
     return context.errorResult;
   }
 
+  const { data: materials, error: materialsError } = await fetchArtifactMaterialsRecord(context.admin, artifactId);
+  if (materialsError || !materials) return createMaterialsActionError(materialsError?.message || "No hay materiales para validar.");
+  if (["PHASE3_GENERATING", "PHASE3_DRAFT", "PHASE3_APPROVED"].includes(materials.state)) {
+    return createMaterialsActionError("Los materiales no están disponibles para validar en su estado actual.");
+  }
+  const { data: activeLessons, error: activeError } = await context.admin.from("material_lessons")
+    .select("id").eq("materials_id", materials.id).eq("state", "GENERATING").limit(1);
+  if (activeError) return createMaterialsActionError(activeError.message);
+  if (activeLessons?.length) return createMaterialsActionError("Espera a que termine la regeneración antes de validar.");
+  const validationStartedAt = new Date().toISOString();
+  const { data: claimed, error: claimError } = await context.admin.from("materials")
+    .update({ state: "PHASE3_VALIDATING", updated_at: validationStartedAt })
+    .eq("id", materials.id).eq("version", materials.version).eq("state", materials.state)
+    .select("id").maybeSingle();
+  if (claimError || !claimed) return createMaterialsActionError(claimError?.message || "El estado de materiales cambió. Actualiza e inténtalo de nuevo.");
   try {
     const data = await callMaterialsNetlifyFunction(
       "validate-materials-background",
-      { artifactId },
+      { artifactId, materialsId: materials.id, version: materials.version },
       "Error al validar materiales",
       () => import("../../../../netlify/functions/validate-materials-background"),
     );
 
     return { success: true as const, ...data };
   } catch (error) {
+    await context.admin.from("materials").update({ state: materials.state, updated_at: new Date().toISOString() })
+      .eq("id", materials.id).eq("version", materials.version).eq("state", "PHASE3_VALIDATING")
+      .eq("updated_at", validationStartedAt);
     console.error("[MaterialsActions] Error validating materials:", error);
     return createMaterialsActionError(getErrorMessage(error));
   }

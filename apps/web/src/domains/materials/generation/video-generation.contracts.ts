@@ -63,6 +63,27 @@ export function videoStoryboardDraftSchema(componentType: VideoComponentType) {
 }
 
 export type VideoScriptDraft = z.infer<typeof videoScriptDraftSchema>;
+export const videoNarrationRevisionSchema = z.object({
+  narration_sections: z.array(z.object({
+    section_number: z.number().int().positive(),
+    narration_text: text.max(60_000),
+  })).min(1).max(VIDEO_GENERATION_LIMITS.maximumSections),
+});
+
+/** A duration correction may replace narration only, without losing approved context. */
+export function applyVideoNarrationRevision(content: unknown, previousDraft: unknown): unknown {
+  if (!content || typeof content !== "object" || !("narration_sections" in content)) return content;
+  const previous = videoScriptDraftSchema.parse(previousDraft);
+  const revision = videoNarrationRevisionSchema.parse(content);
+  const sections = new Map(revision.narration_sections.map((section) => [section.section_number, section.narration_text]));
+  if (sections.size !== previous.script.sections.length || revision.narration_sections.length !== sections.size
+      || previous.script.sections.some((_, index) => !sections.has(index + 1))) {
+    throw new Error("SCRIPT_SECTION_MAPPING: Devuelve exactamente una narración por section_number del borrador, sin omisiones ni duplicados.");
+  }
+  return { ...previous, script: { sections: previous.script.sections.map((section, index) => ({
+    ...section, narration_text: sections.get(index + 1)!,
+  })) } };
+}
 export type VideoStoryboardDraft = z.infer<ReturnType<typeof videoStoryboardDraftSchema>>;
 export type VideoGenerationStage = "script" | "storyboard";
 

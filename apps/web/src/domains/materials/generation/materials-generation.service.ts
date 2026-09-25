@@ -23,11 +23,16 @@ export async function generateMaterialsByComponent(params: {
   if (!input.lesson.components.length) return { success: false, error: "No hay componentes seleccionados para generar." };
   const standardComponents = input.lesson.components.filter((component) => !isVideoComponentType(component.type));
   if (standardComponents.length) {
-    const standard = await generateStandard({ ...input, lesson: { ...input.lesson, components: standardComponents } });
-    if (standard.success) {
-      output.components = standard.content.components;
-      output.source_refs_used = standard.content.source_refs_used;
-    } else errors.push(standard.error);
+    try {
+      const standard = await generateStandard({ ...input, lesson: { ...input.lesson, components: standardComponents } });
+      if (standard.content) {
+        output.components = standard.content.components;
+        output.source_refs_used = [...standard.content.source_refs_used];
+      }
+      if (!standard.success) errors.push(standard.error);
+    } catch {
+      errors.push("MATERIALS/GENERATION_FAILED: No se pudieron generar los componentes no audiovisuales. Reintenta los pendientes.");
+    }
   }
   for (const component of input.lesson.components) {
     if (!isVideoComponentType(component.type)) continue;
@@ -35,11 +40,15 @@ export async function generateMaterialsByComponent(params: {
       errors.push(`${component.type}/MISSING_DURATION_CONTRACT: Falta el contrato de duración.`);
       continue;
     }
-    const video = await generateVideo(component.type, component.duration_contract);
-    if (video.success) {
-      output.components[component.type] = video.content;
-      output.source_refs_used.push(...video.sourceRefs);
-    } else errors.push(video.error);
+    try {
+      const video = await generateVideo(component.type, component.duration_contract);
+      if (video.success) {
+        output.components[component.type] = video.content;
+        output.source_refs_used.push(...video.sourceRefs);
+      } else errors.push(video.error);
+    } catch {
+      errors.push(`${component.type}/GENERATION_FAILED: No se pudo completar este video. Se conservaron los demás componentes.`);
+    }
   }
   output.source_refs_used = [...new Set(output.source_refs_used)];
   return errors.length

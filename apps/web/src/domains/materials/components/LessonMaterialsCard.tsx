@@ -76,7 +76,7 @@ export function LessonMaterialsCard({ lesson, onIterationStart, onValidateLesson
         const labels: Record<LessonMaterialState, string> = {
             PENDING: 'Pendiente',
             GENERATING: 'Generando...',
-            GENERATED: 'Generado',
+            GENERATED: 'Generado · sin validar',
             VALIDATING: 'Validando...',
             APPROVABLE: 'Listo',
             NEEDS_FIX: 'Requiere corrección',
