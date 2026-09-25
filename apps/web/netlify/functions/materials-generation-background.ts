@@ -366,6 +366,7 @@ async function processNextPendingLesson(params: {
       logPrefix,
       models,
       modelRuntimeConfig,
+      resumePendingOnly: true,
     });
   } catch (error) {
     const message = getErrorMessage(error);

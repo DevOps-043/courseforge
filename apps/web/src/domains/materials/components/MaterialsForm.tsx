@@ -96,6 +96,8 @@ export function MaterialsForm({
   const lessonsByModule = groupLessonsByModule(materials?.lessons || []);
   const allLessonsApprovable = Boolean(materials?.lessons.length) &&
     (materials?.lessons || []).every((lesson) => lesson.state === "APPROVABLE");
+  const allLessonsGenerated = Boolean(materials?.lessons.length) &&
+    (materials?.lessons || []).every((lesson) => ["GENERATED", "APPROVABLE"].includes(lesson.state));
 
   const handleForceReset = async () => {
     if (
@@ -230,7 +232,7 @@ export function MaterialsForm({
         />
       )}
 
-      {isValidating && (
+      {!isGenerating && !isApproved && !isReadyForQA && (isValidating || allLessonsGenerated) && (
         <MaterialsValidationBanner
           isValidatingAll={isValidatingAll}
           onValidateAll={handleValidateAll}
@@ -241,7 +243,7 @@ export function MaterialsForm({
         <MaterialsStatsGrid lessons={materials.lessons} />
       )}
 
-      {materials.state === "PHASE3_NEEDS_FIX" && !isGenerating && (
+      {materials.state === "PHASE3_NEEDS_FIX" && !isGenerating && !allLessonsGenerated && (
         <MaterialsRecoveryPanel
           notes={materials.qa_decision?.notes}
           isStarting={isStartingGeneration}

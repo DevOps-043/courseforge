@@ -5,6 +5,7 @@ import { normalizeVideoDurationContent, validateVideoDurationContent } from "../
 import type { MaterialsGenerationInput, VideoGuideContent } from "../types/materials.types";
 import {
   VIDEO_GENERATION_LIMITS,
+  applyVideoNarrationRevision,
   VideoModelResponseError,
   videoScriptDraftSchema,
   videoStoryboardDraftSchema,
@@ -70,8 +71,11 @@ export async function generateVideoInStages(params: {
       const remainingMs = deadline - now();
       if (remainingMs <= 0) break;
       // One correction with the primary; the last attempt uses the configured fallback.
-      const model = models[index < 2 ? 0 : Math.min(1, models.length - 1)];
-      if (unavailableModels.has(model)) continue;
+      const preferredModel = models[index < 2 ? 0 : Math.min(1, models.length - 1)];
+      const model = unavailableModels.has(preferredModel)
+        ? models.find((candidate) => !unavailableModels.has(candidate))
+        : preferredModel;
+      if (!model) break;
       const startedAt = now();
       const attempt: VideoGenerationAttempt = {
         stage, model, attempt: index + 1, outcome: "request_failed", issueCodes: [], elapsedMs: 0,
@@ -87,7 +91,9 @@ export async function generateVideoInStages(params: {
         });
         attempt.finishReason = response.finishReason;
         attempt.outputTokens = response.outputTokens;
-        const candidate = evaluate(response.content);
+        const candidate = evaluate(stage === "script"
+          ? applyVideoNarrationRevision(response.content, best?.draft)
+          : response.content);
         attempt.outcome = candidate.issues.length ? "invalid" : "valid";
         attempt.issueCodes = candidate.issues.map((issue) => issue.code);
         attempt.narrationCharacterCount = candidate.narrationCharacterCount;
@@ -110,7 +116,7 @@ export async function generateVideoInStages(params: {
           : error instanceof z.ZodError ? "INVALID_STAGE_SCHEMA" : status ? `MODEL_HTTP_${status}` : "MODEL_REQUEST_FAILED";
         attempt.issueCodes = [code];
         if (issues.length) feedback = ["Corrige el schema de salida:", ...issues];
-        else if (code === "STORYBOARD_TAKE_MAPPING" || code === "UNKNOWN_SOURCE_REFS") {
+        else if (code === "STORYBOARD_TAKE_MAPPING" || code === "SCRIPT_SECTION_MAPPING" || code === "UNKNOWN_SOURCE_REFS") {
           feedback = [(error as Error).message];
         }
         if ([429, 502, 503, 504].includes(status) && index < VIDEO_GENERATION_LIMITS.attemptsPerStage - 1) {

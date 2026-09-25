@@ -15,6 +15,8 @@ import { generateAndTraceMaterialVideo } from "./materials-video-generation";
 import { commitGeneratedLesson } from "./material-components.repository";
 import { getLessonSourceRequirement } from "../../../src/domains/curation/lib/lesson-source-requirement";
 import { getFunctionsBaseUrl } from "./bootstrap";
+import { selectMaterialRetryTypes } from "./materials-retry-selection";
+import { validateGeneratedMaterialLesson, type MaterialComponentRecord } from "./materials-lesson-validation";
 import {
   buildMaterialsGenerationInput,
   findLessonSources,
@@ -231,6 +233,7 @@ export async function generateLessonMaterials(params: {
   iterationNumber?: number;
   /** If set, only regenerate these component types (partial regen). */
   componentTypes?: string[];
+  resumePendingOnly?: boolean;
   /** Database-configured models in primary/fallback order. */
   models: string[];
   /** Provider-specific generation controls resolved from model_settings. */
@@ -273,32 +276,51 @@ export async function generateLessonMaterials(params: {
     ? requiredSources
     : 0;
 
-  const isPartial = componentTypes && componentTypes.length > 0;
-  if (isPartial) {
+  let selectedTypes = componentTypes?.length ? componentTypes : undefined;
+  let savedComponents: MaterialComponentRecord[] = [];
+  if (selectedTypes?.length || params.resumePendingOnly) {
+    const { data: saved, error } = await supabase.from("material_components")
+      .select("id, type, content, assets, source_refs, validation_status, validation_errors, iteration_number")
+      .eq("material_lesson_id", lesson.id);
+    if (error) throw error;
+    savedComponents = saved || [];
+    if (!selectedTypes?.length) selectedTypes = selectMaterialRetryTypes(input, savedComponents);
+  }
+  const completeInput = { ...input, lesson: { ...input.lesson } };
+  if (selectedTypes && selectedTypes.length > 0) {
     // Restrict input.lesson.components to only the requested types for partial regen
     input.lesson.components = input.lesson.components.filter(
-      (c) => componentTypes.includes(c.type as string),
+      (c) => selectedTypes.includes(c.type as string),
     );
-    console.log(`${logPrefix} Partial regen: ${componentTypes.join(", ")}`);
+    console.log(`${logPrefix} Partial regen: ${selectedTypes.join(", ")}`);
   }
 
   const deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.lessonTimeoutMs;
-  const result = await generateMaterialsByComponent({
-    input,
-    generateStandard: (standardInput) => generateWithRetry(
-      standardInput, logPrefix, models, modelRuntimeConfig, supabase,
-      standardInput.lesson.components.map((component) => component.type), organizationId,
-      deadlineMs,
-      generationContext.artifactId,
-      lesson.id,
-    ),
-    generateVideo: (componentType, contract) => generateAndTraceMaterialVideo({
-      supabase, input, componentType, contract, models, modelRuntimeConfig, organizationId,
-      artifactId: generationContext.artifactId,
-      lessonId: lesson.id,
-      deadlineMs,
-    }),
-  });
+  // Resume can finish through validation alone, without rewriting stored components.
+  let result: MaterialsGenerationResult = selectedTypes?.length === 0
+    ? { success: true, content: { components: {}, source_refs_used: [] } }
+    : await generateMaterialsByComponent({
+        input,
+        generateStandard: (standardInput) => generateWithRetry(
+          standardInput, logPrefix, models, modelRuntimeConfig, supabase,
+          standardInput.lesson.components.map((component) => component.type), organizationId,
+          deadlineMs,
+          generationContext.artifactId,
+          lesson.id,
+        ),
+        generateVideo: (componentType, contract) => generateAndTraceMaterialVideo({
+          supabase, input, componentType, contract, models, modelRuntimeConfig, organizationId,
+          artifactId: generationContext.artifactId,
+          lessonId: lesson.id,
+          deadlineMs,
+        }),
+      });
+  if (result.success) {
+    const validation = validateGeneratedMaterialLesson(completeInput, result.content, savedComponents);
+    if (validation.errors.length) {
+      result = { success: false, content: result.content, error: validation.errors.join(" | ") };
+    }
+  }
   return processGenerationResult({
     execution: params.execution,
     supabase,
@@ -307,7 +329,7 @@ export async function generateLessonMaterials(params: {
     result,
     iterationNumber: input.iteration_number,
     logPrefix,
-    onlyTypes: isPartial ? componentTypes : undefined,
+    onlyTypes: selectedTypes?.length ? selectedTypes : undefined,
     durationContractsByType: Object.fromEntries(
       input.lesson.components.flatMap((component) => component.duration_contract
         ? [[component.type, component.duration_contract]]

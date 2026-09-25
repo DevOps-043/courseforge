@@ -26,7 +26,7 @@ export function buildStoryboardNarration(
   const capacities = sections.map((section, index) => Math.min(words[index].length, section.duration_seconds));
   const counts = sections.map((section, index) => Math.min(
     capacities[index],
-    Math.max(2, Math.ceil(section.duration_seconds / contract.visualBeatCadenceSeconds)),
+    Math.max(1, Math.ceil(section.duration_seconds / contract.visualBeatCadenceSeconds)),
   ));
   while (counts.reduce((total, count) => total + count, 0) < contract.minimumStoryboardTakes) {
     const eligible = sections.map((section, index) => ({

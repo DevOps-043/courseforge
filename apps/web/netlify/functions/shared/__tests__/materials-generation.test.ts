@@ -14,6 +14,95 @@ import type { MaterialsGenerationInput, MaterialsGenerationOutput } from "../../
 import { normalizeGeneratedDialogueIdentifiers, validateDialogueIdentifiers } from "../../../../src/domains/materials/lib/dialogue-identifiers";
 import { validateSofliaDialogueContent } from "../../../../src/domains/materials/validators/materials-control3.validators";
 import { validateSofliaDialogueRuntimeConfig } from "../../../../src/domains/publication/lib/soflia-dialogue-runtime-contract";
+import { selectMaterialRetryTypes } from "../materials-retry-selection";
+import { runInlineValidation, validateGeneratedMaterialLesson, type MaterialComponentRecord } from "../materials-lesson-validation";
+import { buildVideoDurationContract } from "../../../../src/domains/video-duration/video-duration-policy";
+import { normalizeVideoDurationContent } from "../../../../src/domains/video-duration/video-duration-validation";
+import { buildStoryboardNarration } from "../../../../src/domains/materials/generation/video-storyboard-timeline";
+import type { VideoGuideContent } from "../../../../src/domains/materials/types/materials.types";
+
+function recoveredVideoFixture(repetitions = 90) {
+  const contract = buildVideoDurationContract(undefined, "VIDEO_DEMO");
+  const video = normalizeVideoDurationContent({
+    title: "Demostración", script: { sections: Array.from({ length: 7 }, (_, index) => ({
+      section_number: index + 1, section_type: "demonstration", narration_text: "contenido ".repeat(repetitions).trim(),
+      on_screen_text: `Paso ${index + 1}`, visual_notes: "Mostrar resultado", duration_seconds: 0,
+    })) }, storyboard: [],
+  }, contract) as VideoGuideContent;
+  video.storyboard = buildStoryboardNarration(video, contract).map((take, index) => ({
+    ...take, visual_type: index < contract.minimumBrollTakes ? "b_roll" : "screen_recording", visual_content: "Resultado", on_screen_text: "Paso",
+  }));
+  return { contract, video };
+}
+
+test("global resume selects only missing or invalid demo and preserves successful components", () => {
+  const { contract, video } = recoveredVideoFixture();
+  const input: MaterialsGenerationInput = { ...dialogueInput, lesson: { ...dialogueInput.lesson, components: [
+    { type: "READING", summary: "Lectura" }, { type: "VIDEO_DEMO", summary: "Demostración", duration_contract: contract },
+  ] } };
+  const reading: MaterialComponentRecord = { id: "reading-1", type: "READING", content: { title: "Lectura", body_html: "Texto" }, iteration_number: 1 };
+  const invalid: MaterialComponentRecord = { id: "video-1", type: "VIDEO_DEMO", content: {}, iteration_number: 1 };
+  assert.deepEqual(selectMaterialRetryTypes(input, [reading]), ["VIDEO_DEMO"]);
+  assert.deepEqual(selectMaterialRetryTypes(input, [reading, invalid]), ["VIDEO_DEMO"]);
+  const saved = [reading, { ...invalid, content: video as unknown as Record<string, unknown>, assets: { video_duration_contract: contract }, iteration_number: 2 }];
+  // Valid components are revalidated without generating replacements.
+  assert.deepEqual(selectMaterialRetryTypes(input, saved), []);
+  assert.equal(reading.iteration_number, 1);
+});
+
+test("20 lessons retain their mixed-generation components across repeated validation", () => {
+  const { contract, video } = recoveredVideoFixture();
+  for (let index = 0; index < 20; index++) {
+    const lesson = { id: `lesson-${index}`, materials_id: "materials-1", lesson_id: `source-lesson-${index}`,
+      updated_at: "2026-09-24T12:00:00Z", state: "GENERATED", expected_components: ["READING", "VIDEO_DEMO"] };
+    const components: MaterialComponentRecord[] = [
+      { id: "reading", type: "READING", content: { title: "Lectura" }, iteration_number: 1 },
+      { id: "demo", type: "VIDEO_DEMO", content: video as unknown as Record<string, unknown>,
+        assets: { video_duration_contract: contract }, iteration_number: index < 5 ? 2 : 1,
+        validation_status: "FAIL", validation_errors: ["Error anterior ya corregido"] },
+    ];
+    const original = structuredClone(components);
+    const context = { requiresSources: false, requiredSourcesByLesson: new Map<string, number>(), validSourceIdsByLesson: new Map<string, Set<string>>() };
+    const first = runInlineValidation(lesson, components, context);
+    assert.deepEqual(first, { control3_consistency: "PASS", control4_sources: "PASS", control5_quiz: "PASS", errors: [] });
+    assert.deepEqual(runInlineValidation(lesson, components, context), first);
+    assert.deepEqual(components, original);
+    const broken = structuredClone(components);
+    broken[1].content = {};
+    const failed = runInlineValidation(lesson, broken, context);
+    assert.equal(failed.control3_consistency, "FAIL");
+    assert.ok(failed.errors.some((error) => error.includes("VIDEO_DEMO")));
+  }
+});
+
+test("a successful partial regeneration is complete only when the whole lesson passes validation", () => {
+  const { contract, video } = recoveredVideoFixture();
+  const input: MaterialsGenerationInput = { ...dialogueInput, requires_sources: false, lesson: { ...dialogueInput.lesson, components: [
+    { type: "READING", summary: "Lectura" }, { type: "VIDEO_DEMO", summary: "Demo", duration_contract: contract },
+  ] } };
+  const output: MaterialsGenerationOutput = { components: { VIDEO_DEMO: video }, source_refs_used: [] };
+  const missing = validateGeneratedMaterialLesson(input, output);
+  assert.equal(missing.control3_consistency, "FAIL");
+  assert.ok(missing.errors.some((error) => error.includes("READING")));
+  const saved: MaterialComponentRecord[] = [
+    { id: "reading", type: "READING", content: { title: "Lectura" }, iteration_number: 1 },
+    { id: "old-video", type: "VIDEO_DEMO", content: {}, iteration_number: 2, validation_status: "FAIL" },
+  ];
+  assert.deepEqual(validateGeneratedMaterialLesson(input, output, saved).errors, []);
+  assert.deepEqual(output.source_refs_used, []);
+  assert.equal(saved[1].validation_status, "FAIL", "the preflight must not mutate stored snapshots");
+});
+
+test("quiz option failures are assigned to Control 5 without relying on message capitalization", () => {
+  const lesson = { id: "lesson", lesson_id: "lesson", materials_id: "materials", updated_at: "", expected_components: ["QUIZ"] };
+  const components = [{ id: "quiz", type: "QUIZ", content: { items: Array.from({ length: 3 }, () => ({
+    type: "MULTIPLE_CHOICE", options: ["A", "Opción con contenido real"], correct_answer: "Opción con contenido real", explanation: "Esta explicación sí es suficientemente larga.",
+  })) } }];
+  const result = runInlineValidation(lesson, components, { requiresSources: false, requiredSourcesByLesson: new Map(), validSourceIdsByLesson: new Map() });
+  assert.equal(result.control3_consistency, "PASS");
+  assert.equal(result.control5_quiz, "FAIL");
+  assert.ok(result.errors.some((error) => error.includes("opcion(es)")));
+});
 
 const content: MaterialsGenerationOutput = { components: { EXERCISE: { title: "Práctica", body_html: "Texto", instructions: "Comparar", expected_outcome: "Resultado" } }, source_refs_used: [] };
 const runtime = { temperature: 0.7, thinkingLevel: "medium" };
@@ -188,6 +277,52 @@ function databaseStub(writeError: { message: string } | null = null, accepted = 
   } } as unknown as SupabaseClient;
   return { database, writes };
 }
+
+test("resume revalidates formerly rejected narration without replacing components or requiring a model", async () => {
+  const { contract, video } = recoveredVideoFixture(100);
+  const saved: MaterialComponentRecord[] = [{
+    id: "existing-video", type: "VIDEO_DEMO", content: video as unknown as Record<string, unknown>,
+    assets: { video_duration_contract: contract, production_status: "COMPLETED" },
+    validation_status: "FAIL", validation_errors: ["NARRATION_TARGET_MISMATCH: legacy target window"], iteration_number: 1,
+  }];
+  const snapshot = structuredClone(saved);
+  for (const iteration of [1, 2]) {
+    for (const accepted of [true, false]) {
+      const { database, writes } = databaseStub(null, accepted);
+      let reads = 0;
+      database.from = (() => ({ select: () => ({ eq: async () => {
+        reads++;
+        return { data: saved, error: null };
+      } }) })) as unknown as SupabaseClient["from"];
+      const result = await generateLessonMaterials({
+        execution, supabase: database, resumePendingOnly: true,
+        lesson: { id: "lesson-1", lesson_id: "lesson-1", lesson_title: "Lesson", module_id: "module-1", module_title: "Module", expected_components: ["VIDEO_DEMO"], iteration_count: iteration },
+        generationContext: { artifactId: "artifact", lessonPlans: [], lessonSources: [], requiresSources: false, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
+        logPrefix: "[resume test]", models: [], modelRuntimeConfig: runtime,
+      });
+      assert.deepEqual(result, accepted ? { success: true } : { success: false, superseded: true });
+      assert.equal(reads, 1);
+      assert.equal(writes.length, 1);
+      assert.equal(writes[0].p_iteration, iteration);
+      assert.equal(writes[0].p_success, true);
+      assert.deepEqual(writes[0].p_rows, [], "no component IDs, assets or content are replaced");
+      assert.deepEqual(saved, snapshot);
+    }
+  }
+});
+
+test("manual full regeneration still requires generation rather than accepting saved content", async () => {
+  const { database, writes } = databaseStub();
+  const result = await generateLessonMaterials({
+    execution, supabase: database, componentTypes: [],
+    lesson: { id: "lesson-1", lesson_id: "lesson-1", lesson_title: "Lesson", module_id: "module-1", module_title: "Module", expected_components: ["EXERCISE"], iteration_count: 2 },
+    generationContext: { artifactId: "artifact", lessonPlans: [], lessonSources: [], requiresSources: false, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
+    logPrefix: "[manual test]", models: [], modelRuntimeConfig: runtime,
+  });
+  assert.equal(result.success, false, "manual regeneration cannot succeed without a configured model");
+  assert.equal(writes[0].p_success, false);
+  assert.match(String(writes[0].p_error), /MODEL_SETTING_NOT_CONFIGURED/);
+});
 
 test("component replacement and lesson state are committed atomically with execution ownership", async () => {
   const { database, writes } = databaseStub();
