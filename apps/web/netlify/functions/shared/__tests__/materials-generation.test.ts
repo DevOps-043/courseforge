@@ -1,3 +1,4 @@
+import { loadAptaSources, buildMaterialSourceValidationContext } from "../materials-source-context";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -5,7 +6,7 @@ import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
 import { requestGeminiJson, requestOpenAiJson } from "../materials-model-client";
 import { commitGeneratedLesson } from "../material-components.repository";
-import { generateLessonMaterials, loadAptaSources, processGenerationResult, triggerNextLesson } from "../materials-generation-runtime";
+import { generateLessonMaterials, processGenerationResult, triggerNextLesson } from "../materials-generation-runtime";
 import { resolveVideoDurationPolicy } from "../../../../src/domains/video-duration/video-duration-policy";
 import { generateWithRetry, matchesLesson, parseAndValidateMaterialsOutput } from "../materials-generation-helpers";
 import { generationFailureMessage, isGenerationStale, isPermanentProviderFailure } from "../../../../src/lib/pipeline-generation-policy";
@@ -390,6 +391,71 @@ test("matching titles never assign another identified lesson's sources", () => {
   assert.equal(matchesLesson({ lesson_id: "lesson-1", lesson_title: "Introduction" }, { lesson_id: "undefined-G1", lesson_title: "Introduction" }), true);
   assert.equal(matchesLesson({ lesson_id: "lesson-2", lesson_title: "Introduction" }, { lesson_id: "lesson-1-G1", lesson_title: "Introduction" }), false);
   assert.equal(matchesLesson({ lesson_id: "lesson-1", lesson_title: "Introduction" }, { lesson_id: "lesson-1-G1", lesson_title: "Introduction" }), true);
+});
+
+test("post-generation validation resolves all 20 persisted lesson IDs like generation", () => {
+  const contract = buildVideoDurationContract(undefined, "VIDEO_DEMO");
+  const plans = Array.from({ length: 20 }, (_, index) => ({
+    lesson_id: `lesson-${index + 1}`, lesson_title: "Introducción", module_title: "Módulo",
+    components: [{ type: "VIDEO_DEMO" as const, duration_contract: { ...contract, targetDurationSeconds: 720 } }],
+  }));
+  const lessons = plans.map((plan, index) => ({
+    id: `material-lesson-${index}`, lesson_id: `${plan.lesson_id}-G${index + 1}`,
+    lesson_title: plan.lesson_title, materials_id: "materials", updated_at: "", expected_components: ["EXERCISE"],
+  }));
+  const sources = plans.flatMap((plan) => Array.from({ length: 4 }, (_, index) => ({
+    id: `${plan.lesson_id}-source-${index}`, lesson_id: plan.lesson_id,
+    lesson_title: plan.lesson_title, source_ref: `https://example.test/${plan.lesson_id}/${index}`,
+  })));
+  const context = buildMaterialSourceValidationContext(lessons, plans, sources, true);
+  for (const lesson of lessons) {
+    const refs = [...context.validSourceIdsByLesson.get(lesson.lesson_id)!];
+    assert.equal(refs.length, 4, "identical titles must not mix sources from different lessons");
+    assert.equal(context.requiredSourcesByLesson.get(lesson.lesson_id), 4, "the suffix must not lose the plan's coverage requirement");
+    const components = [{ id: "exercise", type: "EXERCISE", content: { title: "Práctica" }, source_refs: refs }];
+    assert.equal(runInlineValidation(lesson, components, context).control4_sources, "PASS");
+    const badRefs = [refs[0], refs[0], "unknown", "foreign-source"];
+    const failed = runInlineValidation(lesson, [{ ...components[0], source_refs: badRefs }], context);
+    assert.equal(failed.control4_sources, "FAIL");
+    assert.ok(failed.errors.includes("La lección utiliza 1/4 fuentes validadas requeridas"));
+    assert.ok(failed.errors.includes("2 referencia(s) no pertenecen a las fuentes válidas de la lección"));
+  }
+});
+
+test("source context supports legacy title matching but rejects conflicting IDs", () => {
+  const lesson = { lesson_id: "lesson-1-G1", lesson_title: "Introducción" };
+  const sources = [
+    { id: "legacy", lesson_id: null, lesson_title: " Introduccion ", source_ref: "https://example.test/1" },
+    { id: "own", lesson_id: "lesson-1-G9", source_ref: "https://example.test/2" },
+    { id: "foreign", lesson_id: "lesson-2", lesson_title: "Introducción", source_ref: "https://example.test/3" },
+  ];
+  const context = buildMaterialSourceValidationContext([lesson], [], sources, true);
+  assert.deepEqual([...context.validSourceIdsByLesson.get(lesson.lesson_id)!], ["legacy", "own"]);
+  const empty = buildMaterialSourceValidationContext([lesson], [], [], true);
+  const materialLesson = { ...lesson, id: "lesson", materials_id: "materials", updated_at: "" };
+  assert.equal(runInlineValidation(materialLesson, [], empty).control4_sources, "FAIL");
+  assert.equal(runInlineValidation(materialLesson, [], { ...empty, requiresSources: false }).control4_sources, "PASS");
+});
+
+test("shared source loading scopes approved rows to the artifact and excludes failed reports", async () => {
+  const filters: Array<[string, unknown]> = [];
+  const rows = [
+    { id: "valid", validation_report: { status: "valid" } },
+    { id: "legacy", validation_report: null },
+    { id: "invalid", validation_report: { status: "invalid" } },
+    { id: "pending", validation_report: { status: "pending" } },
+  ];
+  const database = { from: (table: string) => {
+    const query = {
+      select: () => query,
+      eq: (field: string, value: unknown) => { filters.push([`${table}.${field}`, value]); return query; },
+      maybeSingle: async () => ({ data: { id: "curation-1" }, error: null }),
+      then: (resolve: (result: unknown) => unknown) => Promise.resolve({ data: rows, error: null }).then(resolve),
+    };
+    return query;
+  } } as unknown as SupabaseClient;
+  assert.deepEqual((await loadAptaSources(database, "artifact-1")).map((row) => row.id), ["valid", "legacy"]);
+  assert.deepEqual(filters, [["curation.artifact_id", "artifact-1"], ["curation_rows.curation_id", "curation-1"], ["curation_rows.apta", true]]);
 });
 
 test("source-required lessons fail before spending provider tokens when coverage is missing", async () => {

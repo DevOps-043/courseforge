@@ -203,15 +203,15 @@ export function LessonMaterialsCard({ lesson, onIterationStart, onValidateLesson
 
                     {/* Action Buttons */}
                     <div className="flex gap-2 pt-2 border-t dark:border-white/10">
-                        {/* Only generated content can be validated. */}
-                        {lesson.state === 'GENERATED' && onValidateLesson && (
+                        {/* Revalidation checks existing content without consuming a generation. */}
+                        {(lesson.state === 'GENERATED' || (lesson.state === 'NEEDS_FIX' && components.length > 0)) && onValidateLesson && (
                             <button
                                 onClick={handleValidate}
-                                disabled={isValidating}
+                                disabled={isValidating || isRegenerating}
                                 className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-yellow-700 bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:hover:bg-yellow-900/50 rounded-lg transition-colors disabled:opacity-50"
                             >
                                 {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-                                Validar
+                                {lesson.state === 'NEEDS_FIX' ? 'Volver a validar' : 'Validar'}
                             </button>
                         )}
 
@@ -219,7 +219,7 @@ export function LessonMaterialsCard({ lesson, onIterationStart, onValidateLesson
                         {lesson.state === 'NEEDS_FIX' && onRegenerateLesson && (
                             <button
                                 onClick={handleRegenerate}
-                                disabled={isRegenerating || lesson.iteration_count >= lesson.max_iterations}
+                                disabled={isRegenerating || isValidating || lesson.iteration_count >= lesson.max_iterations}
                                 className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:hover:bg-orange-900/50 rounded-lg transition-colors disabled:opacity-50"
                             >
                                 {isRegenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
