@@ -57,3 +57,47 @@ export interface AudioProcessingJobInput {
   profile: AudioProcessingProfile;
   source: AudioProcessingSource;
 }
+
+export interface AudioLoudnessAnalysis {
+  contractVersion: 1;
+  integratedLufs: number | null;
+  loudnessRangeLu: number;
+  measuredThresholdLufs: number | null;
+  passed: boolean;
+  targetIntegratedLufs: number;
+  targetTruePeakDbtp: number;
+  toleranceLu: number;
+  truePeakDbtp: number | null;
+}
+
+export interface AudioWaveformManifest {
+  checksum: string;
+  contractVersion: 1;
+  durationSeconds: number;
+  levelCount: number;
+  sampleRateHz: number;
+  storageBucket: "production-assets";
+  storagePath: string;
+}
+
+export interface AudioWaveformLevel {
+  bucketSizeSamples: number;
+  max: number[];
+  min: number[];
+}
+
+export interface AudioWaveformDerivative {
+  contractVersion: 1;
+  durationSeconds: number;
+  levels: AudioWaveformLevel[];
+  sampleRateHz: number;
+}
+
+/** A single server-selected LOD for responsive timeline rendering. */
+export interface AudioWaveformPreview {
+  bucketSizeSamples: number;
+  durationSeconds: number;
+  max: number[];
+  min: number[];
+  sampleRateHz: number;
+}

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { buildCompositionPreviewFailureBridge } from "../composition-preview-failure-bridge";
+import { resolveCompositionPreviewLoadErrorPresentation } from "../composition-preview-load-error";
 import {
   COMPOSITION_PREVIEW_PROTOCOL_VERSION,
   createCompositionPreviewParentCommand,
@@ -15,7 +17,89 @@ test("normalizes legacy iframe messages to the current protocol version", () => 
   assert.equal(message?.protocolVersion, COMPOSITION_PREVIEW_PROTOCOL_VERSION);
 });
 
+test("accepts a versioned ready event and rejects malformed document hashes", () => {
+  const documentHash = "a".repeat(64);
+  const ready = parseCompositionPreviewIframeMessage({
+    documentHash,
+    duration: 42,
+    previewGeneration: 7,
+    type: "courseforge-composition-ready",
+  });
+  assert.equal(ready?.type, "courseforge-composition-ready");
+  if (ready?.type === "courseforge-composition-ready") {
+    assert.equal(ready.documentHash, documentHash);
+    assert.equal(ready.previewGeneration, 7);
+  }
+  assert.equal(parseCompositionPreviewIframeMessage({
+    documentHash: "stale",
+    duration: 42,
+    type: "courseforge-composition-ready",
+  }), null);
+  assert.equal(parseCompositionPreviewIframeMessage({
+    documentHash,
+    duration: 42,
+    previewGeneration: -1,
+    type: "courseforge-composition-ready",
+  }), null);
+});
+
+test("accepts only fixed, versioned load failures from the active iframe", () => {
+  const documentHash = "b".repeat(64);
+  for (const code of ["AUTH_REQUIRED", "ACCESS_DENIED"] as const) {
+    assert.equal(parseCompositionPreviewIframeMessage({
+      code,
+      documentHash,
+      previewGeneration: 7,
+      type: "courseforge-composition-load-error",
+    })?.type, "courseforge-composition-load-error");
+  }
+  assert.deepEqual(parseCompositionPreviewIframeMessage({
+    code: "COMPILATION_FAILED",
+    documentHash,
+    previewGeneration: 7,
+    type: "courseforge-composition-load-error",
+  }), {
+    code: "COMPILATION_FAILED",
+    documentHash,
+    previewGeneration: 7,
+    protocolVersion: COMPOSITION_PREVIEW_PROTOCOL_VERSION,
+    type: "courseforge-composition-load-error",
+  });
+  assert.equal(parseCompositionPreviewIframeMessage({ code: "STACK_TRACE", documentHash, previewGeneration: 7, type: "courseforge-composition-load-error" }), null);
+  assert.equal(parseCompositionPreviewIframeMessage({ code: "UNKNOWN", documentHash: "invalid", previewGeneration: 7, type: "courseforge-composition-load-error" }), null);
+  assert.equal(parseCompositionPreviewIframeMessage({ code: "UNKNOWN", documentHash, type: "courseforge-composition-load-error" }), null);
+});
+
+test("builds a nonce-restricted error bridge without server messages", () => {
+  const nonce = "00000000-0000-4000-8000-000000000041";
+  const documentHash = "c".repeat(64);
+  const bridge = buildCompositionPreviewFailureBridge({ code: "DEPENDENCY_FAILED", documentHash, nonce, previewGeneration: 7 });
+  assert.match(bridge.contentSecurityPolicy, new RegExp(`script-src 'nonce-${nonce}'`));
+  assert.match(bridge.html, new RegExp(`nonce="${nonce}"`));
+  assert.match(bridge.html, /"code":"DEPENDENCY_FAILED"/);
+  assert.match(bridge.html, /"previewGeneration":7/);
+  assert.equal(bridge.html.includes("stack"), false);
+  const authBridge = buildCompositionPreviewFailureBridge({ code: "AUTH_REQUIRED", documentHash, nonce, previewGeneration: 7 });
+  assert.match(authBridge.html, /"code":"AUTH_REQUIRED"/);
+  assert.equal(authBridge.html.includes("No autorizado"), false);
+  assert.throws(() => buildCompositionPreviewFailureBridge({ code: "</script><script>" as "UNKNOWN", documentHash, nonce, previewGeneration: 7 }));
+  assert.throws(() => buildCompositionPreviewFailureBridge({ code: "UNKNOWN", documentHash: "<script>", nonce, previewGeneration: 7 }));
+  assert.throws(() => buildCompositionPreviewFailureBridge({ code: "UNKNOWN", documentHash, nonce: "unsafe\"", previewGeneration: 7 }));
+  assert.throws(() => buildCompositionPreviewFailureBridge({ code: "UNKNOWN", documentHash, nonce, previewGeneration: -1 }));
+});
+
+test("maps load failures to safe recovery actions", () => {
+  assert.equal(resolveCompositionPreviewLoadErrorPresentation("AUTH_REQUIRED")?.action, "LOGIN");
+  assert.equal(resolveCompositionPreviewLoadErrorPresentation("ACCESS_DENIED")?.action, "NONE");
+  assert.equal(resolveCompositionPreviewLoadErrorPresentation("ACCESS_DENIED")?.actionLabel, null);
+  assert.equal(resolveCompositionPreviewLoadErrorPresentation("DOCUMENT_UNAVAILABLE")?.action, "RELOAD_EDITOR");
+  assert.equal(resolveCompositionPreviewLoadErrorPresentation("COMPILATION_FAILED")?.action, "RETRY_PREVIEW");
+  assert.equal(resolveCompositionPreviewLoadErrorPresentation(null), null);
+});
+
 test("rejects unknown fields, unsafe bounds and unsupported protocol versions", () => {
+  assert.equal(parseCompositionPreviewIframeMessage({ seconds: 1, previewGeneration: 7, type: "courseforge-composition-time" })?.previewGeneration, 7);
+  assert.equal(parseCompositionPreviewIframeMessage({ seconds: 1, previewGeneration: -1, type: "courseforge-composition-time" }), null);
   assert.equal(parseCompositionPreviewIframeMessage({
     duration: 42,
     sourceUrl: "https://storage.test/private.mp4?token=secret",
@@ -63,6 +147,21 @@ test("identifies whether a preview selection came from the canvas or a parent co
     hfId: "clip-1",
     origin: "UNKNOWN",
     type: "courseforge-composition-selection",
+  }), null);
+  assert.deepEqual(createCompositionPreviewParentCommand({
+    hfId: "clip-2",
+    hfIds: ["clip-1", "clip-2"],
+    type: "courseforge-composition-select",
+  }), {
+    hfId: "clip-2",
+    hfIds: ["clip-1", "clip-2"],
+    protocolVersion: COMPOSITION_PREVIEW_PROTOCOL_VERSION,
+    type: "courseforge-composition-select",
+  });
+  assert.equal(createCompositionPreviewParentCommand({
+    hfId: "clip-1",
+    hfIds: Array.from({ length: 101 }, (_, index) => `clip-${index}`),
+    type: "courseforge-composition-select",
   }), null);
 });
 

@@ -1108,6 +1108,45 @@
   height: 100%;
 }
 
+.safeAreaOverlay {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+}
+
+.safeActionArea,
+.safeTitleArea,
+.safeCenterHorizontal,
+.safeCenterVertical {
+  position: absolute;
+  display: block;
+}
+
+.safeActionArea {
+  inset: 5%;
+  border: 1px dashed rgb(56 189 248 / 0.78);
+}
+
+.safeTitleArea {
+  inset: 10%;
+  border: 1px dashed rgb(250 204 21 / 0.78);
+}
+
+.safeCenterHorizontal {
+  top: 50%;
+  right: 48.5%;
+  left: 48.5%;
+  border-top: 1px solid rgb(255 255 255 / 0.62);
+}
+
+.safeCenterVertical {
+  top: 48.5%;
+  bottom: 48.5%;
+  left: 50%;
+  border-left: 1px solid rgb(255 255 255 / 0.62);
+}
+
 .comparisonFrame {
   position: absolute;
   inset: 0;

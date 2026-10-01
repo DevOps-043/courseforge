@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from "react";
-import { ArrowRight, ChevronDown, Clapperboard, Columns2, Crop, Grid3X3, History, Magnet, Maximize2, Minimize2, Minus, MousePointer2, PanelLeftOpen, PanelRight, Plus, RefreshCw, Scan, Scissors, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowRight, ChevronDown, Clapperboard, Columns2, Command, Crop, Grid3X3, History, Magnet, Maximize2, Minimize2, Minus, MousePointer2, PanelLeftOpen, PanelRight, Plus, Redo2, RefreshCw, Scan, Scissors, SlidersHorizontal, Sparkles, SquareDashed, Trash2, Undo2, X } from "lucide-react";
 import type { CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import styles from "./CompositionStudio.module.css";
@@ -30,23 +30,28 @@ interface CompositionPreviewToolbarProps {
   onInspectorToggle: () => void;
   onIntervalAction: () => void;
   onOpenAssistant: () => void;
+  onOpenCommandPalette: () => void;
   onOpenPresets: () => void;
   onReload: () => void;
+  onRedo: () => void;
   onRestoreHistory: (entry: CompositionDocumentHistoryEntry) => void;
   onSplit: () => void;
   onToggleDirectEditing: () => void;
   onToggleComparison: () => void;
   onToggleGrid: () => void;
+  onToggleSafeAreas: () => void;
   onToggleSnap: () => void;
   onToggleToolMenu: () => void;
   onToggleTrim: () => void;
   onToggleVisualCrop: () => void;
   onToggleFullscreen: () => void;
+  onUndo: () => void;
   onZoom: (delta: number) => void;
   previewFullscreen: boolean;
   previewStatusLabel: string | null;
   previewZoom: number;
   removalRangeStartSeconds: number | null;
+  safeAreasVisible: boolean;
   saveError: string | null;
   saving: boolean;
   snapEnabled: boolean;
@@ -54,9 +59,13 @@ interface CompositionPreviewToolbarProps {
   toolMenuRef: RefObject<HTMLDivElement | null>;
   trimToolEnabled: boolean;
   visualCropEnabled: boolean;
+  canRedo: boolean;
+  canUndo: boolean;
+  redoLabel: string | null;
+  undoLabel: string | null;
 }
 
-export function CompositionPreviewToolbar({ canvas, onCanvasFormatChange, agentProposalActive, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, libraryOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenLibrary, onOpenPresets, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onZoom, previewFullscreen, previewStatusLabel, previewZoom, removalRangeStartSeconds, saveError, saving, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, visualCropEnabled }: CompositionPreviewToolbarProps) {
+export function CompositionPreviewToolbar({ canvas, onCanvasFormatChange, agentProposalActive, canRedo, canUndo, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, libraryOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenCommandPalette, onOpenLibrary, onOpenPresets, onRedo, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSafeAreas, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onUndo, onZoom, previewFullscreen, previewStatusLabel, previewZoom, redoLabel, removalRangeStartSeconds, safeAreasVisible, saveError, saving, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, undoLabel, visualCropEnabled }: CompositionPreviewToolbarProps) {
   return <div className={styles.previewToolbar}>
     <div className={styles.previewIdentity}>
       <span className={styles.previewIdentityIcon}><Clapperboard size={14} aria-hidden="true" /></span>
@@ -71,15 +80,18 @@ export function CompositionPreviewToolbar({ canvas, onCanvasFormatChange, agentP
         <option value="16:9">Horizontal · 16:9</option><option value="9:16">Vertical · 9:16</option><option value="1:1">Cuadrado · 1:1</option>
       </select>
       <div className={styles.toolbarGroup} aria-label="Edición principal">
+        <button type="button" disabled={saving || !canUndo} onClick={onUndo} title={undoLabel ? `Deshacer: ${undoLabel} (Ctrl+Z)` : "Nada que deshacer"} aria-label="Deshacer último cambio" className={styles.toolIconButton}><Undo2 size={13} /></button>
+        <button type="button" disabled={saving || !canRedo} onClick={onRedo} title={redoLabel ? `Rehacer: ${redoLabel} (Ctrl+Mayús+Z)` : "Nada que rehacer"} aria-label="Rehacer último cambio" className={styles.toolIconButton}><Redo2 size={13} /></button>
         <PreviewToolButton active={directEditingEnabled} label="Editar" title="Activar selección, arrastre y tiradores" onClick={onToggleDirectEditing}><MousePointer2 size={13} /></PreviewToolButton>
-        <PreviewToolButton active={snapEnabled} label="Snap" title="Alinear clips, recortes y animaciones con el cursor y con otros límites temporales" onClick={onToggleSnap}><Magnet size={13} /></PreviewToolButton>
+        <PreviewToolButton active={snapEnabled} label="Snap" title="Alinear bordes y centros con el canvas, la rejilla y otros elementos visibles" onClick={onToggleSnap}><Magnet size={13} /></PreviewToolButton>
         <PreviewToolButton active={false} label="Dividir" title="Dividir el clip seleccionado en el cursor" onClick={onSplit}><Scissors size={13} /></PreviewToolButton>
       </div>
       <div ref={toolMenuRef} className={styles.toolMenuWrap}>
-        <button type="button" aria-expanded={toolMenuOpen} aria-haspopup="menu" onClick={onToggleToolMenu} className={`${styles.toolButton} ${comparisonActive || gridVisible || visualCropEnabled || trimToolEnabled || removalRangeStartSeconds !== null ? styles.toolButtonActive : ""}`} title="Abrir herramientas adicionales"><SlidersHorizontal size={13} /><span>Herramientas</span><ChevronDown className={toolMenuOpen ? styles.toolMenuChevronOpen : ""} size={12} /></button>
+        <button type="button" aria-expanded={toolMenuOpen} aria-haspopup="menu" onClick={onToggleToolMenu} className={`${styles.toolButton} ${comparisonActive || gridVisible || safeAreasVisible || visualCropEnabled || trimToolEnabled || removalRangeStartSeconds !== null ? styles.toolButtonActive : ""}`} title="Abrir herramientas adicionales"><SlidersHorizontal size={13} /><span>Herramientas</span><ChevronDown className={toolMenuOpen ? styles.toolMenuChevronOpen : ""} size={12} /></button>
         {toolMenuOpen && <div className={styles.toolMenu} role="menu" aria-label="Herramientas adicionales">
           <button type="button" role="menuitemcheckbox" aria-checked={comparisonActive} onClick={onToggleComparison} className={styles.toolMenuItem}><Columns2 size={14} /><span><strong>Comparar antes / después</strong><small>Revisar color y composición</small></span><i data-active={comparisonActive} /></button>
           <button type="button" role="menuitemcheckbox" aria-checked={gridVisible} onClick={onToggleGrid} className={styles.toolMenuItem}><Grid3X3 size={14} /><span><strong>Rejilla</strong><small>Guías visuales del canvas</small></span><i data-active={gridVisible} /></button>
+          <button type="button" role="menuitemcheckbox" aria-checked={safeAreasVisible} onClick={onToggleSafeAreas} className={styles.toolMenuItem}><SquareDashed size={14} /><span><strong>Áreas seguras</strong><small>Título 80% · acción 90%</small></span><i data-active={safeAreasVisible} /></button>
           <button type="button" role="menuitemcheckbox" aria-checked={visualCropEnabled} onClick={onToggleVisualCrop} className={styles.toolMenuItem}><Scan size={14} /><span><strong>Recorte visual</strong><small>Ajustar bordes del medio</small></span><i data-active={visualCropEnabled} /></button>
           <button type="button" role="menuitemcheckbox" aria-checked={trimToolEnabled} onClick={onToggleTrim} className={styles.toolMenuItem}><Crop size={14} /><span><strong>Recorte temporal</strong><small>Modificar inicio y duración</small></span><i data-active={trimToolEnabled} /></button>
           <button type="button" role="menuitem" onClick={onIntervalAction} className={styles.toolMenuItem}><Trash2 size={14} /><span><strong>{removalRangeStartSeconds === null ? "Marcar intervalo" : "Eliminar intervalo"}</strong><small>{removalRangeStartSeconds === null ? "Define el inicio de un corte" : `Desde ${formatCompositionTimecode(removalRangeStartSeconds)} al cursor`}</small></span><i data-active={removalRangeStartSeconds !== null} /></button>
@@ -95,6 +107,7 @@ export function CompositionPreviewToolbar({ canvas, onCanvasFormatChange, agentP
       <div className={styles.previewUtilities}>
         <span role="status" data-state={saving ? "saving" : saveError ? "error" : "saved"} className={styles.saveStatus}>{saving ? "Guardando…" : saveError ? "Error" : "Guardado"}</span>
       <div className={styles.toolbarGroup} aria-label="Documento e inspector">
+        <button type="button" onClick={onOpenCommandPalette} className={styles.toolIconButton} title="Comandos del editor (Ctrl/Cmd+K)" aria-label="Abrir paleta de comandos"><Command size={14} /></button>
         {!libraryOpen && <button type="button" onClick={onOpenLibrary} className={styles.toolIconButton} title="Abrir biblioteca y cerrar vista de referencia" aria-label="Abrir biblioteca"><PanelLeftOpen size={14} /></button>}
         <button type="button" onClick={onInspectorToggle} className={`${styles.toolIconButton} ${inspectorOpen ? styles.toolIconButtonActive : ""}`} title={inspectorOpen ? "Cerrar inspector" : "Abrir inspector"} aria-label={inspectorOpen ? "Cerrar inspector" : "Abrir inspector"}><PanelRight size={14} /></button>
         <div className={styles.historyWrap}>

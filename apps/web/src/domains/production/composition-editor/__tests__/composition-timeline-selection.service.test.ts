@@ -74,6 +74,7 @@ test("preserves timeline multi-selection when the iframe acknowledges a parent c
     nextClipIds: null,
     shouldClearGroup: false,
     shouldOpenProperties: false,
+    shouldOpenSelection: false,
   });
 });
 
@@ -86,6 +87,7 @@ test("replaces timeline selection only after a direct preview interaction", () =
     nextClipIds: ["clip-1"],
     shouldClearGroup: true,
     shouldOpenProperties: true,
+    shouldOpenSelection: false,
   });
 
   assert.deepEqual(resolveCompositionPreviewSelectionEvent({
@@ -96,5 +98,20 @@ test("replaces timeline selection only after a direct preview interaction", () =
     nextClipIds: [],
     shouldClearGroup: true,
     shouldOpenProperties: false,
+    shouldOpenSelection: false,
+  });
+});
+
+test("keeps an additive canvas selection and opens the selection inspector", () => {
+  assert.deepEqual(resolveCompositionPreviewSelectionEvent({
+    clips: [...clips, { hfId: "hf-2", id: "clip-2" }],
+    hfId: "hf-2",
+    hfIds: ["hf-1", "hf-2", "hf-stale", "hf-1"],
+    origin: "PREVIEW",
+  }), {
+    nextClipIds: ["clip-1", "clip-2"],
+    shouldClearGroup: true,
+    shouldOpenProperties: false,
+    shouldOpenSelection: true,
   });
 });

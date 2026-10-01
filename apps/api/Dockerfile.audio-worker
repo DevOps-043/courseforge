@@ -25,5 +25,6 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/package.json apps/api/package.json
 COPY --from=build /app/apps/api/dist apps/api/dist
 WORKDIR /app/apps/api
+RUN node dist/features/audio-processing/qa/run-audio-ffmpeg-smoke.js
 USER node
 CMD ["node", "dist/features/audio-processing/worker-entry.js"]

@@ -3,6 +3,7 @@ import test from "node:test";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import {
   applyAndAppendCompositionDocumentPatches,
+  getCompositionDocumentByHash,
   getCurrentCompositionDocument,
   hashCompositionDocument,
   normalizeCompositionPersistenceError,
@@ -10,11 +11,121 @@ import {
 import { normalizeCompositionDocumentLayerDepths } from "../composition-layer-depth";
 import { readReadyLinkedSoundEffectAssetIds } from "../composition-sound-effect-assets.service";
 import { getCompositionTrackDefinition } from "../composition-track-registry";
+import { isUsableCompositionReplacementAsset, replacementAssetStoragePath } from "../composition-replacement-asset";
 
 const DRAFT_ID = "f7d8853b-49cb-4a46-acd9-2c21696686c3";
 const ORGANIZATION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const READY_EFFECT_ID = "11111111-1111-4111-8111-111111111111";
 const NOT_READY_EFFECT_ID = "22222222-2222-4222-8222-222222222222";
+
+test("reemplazo rechaza medios sin identidad y límites de entrega verificables", () => {
+  const asset = {
+    checksum: "a".repeat(64),
+    file_size_bytes: 42,
+    id: "44444444-4444-4444-8444-444444444444",
+    metadata: { file_name: "new.mp4", source_width: 1920, source_height: 1080 },
+    mime_type: "video/mp4",
+    qa_status: "GENERATED",
+    storage_bucket: "production-assets",
+    storage_path: "production-assets/new.mp4",
+  };
+  assert.equal(isUsableCompositionReplacementAsset(asset), true);
+  assert.equal(replacementAssetStoragePath(asset), "new.mp4");
+  assert.equal(replacementAssetStoragePath({ ...asset, storage_path: "nested/new.mp4" }), "nested/new.mp4");
+  assert.equal(isUsableCompositionReplacementAsset({ ...asset, checksum: null }), false);
+  assert.equal(isUsableCompositionReplacementAsset({ ...asset, file_size_bytes: null }), false);
+  assert.equal(isUsableCompositionReplacementAsset({ ...asset, file_size_bytes: 3 * 1024 * 1024 * 1024 }), false);
+  assert.equal(isUsableCompositionReplacementAsset({ ...asset, storage_bucket: "private-unknown" }), false);
+  assert.equal(isUsableCompositionReplacementAsset({ ...asset, storage_path: "../outside.mp4" }), false);
+  assert.equal(isUsableCompositionReplacementAsset({ ...asset, mime_type: "audio/mpeg" }), false);
+  assert.equal(isUsableCompositionReplacementAsset({ ...asset, qa_status: "REJECTED" }), false);
+  assert.equal(isUsableCompositionReplacementAsset({ ...asset, qa_status: "ARCHIVED" }), false);
+});
+
+test("reemplazo exige vínculo al borrador y normaliza metadatos desde el registro", async () => {
+  const originalId = "33333333-3333-4333-8333-333333333333";
+  const replacementId = "44444444-4444-4444-8444-444444444444";
+  const document = createInitialCompositionDocument({
+    animatedDeck: { css: "", fonts: [], height: 1080, slides: [{ animationCount: 0, classes: "slide", html: "<section>Uno</section>", index: 0, label: "Uno" }], width: 1920 },
+    assets: [{ checksum: "a".repeat(64), durationSeconds: 8, fileSizeBytes: 42, mimeType: "video/mp4", productionAssetId: originalId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/old.mp4" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "Prueba", title: "Reemplazo" },
+  });
+  const clip = document.clips.find((candidate) => candidate.kind === "VIDEO")!;
+  clip.durationSeconds = 4;
+  const storedHash = "a".repeat(64);
+  let linked = false;
+  let savedDocument: typeof document | undefined;
+  let appendCount = 0;
+  let storageStatus: "AVAILABLE" | "MISSING" | "UNAVAILABLE" | "SIZE_MISMATCH" | "THROW" = "AVAILABLE";
+  const checkedStoragePaths: string[] = [];
+  const replacementRecord = { id: replacementId, checksum: "b".repeat(64) as string | null, file_size_bytes: 42, mime_type: "video/mp4", duration_milliseconds: 8000, duration_seconds: 8, metadata: { has_audio: true, source_width: 1920, source_height: 1080 }, qa_status: "GENERATED", storage_bucket: "production-assets", storage_path: "production-assets/new.mp4" };
+  const query = (response: () => unknown) => {
+    const builder = {
+      eq: () => builder,
+      in: () => builder,
+      limit: () => builder,
+      order: () => builder,
+      select: () => builder,
+      maybeSingle: async () => response(),
+      then: (resolve: (value: unknown) => unknown) => resolve(response()),
+    };
+    return builder;
+  };
+  const supabase = {
+    storage: {
+      from: (bucket: string) => ({
+        info: async (path: string) => {
+          checkedStoragePaths.push(`${bucket}/${path}`);
+          if (storageStatus === "THROW") throw new Error("storage transport failed");
+          if (storageStatus === "MISSING") return { data: null, error: { status: 404 } };
+          if (storageStatus === "UNAVAILABLE") return { data: null, error: { status: 503 } };
+          return { data: { size: storageStatus === "SIZE_MISMATCH" ? 43 : 42 }, error: null };
+        },
+      }),
+    },
+    from: (table: string) => table === "video_composition_draft_assets"
+      ? query(() => ({ data: linked ? [{ production_asset_id: replacementId }] : [], error: null }))
+      : table === "production_assets"
+        ? query(() => ({ data: [replacementRecord], error: null }))
+        : query(() => ({ data: { document, document_hash: storedHash, version: 1 }, error: null })),
+    rpc: (_name: string, params: { p_document: typeof document }) => {
+      appendCount += 1;
+      savedDocument = params.p_document;
+      return { retry: () => ({ data: [{ document_hash: "b".repeat(64), outcome: "APPENDED", version: 2 }], error: null }) };
+    },
+  };
+  const patch = {
+    operations: [{ clipId: clip.id, productionAssetId: replacementId, mimeType: "audio/mpeg", sourceDurationSeconds: 3600, type: "clip.replace-source" as const }],
+    source: "USER" as const,
+    summary: "Reemplazó el medio del clip.",
+  };
+  const params = { draftId: DRAFT_ID, expectedDocumentHash: storedHash, organizationId: ORGANIZATION_ID, patch, supabase: supabase as never, userId: "00000000-0000-4000-8000-000000000001" };
+  await assert.rejects(() => applyAndAppendCompositionDocumentPatches(params), /no está vinculado/);
+  linked = true;
+  await applyAndAppendCompositionDocumentPatches(params);
+  const source = savedDocument?.clips.find((candidate) => candidate.id === clip.id)?.source;
+  assert.equal(source?.type, "PRODUCTION_ASSET");
+  if (source?.type === "PRODUCTION_ASSET") {
+    assert.equal(source.productionAssetId, replacementId);
+    assert.equal(source.hasAudio, true);
+    assert.equal(source.sourceWidth, 1920);
+  }
+  assert.equal(savedDocument?.clips.find((candidate) => candidate.id === clip.id)?.sourceDurationSeconds, 8);
+  assert.deepEqual(checkedStoragePaths, ["production-assets/new.mp4"]);
+  replacementRecord.checksum = null;
+  await assert.rejects(() => applyAndAppendCompositionDocumentPatches(params), /medio de reemplazo no está disponible/);
+  assert.equal(appendCount, 1, "un medio sin checksum no debe llegar al append versionado");
+  replacementRecord.checksum = "b".repeat(64);
+  storageStatus = "MISSING";
+  await assert.rejects(() => applyAndAppendCompositionDocumentPatches(params), /ya no existe en Storage/);
+  storageStatus = "SIZE_MISMATCH";
+  await assert.rejects(() => applyAndAppendCompositionDocumentPatches(params), /no coincide con el registro/);
+  storageStatus = "UNAVAILABLE";
+  await assert.rejects(() => applyAndAppendCompositionDocumentPatches(params), /No se pudo verificar/);
+  storageStatus = "THROW";
+  await assert.rejects(() => applyAndAppendCompositionDocumentPatches(params), /No se pudo verificar/);
+  assert.equal(appendCount, 1, "un archivo ausente o no verificable no debe crear una versión");
+});
 
 test("normalizes legacy layer depths into the 0 to 10 contract", () => {
   const normalized = normalizeCompositionDocumentLayerDepths({
@@ -75,6 +186,38 @@ test("uses the stored document hash as the concurrency token", async () => {
 
   assert.equal(current.documentHash, storedHash);
   assert.equal(current.version, 1);
+});
+
+test("selects the latest saved occurrence when a document hash repeats", async () => {
+  const documentHash = "a".repeat(64);
+  const document = createInitialCompositionDocument({
+    animatedDeck: { css: "", fonts: [], height: 1080, slides: [{ animationCount: 0, classes: "slide", html: "<section>Uno</section>", index: 0, label: "Uno" }], width: 1920 },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Revisión repetida" },
+  });
+  const queryCalls: string[] = [];
+  const documentQuery = {
+    eq: (column: string, value: string) => { queryCalls.push(`eq:${column}:${value}`); return documentQuery; },
+    limit: (count: number) => { queryCalls.push(`limit:${count}`); return documentQuery; },
+    maybeSingle: async () => ({ data: { document, document_hash: documentHash, version: 3 }, error: null }),
+    order: (column: string, options: { ascending: boolean }) => { queryCalls.push(`order:${column}:${options.ascending}`); return documentQuery; },
+    select: () => documentQuery,
+  };
+  const assetLinksQuery = {
+    eq: () => assetLinksQuery,
+    select: () => assetLinksQuery,
+    then: (resolve: (value: unknown) => unknown) => resolve({ data: [], error: null }),
+  };
+  const supabase = { from: (table: string) => table === "video_composition_draft_assets" ? assetLinksQuery : documentQuery };
+  const saved = await getCompositionDocumentByHash({
+    documentHash,
+    draftId: DRAFT_ID,
+    organizationId: ORGANIZATION_ID,
+    supabase: supabase as never,
+  });
+  assert.equal(saved.version, 3);
+  assert.ok(queryCalls.includes(`eq:document_hash:${documentHash}`));
+  assert.deepEqual(queryCalls.slice(-2), ["order:version:false", "limit:1"]);
 });
 
 test("appends the complete accumulated document when saving a new version", async () => {

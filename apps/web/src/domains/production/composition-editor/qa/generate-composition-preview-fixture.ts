@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import {
   collectAnimatedDeckRemoteAssetUrls,
@@ -18,6 +19,12 @@ import {
 } from "../composition-preview-compiler.service";
 import { COMPOSITION_PREVIEW_PROTOCOL_VERSION } from "../composition-preview-protocol";
 import { buildCompositionPreviewVisualPatch, type CompositionPreviewVisualPatch } from "../composition-preview-visual-patch";
+import { buildCompositionConformanceContract } from "../composition-preview-render-conformance";
+import { COMPOSITION_MEDIA_REPLACEMENT_CONFORMANCE_FIXTURE } from "./composition-media-replacement-conformance.fixture";
+import {
+  getHyperframesRenderProfile,
+  toHyperframesRenderSettings,
+} from "../../hyperframes/hyperframes-render-profiles";
 
 const workspaceRoot = process.cwd();
 const fixtureSourcePath = resolve(
@@ -28,6 +35,11 @@ const outputDirectory = resolve(workspaceRoot, ".tmp/composition-preview-qa");
 const interactiveOutputDirectory = resolve(workspaceRoot, ".tmp/composition-preview-qa-interactive");
 const transitionOutputDirectory = resolve(workspaceRoot, ".tmp/composition-transition-qa-interactive");
 const captionOutputDirectory = resolve(workspaceRoot, ".tmp/composition-caption-qa-interactive");
+const conformanceOutputDirectory = resolve(workspaceRoot, ".tmp/composition-conformance");
+const conformancePreviewDirectory = resolve(conformanceOutputDirectory, "preview");
+const conformanceRenderDirectory = resolve(conformanceOutputDirectory, "render");
+const conformanceOriginalAssetId = COMPOSITION_MEDIA_REPLACEMENT_CONFORMANCE_FIXTURE.originalAssetId;
+const conformanceReplacementAssetId = COMPOSITION_MEDIA_REPLACEMENT_CONFORMANCE_FIXTURE.replacementAssetId;
 
 async function main() {
   const sourceHtml = await readFile(fixtureSourcePath, "utf8");
@@ -42,9 +54,23 @@ async function main() {
     css: prepared.css,
     fonts: prepared.fonts,
   };
+  const replacementDataUrl = createPlaceholderDataUrl(6);
+  const replacementAssetUrls = new Map([[conformanceReplacementAssetId, replacementDataUrl]]);
   const baseDocument = createInitialCompositionDocument({
     animatedDeck,
-    assets: [],
+    assets: [{
+      checksum: "5".repeat(64),
+      durationSeconds: 25,
+      fileSizeBytes: 512,
+      mimeType: "image/svg+xml",
+      productionAssetId: conformanceOriginalAssetId,
+      publicUrl: null,
+      sourceHeight: 1080,
+      sourceWidth: 1920,
+      storageBucket: "production-assets",
+      storagePath: "production-assets/conformance-original.svg",
+      timelineRole: "BROLL",
+    }],
     plan: {
       accentColor: "#23AEA8",
       durationSeconds: prepared.deck.slides.length * 5,
@@ -53,18 +79,46 @@ async function main() {
     },
   });
   const firstClip = baseDocument.clips[0]!;
+  const mediaClip = baseDocument.clips.find((clip) => clip.source.type === "PRODUCTION_ASSET")!;
   const document = applyCompositionEditorPatches(baseDocument, [
     { animationId: "motion-qa-fade-in", clipId: firstClip.id, durationSeconds: 0.7, presetId: "FADE_IN", type: "animation.add-preset" },
     { animationId: "motion-qa-fade-out", clipId: firstClip.id, durationSeconds: 0.7, presetId: "FADE_OUT", type: "animation.add-preset" },
+    { clipId: mediaClip.id, durationSeconds: 4, sourceOffsetSeconds: 0, startSeconds: 2, type: "clip.trim" },
+    { clipId: mediaClip.id, layout: { height: 540, width: 960, x: 720, y: 400, zIndex: 6 }, type: "clip.layout" },
+    {
+      clipId: mediaClip.id,
+      mimeType: "image/svg+xml",
+      productionAssetId: conformanceReplacementAssetId,
+      sourceDurationSeconds: 25,
+      sourceHeight: 1080,
+      sourceWidth: 1920,
+      type: "clip.replace-source",
+    },
   ]);
+  const replacedClip = document.clips.find((clip) => clip.id === mediaClip.id);
+  if (replacedClip?.source.type !== "PRODUCTION_ASSET"
+    || replacedClip.source.productionAssetId !== conformanceReplacementAssetId
+    || replacedClip.startSeconds !== 2
+    || replacedClip.durationSeconds !== 4
+    || replacedClip.layout.x !== 720) {
+    throw new Error("La fixture de conformidad no conservó el clip al reemplazar su medio.");
+  }
   const fontDataUrls = new Map(
     prepared.fonts.map((font) => [font.href, "data:text/css;charset=utf-8,"]),
   );
   const renderHtml = await compileCompositionPreview({
-    assetUrls: new Map(),
+    assetUrls: replacementAssetUrls,
     deckAssetUrls: fontDataUrls,
     document,
     target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+  });
+  const conformanceDocumentHash = hashCompositionDocument(document);
+  const conformancePreviewHtml = await compileCompositionPreview({
+    assetUrls: replacementAssetUrls,
+    deckAssetUrls: fontDataUrls,
+    document,
+    documentHash: conformanceDocumentHash,
+    target: COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW,
   });
   const runtimeSmoke = createRuntimeSmokeScenario(animatedDeck);
   const interactivePreviewHtml = await compileCompositionPreview({
@@ -101,6 +155,23 @@ async function main() {
     `${renderCaptionRuntimeSmokeHarness(captionSmoke)}</body>`,
   );
   const animationRuntime = await readCompositionAnimationRuntime();
+  const hyperframesRuntime = await readFile(require.resolve("@hyperframes/core/runtime"), "utf8");
+  const conformanceRenderHtml = renderHtml.replace(
+    "</body>",
+    `<script>window.__HF_EXPORT_RENDER_SEEK_CONFIG = ${JSON.stringify({
+      fps: document.canvas.fps,
+      fpsSource: "render-options",
+    })};</script><script src="./assets/hyperframe.runtime.iife.js"></script></body>`,
+  );
+  const conformanceContract = buildCompositionConformanceContract({
+    assets: [{
+      checksum: createHash("sha256").update(decodeURIComponent(replacementDataUrl.split(",")[1]!)).digest("hex"),
+      id: conformanceReplacementAssetId,
+    }],
+    document,
+    documentHash: conformanceDocumentHash,
+    renderProfile: toHyperframesRenderSettings(getHyperframesRenderProfile("balanced")),
+  });
   const report = {
     canvas: document.canvas,
     clips: document.clips.map((clip) => ({
@@ -131,6 +202,14 @@ async function main() {
       checkpointsSeconds: captionSmoke.checkpointsSeconds,
       presetIds: captionSmoke.presetIds,
     },
+    conformance: {
+      contractPath: resolve(conformanceOutputDirectory, "conformance-contract.json"),
+      documentHash: conformanceDocumentHash,
+      previewDirectory: conformancePreviewDirectory,
+      renderDirectory: conformanceRenderDirectory,
+      requiredCheckpointCount: conformanceContract.checkpoints.length,
+      replacement: { clipId: mediaClip.id, originalAssetId: conformanceOriginalAssetId, replacementAssetId: conformanceReplacementAssetId },
+    },
   };
 
   await Promise.all([
@@ -138,6 +217,8 @@ async function main() {
     mkdir(interactiveOutputDirectory, { recursive: true }),
     mkdir(transitionOutputDirectory, { recursive: true }),
     mkdir(captionOutputDirectory, { recursive: true }),
+    mkdir(conformancePreviewDirectory, { recursive: true }),
+    mkdir(resolve(conformanceRenderDirectory, "assets"), { recursive: true }),
   ]);
   await Promise.all([
     writeFile(resolve(outputDirectory, "index.html"), renderHtml, "utf8"),
@@ -146,6 +227,11 @@ async function main() {
     writeFile(resolve(transitionOutputDirectory, "index.html"), transitionRuntimeSmokeHtml, "utf8"),
     writeFile(resolve(captionOutputDirectory, "index.html"), captionRuntimeSmokeHtml, "utf8"),
     writeFile(resolve(outputDirectory, "qa-report.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8"),
+    writeFile(resolve(conformanceOutputDirectory, "conformance-contract.json"), `${JSON.stringify(conformanceContract, null, 2)}\n`, "utf8"),
+    writeFile(resolve(conformancePreviewDirectory, "index.html"), conformancePreviewHtml, "utf8"),
+    writeFile(resolve(conformanceRenderDirectory, "index.html"), conformanceRenderHtml, "utf8"),
+    writeFile(resolve(conformanceRenderDirectory, "assets/gsap.min.js"), animationRuntime, "utf8"),
+    writeFile(resolve(conformanceRenderDirectory, "assets/hyperframe.runtime.iife.js"), hyperframesRuntime, "utf8"),
   ]);
   process.stdout.write(`${JSON.stringify({ captionOutputDirectory, interactiveOutputDirectory, outputDirectory, transitionOutputDirectory, ...report }, null, 2)}\n`);
 }

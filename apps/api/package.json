@@ -7,7 +7,12 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "start:audio-worker": "node dist/features/audio-processing/worker-entry.js",
-    "test:audio-processing": "tsc -p tsconfig.audio-processing-test.json && node .tmp/audio-processing-tests/features/audio-processing/__tests__/deepfilter-runtime-config.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/worker-capabilities.test.js",
+    "start:video-integrity-worker": "node dist/features/video-integrity/worker-entry.js",
+    "test:video-integrity-worker": "tsc -p tsconfig.video-integrity-test.json && node .tmp/video-integrity-tests/features/video-integrity/__tests__/video-integrity.worker.test.js",
+    "verify:hyperframes-final-video": "npm run build && node dist/features/video-integrity/verify-entry.js",
+    "check:hyperframes-final-video": "npm run build && node dist/features/video-integrity/verify-entry.js --check-only",
+    "test:video-integrity": "tsc -p tsconfig.video-integrity-test.json && node .tmp/video-integrity-tests/features/video-integrity/__tests__/video-integrity.service.test.js",
+    "test:audio-processing": "tsc -p tsconfig.audio-processing-test.json && node .tmp/audio-processing-tests/features/audio-processing/__tests__/audio-analysis.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/audio-waveform.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/deepfilter-runtime-config.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/worker-capabilities.test.js",
     "verify:deepfilter-artifacts": "node ../../scripts/verify-deepfilter-artifacts.mjs",
     "verify:rnnoise-artifacts": "node ../../scripts/verify-rnnoise-artifacts.mjs",
     "lint": "tsc --noEmit"

@@ -32,7 +32,7 @@ test("batch sends its capabilities to the atomic claim RPC", async () => {
   assert.deepEqual(result, { claimed: 0, failed: 0 });
   assert.deepEqual(calls, [{
     name: "claim_audio_processing_jobs_by_profile",
-    args: { p_lease_seconds: 900, p_limit: 2, p_profile_ids: [BASE_AUDIO_PROFILE_ID] },
+    args: { p_lease_seconds: 3600, p_limit: 2, p_profile_ids: [BASE_AUDIO_PROFILE_ID] },
   }]);
 });
 

@@ -56,6 +56,76 @@ const linkedAvatarVoiceDocument = () => createInitialCompositionDocument({
   plan: { accentColor: "#38BDF8", durationSeconds: 20, subtitle: "Prueba", title: "Avatar vinculado" },
 });
 
+const silentBrollDocument = () => createInitialCompositionDocument({
+  animatedDeck: null,
+  assets: [{
+    checksum: "b".repeat(64), durationSeconds: 10, fileSizeBytes: 42, hasAudio: false,
+    mimeType: "video/mp4", productionAssetId: "44444444-4444-4444-8444-444444444444",
+    publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/silent.mp4", timelineRole: "BROLL",
+  }],
+  plan: { accentColor: "#38BDF8", durationSeconds: 10, subtitle: "Prueba", title: "B-roll silencioso" },
+});
+
+test("reemplaza la fuente de un clip conservando sus decisiones de edición", () => {
+  const document = baseDocument();
+  const clip = document.clips.find((candidate) => candidate.kind === "VIDEO")!;
+  document.canvas.durationSeconds = 30;
+  clip.startSeconds = 2;
+  clip.durationSeconds = 4;
+  clip.sourceOffsetSeconds = 1;
+  clip.timingSource = "USER_EDITED";
+  const replacementId = "33333333-3333-4333-8333-333333333333";
+  const replaced = applyCompositionEditorPatches(document, [{
+    clipId: clip.id,
+    productionAssetId: replacementId,
+    mimeType: "video/mp4",
+    sourceDurationSeconds: 8,
+    type: "clip.replace-source",
+  }]);
+  const result = replaced.clips.find((candidate) => candidate.id === clip.id)!;
+  assert.equal(result.source.type, "PRODUCTION_ASSET");
+  if (result.source.type === "PRODUCTION_ASSET") assert.equal(result.source.productionAssetId, replacementId);
+  assert.equal(result.startSeconds, clip.startSeconds);
+  assert.equal(result.durationSeconds, clip.durationSeconds);
+  assert.equal(result.sourceOffsetSeconds, clip.sourceOffsetSeconds);
+  assert.deepEqual(result.layout, clip.layout);
+  assert.equal(result.timingSource, "USER_EDITED");
+  assert.equal(document.clips.find((candidate) => candidate.id === clip.id)?.source.type, "PRODUCTION_ASSET");
+});
+
+test("rechaza reemplazos incompatibles, cortos y de pistas bloqueadas", () => {
+  const document = baseDocument();
+  const clip = document.clips.find((candidate) => candidate.kind === "VIDEO")!;
+  clip.durationSeconds = 4;
+  clip.sourceOffsetSeconds = 1;
+  const operation = {
+    clipId: clip.id,
+    productionAssetId: "33333333-3333-4333-8333-333333333333",
+    mimeType: "video/mp4",
+    sourceDurationSeconds: 8,
+    type: "clip.replace-source" as const,
+  };
+  assert.throws(() => applyCompositionEditorPatches(document, [{ ...operation, mimeType: "audio/mpeg" }]), CompositionEditorPatchError);
+  assert.throws(() => applyCompositionEditorPatches(document, [{ ...operation, sourceDurationSeconds: 4 }]), CompositionEditorPatchError);
+  if (clip.source.type === "PRODUCTION_ASSET") clip.source.placement = "INTRO";
+  assert.throws(() => applyCompositionEditorPatches(document, [operation]), CompositionEditorPatchError);
+  if (clip.source.type === "PRODUCTION_ASSET") delete clip.source.placement;
+  document.tracks.find((track) => track.id === clip.trackId)!.locked = true;
+  assert.throws(() => applyCompositionEditorPatches(document, [operation]), CompositionEditorPatchError);
+});
+
+test("protege la sincronía avatar-voz ante un reemplazo individual", () => {
+  const document = linkedAvatarVoiceDocument();
+  const avatar = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  assert.throws(() => applyCompositionEditorPatches(document, [{
+    clipId: avatar.id,
+    productionAssetId: "33333333-3333-4333-8333-333333333333",
+    mimeType: "video/mp4",
+    sourceDurationSeconds: 8,
+    type: "clip.replace-source",
+  }]), /avatar-voz/);
+});
+
 test("edita la lÃ­nea de tiempo sin alterar la referencia del asset", () => {
   const document = baseDocument();
   const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
@@ -69,6 +139,106 @@ test("edita la lÃ­nea de tiempo sin alterar la referencia del asset", () => {
   assert.equal(result.durationSeconds, 4);
   assert.equal(result.timingSource, "USER_EDITED");
   assert.deepEqual(result.source, video.source);
+});
+
+test("acota la velocidad de B-roll silencioso y conserva el asset", () => {
+  const previousFlag = process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_RATES;
+  process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_RATES = "true";
+  try {
+    const document = silentBrollDocument();
+    const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+    video.durationSeconds = 4;
+    video.sourceOffsetSeconds = 1;
+    assert.throws(() => applyCompositionEditorPatches(document, [{ clipId: video.id, playbackRate: 2, type: "clip.playback-rate" }], "AGENT"), CompositionEditorPatchError);
+    const track = document.tracks.find((candidate) => candidate.id === video.trackId)!;
+    track.locked = true;
+    assert.throws(() => applyCompositionEditorPatches(document, [{ clipId: video.id, playbackRate: 2, type: "clip.playback-rate" }]), CompositionEditorPatchError);
+    track.locked = false;
+    if (video.source.type === "PRODUCTION_ASSET") video.source.hasAudio = true;
+    assert.throws(() => applyCompositionEditorPatches(document, [{ clipId: video.id, playbackRate: 2, type: "clip.playback-rate" }]), CompositionEditorPatchError);
+    if (video.source.type === "PRODUCTION_ASSET") video.source.hasAudio = false;
+    const fast = applyCompositionEditorPatches(document, [{ clipId: video.id, playbackRate: 2, type: "clip.playback-rate" }]);
+    assert.equal(fast.clips.find((clip) => clip.id === video.id)!.playbackRate, 2);
+    assert.deepEqual(fast.clips.find((clip) => clip.id === video.id)!.source, video.source);
+    assert.throws(() => applyCompositionEditorPatches(fast, [{ clipId: video.id, durationSeconds: 5, type: "clip.duration" }]), CompositionEditorPatchError);
+    assert.throws(() => applyCompositionEditorPatches(fast, [{ clipId: video.id, atSeconds: video.startSeconds + 2, newClipId: "split-rate", newHfId: "split-rate-hf", type: "clip.split" }]), CompositionEditorPatchError);
+    assert.throws(() => applyCompositionEditorPatches(fast, [{ clipId: video.id, durationSeconds: 3, sourceOffsetSeconds: 1, startSeconds: video.startSeconds, type: "clip.trim" }]), CompositionEditorPatchError);
+    assert.throws(() => applyCompositionEditorPatches(fast, [{ clipId: video.id, startSeconds: video.startSeconds + 1, endSeconds: video.startSeconds + 2, ripple: false, type: "clip.remove-range" }]), CompositionEditorPatchError);
+    const normal = applyCompositionEditorPatches(fast, [{ clipId: video.id, playbackRate: 1, type: "clip.playback-rate" }]);
+    assert.equal(normal.clips.find((clip) => clip.id === video.id)!.playbackRate, undefined);
+    assert.equal(document.clips.find((clip) => clip.id === video.id)!.playbackRate, undefined);
+  } finally {
+    if (previousFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_RATES;
+    else process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_RATES = previousFlag;
+  }
+});
+
+test("velocidad desactivada impide nuevos cambios pero mantiene lectura y rollback", () => {
+  const previousFlag = process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_RATES;
+  delete process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_RATES;
+  try {
+    const document = silentBrollDocument();
+    const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+    video.durationSeconds = 4;
+    assert.throws(() => applyCompositionEditorPatches(document, [{ clipId: video.id, playbackRate: 1.5, type: "clip.playback-rate" }]), CompositionEditorPatchError);
+    const persisted = structuredClone(document);
+    persisted.clips.find((clip) => clip.id === video.id)!.playbackRate = 1.5;
+    assert.equal(compositionEditorDocumentSchema.safeParse(persisted).success, true);
+    const restored = applyCompositionEditorPatches(persisted, [{ clipId: video.id, playbackRate: 1, type: "clip.playback-rate" }]);
+    assert.equal(restored.clips.find((clip) => clip.id === video.id)!.playbackRate, undefined);
+  } finally {
+    if (previousFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_RATES;
+    else process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_RATES = previousFlag;
+  }
+});
+
+test("congela solo la cola acotada de B-roll silencioso y permite rollback con la flag apagada", () => {
+  const previousFlag = process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE;
+  process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE = "true";
+  try {
+    const document = silentBrollDocument();
+    const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+    video.sourceOffsetSeconds = 1;
+    assert.throws(() => applyCompositionEditorPatches(document, [{ clipId: video.id, enabled: true, type: "clip.freeze-tail" }], "AGENT"), CompositionEditorPatchError);
+    const frozen = applyCompositionEditorPatches(document, [{ clipId: video.id, enabled: true, type: "clip.freeze-tail" }]);
+    assert.equal(frozen.clips.find((clip) => clip.id === video.id)!.freezeTailSeconds, 1);
+    assert.equal(compositionEditorDocumentSchema.safeParse(frozen).success, true);
+    assert.throws(() => applyCompositionEditorPatches(frozen, [{ clipId: video.id, durationSeconds: 9, type: "clip.duration" }]), CompositionEditorPatchError);
+    assert.throws(() => applyCompositionEditorPatches(frozen, [{ clipId: video.id, atSeconds: 4, newClipId: "frozen-split", newHfId: "frozen-split-hf", type: "clip.split" }]), CompositionEditorPatchError);
+    assert.throws(() => applyCompositionEditorPatches(frozen, [{ clipId: video.id, durationSeconds: 9, sourceOffsetSeconds: 1, startSeconds: 0, type: "clip.trim" }]), CompositionEditorPatchError);
+    assert.throws(() => applyCompositionEditorPatches(frozen, [{ clipId: video.id, startSeconds: 1, endSeconds: 2, ripple: false, type: "clip.remove-range" }]), CompositionEditorPatchError);
+    const invalid = structuredClone(frozen);
+    invalid.clips.find((clip) => clip.id === video.id)!.freezeTailSeconds = 2;
+    assert.equal(compositionEditorDocumentSchema.safeParse(invalid).success, false);
+    delete process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE;
+    assert.throws(() => applyCompositionEditorPatches(document, [{ clipId: video.id, enabled: true, type: "clip.freeze-tail" }]), CompositionEditorPatchError);
+    const restored = applyCompositionEditorPatches(frozen, [{ clipId: video.id, enabled: false, type: "clip.freeze-tail" }]);
+    assert.equal(restored.clips.find((clip) => clip.id === video.id)!.freezeTailSeconds, undefined);
+  } finally {
+    if (previousFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE;
+    else process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE = previousFlag;
+  }
+});
+
+test("rechaza congelación fuera del último frame, con audio o velocidad", () => {
+  const previousFlag = process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE;
+  process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE = "true";
+  try {
+    const document = silentBrollDocument();
+    const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+    assert.throws(() => applyCompositionEditorPatches(document, [{ clipId: video.id, enabled: true, type: "clip.freeze-tail" }]), CompositionEditorPatchError);
+    video.sourceOffsetSeconds = 4;
+    assert.throws(() => applyCompositionEditorPatches(document, [{ clipId: video.id, enabled: true, type: "clip.freeze-tail" }]), CompositionEditorPatchError);
+    video.sourceOffsetSeconds = 1;
+    if (video.source.type === "PRODUCTION_ASSET") video.source.hasAudio = true;
+    assert.throws(() => applyCompositionEditorPatches(document, [{ clipId: video.id, enabled: true, type: "clip.freeze-tail" }]), CompositionEditorPatchError);
+    if (video.source.type === "PRODUCTION_ASSET") video.source.hasAudio = false;
+    video.playbackRate = 1.5;
+    assert.throws(() => applyCompositionEditorPatches(document, [{ clipId: video.id, enabled: true, type: "clip.freeze-tail" }]), CompositionEditorPatchError);
+  } finally {
+    if (previousFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE;
+    else process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE = previousFlag;
+  }
 });
 
 test("aplica correcciÃ³n bÃ¡sica por clip, la hereda al dividir y elimina el estado neutro", () => {
@@ -1368,6 +1538,162 @@ test("crea ocultación intermedia instantánea y con desvanecimiento reversible"
     { ease: "none", offset: 0.8, values: { opacity: 0 } },
     { ease: "power2.out", offset: 1, values: { opacity: 1 } },
   ]);
+});
+
+test("inserta un punto de path acotado y rechaza segmentos inválidos", () => {
+  const previousFlag = process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS;
+  process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS = "true";
+  try {
+  const document = baseDocument();
+  const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  const animated = applyCompositionEditorPatches(document, [{
+    animationId: "motion-path-test",
+    clipId: video.id,
+    durationSeconds: 0.7,
+    presetId: "SLIDE_IN_LEFT",
+    type: "animation.add-preset",
+  }]);
+  const withPoint = applyCompositionEditorPatches(animated, [{
+    animationId: "motion-path-test",
+    offset: 0.5,
+    values: { x: 80, y: -32 },
+    type: "animation.insert-path-point",
+  }]);
+  const animation = withPoint.motion.animations.find((candidate) => candidate.id === "motion-path-test")!;
+  assert.equal(animation.keyframes.length, 3);
+  assert.deepEqual(animation.keyframes[1], { ease: "none", offset: 0.5, values: { x: 80, y: -32 } });
+  assert.equal(animation.origin, "USER");
+  assert.equal(animated.motion.animations[0]!.keyframes.length, 2);
+  const removed = applyCompositionEditorPatches(withPoint, [{
+    animationId: animation.id,
+    keyframeIndex: 1,
+    type: "animation.remove-path-point",
+  }]);
+  assert.equal(removed.motion.animations[0]!.keyframes.length, 2);
+  assert.throws(() => applyCompositionEditorPatches(withPoint, [{
+    animationId: animation.id,
+    keyframeIndex: 2,
+    type: "animation.remove-path-point",
+  }]), CompositionEditorPatchError);
+  assert.throws(() => applyCompositionEditorPatches(withPoint, [{
+    animationId: animation.id,
+    offset: 0.5,
+    values: { x: 0, y: 0 },
+    type: "animation.insert-path-point",
+  }]), CompositionEditorPatchError);
+  assert.throws(() => applyCompositionEditorPatches(withPoint, [{
+    animationId: animation.id,
+    offset: 0.51,
+    values: { x: 0, y: 0 },
+    type: "animation.insert-path-point",
+  }]), CompositionEditorPatchError);
+  const invalid = compositionEditorPatchRequestSchema.safeParse({
+    operations: [{ animationId: animation.id, offset: 0.75, values: { x: Infinity, y: 0 }, type: "animation.insert-path-point" }],
+    source: "USER",
+    summary: "Punto inválido",
+  });
+  assert.equal(invalid.success, false);
+  } finally {
+    if (previousFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS;
+    else process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS = previousFlag;
+  }
+});
+
+test("desactiva nuevos paths sin bloquear la lectura de puntos persistidos", () => {
+  const previousFlag = process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS;
+  delete process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS;
+  try {
+    const document = baseDocument();
+    const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+    const animated = applyCompositionEditorPatches(document, [{
+      animationId: "motion-path-disabled",
+      clipId: video.id,
+      durationSeconds: 0.7,
+      presetId: "SLIDE_IN_LEFT",
+      type: "animation.add-preset",
+    }]);
+    assert.throws(() => applyCompositionEditorPatches(animated, [{
+      animationId: "motion-path-disabled",
+      offset: 0.5,
+      values: { x: 30, y: 10 },
+      type: "animation.insert-path-point",
+    }]), CompositionEditorPatchError);
+    assert.throws(() => applyCompositionEditorPatches(animated, [{
+      animationId: "motion-path-disabled",
+      keyframeIndex: 1,
+      type: "animation.remove-path-point",
+    }]), CompositionEditorPatchError);
+    const persisted = structuredClone(animated);
+    persisted.motion.animations[0]!.keyframes.splice(1, 0, {
+      ease: "none",
+      offset: 0.5,
+      values: { x: 30, y: 10 },
+    });
+    assert.equal(compositionEditorDocumentSchema.safeParse(persisted).success, true);
+    assert.throws(() => applyCompositionEditorPatches(persisted, [{
+      animationId: "motion-path-disabled",
+      keyframeIndex: 1,
+      offset: 0.6,
+      type: "animation.update-keyframe",
+    }]), CompositionEditorPatchError);
+    const poseEdited = applyCompositionEditorPatches(persisted, [{
+      animationId: "motion-path-disabled",
+      keyframeIndex: 1,
+      values: { x: 40, y: 10 },
+      type: "animation.update-keyframe",
+    }]);
+    assert.equal(poseEdited.motion.animations[0]!.keyframes[1]!.offset, 0.5);
+  } finally {
+    if (previousFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS;
+    else process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS = previousFlag;
+  }
+});
+
+test("acota el tiempo de paso de puntos interiores sin mover los extremos", () => {
+  const previousFlag = process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS;
+  process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS = "true";
+  try {
+    const document = baseDocument();
+    const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+    const animated = applyCompositionEditorPatches(document, [{
+      animationId: "motion-path-retiming",
+      clipId: video.id,
+      durationSeconds: 0.7,
+      presetId: "SLIDE_IN_LEFT",
+      type: "animation.add-preset",
+    }, {
+      animationId: "motion-path-retiming",
+      offset: 0.5,
+      values: { x: 40, y: -20 },
+      type: "animation.insert-path-point",
+    }]);
+    const retimed = applyCompositionEditorPatches(animated, [{
+      animationId: "motion-path-retiming",
+      ease: "power2.inOut",
+      keyframeIndex: 1,
+      offset: 0.65,
+      type: "animation.update-keyframe",
+    }]);
+    assert.deepEqual(retimed.motion.animations[0]!.keyframes.map((keyframe) => keyframe.offset), [0, 0.65, 1]);
+    assert.equal(retimed.motion.animations[0]!.keyframes[1]!.ease, "power2.inOut");
+    assert.equal(animated.motion.animations[0]!.keyframes[1]!.offset, 0.5);
+    for (const [keyframeIndex, offset] of [[0, 0.25], [2, 0.75], [1, 0.99], [1, 0.01]] as const) {
+      assert.throws(() => applyCompositionEditorPatches(animated, [{
+        animationId: "motion-path-retiming",
+        keyframeIndex,
+        offset,
+        type: "animation.update-keyframe",
+      }]), CompositionEditorPatchError);
+    }
+    assert.equal(compositionEditorPatchRequestSchema.safeParse({
+      operations: [{ animationId: "motion-path-retiming", keyframeIndex: 1, offset: Number.NaN, type: "animation.update-keyframe" }],
+      source: "USER",
+      summary: "Tiempo inválido",
+    }).success, false);
+  } finally {
+    if (previousFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS;
+    else process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS = previousFlag;
+  }
 });
 
 test("ancla los presets de salida al final y conserva sus límites de fase", () => {

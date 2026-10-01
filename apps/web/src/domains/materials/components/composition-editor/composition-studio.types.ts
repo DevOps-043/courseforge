@@ -1,6 +1,7 @@
 import type { CompositionClip, CompositionEditorDocument, CompositionTrack } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionAgentProposalEnvelope } from "@/domains/production/composition-editor/composition-agent-proposal.types";
 import type { CompositionAgentRecoveryMetadata } from "@/domains/production/composition-editor/composition-agent-recovery.service";
+import type { AudioLoudnessAnalysis, AudioWaveformManifest } from "@/domains/production/audio-processing/audio-processing.types";
 
 export type CompositionAgentProposal = CompositionAgentProposalEnvelope & {
   documentHash: string;
@@ -37,6 +38,8 @@ export interface CompositionStudioLesson {
 }
 
 export interface CompositionStudioAsset {
+  audioAnalysis?: AudioLoudnessAnalysis;
+  waveform?: AudioWaveformManifest;
   deckClip?: CompositionClip;
   detachedFromAssetId?: string;
   detachedFromClipId?: string;

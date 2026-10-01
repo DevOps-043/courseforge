@@ -19,6 +19,7 @@ interface UseCompositionAgentProposalControllerOptions {
   onMutationFinished: () => void;
   onMutationStarted: (optimisticPayload: CompositionDocumentPayload) => void;
   onMutationSucceeded: (payload: CompositionDocumentPayload) => void;
+  onPreviewDismissed: () => void;
   selectedClipId: string | null;
 }
 
@@ -31,6 +32,7 @@ export function useCompositionAgentProposalController({
   onMutationFinished,
   onMutationStarted,
   onMutationSucceeded,
+  onPreviewDismissed,
   selectedClipId,
 }: UseCompositionAgentProposalControllerOptions) {
   const [agentProposal, setAgentProposal] = useState<CompositionAgentProposal | null>(null);
@@ -111,14 +113,15 @@ export function useCompositionAgentProposalController({
 
   const dismissAgentProposal = useCallback(async () => {
     const proposal = agentProposal;
+    if (!proposal || isSaveInFlight()) return;
+    onPreviewDismissed();
     setAgentProposal(null);
-    if (!proposal) return;
     try {
       await fetch(`/api/production/hyperframes/drafts/${draftId}/agent-proposals/${proposal.proposalId}`, { method: "DELETE" });
     } catch {
       // The durable proposal expires and cannot mutate the document without its unguessable id.
     }
-  }, [agentProposal, draftId]);
+  }, [agentProposal, draftId, isSaveInFlight, onPreviewDismissed]);
 
   const undoLastAgentProposal = useCallback(async () => {
     const proposal = lastAppliedAgentProposal;

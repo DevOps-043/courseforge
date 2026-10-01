@@ -9,9 +9,14 @@ import {
 test("classifies visual, timeline and structural operations explicitly", () => {
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.layout" }), "LIVE_DOM");
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.trim" }), "LIVE_TIMELINE");
+  assert.equal(classifyCompositionPreviewOperation({ type: "animation.insert-path-point" }), "LIVE_TIMELINE");
+  assert.equal(classifyCompositionPreviewOperation({ type: "animation.remove-path-point" }), "LIVE_TIMELINE");
+  assert.equal(classifyCompositionPreviewOperation({ type: "clip.playback-rate" }), "FULL_RELOAD");
+  assert.equal(classifyCompositionPreviewOperation({ type: "clip.freeze-tail" }), "FULL_RELOAD");
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.color-grading" }), "LIVE_DOM");
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.audio-fades" }), "FULL_RELOAD");
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.add" }), "FULL_RELOAD");
+  assert.equal(classifyCompositionPreviewOperation({ type: "clip.replace-source" }), "FULL_RELOAD");
   assert.equal(classifyCompositionPreviewOperation({ type: "document.reconcile" }), "FULL_RELOAD");
   assert.equal(classifyCompositionPreviewOperation({ type: "track.update" }), "FULL_RELOAD");
   assert.equal(classifyCompositionPreviewOperation({ type: "future.unknown" }), "FULL_RELOAD");

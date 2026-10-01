@@ -6,6 +6,7 @@ import type {
 import {
   DEFAULT_NATIVE_TEXT_STYLE,
   DEFAULT_TRANSPARENT_CAPTION_STYLE,
+  compositionCaptionCueSchema,
 } from "./composition-text-layer.types";
 
 export type NativeOverlayKind = "CAPTION" | "TEXT";
@@ -42,6 +43,9 @@ export function createCompositionNativeOverlay(params: {
   };
 
   const isCaption = kind === "CAPTION";
+  const initialCueCandidate = `${id}-cue-1`;
+  // Cue IDs are scoped by their clip; preserve legacy IDs when valid without overflowing the schema.
+  const initialCueId = compositionCaptionCueSchema.shape.id.safeParse(initialCueCandidate).success ? initialCueCandidate : "cue-1";
   const width = Math.min(document.canvas.width * 0.84, 1_440);
   const height = isCaption ? Math.min(220, document.canvas.height * 0.22) : Math.min(300, document.canvas.height * 0.3);
   const clip: CompositionClip = {
@@ -66,7 +70,7 @@ export function createCompositionNativeOverlay(params: {
       ? {
         cues: [{
           endSeconds: durationSeconds,
-          id: `${id}-cue-1`,
+          id: initialCueId,
           startSeconds: 0,
           text: "Escribe tu caption",
         }],

@@ -5,6 +5,8 @@ export const COMPOSITION_MOTION_SCHEMA_VERSION = 2 as const;
 export const LEGACY_COMPOSITION_MOTION_SCHEMA_VERSION = 1 as const;
 export const COMPOSITION_MOTION_MAX_ANIMATIONS = 200;
 export const COMPOSITION_MOTION_MAX_KEYFRAMES = 50;
+export const COMPOSITION_SIMPLE_PATH_MAX_KEYFRAMES = 8;
+export const COMPOSITION_SIMPLE_PATH_MIN_OFFSET_GAP = 0.02;
 
 export const COMPOSITION_MOTION_EASES = [
   "none",
@@ -121,12 +123,12 @@ export const compositionAnimationSchema = z.object({
 });
 
 export const compositionMotionSchema = z.object({
-  animations: z.array(compositionAnimationSchema).max(COMPOSITION_MOTION_MAX_ANIMATIONS).default([]),
+  animations: z.array(compositionAnimationSchema).max(COMPOSITION_MOTION_MAX_ANIMATIONS).default(() => []),
   schemaVersion: z.union([
     z.literal(LEGACY_COMPOSITION_MOTION_SCHEMA_VERSION),
     z.literal(COMPOSITION_MOTION_SCHEMA_VERSION),
   ]).default(COMPOSITION_MOTION_SCHEMA_VERSION),
-}).strict().default({ animations: [], schemaVersion: COMPOSITION_MOTION_SCHEMA_VERSION });
+}).strict().default(() => ({ animations: [], schemaVersion: COMPOSITION_MOTION_SCHEMA_VERSION }));
 
 export type CompositionAnimation = z.infer<typeof compositionAnimationSchema>;
 export type CompositionMotion = z.infer<typeof compositionMotionSchema>;

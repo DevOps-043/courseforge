@@ -18,6 +18,8 @@ interface CompositionPreviewViewportProps {
   fps: number;
   frameRef: RefObject<HTMLIFrameElement | null>;
   onBeginScrub: PointerEventHandler<HTMLInputElement>;
+  onFrameError: () => void;
+  onFrameLoad: () => void;
   onPlaySelectedAnimation: () => void;
   onRefreshDocument: () => void;
   onRefreshMedia: () => void;
@@ -26,11 +28,13 @@ interface CompositionPreviewViewportProps {
   onTogglePlayback: () => void;
   pendingMediaCount: number;
   playbackError: string | null;
+  previewErrorActionLabel: string | null;
   presetPreviewActive: boolean;
   previewDirty: boolean;
   previewMediaState: "BUFFERING" | "PLAYING" | "PREPARING" | "READY";
   previewReady: boolean;
   previewUrl: string;
+  safeAreasVisible: boolean;
   saving: boolean;
   scenes: CompositionSceneSummary[];
   seconds: number;
@@ -38,7 +42,7 @@ interface CompositionPreviewViewportProps {
   transportActive: boolean;
 }
 
-export function CompositionPreviewViewport({ activeSceneId, agentProposalActive, canvasHeight, canvasWidth, comparisonActive, comparisonBaselineFrameRef, comparisonBaselineLoading, comparisonBaselineUrl, duration, fps, frameRef, onBeginScrub, onPlaySelectedAnimation, onRefreshDocument, onRefreshMedia, onSceneSelect, onSeek, onTogglePlayback, pendingMediaCount, playbackError, presetPreviewActive, previewDirty, previewMediaState, previewReady, previewUrl, saving, scenes, seconds, selectedAnimationId, transportActive }: CompositionPreviewViewportProps) {
+export function CompositionPreviewViewport({ activeSceneId, agentProposalActive, canvasHeight, canvasWidth, comparisonActive, comparisonBaselineFrameRef, comparisonBaselineLoading, comparisonBaselineUrl, duration, fps, frameRef, onBeginScrub, onFrameError, onFrameLoad, onPlaySelectedAnimation, onRefreshDocument, onRefreshMedia, onSceneSelect, onSeek, onTogglePlayback, pendingMediaCount, playbackError, previewErrorActionLabel, presetPreviewActive, previewDirty, previewMediaState, previewReady, previewUrl, safeAreasVisible, saving, scenes, seconds, selectedAnimationId, transportActive }: CompositionPreviewViewportProps) {
   const frameStyle = {
     "--composition-aspect-ratio": canvasWidth / canvasHeight,
     aspectRatio: `${canvasWidth} / ${canvasHeight}`,
@@ -77,7 +81,13 @@ export function CompositionPreviewViewport({ activeSceneId, agentProposalActive,
           {comparisonActive && <div className={styles.comparisonHeader}><div><strong>Después</strong><small>Preview actual con cambios</small></div></div>}
           <div className={styles.previewStage}>
             <div className={styles.previewFrame} style={frameStyle}>
-              <iframe ref={frameRef} title="Preview completo de composición" src={previewUrl} sandbox="allow-scripts" allow="autoplay" className="absolute inset-0 h-full w-full" />
+              <iframe ref={frameRef} title="Preview completo de composición" src={previewUrl} onError={onFrameError} onLoad={onFrameLoad} sandbox="allow-scripts" allow="autoplay" className="absolute inset-0 h-full w-full" />
+              {safeAreasVisible && <div aria-hidden="true" className={styles.safeAreaOverlay}>
+                <span className={styles.safeActionArea} />
+                <span className={styles.safeTitleArea} />
+                <span className={styles.safeCenterHorizontal} />
+                <span className={styles.safeCenterVertical} />
+              </div>}
               {previewMediaState === "PREPARING" && <div className={styles.mediaPreparing}><div className={styles.mediaStatus}><Loader2 className="animate-spin" size={15} /> Preparando medios{pendingMediaCount > 0 ? ` (${pendingMediaCount})` : ""}…</div></div>}
               {previewMediaState === "BUFFERING" && <div className={styles.mediaBuffering}><span className={styles.mediaStatus}><Loader2 className="animate-spin" size={13} /> Cargando medio{pendingMediaCount > 1 ? ` (${pendingMediaCount})` : ""}…</span></div>}
             </div>
@@ -85,7 +95,7 @@ export function CompositionPreviewViewport({ activeSceneId, agentProposalActive,
         </section>
       </div>
     </div>
-    {playbackError && <div role="alert" className="flex items-center justify-between gap-3 border-t border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-300/30 dark:bg-amber-400/10 dark:text-amber-100"><span>{playbackError}</span><button type="button" onClick={onRefreshMedia} className="shrink-0 rounded border border-amber-400/50 px-2 py-1 font-semibold hover:bg-amber-100 dark:border-amber-200/50 dark:hover:bg-amber-200/10">Recargar medios</button></div>}
+    {playbackError && <div role="alert" className="flex items-center justify-between gap-3 border-t border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-300/30 dark:bg-amber-400/10 dark:text-amber-100"><span>{playbackError}</span>{previewErrorActionLabel && <button type="button" onClick={onRefreshMedia} className="shrink-0 rounded border border-amber-400/50 px-2 py-1 font-semibold hover:bg-amber-100 dark:border-amber-200/50 dark:hover:bg-amber-200/10">{previewErrorActionLabel}</button>}</div>}
     <div className={styles.transport}>
       {selectedAnimationId && <button type="button" disabled={saving || !previewReady} onClick={onPlaySelectedAnimation} className={styles.toolButton}>Ver animación</button>}
       <button type="button" disabled={saving || !previewReady || previewMediaState === "PREPARING"} onClick={onTogglePlayback} title={previewDirty ? "Actualizar el preview y reproducir" : transportActive ? "Pausar" : "Reproducir"} className={styles.transportPrimary}>{transportActive ? <Pause size={14} /> : <Play size={14} />}</button>

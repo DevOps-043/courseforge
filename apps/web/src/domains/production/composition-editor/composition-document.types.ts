@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { COMPOSITION_VIDEO_PLAYBACK_RATES, videoRateSourceWindowFits } from "./composition-video-rate";
+import { COMPOSITION_VIDEO_FREEZE_TOLERANCE_SECONDS, COMPOSITION_VIDEO_MAX_FREEZE_SECONDS, resolveVideoFreezeTailSeconds } from "./composition-video-freeze";
 import { ANIMATED_DECK_APPEARANCES } from "../animated-deck/animated-deck-appearance.service";
 import {
   COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS,
@@ -218,6 +220,10 @@ export const compositionClipSchema = z.object({
   ]),
   sourceDurationSeconds: sourceMediaSecondsSchema.positive().optional(),
   sourceOffsetSeconds: sourceMediaSecondsSchema.optional(),
+  /** Source seconds consumed per timeline second; only bounded silent video supports this. */
+  playbackRate: z.union(COMPOSITION_VIDEO_PLAYBACK_RATES.map((rate) => z.literal(rate))).optional(),
+  /** Seconds for which a non-looping silent video holds its final source frame. */
+  freezeTailSeconds: z.number().finite().positive().max(COMPOSITION_VIDEO_MAX_FREEZE_SECONDS).optional(),
   startSeconds: boundedSecondsSchema,
   timingSource: z.enum(["ESTIMATED", "USER_EDITED"]),
   trackId: editorIdSchema,
@@ -245,6 +251,36 @@ export const compositionClipSchema = z.object({
     && (clip.sourceOffsetSeconds || 0) + clip.durationSeconds > clip.sourceDurationSeconds + 0.001
   ) {
     context.addIssue({ code: "custom", message: "El recorte de audio excede la duración disponible del asset." });
+  }
+  if (clip.playbackRate !== undefined && (
+    clip.kind !== "VIDEO"
+    || clip.source.type !== "PRODUCTION_ASSET"
+    || clip.source.hasAudio !== false
+    || clip.sourceDurationSeconds === undefined
+    || !videoRateSourceWindowFits({
+      clipDurationSeconds: clip.durationSeconds,
+      playbackRate: clip.playbackRate,
+      sourceDurationSeconds: clip.sourceDurationSeconds || 0,
+      sourceOffsetSeconds: clip.sourceOffsetSeconds || 0,
+    })
+  )) {
+    context.addIssue({ code: "custom", message: "La velocidad requiere video sin audio y un rango de fuente suficiente." });
+  }
+  const resolvedFreezeTailSeconds = clip.sourceDurationSeconds === undefined ? null : resolveVideoFreezeTailSeconds({
+    clipDurationSeconds: clip.durationSeconds,
+    sourceDurationSeconds: clip.sourceDurationSeconds,
+    sourceOffsetSeconds: clip.sourceOffsetSeconds || 0,
+  });
+  if (clip.freezeTailSeconds !== undefined && (
+    clip.kind !== "VIDEO"
+    || clip.source.type !== "PRODUCTION_ASSET"
+    || clip.source.hasAudio !== false
+    || clip.playbackRate !== undefined
+    || clip.sourceDurationSeconds === undefined
+    || resolvedFreezeTailSeconds === null
+    || Math.abs(resolvedFreezeTailSeconds - clip.freezeTailSeconds) > COMPOSITION_VIDEO_FREEZE_TOLERANCE_SECONDS
+  )) {
+    context.addIssue({ code: "custom", message: "La congelación requiere el último frame de un video sin audio y una duración de cola válida." });
   }
   if (clip.kind === "DECK_SLIDE" && clip.source.type !== "DECK_SLIDE") {
     context.addIssue({ code: "custom", message: "Un clip de deck debe conservar su fuente HTML." });
@@ -336,6 +372,7 @@ export const compositionEditorDocumentSchema = z.object({
     context.addIssue({ code: "custom", message: "Las capas de texto y captions requieren el contrato courseforge-composition-v3." });
   }
   const trackIds = new Set(document.tracks.map((track) => track.id));
+  const tracksById = new Map(document.tracks.map((track) => [track.id, track]));
   const clipIds = new Set<string>();
   const hfIds = new Set<string>();
   for (const clip of document.clips) {
@@ -363,6 +400,26 @@ export const compositionEditorDocumentSchema = z.object({
     if (hfIds.has(clip.hfId)) context.addIssue({ code: "custom", message: `El id visual ${clip.hfId} está duplicado.` });
     clipIds.add(clip.id);
     hfIds.add(clip.hfId);
+    if (clip.playbackRate !== undefined && (
+      clip.sceneId !== undefined
+      || (tracksById.get(clip.trackId)?.semanticRole !== "BROLL"
+        && tracksById.get(clip.trackId)?.semanticRole !== "VISUAL")
+    )) {
+      context.addIssue({ code: "custom", message: `El clip ${clip.id} con velocidad ajustada debe ser B-roll independiente.` });
+    }
+    if (clip.playbackRate !== undefined && document.transitions?.items.some((transition) => (
+      transition.fromClipId === clip.id || transition.toClipId === clip.id
+    ))) {
+      context.addIssue({ code: "custom", message: `El clip ${clip.id} con velocidad ajustada no admite transiciones.` });
+    }
+    if (clip.freezeTailSeconds !== undefined && (
+      clip.sceneId !== undefined
+      || (tracksById.get(clip.trackId)?.semanticRole !== "BROLL"
+        && tracksById.get(clip.trackId)?.semanticRole !== "VISUAL")
+      || document.transitions?.items.some((transition) => transition.fromClipId === clip.id || transition.toClipId === clip.id)
+    )) {
+      context.addIssue({ code: "custom", message: `El clip ${clip.id} congelado debe ser B-roll independiente y sin transiciones.` });
+    }
   }
   const groupIds = new Set<string>();
   const groupedClipIds = new Set<string>();

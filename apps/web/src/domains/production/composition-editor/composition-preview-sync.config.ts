@@ -13,3 +13,8 @@ export const COMPOSITION_PREVIEW_SAVE_QUEUE_CONFIG = {
 export const COMPOSITION_PREVIEW_RUNTIME_PATCH_CONFIG = {
   acknowledgementTimeoutMs: 750,
 } as const;
+
+export const COMPOSITION_PREVIEW_DOCUMENT_READY_CONFIG = {
+  acknowledgementTimeoutMs: 30_000,
+  runtimeHandshakeAfterLoadMs: 5_000,
+} as const;

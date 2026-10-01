@@ -12,6 +12,7 @@ import { validateCompositionAgentSimulation, CompositionAgentValidationError } f
 import { normalizeCompositionDocumentLayerDepths } from "./composition-layer-depth";
 import { readReadyLinkedSoundEffectAssetIds } from "./composition-sound-effect-assets.service";
 import { isCompositionDocumentHash } from "./composition-preview-comparison";
+import { isUsableCompositionReplacementAsset, replacementAssetStoragePath, type CompositionReplacementAssetRecord } from "./composition-replacement-asset";
 
 export class CompositionDocumentError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -103,6 +104,8 @@ export async function getCompositionDocumentByHash(params: {
     .eq("draft_id", params.draftId)
     .eq("organization_id", params.organizationId)
     .eq("document_hash", params.documentHash.toLowerCase())
+    .order("version", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (error) throw error;
   if (!data) throw new CompositionDocumentError("La versión de comparación ya no está disponible.", 404);
@@ -161,7 +164,7 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
   }
   const current = await getCurrentCompositionDocument(params);
   if (current.documentHash !== params.expectedDocumentHash) throw new CompositionDocumentConflictError(current);
-  await assertAddedAssetsBelongToDraft(params);
+  await assertReferencedAssetsBelongToDraft(params);
   if (current.document.sourceInsertionMode === "MANUAL") {
     const addedHtml = params.patch.operations.flatMap((operation) => operation.type === "clip.add" && operation.clip.source.type === "DECK_SLIDE" ? [operation.clip] : []);
     if (addedHtml.length) {
@@ -273,8 +276,8 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
   };
 }
 
-/** Prevents a client from inserting an arbitrary asset id into a draft document. */
-async function assertAddedAssetsBelongToDraft(params: {
+/** Prevents add, replace and restore from referencing assets outside this draft. */
+async function assertReferencedAssetsBelongToDraft(params: {
   draftId: string;
   organizationId: string;
   patch: CompositionEditorPatchRequest;
@@ -284,6 +287,7 @@ async function assertAddedAssetsBelongToDraft(params: {
     if (operation.type === "clip.add" && operation.clip.source.type === "PRODUCTION_ASSET") {
       return [operation.clip.source.productionAssetId];
     }
+    if (operation.type === "clip.replace-source") return [operation.productionAssetId];
     if (operation.type === "document.restore" || operation.type === "document.reconcile") {
       return operation.document.clips.flatMap((clip) => (
         clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []
@@ -334,6 +338,54 @@ async function assertAddedAssetsBelongToDraft(params: {
   const linkedIds = new Set((data || []).map((row: { production_asset_id: string }) => row.production_asset_id));
   if (assetIds.some((assetId) => !linkedIds.has(assetId))) {
     throw new CompositionDocumentError("El asset seleccionado no está vinculado a este borrador.");
+  }
+  const replacements = params.patch.operations.filter((operation) => operation.type === "clip.replace-source");
+  if (replacements.length > 0) {
+    const replacementIds = [...new Set(replacements.map((operation) => operation.productionAssetId))];
+    const { data: registry, error: registryError } = await params.supabase.from("production_assets")
+      .select("id, checksum, file_size_bytes, mime_type, duration_milliseconds, duration_seconds, metadata, qa_status, storage_bucket, storage_path")
+      .eq("organization_id", params.organizationId)
+      .in("id", replacementIds);
+    if (registryError) throw registryError;
+    const byId = new Map((registry || []).map((row: { id: string }) => [row.id, row]));
+    const validatedAssets = new Map<string, CompositionReplacementAssetRecord>();
+    for (const operation of replacements) {
+      const asset = byId.get(operation.productionAssetId) as (CompositionReplacementAssetRecord & {
+        duration_milliseconds: number | null;
+        duration_seconds: number | null;
+      }) | undefined;
+      if (!asset || !isUsableCompositionReplacementAsset(asset)) {
+        throw new CompositionDocumentError("El medio de reemplazo no está disponible.", 422);
+      }
+      validatedAssets.set(operation.productionAssetId, asset);
+      // Never trust media metadata submitted by the browser: normalize from
+      // the tenant-scoped registry before applying and persisting the patch.
+      operation.mimeType = asset.mime_type!;
+      const duration = typeof asset.duration_milliseconds === "number" && asset.duration_milliseconds > 0
+        ? asset.duration_milliseconds / 1000 : asset.duration_seconds;
+      if (typeof duration === "number" && duration > 0) operation.sourceDurationSeconds = duration;
+      else delete operation.sourceDurationSeconds;
+      const metadata = asset.metadata || {};
+      operation.hasAudio = typeof metadata.has_audio === "boolean" ? metadata.has_audio : undefined;
+      operation.sourceWidth = typeof metadata.source_width === "number" ? metadata.source_width : undefined;
+      operation.sourceHeight = typeof metadata.source_height === "number" ? metadata.source_height : undefined;
+    }
+    // Check only replacement candidates, not every existing clip. This also
+    // permits relinking a clip whose previous object has disappeared.
+    for (const asset of validatedAssets.values()) {
+      const storageResult = await params.supabase.storage.from(asset.storage_bucket!).info(replacementAssetStoragePath(asset))
+        .catch(() => {
+          throw new CompositionDocumentPersistenceError("No se pudo verificar el archivo de reemplazo. Inténtalo de nuevo.", "COMPOSITION_REPLACEMENT_STORAGE_UNAVAILABLE", 503, true);
+        });
+      const { data: storedObject, error: storageError } = storageResult;
+      if (storageError) {
+        if (storageError.status === 404) throw new CompositionDocumentError("El archivo de reemplazo ya no existe en Storage.", 422);
+        throw new CompositionDocumentPersistenceError("No se pudo verificar el archivo de reemplazo. Inténtalo de nuevo.", "COMPOSITION_REPLACEMENT_STORAGE_UNAVAILABLE", 503, true);
+      }
+      if (!storedObject || (typeof storedObject.size === "number" && storedObject.size !== asset.file_size_bytes)) {
+        throw new CompositionDocumentError("El archivo de reemplazo no coincide con el registro de medios.", 422);
+      }
+    }
   }
   const linkedBrandingIds = new Set([branding?.intro_asset_id, branding?.outro_asset_id].filter((id): id is string => typeof id === "string"));
   if (brandingAssetIds.some((assetId) => !linkedBrandingIds.has(assetId))) {

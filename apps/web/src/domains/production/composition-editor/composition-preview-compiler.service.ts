@@ -13,14 +13,17 @@ import {
 } from "./composition-native-overlay-renderer.service";
 import { normalizeCompositionColorGrading, type CompositionColorGrading } from "./composition-color-grading.types";
 import { buildCompositionMotionRuntime } from "./composition-motion-runtime";
+import { scheduleCompositionMotion } from "./composition-motion-timeline";
+import { scheduleCompositionTransitions } from "./composition-transition-timeline";
+import { COMPOSITION_TRANSITION_OVERLAY_Z_INDEX } from "./composition-transition-render-policy";
 import {
-  buildCompositionVolumeAutomations,
   type CompositionClipVolumeAutomation,
 } from "./composition-audio-mix.service";
+import { buildCompositionPlaybackVolumeAutomations, COMPOSITION_PLAYBACK_AUDIO_ENVELOPE_VERSION } from "./composition-playback-audio-envelope";
 import { resolveCompositionCropInsets } from "./composition-visual-crop.service";
 import {
   compositionClipHasConfigurableAudio,
-  resolveCompositionClipAudioVolume,
+  compositionDocumentHasAudibleMedia,
 } from "./composition-clip-audio.service";
 import { buildCompositionTimelineLayout } from "./composition-timeline-layout.service";
 import {
@@ -29,6 +32,8 @@ import {
   type CompositionTransitionRuntimeItem,
 } from "./composition-transition-runtime";
 import { COMPOSITION_PREVIEW_PROTOCOL_VERSION } from "./composition-preview-protocol";
+import { areCompositionAudioMetersEnabled, renderCompositionAudioMeterRuntime } from "./composition-audio-meter-runtime";
+import { COMPOSITION_PREVIEW_MAX_GENERATION } from "./composition-preview-comparison";
 import {
   resolveCompositionPreviewAspectAnchor,
   resolveCompositionPreviewClipVolume,
@@ -106,10 +111,19 @@ export async function compileCompositionPreview(params: {
   documentHash?: string;
   fontAssets?: Map<string, CompositionCompiledFont>;
   onDiagnostics?: (diagnostics: CompositionPreviewCompilerDiagnostics) => void;
+  previewGeneration?: number | null;
+  audioMetersEnabled?: boolean;
   target?: CompositionCompilationTarget;
 }) {
+  if (params.previewGeneration !== undefined && params.previewGeneration !== null
+    && (!Number.isInteger(params.previewGeneration)
+      || params.previewGeneration < 0
+      || params.previewGeneration > COMPOSITION_PREVIEW_MAX_GENERATION)) {
+    throw new CompositionPreviewCompilerError("La generación del preview no es válida.");
+  }
   const target = params.target || COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW;
   const isInteractivePreview = target === COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW;
+  const audioMetersEnabled = isInteractivePreview && (params.audioMetersEnabled ?? areCompositionAudioMetersEnabled());
   const viewportBackground = isInteractivePreview ? "transparent" : "#020617";
   const animationRuntime = isInteractivePreview ? await readCompositionAnimationRuntime() : null;
   const { document } = params;
@@ -139,13 +153,8 @@ export async function compileCompositionPreview(params: {
     );
   }
   const timelineLayout = buildCompositionTimelineLayout(document);
-  const volumeAutomations = buildCompositionVolumeAutomations(document);
+  const volumeAutomations = buildCompositionPlaybackVolumeAutomations(document, transitionRuntime);
   const automatedClipIds = new Set(volumeAutomations.map((automation) => automation.targetClipId));
-  for (const transition of transitionRuntime.items) {
-    if (transition.audioMode !== "CROSSFADE") continue;
-    automatedClipIds.add(transition.fromClipId);
-    automatedClipIds.add(transition.toClipId);
-  }
   const deckStyles = document.deckStyles
     ? `${document.deckStyles.fontUrls.map((url) => `@import url(${JSON.stringify(replaceUrls(url, params.deckAssetUrls))});`).join("\n")}\n${replaceUrls(repairLegacyAnimatedDeckAppearanceSelectors(document.deckStyles.css), params.deckAssetUrls)}`
     : "";
@@ -169,15 +178,11 @@ export async function compileCompositionPreview(params: {
       transitionRuntime.clipWindowsById.get(clip.id),
       transitionRuntime.audioWindowsByClipId.get(clip.id),
       serializeColorGrading,
+      audioMetersEnabled,
     ))
     .join("\n");
   const transitionOverlays = renderTransitionOverlays(transitionRuntime.items);
-  const hasAudibleMedia = document.clips.some((clip) => {
-    const track = tracksById.get(clip.trackId);
-    return !clip.hidden && !track?.hidden && !track?.muted
-      && compositionClipHasConfigurableAudio(clip, track)
-      && resolveCompositionClipAudioVolume(clip, track) > 0;
-  });
+  const hasAudibleMedia = compositionDocumentHasAudibleMedia(document);
   return `<!doctype html>
 <html lang="es" data-color-grading-runtime="${colorGradingRuntimeState.toLowerCase()}"${renderHyperframesCompositionVariables(target, params.assetVariableNames)}>
 <head>
@@ -196,6 +201,10 @@ export async function compileCompositionPreview(params: {
     .composition-editor-control { position: absolute; z-index: 2147483647; display: grid; width: 22px; height: 22px; padding: 0; place-items: center; border: 2px solid #fff; border-radius: 5px; color: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.65); cursor: pointer; pointer-events: auto; }
     .composition-move-handle { left: 0; top: 0; background: #0e7490; font: 700 15px/1 system-ui, sans-serif; cursor: move; transform: scale(var(--editor-control-scale)); transform-origin: top left; }
     .composition-resize-handle { right: 0; bottom: 0; background: #0891b2; font: 800 14px/1 system-ui, sans-serif; cursor: nwse-resize; transform: scale(var(--editor-control-scale)); transform-origin: bottom right; }
+    .composition-selection-marquee { position: absolute; z-index: 2147483646; border: 2px solid rgba(34,211,238,.95); background: rgba(34,211,238,.16); box-shadow: 0 0 0 1px rgba(255,255,255,.5); pointer-events: none; }
+    .composition-smart-guide { position: absolute; z-index: 2147483646; background: rgba(244,63,94,.95); box-shadow: 0 0 0 1px rgba(255,255,255,.65); pointer-events: none; }
+    .composition-smart-guide[data-axis="x"] { top: 0; bottom: 0; width: 1px; }
+    .composition-smart-guide[data-axis="y"] { right: 0; left: 0; height: 1px; }
     .clip-content[data-crop-mode="true"] { cursor: grab; }
     .clip-content[data-crop-mode="true"]:active { cursor: grabbing; }
     .clip-content[data-crop-mode="true"]::before { content: ""; position: absolute; inset: var(--crop-top, 0px) var(--crop-right, 0px) var(--crop-bottom, 0px) var(--crop-left, 0px); z-index: 2147483645; pointer-events: none; background-image: linear-gradient(to right, transparent 33.1%, rgba(255,255,255,.7) 33.2%, rgba(255,255,255,.7) 33.5%, transparent 33.6%, transparent 66.4%, rgba(255,255,255,.7) 66.5%, rgba(255,255,255,.7) 66.8%, transparent 66.9%), linear-gradient(to bottom, transparent 33.1%, rgba(255,255,255,.7) 33.2%, rgba(255,255,255,.7) 33.5%, transparent 33.6%, transparent 66.4%, rgba(255,255,255,.7) 66.5%, rgba(255,255,255,.7) 66.8%, transparent 66.9%); box-shadow: 0 0 0 9999px rgba(2,6,23,.58), inset 0 0 0 var(--editor-outline-width) #f59e0b; }
@@ -207,7 +216,7 @@ export async function compileCompositionPreview(params: {
     .composition-media { width: 100%; height: 100%; object-fit: cover; display: block; filter: var(--courseforge-color-filter, none); }
     .clip-content[data-media-fit="CONTAIN"] .composition-media { object-fit: contain; }
     .composition-audio { display: none; }
-    .composition-transition-overlay { position: absolute; inset: 0; z-index: 100000; visibility: hidden; opacity: 0; pointer-events: none; }
+    .composition-transition-overlay { position: absolute; inset: 0; z-index: ${COMPOSITION_TRANSITION_OVERLAY_Z_INDEX}; visibility: hidden; opacity: 0; pointer-events: none; }
     ${isInteractivePreview ? `.composition-audio-unlock { position: absolute; left: 50%; bottom: 28px; z-index: 2147483647; display: none; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: rgba(2,6,23,.92); color: #fff; padding: 12px 18px; font: 700 16px/1 system-ui, sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,.4); cursor: pointer; }
     .composition-audio-unlock[data-visible="true"] { display: block; }` : ""}
     .deck-content { overflow: hidden; }
@@ -228,7 +237,7 @@ export async function compileCompositionPreview(params: {
   ${animationRuntime ? `<script>${animationRuntime}</script>` : '<script src="assets/gsap.min.js"></script>'}
   ${colorGradingRuntime ? `<script>${colorGradingRuntime}</script>` : ""}
   ${renderTimelineInitializer(document, volumeAutomations, transitionRuntime)}
-  ${isInteractivePreview ? renderInteractivePreviewController(document, params.documentHash) : ""}
+  ${isInteractivePreview ? renderInteractivePreviewController(document, params.documentHash, params.previewGeneration, audioMetersEnabled) : ""}
 </body>
 </html>`;
 }
@@ -248,8 +257,10 @@ function renderClip(
   runtimeWindow: CompositionTransitionRuntimeClipWindow | undefined,
   audioRuntimeWindow: CompositionTransitionRuntimeClipWindow | undefined,
   serializeColorGrading: HfColorGradingSerializer | null,
+  audioMetersEnabled: boolean,
 ) {
   const isHyperframesRender = target === COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER;
+  const audioCrossOrigin = audioMetersEnabled ? ' crossorigin="anonymous"' : "";
   const layout = `left:${clip.layout.x}px;top:${clip.layout.y}px;width:${clip.layout.width}px;height:${clip.layout.height}px;opacity:${clip.layout.opacity};z-index:${clip.layout.zIndex};transform:rotate(${clip.layout.rotation}deg);`;
   const mediaFit = resolveCompositionPreviewMediaFit(clip, track);
   const aspectAnchor = resolveCompositionPreviewAspectAnchor(mediaFit, track);
@@ -302,18 +313,20 @@ function renderClip(
     : undefined;
   if (!sourceUrl && !variableName) throw new CompositionPreviewCompilerError(`No existe URL de preview para el asset ${mediaAssetId}.`);
   const mediaSource = renderMediaSourceAttribute(sourceUrl, variableName);
+  const videoRate = clip.playbackRate === undefined ? "" : ` data-playback-rate="${clip.playbackRate}"`;
+  const videoLoop = clip.playbackRate === undefined && clip.freezeTailSeconds === undefined ? " loop" : "";
   if (clip.kind === "AUDIO") {
-    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${hidden}${volumeAutomation} ${canonicalMediaOffset} data-volume="${volume}" ${mediaSource} preload="metadata" ${canonicalTiming} data-track-index="${runtimeTrackIndex}"></audio>`;
+    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${audioCrossOrigin}${hidden}${volumeAutomation} ${canonicalMediaOffset} data-volume="${volume}" ${mediaSource} preload="metadata" ${canonicalTiming} data-track-index="${runtimeTrackIndex}"></audio>`;
   }
   if (clip.kind === "VIDEO" && isHyperframesRender) {
-    const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" crossorigin="anonymous" ${mediaSource}${colorGrading} muted playsinline loop preload="metadata" ${visualMediaOffset}${hidden} ${visualTiming}></video>`;
+    const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" crossorigin="anonymous" ${mediaSource}${colorGrading} muted playsinline${videoLoop}${videoRate} preload="metadata" ${visualMediaOffset}${hidden} ${visualTiming}></video>`;
     const audio = hasSynchronizedVideoAudio
       ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" ${mediaSource} loop preload="metadata" ${audioMediaOffset}${hidden}${volumeAutomation} data-volume="${volume}" ${audioTiming} data-track-index="${requireRuntimeAudioTrackIndex(runtimeAudioTrackIndex, clip.id)}"></audio>`
       : "";
     return `<div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${video}</div></div>${audio}`;
   }
   const media = clip.kind === "VIDEO"
-    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" crossorigin="anonymous" ${mediaSource}${colorGrading} muted playsinline loop preload="metadata" ${visualTiming} ${visualMediaOffset}${hidden}></video>${hasSynchronizedVideoAudio ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${hidden}${volumeAutomation} ${mediaSource} loop preload="metadata" ${audioTiming} ${audioMediaOffset} data-volume="${volume}"></audio>` : ""}`
+    ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" crossorigin="anonymous" ${mediaSource}${colorGrading} muted playsinline${videoLoop}${videoRate} preload="metadata" ${visualTiming} ${visualMediaOffset}${hidden}></video>${hasSynchronizedVideoAudio ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${audioCrossOrigin}${hidden}${volumeAutomation} ${mediaSource} loop preload="metadata" ${audioTiming} ${audioMediaOffset} data-volume="${volume}"></audio>` : ""}`
     : `<img id="${escapeAttribute(clip.id)}-media" class="composition-media" crossorigin="anonymous" ${mediaSource}${colorGrading} alt="" />`;
   return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${media}</div></div></section>`;
 }
@@ -464,87 +477,18 @@ function renderTimelineInitializer(
             );
           }
         }
-        timeline.set(element, { autoAlpha: 0 }, clip.runtimeStart + clip.runtimeDuration + 0.0001);
+        // HyperFrames treats clip intervals as half-open. Hiding at the exact
+        // end frame keeps preview seek and renderSeek identical at boundaries.
+        timeline.set(element, { autoAlpha: 0 }, clip.runtimeStart + clip.runtimeDuration);
       }
       function addTransitions(targetTimeline, transitions) {
-        const pushVectors = {
-          DOWN: { from: { yPercent: 100 }, to: { yPercent: -100 } },
-          LEFT: { from: { xPercent: -100 }, to: { xPercent: 100 } },
-          RIGHT: { from: { xPercent: 100 }, to: { xPercent: -100 } },
-          UP: { from: { yPercent: -100 }, to: { yPercent: 100 } },
-        };
-        const wipeInsets = {
-          DOWN: "inset(100% 0 0 0)",
-          LEFT: "inset(0 0 0 100%)",
-          RIGHT: "inset(0 100% 0 0)",
-          UP: "inset(0 0 100% 0)",
-        };
-        for (const transition of transitions) {
-          const from = document.getElementById(transition.fromClipId);
-          const to = document.getElementById(transition.toClipId);
-          if (!from || !to) continue;
-          const common = {
-            duration: transition.durationSeconds,
-            ease: transition.easing,
-            immediateRender: false,
-          };
-          if (transition.audioMode === "CROSSFADE") {
-            const fromAudio = document.getElementById(transition.fromAudioTargetId);
-            const toAudio = document.getElementById(transition.toAudioTargetId);
-            if (fromAudio && toAudio) {
-              targetTimeline.fromTo(
-                fromAudio,
-                { volume: transition.fromAudioVolume },
-                { volume: 0, duration: transition.durationSeconds, ease: transition.easing, immediateRender: false },
-                transition.startSeconds,
-              );
-              targetTimeline.fromTo(
-                toAudio,
-                { volume: 0 },
-                { volume: transition.toAudioVolume, duration: transition.durationSeconds, ease: transition.easing, immediateRender: false },
-                transition.startSeconds,
-              );
-            }
-          }
-          if (transition.type === "CROSS_DISSOLVE") {
-            targetTimeline.fromTo(from, { autoAlpha: transition.fromOpacity }, { ...common, autoAlpha: 0 }, transition.startSeconds);
-            targetTimeline.fromTo(to, { autoAlpha: 0 }, { ...common, autoAlpha: transition.toOpacity }, transition.startSeconds);
-            continue;
-          }
-          if (transition.type === "BLUR_DISSOLVE") {
-            const blur = Math.max(0, Math.min(40, transition.blurPixels || 0));
-            targetTimeline.fromTo(from, { autoAlpha: transition.fromOpacity, filter: "blur(0px)" }, { ...common, autoAlpha: 0, filter: "blur(" + blur + "px)" }, transition.startSeconds);
-            targetTimeline.fromTo(to, { autoAlpha: 0, filter: "blur(" + blur + "px)" }, { ...common, autoAlpha: transition.toOpacity, filter: "blur(0px)" }, transition.startSeconds);
-            continue;
-          }
-          if (transition.type === "PUSH") {
-            const vector = pushVectors[transition.direction] || pushVectors.LEFT;
-            targetTimeline.fromTo(from, { autoAlpha: transition.fromOpacity, xPercent: 0, yPercent: 0 }, { ...common, ...vector.from, autoAlpha: transition.fromOpacity }, transition.startSeconds);
-            targetTimeline.fromTo(to, { ...vector.to, autoAlpha: transition.toOpacity }, { ...common, autoAlpha: transition.toOpacity, xPercent: 0, yPercent: 0 }, transition.startSeconds);
-            continue;
-          }
-          if (transition.type === "SOFT_WIPE") {
-            const inset = wipeInsets[transition.direction] || wipeInsets.LEFT;
-            targetTimeline.fromTo(from, { autoAlpha: transition.fromOpacity }, { ...common, autoAlpha: 0 }, transition.startSeconds);
-            targetTimeline.fromTo(to, { autoAlpha: transition.toOpacity * 0.35, clipPath: inset }, { ...common, autoAlpha: transition.toOpacity, clipPath: "inset(0% 0% 0% 0%)" }, transition.startSeconds);
-            continue;
-          }
-          if (transition.type === "DIP_TO_COLOR") {
-            const overlay = transition.overlayId ? document.getElementById(transition.overlayId) : null;
-            if (!overlay) continue;
-            const halfDuration = transition.durationSeconds / 2;
-            const midpoint = transition.startSeconds + halfDuration;
-            targetTimeline.set(to, { autoAlpha: 0 }, transition.startSeconds);
-            targetTimeline.to(overlay, { autoAlpha: 1, duration: halfDuration, ease: transition.easing }, transition.startSeconds);
-            targetTimeline.set(from, { autoAlpha: 0 }, midpoint);
-            targetTimeline.set(to, { autoAlpha: transition.toOpacity }, midpoint);
-            targetTimeline.to(overlay, { autoAlpha: 0, duration: halfDuration, ease: transition.easing }, midpoint);
-          }
-        }
+        (${scheduleCompositionTransitions.toString()})(targetTimeline, transitions, (id) => document.getElementById(id));
       }
       addTransitions(timeline, transitionEffects);
+      window.__courseforgeAudioEnvelopeVersion = ${COMPOSITION_PLAYBACK_AUDIO_ENVELOPE_VERSION};
       for (const automation of volumeAutomations) {
-        const media = document.getElementById(automation.targetClipId);
+        const media = document.getElementById(automation.targetClipId + "-audio")
+          || document.getElementById(automation.targetClipId);
         if (!media || automation.points.length === 0) continue;
         timeline.set(media, { volume: automation.points[0].volume }, automation.points[0].timeSeconds);
         for (let index = 1; index < automation.points.length; index += 1) {
@@ -564,48 +508,14 @@ function renderTimelineInitializer(
         }
       }
       function addMotion(timeline, motionAnimations) {
-      for (const animation of motionAnimations) {
-        const target = document.getElementById(animation.targetId);
-        const first = animation.keyframes[0];
-        if (!target || !first) continue;
-        timeline.set(target, first.values, animation.start);
-        if (animation.loop) {
-          const peak = animation.keyframes[1];
-          if (!peak) continue;
-          const cycleDuration = Math.min(animation.loop.cycleDurationSeconds, animation.duration);
-          const fullCycles = Math.floor(animation.duration / cycleDuration);
-          const remainder = animation.duration - fullCycles * cycleDuration;
-          const addFiniteLoop = (start, duration, cycles) => {
-            if (duration <= 0 || cycles <= 0) return;
-            timeline.to(target, {
-              ...peak.values,
-              duration: duration / 2,
-              ease: peak.ease || "none",
-              repeat: Math.max(0, cycles * 2 - 1),
-              yoyo: true,
-            }, start);
-          };
-          addFiniteLoop(animation.start, cycleDuration, fullCycles);
-          // A partial final cycle keeps the pose neutral exactly at the end of the assigned window.
-          addFiniteLoop(animation.start + fullCycles * cycleDuration, remainder, 1);
-          continue;
-        }
-        for (let index = 1; index < animation.keyframes.length; index += 1) {
-          const previous = animation.keyframes[index - 1];
-          const keyframe = animation.keyframes[index];
-          const segmentDuration = (keyframe.offset - previous.offset) * animation.duration;
-          timeline.to(target, {
-            ...keyframe.values,
-            duration: segmentDuration,
-            ease: keyframe.ease || "none",
-          }, animation.start + previous.offset * animation.duration);
-        }
-      }
+        (${scheduleCompositionMotion.toString()})(timeline, motionAnimations, (id) => document.getElementById(id));
       }
       let motionTimeline = gsap.timeline();
       let motionTargets = new Set(motionAnimations.map((animation) => animation.targetId));
       addMotion(motionTimeline, motionAnimations);
       timeline.add(motionTimeline, 0);
+      // Initialize zero-time sets before exposing the timeline to either seek controller.
+      timeline.render(0, true, true);
       window.__courseforgeReplaceMotion = (animations) => {
         const nextTargets = new Set(animations.map((animation) => animation.targetId));
         if ([...nextTargets].some((id) => !document.getElementById(id))) throw new Error("MOTION_TARGET_NOT_FOUND");
@@ -626,7 +536,7 @@ function renderTimelineInitializer(
   </script>`;
 }
 
-function renderInteractivePreviewController(document: CompositionEditorDocument, documentHash?: string) {
+function renderInteractivePreviewController(document: CompositionEditorDocument, documentHash?: string, previewGeneration?: number | null, audioMetersEnabled = false) {
   return `<script>
     (() => {
       const root = document.getElementById("composition-root");
@@ -639,7 +549,10 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
       let snapEnabled = true;
       let previewUserScale = 1;
       let selectedHfId = null;
+      let selectedHfIds = new Set();
       let activeTransform = null;
+      let activeMarquee = null;
+      let suppressNextClick = false;
       let aspectCorrectionTimer = null;
       let playbackTimer = null;
       let playbackActive = false;
@@ -650,12 +563,17 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
       let bufferingMediaIds = [];
       let playRequestedAt = null;
       let currentTime = 0;
+      const deterministicWaapiAnimations = new Set();
+      const deterministicWaapiOrigins = new WeakMap();
       const previewStartedAt = performance.now();
+      const previewGeneration = ${JSON.stringify(previewGeneration ?? null)};
       const postParentMessage = (message) => window.parent.postMessage({
         ...message,
+        previewGeneration,
         protocolVersion: ${COMPOSITION_PREVIEW_PROTOCOL_VERSION},
       }, "*");
       const activeMedia = new Set();
+      ${renderCompositionAudioMeterRuntime(audioMetersEnabled)}
       // Remote previews cannot eagerly download the whole composition. Warm a
       // bounded forward window and hold the transport at the last valid frame
       // whenever active media has not decoded its current frame. Browsers may
@@ -794,6 +712,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
       };
       const timedMedia = () => Array.from(document.querySelectorAll("video[data-start], audio[data-start]"));
       const mediaStart = (media) => Number(media.dataset.start || 0);
+      const mediaRate = (media) => Number(media.dataset.playbackRate || 1);
       const mediaEnd = (media) => mediaStart(media) + Number(media.dataset.duration || 0);
       const mediaParticipatesInPlayback = (media) => media.tagName !== "AUDIO"
         || media.dataset.volumeAutomated === "true"
@@ -810,7 +729,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         const start = mediaStart(media);
         const sourceOffset = Number(media.dataset.sourceOffset || 0);
         const timelineTarget = Math.max(time, start);
-        const rawSourceTime = Math.max(0, sourceOffset + timelineTarget - start);
+        const rawSourceTime = Math.max(0, sourceOffset + (timelineTarget - start) * mediaRate(media));
         const sourceTime = media.loop && Number.isFinite(media.duration) && media.duration > 0
           ? rawSourceTime % media.duration
           : rawSourceTime;
@@ -858,7 +777,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         root?.setAttribute("data-preview-ready", "true");
         emitMediaMetric("preview_initial_ready_ms", previewStartedAt, [...activeMedia].map(mediaIdentity));
         postMediaState("READY");
-        postParentMessage({ type: "courseforge-composition-ready", duration, selectedHfId });
+        postParentMessage({ type: "courseforge-composition-ready", documentHash: compiledDocumentHash, duration, previewGeneration, selectedHfId });
         return true;
       };
       const queueAspectCorrection = (target, layout) => {
@@ -995,6 +914,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
       };
       const enterBuffering = (targetTime, pending = pendingMediaAt(targetTime)) => {
         if (!playbackIntent || pending.length === 0) return false;
+        audioMeters.pause();
         bufferingTargetTime = targetTime;
         if (bufferingStartedAt === null) {
           bufferingStartedAt = performance.now();
@@ -1063,8 +983,10 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
             const volume = Number(media.dataset.volume || 1);
             media.volume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1;
           }
+          let heldVideoTail = false;
           if (Number.isFinite(media.duration) && media.duration > 0) {
-            const sourceTime = Math.max(0, sourceOffset + time - start);
+            const sourceTime = Math.max(0, sourceOffset + (time - start) * mediaRate(media));
+            heldVideoTail = media.tagName === "VIDEO" && !media.loop && sourceTime >= media.duration;
             const next = media.loop ? sourceTime % media.duration : Math.min(media.duration, sourceTime);
             const seekTolerance = forceSeek || entered
               ? MEDIA_FORCED_SEEK_TOLERANCE_SECONDS
@@ -1074,18 +996,59 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
             // buffering recovery that created an endless seek/pause/resume loop.
             if (Math.abs(media.currentTime - next) > seekTolerance) media.currentTime = next;
           }
-          if (playbackActive) requestMediaPlayback(media);
+          if (media.playbackRate !== mediaRate(media)) media.playbackRate = mediaRate(media);
+          if (playbackActive && !heldVideoTail) requestMediaPlayback(media);
           else media.pause();
         });
       };
       const seek = (time, forceMediaSeek = false) => {
         currentTime = Math.max(0, Math.min(duration, Number(time) || 0));
         timeline.seek(currentTime, false);
+        seekDeterministicWaapiAnimations(currentTime);
         applyRuntimeVisibilityOverrides();
         syncMedia(currentTime, forceMediaSeek);
         postParentMessage({ type: "courseforge-composition-time", seconds: currentTime });
       };
+      const captureDeterministicWaapiAnimations = (compositionTimeMs) => {
+        document.getAnimations().forEach((animation) => {
+          if (deterministicWaapiOrigins.has(animation)) return;
+          const observedAnimationTimeMs = Number(animation.currentTime);
+          const animationTimeMs = Number.isFinite(observedAnimationTimeMs)
+            ? (compositionTimeMs > 0 && observedAnimationTimeMs >= compositionTimeMs
+              ? Math.max(0, observedAnimationTimeMs - compositionTimeMs)
+              : observedAnimationTimeMs)
+            : 0;
+          deterministicWaapiOrigins.set(animation, { animationTimeMs, compositionTimeMs });
+          deterministicWaapiAnimations.add(animation);
+        });
+      };
+      const seekDeterministicWaapiAnimations = (time) => {
+        const compositionTimeMs = Math.max(0, time) * 1000;
+        // GSAP can create browser-owned CSS transitions while seeking. Discover
+        // after the master timeline so those transient animations participate
+        // in the same deterministic clock as HyperFrames' WAAPI adapter.
+        captureDeterministicWaapiAnimations(compositionTimeMs);
+        for (const animation of deterministicWaapiAnimations) {
+          const target = animation.effect?.target;
+          if (target instanceof Element && !target.isConnected) {
+            deterministicWaapiAnimations.delete(animation);
+            deterministicWaapiOrigins.delete(animation);
+            continue;
+          }
+          const origin = deterministicWaapiOrigins.get(animation);
+          if (!origin) continue;
+          try {
+            animation.currentTime = origin.animationTimeMs
+              + Math.max(0, compositionTimeMs - origin.compositionTimeMs);
+            animation.pause();
+          } catch {
+            // A detached or browser-owned animation can disappear between
+            // discovery and seek. It must not stop the composition clock.
+          }
+        }
+      };
       const pause = () => {
+        audioMeters.pause();
         playbackIntent = false;
         playbackActive = false;
         bufferingTargetTime = null;
@@ -1107,6 +1070,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         seek(time, true);
       };
       function startPlaybackClock() {
+        void audioMeters.resume();
         if (playbackTimer) window.cancelAnimationFrame(playbackTimer);
         playbackTimer = null;
         playbackActive = true;
@@ -1136,6 +1100,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         startPlaybackClock();
       };
       audioUnlock?.addEventListener("click", () => {
+        if (playbackActive) void audioMeters.resume();
         // This handler executes inside the iframe under a real user gesture,
         // which lets the browser grant playback to its previously blocked audio.
         blockedAudioMedia.clear();
@@ -1146,8 +1111,15 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         else media.addEventListener("loadedmetadata", () => preserveDefaultMediaAspect(media), { once: true });
       });
       bindMediaReadinessListeners();
-      const selectTarget = (target, origin = "PREVIEW") => {
+      const selectTarget = (target, origin = "PREVIEW", requestedHfIds = null) => {
         if (!target) return;
+        const targetHfId = target.dataset.hfId || null;
+        const nextHfIds = new Set(
+          Array.isArray(requestedHfIds)
+            ? requestedHfIds.filter((hfId) => typeof hfId === "string").slice(0, 100)
+            : targetHfId ? [targetHfId] : [],
+        );
+        if (targetHfId) nextHfIds.add(targetHfId);
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => {
           if (node instanceof HTMLElement) applyCrop(node, readCrop(node), false);
         });
@@ -1155,6 +1127,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => node.removeAttribute("data-crop-mode"));
         document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
         target.setAttribute("data-selected", "true");
+        nextHfIds.forEach((hfId) => {
+          document.querySelector('[data-hf-id="' + CSS.escape(hfId) + '"]')?.setAttribute("data-selected", "true");
+        });
         const canCrop = target.dataset.croppable === "true";
         if (cropEnabled && canCrop) {
           target.setAttribute("data-crop-mode", "true");
@@ -1191,9 +1166,10 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           target.appendChild(handle);
         }
         applyCrop(target, readCrop(target), cropEnabled && canCrop);
-        selectedHfId = target.dataset.hfId || null;
+        selectedHfId = targetHfId;
+        selectedHfIds = nextHfIds;
         const box = target.getBoundingClientRect();
-        postParentMessage({ type: "courseforge-composition-selection", hfId: selectedHfId, origin, bounds: { height: box.height, width: box.width, x: box.x, y: box.y } });
+        postParentMessage({ type: "courseforge-composition-selection", hfId: selectedHfId, hfIds: [...selectedHfIds], origin, bounds: { height: box.height, width: box.width, x: box.x, y: box.y } });
       };
       const clearTarget = (origin = "PREVIEW") => {
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => {
@@ -1203,23 +1179,163 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => node.removeAttribute("data-crop-mode"));
         document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
         selectedHfId = null;
-        postParentMessage({ type: "courseforge-composition-selection", hfId: null, origin });
+        selectedHfIds = new Set();
+        postParentMessage({ type: "courseforge-composition-selection", hfId: null, hfIds: [], origin });
+      };
+      const clearSmartGuides = () => {
+        document.querySelectorAll(".composition-smart-guide").forEach((guide) => guide.remove());
+      };
+      const showSmartGuides = (x, y) => {
+        clearSmartGuides();
+        if (Number.isFinite(x)) {
+          const guide = document.createElement("span");
+          guide.className = "composition-smart-guide";
+          guide.dataset.axis = "x";
+          guide.style.left = x + "px";
+          root.appendChild(guide);
+        }
+        if (Number.isFinite(y)) {
+          const guide = document.createElement("span");
+          guide.className = "composition-smart-guide";
+          guide.dataset.axis = "y";
+          guide.style.top = y + "px";
+          root.appendChild(guide);
+        }
+      };
+      const readLayoutBox = (target) => ({
+        height: Number.parseFloat(target.style.height),
+        width: Number.parseFloat(target.style.width),
+        x: Number.parseFloat(target.style.left),
+        y: Number.parseFloat(target.style.top),
+      });
+      const collectSmartGuidePositions = (target, axis) => {
+        const canvasPositions = axis === "x" ? [0, canvasWidth / 2, canvasWidth] : [0, canvasHeight / 2, canvasHeight];
+        const peerPositions = [...document.querySelectorAll("[data-hf-id]")].flatMap((peer) => {
+          if (!(peer instanceof HTMLElement) || peer === target || getComputedStyle(peer).visibility === "hidden") return [];
+          const box = readLayoutBox(peer);
+          if (Object.values(box).some((value) => !Number.isFinite(value))) return [];
+          return axis === "x"
+            ? [box.x, box.x + box.width / 2, box.x + box.width]
+            : [box.y, box.y + box.height / 2, box.y + box.height];
+        });
+        return [...new Set([...canvasPositions, ...peerPositions])];
+      };
+      const resolveClosestSmartGuide = (anchors, guides, threshold) => {
+        let match = null;
+        for (const anchor of anchors) {
+          for (const guide of guides) {
+            const delta = guide - anchor;
+            if (Math.abs(delta) > threshold) continue;
+            if (!match || Math.abs(delta) < Math.abs(match.delta)) match = { delta, guide };
+          }
+        }
+        return match;
+      };
+      const resolveSmartMove = (target, layout, x, y, scale) => {
+        const threshold = Math.max(2, 7 / scale);
+        const xMatch = resolveClosestSmartGuide(
+          [x, x + layout.width / 2, x + layout.width],
+          collectSmartGuidePositions(target, "x"),
+          threshold,
+        );
+        const yMatch = resolveClosestSmartGuide(
+          [y, y + layout.height / 2, y + layout.height],
+          collectSmartGuidePositions(target, "y"),
+          threshold,
+        );
+        return {
+          guideX: xMatch?.guide,
+          guideY: yMatch?.guide,
+          x: x + (xMatch?.delta || 0),
+          y: y + (yMatch?.delta || 0),
+        };
+      };
+      const resolveSmartResize = (target, layout, width, height, preserveRatio, scale) => {
+        const threshold = Math.max(2, 7 / scale);
+        const xMatch = resolveClosestSmartGuide(
+          [layout.x + width],
+          collectSmartGuidePositions(target, "x"),
+          threshold,
+        );
+        const yMatch = resolveClosestSmartGuide(
+          [layout.y + height],
+          collectSmartGuidePositions(target, "y"),
+          threshold,
+        );
+        if (!preserveRatio) {
+          return {
+            guideX: xMatch?.guide,
+            guideY: yMatch?.guide,
+            height: height + (yMatch?.delta || 0),
+            width: width + (xMatch?.delta || 0),
+          };
+        }
+        const ratio = layout.width / layout.height;
+        if (xMatch && (!yMatch || Math.abs(xMatch.delta) <= Math.abs(yMatch.delta))) {
+          const snappedWidth = width + xMatch.delta;
+          return { guideX: xMatch.guide, guideY: undefined, height: snappedWidth / ratio, width: snappedWidth };
+        }
+        if (yMatch) {
+          const snappedHeight = height + yMatch.delta;
+          return { guideX: undefined, guideY: yMatch.guide, height: snappedHeight, width: snappedHeight * ratio };
+        }
+        return { guideX: undefined, guideY: undefined, height, width };
       };
       document.addEventListener("click", (event) => {
+        if (suppressNextClick) {
+          suppressNextClick = false;
+          return;
+        }
         if (activeTransform?.moved) return;
         const target = event.target.closest("[data-hf-id]");
         if (!target) {
           clearTarget();
           return;
         }
-        selectTarget(target);
+        const targetHfId = target.dataset.hfId || null;
+        const additive = event.ctrlKey || event.metaKey || event.shiftKey;
+        if (!additive || !targetHfId) {
+          selectTarget(target);
+          return;
+        }
+        const nextHfIds = new Set(selectedHfIds);
+        if (nextHfIds.has(targetHfId)) nextHfIds.delete(targetHfId);
+        else nextHfIds.add(targetHfId);
+        if (nextHfIds.size === 0) {
+          clearTarget();
+          return;
+        }
+        const primaryHfId = nextHfIds.has(targetHfId) ? targetHfId : [...nextHfIds].at(-1);
+        const primaryTarget = primaryHfId
+          ? document.querySelector('[data-hf-id="' + CSS.escape(primaryHfId) + '"]')
+          : null;
+        selectTarget(primaryTarget, "PREVIEW", [...nextHfIds]);
       });
       root?.addEventListener("pointerdown", (event) => {
         if (!editingEnabled) return;
         const cropHandle = event.target.closest(".composition-crop-handle");
         const handle = event.target.closest(".composition-resize-handle");
         const target = cropHandle?.parentElement || handle?.parentElement || event.target.closest("[data-hf-id]");
-        if (!target || !(target instanceof HTMLElement)) return;
+        if (!target) {
+          const rootBox = root.getBoundingClientRect();
+          const scale = rootBox.width / ${document.canvas.width};
+          if (!Number.isFinite(scale) || scale <= 0) return;
+          const marquee = document.createElement("div");
+          marquee.className = "composition-selection-marquee";
+          root.appendChild(marquee);
+          activeMarquee = {
+            additive: event.ctrlKey || event.metaKey || event.shiftKey,
+            marquee,
+            rootBox,
+            scale,
+            startX: event.clientX,
+            startY: event.clientY,
+          };
+          root.setPointerCapture?.(event.pointerId);
+          event.preventDefault();
+          return;
+        }
+        if (!(target instanceof HTMLElement) || event.ctrlKey || event.metaKey || event.shiftKey) return;
         selectTarget(target);
         const rootBox = root.getBoundingClientRect();
         const scale = rootBox.width / ${document.canvas.width};
@@ -1239,16 +1355,30 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         event.stopPropagation();
       });
       root?.addEventListener("pointermove", (event) => {
+        if (activeMarquee) {
+          clearSmartGuides();
+          const left = Math.min(activeMarquee.startX, event.clientX);
+          const top = Math.min(activeMarquee.startY, event.clientY);
+          const width = Math.abs(event.clientX - activeMarquee.startX);
+          const height = Math.abs(event.clientY - activeMarquee.startY);
+          activeMarquee.marquee.style.left = (left - activeMarquee.rootBox.left) / activeMarquee.scale + "px";
+          activeMarquee.marquee.style.top = (top - activeMarquee.rootBox.top) / activeMarquee.scale + "px";
+          activeMarquee.marquee.style.width = width / activeMarquee.scale + "px";
+          activeMarquee.marquee.style.height = height / activeMarquee.scale + "px";
+          return;
+        }
         if (!activeTransform) return;
         const dx = (event.clientX - activeTransform.startX) / activeTransform.scale;
         const dy = (event.clientY - activeTransform.startY) / activeTransform.scale;
         if (Math.abs(dx) > .25 || Math.abs(dy) > .25) activeTransform.moved = true;
         const target = activeTransform.target;
         if (activeTransform.mode === "crop-edge") {
+          clearSmartGuides();
           applyCrop(target, adjustCropFromHandle(activeTransform.crop, activeTransform.layout, activeTransform.cropEdge || "", dx, dy));
           return;
         }
         if (activeTransform.mode === "crop-move") {
+          clearSmartGuides();
           applyCrop(target, moveCropWindow(activeTransform.crop, activeTransform.layout, dx, dy));
           return;
         }
@@ -1261,10 +1391,16 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           const y = Math.max(minY, Math.min(maxY, activeTransform.layout.y + dy));
           const snappedVisibleX = Math.round((x + activeTransform.crop.left) / 16) * 16;
           const snappedVisibleY = Math.round((y + activeTransform.crop.top) / 16) * 16;
-          const nextX = snapEnabled ? Math.max(minX, Math.min(maxX, snappedVisibleX - activeTransform.crop.left)) : Math.round(x);
-          const nextY = snapEnabled ? Math.max(minY, Math.min(maxY, snappedVisibleY - activeTransform.crop.top)) : Math.round(y);
+          const smartMove = snapEnabled ? resolveSmartMove(target, activeTransform.layout, x, y, activeTransform.scale) : null;
+          const nextX = snapEnabled
+            ? Math.max(minX, Math.min(maxX, smartMove?.guideX === undefined ? snappedVisibleX - activeTransform.crop.left : smartMove.x))
+            : Math.round(x);
+          const nextY = snapEnabled
+            ? Math.max(minY, Math.min(maxY, smartMove?.guideY === undefined ? snappedVisibleY - activeTransform.crop.top : smartMove.y))
+            : Math.round(y);
           target.style.left = nextX + "px";
           target.style.top = nextY + "px";
+          showSmartGuides(smartMove?.guideX, smartMove?.guideY);
           return;
         }
         const width = Math.max(24, Math.min(canvasWidth - activeTransform.layout.x, activeTransform.layout.width + dx));
@@ -1274,13 +1410,56 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         const boundedHeight = Math.min(canvasHeight - activeTransform.layout.y, height);
         const maxWidth = Math.max(24, canvasWidth - activeTransform.layout.x);
         const maxHeight = Math.max(24, canvasHeight - activeTransform.layout.y);
-        const nextWidth = snapEnabled ? Math.min(maxWidth, Math.max(24, Math.round(width / 16) * 16)) : Math.round(width);
-        const nextHeight = snapEnabled ? Math.min(maxHeight, Math.max(24, Math.round(boundedHeight / 16) * 16)) : Math.round(boundedHeight);
+        const smartResize = snapEnabled
+          ? resolveSmartResize(target, activeTransform.layout, width, boundedHeight, activeTransform.preserveRatio, activeTransform.scale)
+          : null;
+        const nextWidth = snapEnabled
+          ? Math.min(maxWidth, Math.max(24, smartResize?.guideX === undefined && smartResize?.guideY === undefined ? Math.round(width / 16) * 16 : smartResize.width))
+          : Math.round(width);
+        const nextHeight = snapEnabled
+          ? Math.min(maxHeight, Math.max(24, smartResize?.guideX === undefined && smartResize?.guideY === undefined ? Math.round(boundedHeight / 16) * 16 : smartResize.height))
+          : Math.round(boundedHeight);
         target.style.width = nextWidth + "px";
         target.style.height = nextHeight + "px";
+        showSmartGuides(smartResize?.guideX, smartResize?.guideY);
         applyCrop(target, scaleCropForLayout(activeTransform.crop, activeTransform.layout, { width: nextWidth, height: nextHeight }), false);
       });
       const finishTransform = (event) => {
+        clearSmartGuides();
+        if (activeMarquee) {
+          const marqueeState = activeMarquee;
+          activeMarquee = null;
+          root.releasePointerCapture?.(event.pointerId);
+          marqueeState.marquee.remove();
+          const selectionBox = {
+            bottom: Math.max(marqueeState.startY, event.clientY),
+            left: Math.min(marqueeState.startX, event.clientX),
+            right: Math.max(marqueeState.startX, event.clientX),
+            top: Math.min(marqueeState.startY, event.clientY),
+          };
+          const moved = selectionBox.right - selectionBox.left > 3 || selectionBox.bottom - selectionBox.top > 3;
+          if (!moved) return;
+          suppressNextClick = true;
+          const hitHfIds = [...document.querySelectorAll("[data-hf-id]")]
+            .filter((candidate) => {
+              if (!(candidate instanceof HTMLElement) || getComputedStyle(candidate).visibility === "hidden") return false;
+              const box = candidate.getBoundingClientRect();
+              return box.right >= selectionBox.left && box.left <= selectionBox.right
+                && box.bottom >= selectionBox.top && box.top <= selectionBox.bottom;
+            })
+            .flatMap((candidate) => candidate instanceof HTMLElement && candidate.dataset.hfId ? [candidate.dataset.hfId] : []);
+          const nextHfIds = new Set(marqueeState.additive ? selectedHfIds : []);
+          hitHfIds.forEach((hfId) => {
+            if (nextHfIds.size < 100) nextHfIds.add(hfId);
+          });
+          const primaryHfId = [...nextHfIds].at(-1);
+          const primaryTarget = primaryHfId
+            ? document.querySelector('[data-hf-id="' + CSS.escape(primaryHfId) + '"]')
+            : null;
+          if (primaryTarget) selectTarget(primaryTarget, "PREVIEW", [...nextHfIds]);
+          else clearTarget();
+          return;
+        }
         if (!activeTransform) return;
         const transform = activeTransform;
         activeTransform = null;
@@ -1481,6 +1660,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         if (message.type === "courseforge-composition-seek") scrubTo(message.seconds);
         if (message.type === "courseforge-composition-play") play();
         if (message.type === "courseforge-composition-pause") pause();
+        if (message.type === "courseforge-composition-reset-audio-meter") audioMeters.reset();
         if (message.type === "courseforge-composition-editor-settings") {
           editingEnabled = message.editingEnabled !== false;
           cropEnabled = message.cropEnabled === true;
@@ -1488,7 +1668,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           if (editorGrid) editorGrid.setAttribute("data-visible", message.gridVisible === true ? "true" : "false");
           document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
           const selectedTarget = selectedHfId ? document.querySelector('[data-hf-id="' + CSS.escape(selectedHfId) + '"]') : null;
-          if (selectedTarget) selectTarget(selectedTarget, "PARENT");
+          if (selectedTarget) selectTarget(selectedTarget, "PARENT", [...selectedHfIds]);
         }
         if (message.type === "courseforge-composition-preview-zoom") {
           previewUserScale = Math.max(.5, Math.min(2, Number(message.scale) || 1));
@@ -1509,7 +1689,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
             clearTarget("PARENT");
           } else if (typeof message.hfId === "string") {
             const target = document.querySelector('[data-hf-id="' + CSS.escape(message.hfId) + '"]');
-            selectTarget(target, "PARENT");
+            selectTarget(target, "PARENT", Array.isArray(message.hfIds) ? message.hfIds : [message.hfId]);
           }
         }
       });
@@ -1529,6 +1709,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         });
       };
       initializeColorGrading();
+      captureDeterministicWaapiAnimations(0);
       seek(0);
       announceInitialReadyIfPossible();
       window.setTimeout(initializeColorGrading, 250);

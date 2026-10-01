@@ -66,14 +66,17 @@ export function shouldExposeProductionRegistryAsset(params: {
   if (params.hasActiveReference) return true;
   return params.assetType === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO
     || params.assetType === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP
-    || params.assetType === PRODUCTION_ASSET_TYPES.VOICE_AUDIO;
+    || params.assetType === PRODUCTION_ASSET_TYPES.VOICE_AUDIO
+    || params.assetType === PRODUCTION_ASSET_TYPES.PROCESSED_AUDIO;
 }
 
 export function isAutomaticTimelineSourceAsset(asset: {
   metadata: Record<string, unknown>;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
 }) {
-  return asset.sourceType === "PRODUCTION_MEDIA" && asset.metadata.historical_only !== true;
+  return asset.sourceType === "PRODUCTION_MEDIA"
+    && asset.metadata.historical_only !== true
+    && asset.metadata.editor_library_only !== true;
 }
 
 export function isRecoverableManualVoiceRegistryAsset(asset: {
@@ -527,6 +530,7 @@ export async function listHyperframesSourceAssets(params: {
       PRODUCTION_ASSET_TYPES.AVATAR_VIDEO,
       PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP,
       PRODUCTION_ASSET_TYPES.VOICE_AUDIO,
+      PRODUCTION_ASSET_TYPES.PROCESSED_AUDIO,
     ])
     .not("checksum", "is", null)
     .not("file_size_bytes", "is", null)
@@ -544,7 +548,8 @@ export async function listHyperframesSourceAssets(params: {
     const isAvatarRegistryAsset =
       asset.asset_type === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO
       || asset.asset_type === PRODUCTION_ASSET_TYPES.AVATAR_VIDEO_CLIP;
-    const isVoiceRegistryAsset = asset.asset_type === PRODUCTION_ASSET_TYPES.VOICE_AUDIO;
+    const isVoiceRegistryAsset = asset.asset_type === PRODUCTION_ASSET_TYPES.VOICE_AUDIO
+      || asset.asset_type === PRODUCTION_ASSET_TYPES.PROCESSED_AUDIO;
     const isManualVoiceRegistryAsset = isRecoverableManualVoiceRegistryAsset({
       assetType: asset.asset_type,
       metadata: assetMetadata,
@@ -564,7 +569,12 @@ export async function listHyperframesSourceAssets(params: {
       durationSeconds: preciseDurationSeconds(asset.duration_milliseconds, asset.duration_seconds),
       fileSizeBytes: asset.file_size_bytes,
       hasAudio: reference?.hasAudio ?? optionalBoolean(isRecord(asset.metadata) ? asset.metadata.has_audio : undefined),
-      metadata: reference || isManualVoiceRegistryAsset || isStandaloneMedia ? assetMetadata : { ...assetMetadata, historical_only: true },
+      metadata: {
+        ...(reference || isManualVoiceRegistryAsset || isStandaloneMedia || asset.asset_type === PRODUCTION_ASSET_TYPES.PROCESSED_AUDIO
+          ? assetMetadata
+          : { ...assetMetadata, historical_only: true }),
+        ...(asset.asset_type === PRODUCTION_ASSET_TYPES.PROCESSED_AUDIO ? { editor_library_only: true } : {}),
+      },
       mimeType: asset.mime_type,
       productionAssetId: asset.id,
       qaStatus: asset.qa_status,

@@ -11,7 +11,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-placeholder
@@ -30,6 +30,32 @@ jobs:
       - run: npm ci
       - run: npm run compliance:check
       - run: npm run verify
+      - name: Verify composition preview/render conformance
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm run qa:composition-conformance:ci
+      - name: Verify composition command palette interactions
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm run qa:composition-command-palette
+      - name: Verify audio waveform interactions
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm run qa:composition-waveform
+      - name: Verify media replacement interactions
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm run qa:composition-media-replacement
+      - name: Upload composition conformance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: composition-conformance
+          path: |
+            apps/web/.tmp/composition-conformance/conformance-report.json
+            apps/web/.tmp/composition-conformance/captures
+          if-no-files-found: ignore
+          retention-days: 7
       - run: node apps/api/native/rnnoise/test/test-adapter.mjs
       - run: node scripts/verify-rnnoise-artifacts.test.mjs
       - run: node scripts/verify-deepfilter-artifacts.test.mjs

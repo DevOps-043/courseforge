@@ -24,24 +24,41 @@ import { createClient } from "@/utils/supabase/server";
 import { API_ERROR_CODE } from "@/lib/server/api-contract";
 import { apiErrorResponse } from "@/lib/server/api-response";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
-import { isCompositionDocumentHash } from "@/domains/production/composition-editor/composition-preview-comparison";
+import { isCompositionDocumentHash, parseCompositionPreviewGeneration } from "@/domains/production/composition-editor/composition-preview-comparison";
+import { buildCompositionPreviewFailureBridge } from "@/domains/production/composition-editor/composition-preview-failure-bridge";
+import type { CompositionPreviewLoadErrorCode } from "@/domains/production/composition-editor/composition-preview-protocol";
 
 interface RouteContext { params: Promise<{ draftId: string }>; }
 
 /** Compiles an isolated preview from the native versioned document. */
 export async function GET(request: Request, context: RouteContext) {
+  const requestUrl = new URL(request.url);
+  const requestedDocumentHash = requestUrl.searchParams.get("documentHash");
+  const syncV2Requested = requestUrl.searchParams.get("sync") === "2";
+  const previewGeneration = syncV2Requested ? parseCompositionPreviewGeneration(requestUrl.searchParams.get("r")) : null;
+  const failureBridgeHash = syncV2Requested && previewGeneration !== null && requestedDocumentHash && isCompositionDocumentHash(requestedDocumentHash)
+    ? requestedDocumentHash.toLowerCase()
+    : null;
   const requestStartedAt = performance.now();
   const correlationId = createPreviewCorrelationId(request.headers.get("x-correlation-id"));
   const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   const logger = createOperationalLogger("production.hyperframes.draft.preview", { correlationId: requestId, previewCorrelationId: correlationId });
   try {
     const authorizationStartedAt = performance.now();
-    const authorization = await authorize(requestId);
-    if (authorization.response) return authorization.response;
+    const authorization = await authorize(requestId, failureBridgeHash, previewGeneration);
+    if (authorization.response) {
+      logger.warn("production.hyperframes.draft.preview_access_denied", {
+        event: "composition_preview_access_denied",
+        outcome: authorization.response.status === 401 ? "AUTH_REQUIRED" : "ACCESS_DENIED",
+      });
+      return authorization.response;
+    }
     const authorizationMs = elapsedMilliseconds(authorizationStartedAt);
     const draftId = z.string().uuid().parse((await context.params).draftId);
+    if (syncV2Requested && previewGeneration === null) {
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "La generación del preview no es válida.", requestId, status: 400 });
+    }
     const documentStartedAt = performance.now();
-    const requestedDocumentHash = new URL(request.url).searchParams.get("documentHash");
     if (requestedDocumentHash && !isCompositionDocumentHash(requestedDocumentHash)) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "La versión de comparación no es válida.", requestId, status: 400 });
     }
@@ -81,6 +98,7 @@ export async function GET(request: Request, context: RouteContext) {
       documentHash: current.documentHash,
       fontAssets,
       onDiagnostics: (diagnostics) => { compilerDiagnostics.current = diagnostics; },
+      previewGeneration,
     });
     const compileMs = elapsedMilliseconds(compileStartedAt);
     const timings = {
@@ -124,19 +142,47 @@ export async function GET(request: Request, context: RouteContext) {
             ? API_ERROR_CODE.conflict
             : API_ERROR_CODE.invalidRequest;
       const retryable = error instanceof CompositionPreviewCompilerError ? error.retryable : false;
-      return apiErrorResponse({ code, message: error.message, requestId, retryable, status });
+      const bridgeCode: CompositionPreviewLoadErrorCode = error instanceof CompositionPreviewCompilerError
+        ? "COMPILATION_FAILED"
+        : error instanceof CompositionFontAssetError ? "DEPENDENCY_FAILED" : "DOCUMENT_UNAVAILABLE";
+      return previewFailureResponse({ bridgeCode, code, documentHash: failureBridgeHash, message: error.message, previewGeneration, requestId, retryable, status });
     }
     logger.error("production.hyperframes.draft.preview_failed", error, { durationMs: Math.round(elapsedMilliseconds(requestStartedAt)) });
-    return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar el preview de la composición.", requestId, retryable: true, status: 500 });
+    return previewFailureResponse({ bridgeCode: "UNKNOWN", code: API_ERROR_CODE.internalError, documentHash: failureBridgeHash, message: "No se pudo preparar el preview de la composición.", previewGeneration, requestId, retryable: true, status: 500 });
   }
 }
 
-async function authorize(requestId: string) {
+function previewFailureResponse(input: {
+  bridgeCode: CompositionPreviewLoadErrorCode;
+  code: Parameters<typeof apiErrorResponse>[0]["code"];
+  documentHash: string | null;
+  message: string;
+  previewGeneration: number | null;
+  requestId: string;
+  retryable: boolean;
+  status: number;
+}) {
+  if (!input.documentHash || input.previewGeneration === null) return apiErrorResponse(input);
+  const bridge = buildCompositionPreviewFailureBridge({ code: input.bridgeCode, documentHash: input.documentHash, nonce: crypto.randomUUID(), previewGeneration: input.previewGeneration });
+  return new NextResponse(bridge.html, {
+    status: input.status,
+    headers: {
+      "Cache-Control": "private, no-store",
+      "Content-Security-Policy": bridge.contentSecurityPolicy,
+      "Content-Type": "text/html; charset=utf-8",
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+      "x-request-id": input.requestId,
+    },
+  });
+}
+
+async function authorize(requestId: string, documentHash: string | null, previewGeneration: number | null) {
   const supabase = await createClient();
   const user = await getAuthenticatedUser(supabase);
-  if (!user) return { response: apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 }) } as const;
-  if (!(await canReviewContent(user.userId))) return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para previsualizar el video.", requestId, status: 403 }) } as const;
+  if (!user) return { response: previewFailureResponse({ bridgeCode: "AUTH_REQUIRED", code: API_ERROR_CODE.authRequired, documentHash, message: "No autorizado.", previewGeneration, requestId, retryable: false, status: 401 }) } as const;
   const tenant = await resolveActiveTenantContext();
-  if (!tenant) return { response: apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 }) } as const;
+  if (!tenant) return { response: previewFailureResponse({ bridgeCode: "ACCESS_DENIED", code: API_ERROR_CODE.tenantForbidden, documentHash, message: "Empresa no válida o no autorizada.", previewGeneration, requestId, retryable: false, status: 403 }) } as const;
+  if (!(await canReviewContent(user.userId, tenant))) return { response: previewFailureResponse({ bridgeCode: "ACCESS_DENIED", code: API_ERROR_CODE.roleForbidden, documentHash, message: "No tienes permisos para previsualizar el video.", previewGeneration, requestId, retryable: false, status: 403 }) } as const;
   return { admin: getServiceRoleClient(), organizationId: tenant.organizationId, response: null };
 }

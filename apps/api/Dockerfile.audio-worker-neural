@@ -32,6 +32,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/package.json apps/api/package.json
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/third_party/deepfilter /opt/deepfilter
+RUN node dist/features/audio-processing/qa/run-audio-ffmpeg-smoke.js
 RUN test -x /opt/deepfilter/deep-filter \
   && test -r /opt/deepfilter/DeepFilterNet3_onnx.tar.gz \
   && chown -R node:node /opt/deepfilter

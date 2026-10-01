@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clapperboard, Film, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { parseAudioProcessingDerivatives } from "@/domains/production/audio-processing/audio-analysis.service";
 import {
   NativeCompositionPreview,
   type CompositionStudioAsset,
@@ -14,6 +15,8 @@ interface VideoAsset {
   durationSeconds?: number;
   eligibleForRevision: boolean;
   metadata: {
+    audio_analysis?: unknown;
+    waveform?: unknown;
     asset_display_name?: string | null;
     detached_from_asset_id?: string | null;
     detached_from_clip_id?: string | null;
@@ -91,24 +94,29 @@ export function HyperframesCompositionPanel({
       .reduce((total, asset) => total + asset.fileSizeBytes, 0)
   ), [activeTimelineAssets]);
   const blockedAssets = useMemo(() => activeTimelineAssets.filter((asset) => !asset.eligibleForRevision), [activeTimelineAssets]);
-  const studioAssets = useMemo<CompositionStudioAsset[]>(() => [...htmlAssets, ...activeTimelineAssets.map((asset) => ({
-    durationSeconds: asset.durationSeconds,
-    detachedFromAssetId: asset.metadata.detached_from_asset_id || undefined,
-    detachedFromClipId: asset.metadata.detached_from_clip_id || undefined,
-    hasAudio: asset.hasAudio,
-    id: asset.productionAssetId,
-    isEditable: asset.sourceType === "PRODUCTION_MEDIA",
-    label: asset.metadata.asset_display_name || asset.metadata.file_name || asset.mimeType,
-    mimeType: asset.mimeType,
-    previewUrl: draftId ? `/api/production/hyperframes/drafts/${draftId}/assets/${asset.productionAssetId}` : null,
-    sourceHeight: typeof asset.metadata.source_height === "number" ? asset.metadata.source_height : undefined,
-    sourceWidth: typeof asset.metadata.source_width === "number" ? asset.metadata.source_width : undefined,
-    sizeLabel: formatBytes(asset.fileSizeBytes),
-    sourceLabel: "Medio de Producción",
-    timelineRole: asset.timelineRole,
-    timelineVariant: asset.timelineVariant,
-    valid: asset.eligibleForRevision,
-  }))], [activeTimelineAssets, draftId, htmlAssets]);
+  const studioAssets = useMemo<CompositionStudioAsset[]>(() => [...htmlAssets, ...activeTimelineAssets.map((asset) => {
+    const audioDerivatives = parseAudioProcessingDerivatives(asset.metadata);
+    return {
+      audioAnalysis: audioDerivatives?.loudness,
+      waveform: audioDerivatives?.waveform,
+      durationSeconds: asset.durationSeconds,
+      detachedFromAssetId: asset.metadata.detached_from_asset_id || undefined,
+      detachedFromClipId: asset.metadata.detached_from_clip_id || undefined,
+      hasAudio: asset.hasAudio,
+      id: asset.productionAssetId,
+      isEditable: asset.sourceType === "PRODUCTION_MEDIA",
+      label: asset.metadata.asset_display_name || asset.metadata.file_name || asset.mimeType,
+      mimeType: asset.mimeType,
+      previewUrl: draftId ? `/api/production/hyperframes/drafts/${draftId}/assets/${asset.productionAssetId}` : null,
+      sourceHeight: typeof asset.metadata.source_height === "number" ? asset.metadata.source_height : undefined,
+      sourceWidth: typeof asset.metadata.source_width === "number" ? asset.metadata.source_width : undefined,
+      sizeLabel: formatBytes(asset.fileSizeBytes),
+      sourceLabel: "Medio de Producción",
+      timelineRole: asset.timelineRole,
+      timelineVariant: asset.timelineVariant,
+      valid: asset.eligibleForRevision,
+    };
+  })], [activeTimelineAssets, draftId, htmlAssets]);
   const hasAssetSizeErrors = blockedAssets.length > 0;
   const sizeErrorMessage = useMemo(() => {
     const names = blockedAssets.map((asset) => asset.metadata.file_name || asset.mimeType);

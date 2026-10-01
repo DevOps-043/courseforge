@@ -20,6 +20,26 @@ import type { CompositionPreviewAssetDiagnostics } from "../composition-preview-
 
 const COLOR_GRADING_RUNTIME_FIXTURE = "window.__hfColorGradingRuntimeInstalled=true;";
 
+test("audio meters are opt-in, CORS-enabled in preview and absent from the render target", async () => {
+  const assetId = "55555555-5555-4555-8555-555555555557";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "c".repeat(64), durationSeconds: 5, fileSizeBytes: 42, mimeType: "audio/mpeg", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "voice.mp3", timelineRole: "VOICE" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "", title: "Audio meters" },
+  });
+  const assetUrls = new Map([[assetId, "https://assets.test/voice.mp3"]]);
+  const disabled = await compileCompositionPreview({ document, assetUrls, audioMetersEnabled: false });
+  const enabled = await compileCompositionPreview({ document, assetUrls, audioMetersEnabled: true });
+  const rendered = await compileCompositionPreview({ document, assetUrls, audioMetersEnabled: true, target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER });
+  assert.doesNotMatch(disabled, /createMediaElementSource/);
+  assert.doesNotMatch(disabled.match(/<audio[^>]*>/)?.[0] ?? "", /crossorigin/);
+  assert.match(enabled, /createMediaElementSource/);
+  assert.match(enabled.match(/<audio[^>]*>/)?.[0] ?? "", /crossorigin="anonymous"/);
+  assert.doesNotMatch(rendered, /courseforge-composition-audio-meter|createMediaElementSource/);
+  assert.doesNotMatch(rendered.match(/<audio[^>]*>/)?.[0] ?? "", /crossorigin/);
+  for (const match of enabled.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Script(match[1]!);
+});
+
 test("vertical canvas preserves the original HTML deck dimensions", async () => {
   const document = createInitialCompositionDocument({ animatedDeck: {
     css: "", fonts: [], width: 1920, height: 1080,
@@ -66,6 +86,100 @@ test("keeps preview media warming bounded for remote assets", () => {
     minimumReadyState: 2,
     seekToleranceSeconds: 0.35,
   });
+});
+
+test("compiles bounded silent video rate consistently for preview and render", async () => {
+  const previousFlag = process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_RATES;
+  process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_RATES = "true";
+  try {
+    const assetId = "55555555-5555-4555-8555-555555555555";
+    const document = createInitialCompositionDocument({
+      animatedDeck: null,
+      assets: [{ checksum: "5".repeat(64), durationSeconds: 10, fileSizeBytes: 42, hasAudio: false, mimeType: "video/mp4", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/rate.mp4", timelineRole: "BROLL" }],
+      plan: { accentColor: "#38BDF8", durationSeconds: 10, subtitle: "Prueba", title: "Rate" },
+    });
+    const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+    video.durationSeconds = 4;
+    video.sourceOffsetSeconds = 1;
+    const rated = applyCompositionEditorPatches(document, [{ clipId: video.id, playbackRate: 2, type: "clip.playback-rate" }]);
+    const outputs = await Promise.all([
+      compileCompositionPreview({ assetUrls: new Map([[assetId, "https://assets.test/rate.mp4"]]), document: rated }),
+      compileCompositionPreview({ assetUrls: new Map([[assetId, "https://assets.test/rate.mp4"]]), document: rated, target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER }),
+    ]);
+    for (const html of outputs) {
+      const tag = html.match(new RegExp(`<video id="${video.id}-media"[^>]+>`))?.[0];
+      assert.ok(tag);
+      assert.match(tag, /data-playback-rate="2"/);
+      assert.doesNotMatch(tag, /\sloop\b/);
+      assert.match(tag, /data-source-offset="1"/);
+      assert.doesNotMatch(html, new RegExp(`id="${video.id}-audio"`));
+    }
+    assert.match(outputs[0]!, /sourceOffset \+ \(time - start\) \* mediaRate\(media\)/);
+    assert.match(outputs[1]!, /data-media-start="1"/);
+  } finally {
+    if (previousFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_RATES;
+    else process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_RATES = previousFlag;
+  }
+});
+
+test("compiles final-frame hold without loop in both targets", async () => {
+  const previousFlag = process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE;
+  process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE = "true";
+  try {
+    const assetId = "55555555-5555-4555-8555-555555555556";
+    const document = createInitialCompositionDocument({
+      animatedDeck: null,
+      assets: [{ checksum: "6".repeat(64), durationSeconds: 10, fileSizeBytes: 42, hasAudio: false, mimeType: "video/mp4", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/freeze.mp4", timelineRole: "BROLL" }],
+      plan: { accentColor: "#38BDF8", durationSeconds: 10, subtitle: "Prueba", title: "Freeze" },
+    });
+    const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+    video.sourceOffsetSeconds = 1;
+    const frozen = applyCompositionEditorPatches(document, [{ clipId: video.id, enabled: true, type: "clip.freeze-tail" }]);
+    const outputs = await Promise.all([
+      compileCompositionPreview({ assetUrls: new Map([[assetId, "https://assets.test/freeze.mp4"]]), document: frozen }),
+      compileCompositionPreview({ assetUrls: new Map([[assetId, "https://assets.test/freeze.mp4"]]), document: frozen, target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER }),
+    ]);
+    for (const html of outputs) {
+      const tag = html.match(new RegExp(`<video id="${video.id}-media"[^>]+>`))?.[0];
+      assert.ok(tag);
+      assert.doesNotMatch(tag, /\sloop\b/);
+      assert.match(tag, /data-duration="10"/);
+      assert.match(tag, /data-(?:source-offset|media-start)="1"/);
+      assert.doesNotMatch(html, new RegExp(`id="${video.id}-audio"`));
+    }
+    assert.match(outputs[0]!, /heldVideoTail = media\.tagName === "VIDEO" && !media\.loop/);
+  } finally {
+    if (previousFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE;
+    else process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE = previousFlag;
+  }
+});
+
+test("seeks browser animations on the deterministic composition clock", async () => {
+  const document = createInitialCompositionDocument({
+    animatedDeck: {
+      css: ".slide h1 { animation: reveal 1s ease; transition: opacity .2s ease; } @keyframes reveal { from { opacity: 0; } to { opacity: 1; } }",
+      fonts: [],
+      height: 1080,
+      slides: [{ animationCount: 1, classes: "slide", html: "<h1>Determinista</h1>", index: 0, label: "Determinista" }],
+      width: 1920,
+    },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "", title: "WAAPI" },
+  });
+
+  const html = await compileCompositionPreview({
+    assetUrls: new Map(),
+    document,
+    target: COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW,
+  });
+
+  assert.match(html, /const deterministicWaapiAnimations = new Set\(\)/);
+  assert.match(html, /document\.getAnimations\(\)\.forEach/);
+  assert.match(html, /timeline\.seek\(currentTime, false\);\s*seekDeterministicWaapiAnimations\(currentTime\)/);
+  assert.match(html, /animation\.currentTime = origin\.animationTimeMs/);
+  assert.match(html, /animation\.pause\(\)/);
+  assert.match(html, /timeline\.set\(element, \{ autoAlpha: 0 \}, clip\.runtimeStart \+ clip\.runtimeDuration\);/);
+  assert.doesNotMatch(html, /clip\.runtimeDuration \+ 0\.0001/);
 });
 
 test("compiles HyperFrames media as provider variables instead of ZIP paths", async () => {
@@ -369,10 +483,16 @@ test("compiles the native document into a seekable preview with stable visual id
     deckAssetUrls: new Map([["https://cdn.test/deck.png", "assets/deck.png"]]),
     document,
     documentHash: "a".repeat(64),
+    previewGeneration: 7,
   });
   assert.match(html, /protocolVersion: 1/);
   assert.match(html, /event\.source !== window\.parent/);
   assert.match(html, new RegExp(`compiledDocumentHash = "${"a".repeat(64)}"`));
+  assert.match(html, /previewGeneration = 7/);
+  assert.match(html, /\.\.\.message,\s+previewGeneration,\s+protocolVersion: 1/);
+  assert.match(html, /courseforge-composition-ready", documentHash: compiledDocumentHash/);
+  assert.match(html, /courseforge-composition-ready", documentHash: compiledDocumentHash, duration, previewGeneration/);
+  await assert.rejects(() => compileCompositionPreview({ assetUrls: new Map(), document, previewGeneration: Number.NaN }), /generación del preview/);
   assert.match(html, /courseforge-composition-visual-patch-result/);
   assert.match(html, /applyRuntimeVisibilityOverrides/);
 
@@ -383,11 +503,19 @@ test("compiles the native document into a seekable preview with stable visual id
   assert.match(html, /data-hf-id="deck-slide-0"/);
   assert.match(html, /window\.__timelines\["courseforge-composition"\]/);
   assert.match(html, /courseforge-composition-selection/);
-  assert.match(html, /selectTarget\(target, "PARENT"\)/);
+  assert.match(html, /composition-selection-marquee/);
+  assert.match(html, /event\.ctrlKey \|\| event\.metaKey \|\| event\.shiftKey/);
+  assert.match(html, /hfIds: \[\.\.\.selectedHfIds\]/);
+  assert.match(html, /selectTarget\(target, "PARENT",/);
   assert.match(html, /origin = "PREVIEW"/);
   assert.match(html, /courseforge-composition-editor-settings/);
   assert.match(html, /composition-editor-grid/);
   assert.match(html, /snapEnabled/);
+  assert.match(html, /composition-smart-guide/);
+  assert.match(html, /resolveClosestSmartGuide/);
+  assert.match(html, /resolveSmartMove/);
+  assert.match(html, /resolveSmartResize/);
+  assert.match(html, /Math\.max\(2, 7 \/ scale\)/);
   assert.match(html, /background-size: 16px 16px/);
   assert.match(html, /composition-move-handle/);
   assert.match(html, /Mover elemento/);
@@ -652,7 +780,7 @@ test("creates a separate synchronized audio element for an avatar video", async 
   assert.match(html, /if \(media\.preload !== "auto"\) media\.preload = "auto"/);
   assert.match(html, /primedMedia\.add\(media\);[\s\S]*media\.load\(\)/);
   assert.match(html, /seekPrimedMediaToEntryPoint\(media, time\)/);
-  assert.match(html, /sourceOffset \+ timelineTarget - start/);
+  assert.match(html, /sourceOffset \+ \(timelineTarget - start\) \* mediaRate\(media\)/);
   assert.match(html, /media\.currentTime = sourceTime/);
   assert.match(html, /courseforge-composition-media-state/);
   assert.match(html, /courseforge-composition-media-metric/);
@@ -876,8 +1004,11 @@ test("compila la misma transición real y sus handles en preview y render", asyn
   assert.match(crossfadeHtml, new RegExp(`id="${toClip.id}-audio"[^>]+data-volume-automated="true"[^>]+data-start="3\\.8" data-duration="4\\.2"[^>]+data-source-offset="0\\.8"`));
   assert.match(crossfadeHtml, /"audioMode":"CROSSFADE"/);
   assert.match(crossfadeHtml, new RegExp(`"fromAudioTargetId":"${fromClip.id}-audio"`));
-  assert.match(crossfadeHtml, /targetTimeline\.fromTo\(\s*fromAudio,[\s\S]*?volume: 0/);
-  assert.match(crossfadeHtml, /targetTimeline\.fromTo\(\s*toAudio,[\s\S]*?volume: transition\.toAudioVolume/);
+  assert.match(crossfadeHtml, /window\.__courseforgeAudioEnvelopeVersion = 2/);
+  assert.doesNotMatch(crossfadeHtml, /targetTimeline\.fromTo\(\s*(?:fromAudio|toAudio)/);
+  const crossfadeAutomations = JSON.parse(crossfadeHtml.match(/const volumeAutomations = (\[[^;]+\]);/)![1]!);
+  assert.equal(crossfadeAutomations.find((automation: { targetClipId: string }) => automation.targetClipId === fromClip.id).points.at(-1).volume, 0);
+  assert.equal(crossfadeAutomations.find((automation: { targetClipId: string }) => automation.targetClipId === toClip.id).points[0].volume, 0);
 });
 
 test("compila dip to color como overlay determinista dentro del timeline", async () => {
@@ -917,7 +1048,7 @@ test("compila dip to color como overlay determinista dentro del timeline", async
 
   assert.match(html, /id="transition-dip-overlay" class="composition-transition-overlay" style="background:#0F172A"/);
   assert.match(html, /const halfDuration = transition\.durationSeconds \/ 2/);
-  assert.match(html, /targetTimeline\.to\(overlay, \{ autoAlpha: 1/);
+  assert.match(html, /timeline\.to\(overlay,\s*\{\s*autoAlpha: 1/);
 });
 
 test("mantiene preview y render en paridad para dividir a 01:30 y eliminar un intervalo intermedio", async () => {
@@ -1074,6 +1205,48 @@ test("compiles ambient motion as a finite loop that closes at the assigned durat
   assert.match(html, /const fullCycles = Math\.floor\(animation\.duration \/ cycleDuration\)/);
   assert.match(html, /repeat: Math\.max\(0, cycles \* 2 - 1\)/);
   assert.match(html, /yoyo: true/);
+});
+
+test("compiles simple path points identically in preview and render", async () => {
+  const previousFlag = process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS;
+  process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS = "true";
+  try {
+  const document = createInitialCompositionDocument({
+    animatedDeck: { css: "", fonts: [], height: 1080, width: 1920, slides: [{ animationCount: 0, classes: "slide", html: "<h1>Path</h1>", index: 0, label: "Path" }] },
+    assets: [],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "Prueba", title: "Path" },
+  });
+  const animated = applyCompositionEditorPatches(document, [{
+    animationId: "motion-path-preview",
+    clipId: document.clips[0]!.id,
+    durationSeconds: 0.7,
+    presetId: "SLIDE_IN_LEFT",
+    type: "animation.add-preset",
+  }, {
+    animationId: "motion-path-preview",
+    offset: 0.5,
+    values: { x: 40, y: -32 },
+    type: "animation.insert-path-point",
+  }]);
+  const retimed = applyCompositionEditorPatches(animated, [{
+    animationId: "motion-path-preview",
+    ease: "power2.inOut",
+    keyframeIndex: 1,
+    offset: 0.65,
+    type: "animation.update-keyframe",
+  }]);
+  const outputs = await Promise.all([
+    compileCompositionPreview({ assetUrls: new Map(), document: retimed }),
+    compileCompositionPreview({ assetUrls: new Map(), document: retimed, target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER }),
+  ]);
+  const payloads = outputs.map((html) => html.match(/const motionAnimations = (\[[^;]+\]);/)?.[1]);
+  assert.ok(payloads[0]);
+  assert.equal(payloads[0], payloads[1]);
+  assert.match(payloads[0], /"ease":"power2\.inOut","offset":0\.65,"values":\{"x":40,"y":-32\}/);
+  } finally {
+    if (previousFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS;
+    else process.env.NEXT_PUBLIC_COMPOSITION_SIMPLE_PATHS = previousFlag;
+  }
 });
 
 test("compiles reversible intermediate visibility presets identically for preview and render", async () => {
