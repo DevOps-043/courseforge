@@ -3,9 +3,14 @@
 import type { CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionSceneSummary } from "@/domains/production/composition-editor/composition-scene.service";
 import { formatCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
+import { CompositionNarrativeSearch } from "./CompositionNarrativeSearch";
+import type { NarrativeRangeSelection } from "@/domains/production/composition-editor/composition-narrative-range.service";
 
-export function CompositionNarrativePanel({ document, scenes, currentTime, onSeek, onSelect, applying = false, onApply, onOpenSceneBuilder }: {
+export function CompositionNarrativePanel({ document, documentHash, draftId, scenes, currentTime, onSeek, onSelect, canPreviewRange, onPreviewRange, onStopRange, applying = false, onApply, onOpenSceneBuilder }: {
   document: CompositionEditorDocument; scenes: CompositionSceneSummary[]; currentTime: number;
+  documentHash: string; canPreviewRange: boolean;
+  draftId: string;
+  onPreviewRange: (selection: NarrativeRangeSelection) => boolean; onStopRange: () => void;
   onSeek: (seconds: number) => void; onSelect: (hfId: string) => void;
   applying?: boolean; onApply?: () => void; onOpenSceneBuilder?: () => void;
 }) {
@@ -17,6 +22,8 @@ export function CompositionNarrativePanel({ document, scenes, currentTime, onSee
       <p className="font-semibold text-slate-900 dark:text-white">Guion y visuales</p>
       <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">{scenes.length} escenas · {reviewCount} por revisar</p>
     </header>
+    <CompositionNarrativeSearch document={document} documentHash={documentHash} draftId={draftId} scenes={scenes} onSeek={onSeek} onSelect={onSelect}
+      canPreviewRange={canPreviewRange} onPreviewRange={onPreviewRange} onStopRange={onStopRange} />
     <div className="flex flex-wrap items-center gap-2 border-b border-slate-300/20 py-3">
       <button type="button" onClick={onOpenSceneBuilder} className="rounded border border-slate-400/30 px-2.5 py-1 font-semibold">Asociar slides</button>
       <button type="button" disabled={applying || scenes.some((scene) => scene.needsReview)} onClick={onApply} className="rounded bg-cyan-700 px-2.5 py-1 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{applying ? "Aplicando…" : "Aplicar preensamble"}</button>

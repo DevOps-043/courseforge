@@ -1,6 +1,6 @@
 import type { HyperframesAnimatedDeckSource } from "../hyperframes/hyperframes.types";
 import type { HyperframesProjectAsset } from "../hyperframes/hyperframes-project-builder.service";
-import type { HyperframesPlan } from "../hyperframes/hyperframes-plan.service";
+import type { HyperframesPlan } from "../hyperframes/hyperframes-plan.types";
 import {
   COMPOSITION_DOCUMENT_FORMAT,
   DEFAULT_COMPOSITION_DUCKING_SETTINGS,

@@ -94,7 +94,7 @@ test("compara un MP4 local y detecta corrupción visual y recibo incorrecto", as
     }
     const input = { contractPath, previewDirectory, previewMetadataPath: metadataPath, renderReceiptPath: receiptPath, videoPath };
     const passing = await compareExportedVideoWithPreview(input);
-    assert.equal(passing.status, "PASS");
+    assert.equal(passing.status, "INCOMPLETE");
     assert.equal(passing.visual.checkedCheckpointCount, 3);
     assert.equal(passing.video.frameCount, 50);
     assert.equal(passing.provenance, "LOCAL_RECEIPT_NOT_AUTHENTICATED");

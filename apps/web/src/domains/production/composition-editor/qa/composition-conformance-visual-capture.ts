@@ -14,6 +14,8 @@ import { PLAYBACK_CAPTURE_POLICY } from "./composition-playback-capture-runtime"
 import { buildMediaBoundaryPlan } from "./composition-playback-boundaries";
 import { isDeepStrictEqual } from "node:util";
 import { captureTextParityCheckpoint } from "./composition-text-checkpoint-capture";
+import { captureTextPaintMasks } from "./composition-text-paint-mask-capture";
+import { suppressedTextFrameName } from "./composition-text-paint-mask-derivation";
 import { textCheckpointEvidenceSchema, textParityEvidenceHash, validateTextParityEvidence,
   TEXT_PARITY_REPEATABILITY, type TextParityEvidence } from "./composition-text-parity-evidence";
 import { COMPOSITION_TEXT_PARITY_POLICY } from "../composition-text-parity-policy";
@@ -25,6 +27,13 @@ import { readCaptureBrowserIdentity, assertCaptureBrowserIdentityUnchanged, brow
 import { browserExecutableIdentitySchema, browserExecutableIdentityHash } from "./composition-browser-executable-identity";
 import { prepareCompositionEventBatchContracts } from "../composition-conformance-event-batch-contract";
 import { eventBatchCaptureLineageSchema } from "../composition-conformance-event-batch-lineage";
+import { captureDeckTextCheckpoint } from "./composition-deck-text-capture";
+import { deckTextCheckpointEvidenceSchema, validateDeckTextEvidence, hashDeckTextEvidence, type DeckTextEvidence } from "./composition-deck-text-evidence";
+import { hashDeckTextPlan } from "../composition-deck-text-plan";
+import { captureDeckTextPaintMasks } from "./composition-deck-text-paint-producer";
+import { suppressedDeckTextFrameName } from "./composition-deck-text-paint-derivation";
+import {assertConformanceJobActive} from "./composition-conformance-job-lease";
+import {bindCaptureCdpCancellation} from "./composition-cdp-cancellation";
 
 const CAPTURE_LIMITS = { durationMilliseconds: 180_000, pngBytes: 20 * 1024 * 1024, totalPngBytes: 128 * 1024 * 1024, requests: 2_000,
   metadataBytes: 1024 * 1024 } as const;
@@ -40,8 +49,11 @@ export async function captureMaterializedConformancePreview(params: {
   materialized: Awaited<ReturnType<typeof materializeConformanceReference>>; outputParentDirectory: string;
   capturePlaybackAudio?: boolean;
   captureTextRegions?: boolean;
+  captureTextPaintMasks?: boolean;
   eventBatchIndex?: number;
+  signal?: AbortSignal;
 }, launch: typeof launchCompositionQaBrowser = launchCompositionQaBrowser) {
+  assertConformanceJobActive(params.signal);
   const root = params.materialized.directory;
   const fontManifestPath = join(root, "font-manifest.json");
   const fontManifestFile = await lstat(fontManifestPath);
@@ -69,7 +81,9 @@ export async function captureMaterializedConformancePreview(params: {
       batch: contract.checkpointBatch}) : undefined;
   const fonts = source.fontManifest;
   if (!fonts) throw new Error("CONFORMANCE_CAPTURE_FONT_BINDINGS_MISSING");
-  const captureTextRegions = params.captureTextRegions === true || contract.schemaVersion === 4 || fonts.length > 0;
+  const paintMasksRequired = params.captureTextPaintMasks === true
+    || contract.schemaVersion === 4 && contract.textParity.paintMaskPolicy !== undefined;
+  const captureTextRegions = params.captureTextRegions === true || paintMasksRequired || contract.schemaVersion === 4 || fonts.length > 0;
   const fontsByPath = new Map(fonts.map((font) => [conformanceFontPath(font), font]));
   const files = new Map([["conformance-preview.html", "text/html; charset=utf-8"],
     ...source.metadata.bindings.map((binding) => [binding.localPath, binding.mimeType] as [string, string])]);
@@ -90,10 +104,12 @@ export async function captureMaterializedConformancePreview(params: {
   if ([...fontsByPath.keys()].some((path) => !files.has(path))) throw new Error("CONFORMANCE_CAPTURE_FONT_BINDING_MISMATCH");
   const verifyFiles = async () => {
     for (const [path, expected] of digests) {
+      assertConformanceJobActive(params.signal);
       const filePath = join(root, path); const file = await lstat(filePath);
       if (!file.isFile() || file.size !== expected.size) throw new Error("CONFORMANCE_CAPTURE_SOURCE_CHANGED");
       const digest = createHash("sha256"); let bytes = 0;
-      for await (const chunk of createReadStream(filePath)) {
+      for await (const chunk of createReadStream(filePath, {signal: params.signal})) {
+        assertConformanceJobActive(params.signal);
         bytes += (chunk as Buffer).length;
         if (bytes > expected.size) throw new Error("CONFORMANCE_CAPTURE_SOURCE_CHANGED");
         digest.update(chunk as Buffer);
@@ -102,8 +118,10 @@ export async function captureMaterializedConformancePreview(params: {
     }
   };
   await verifyFiles();
+  assertConformanceJobActive(params.signal);
   const server = await startConformanceCaptureServer(root, files, {playbackAudio: params.capturePlaybackAudio === true});
   let browser: Awaited<ReturnType<typeof launch>> | null = null;
+  let cancellation: ReturnType<typeof bindCaptureCdpCancellation> | undefined;
   let unsubscribe: (() => void) | undefined;
   let unsubscribeNetwork: (() => void) | undefined;
   let platformFonts: Awaited<ReturnType<typeof startConformancePlatformFontCapture>> | undefined;
@@ -120,8 +138,12 @@ export async function captureMaterializedConformancePreview(params: {
     if (cleanups.some((result) => result.status === "rejected")) throw new Error("CONFORMANCE_CAPTURE_CLEANUP_FAILED");
   };
   try {
-    browser = await launch({ profilePrefix: "conformance-isolated-", isolatedCapture: true });
-    const client = browser.client;
+    assertConformanceJobActive(params.signal);
+    browser = await launch({ profilePrefix: "conformance-isolated-", isolatedCapture: true,
+      ...(params.signal ? {signal: params.signal} : {}) });
+    assertConformanceJobActive(params.signal);
+    cancellation = bindCaptureCdpCancellation(browser.client, params.signal);
+    const client = cancellation.client;
     const parsedExecutableIdentity = browserExecutableIdentitySchema.safeParse(browser.executableIdentity);
     if (!parsedExecutableIdentity.success) throw new Error("CONFORMANCE_BROWSER_EXECUTABLE_INVALID");
     const browserExecutableIdentity = parsedExecutableIdentity.data;
@@ -171,11 +193,13 @@ export async function captureMaterializedConformancePreview(params: {
     directory = await mkdtemp(join(resolve(params.outputParentDirectory), "conformance-captures-"));
     const frames: Array<{ frameIndex: number; timeSeconds: number; sha256: string; sizeBytes: number }> = [];
     const textCheckpoints: TextParityEvidence["checkpoints"] = [];
+    const deckCheckpoints: DeckTextEvidence["checkpoints"] = [];
     const fontCheckpoints = new Map<number, Awaited<ReturnType<NonNullable<typeof platformFonts>["verify"]>>>();
     let textRegionCount = 0;
     let forwardPngBytes = 0; let reversePngBytes = 0;
     // Revisit every checkpoint backwards; coincident forward seeks alone cannot prove seek safety.
     for (const checkpoint of [...contract.checkpoints, ...[...contract.checkpoints].reverse()]) {
+      assertConformanceJobActive(params.signal);
       if (Date.now() > deadline || blockedRequests || interceptionFailed) throw new Error("CONFORMANCE_CAPTURE_ISOLATION_FAILED");
       const seconds = await evaluate<number>(client, `new Promise((resolve, reject) => {
         const target = ${JSON.stringify(checkpoint.timeSeconds)};
@@ -202,10 +226,42 @@ export async function captureMaterializedConformancePreview(params: {
       await verifyConformanceFontLoading(client, fonts, false);
       const png = await captureCompositionQaScreenshot(client);
       const captured = frames.find((frame) => frame.frameIndex === checkpoint.frameIndex);
+      if (contract.schemaVersion === 4 && contract.deckTextPlan) {
+        const deckRead = deckTextCheckpointEvidenceSchema.parse({frameIndex: checkpoint.frameIndex, timeSeconds: checkpoint.timeSeconds,
+          ...await captureDeckTextCheckpoint(client, contract.deckTextPlan, checkpoint.timeSeconds, contract.canvas.width, contract.canvas.height)});
+        const deck = contract.deckTextPaintMaskPolicy ? await captureDeckTextPaintMasks(client, {
+          checkpoint: deckRead, paintedPng: png, width: contract.canvas.width, height: contract.canvas.height}, async (suppressedPng) => {
+            if (captured) reversePngBytes += suppressedPng.length; else forwardPngBytes += suppressedPng.length;
+            if (forwardPngBytes > CAPTURE_LIMITS.totalPngBytes || reversePngBytes > CAPTURE_LIMITS.totalPngBytes)
+              throw new Error("CONFORMANCE_CAPTURE_BYTE_LIMIT");
+            if (!captured) {
+              if (!directory) throw new Error("CONFORMANCE_CAPTURE_DIRECTORY_MISSING");
+              const path = join(directory, suppressedDeckTextFrameName(checkpoint.frameIndex)); ownedFiles.push(path);
+              await writeFile(path, suppressedPng, {flag: "wx", mode: 0o600});
+            }
+          }) : deckRead;
+        if (captured) {
+          if (!isDeepStrictEqual(deckCheckpoints.find((entry) => entry.frameIndex === checkpoint.frameIndex), deck))
+            throw new Error("CONFORMANCE_DECK_TEXT_REVERSE_SEEK_MISMATCH");
+        } else deckCheckpoints.push(deck);
+      }
       if (captureTextRegions) {
-        const text = textCheckpointEvidenceSchema.parse({frameIndex: checkpoint.frameIndex, timeSeconds: checkpoint.timeSeconds,
+        const textRead = textCheckpointEvidenceSchema.parse({frameIndex: checkpoint.frameIndex, timeSeconds: checkpoint.timeSeconds,
           ...await captureTextParityCheckpoint(client, source.document, checkpoint.timeSeconds,
-            contract.schemaVersion === 4 ? contract.textParity.visibilityPolicy ?? false : false)});
+            contract.schemaVersion === 4 ? contract.textParity.visibilityPolicy ?? false : false,
+            contract.schemaVersion === 4 && contract.textParity.paintOffcanvasSeedPolicy !== undefined)});
+        const text = paintMasksRequired ? await captureTextPaintMasks(client, {
+          checkpoint: textRead, paintedPng: png, width: contract.canvas.width, height: contract.canvas.height},
+          captureCompositionQaScreenshot, async (suppressedPng) => {
+            if (captured) reversePngBytes += suppressedPng.length; else forwardPngBytes += suppressedPng.length;
+            if (forwardPngBytes > CAPTURE_LIMITS.totalPngBytes || reversePngBytes > CAPTURE_LIMITS.totalPngBytes)
+              throw new Error("CONFORMANCE_CAPTURE_BYTE_LIMIT");
+            if (!captured) {
+              if (!directory) throw new Error("CONFORMANCE_CAPTURE_DIRECTORY_MISSING");
+              const suppressedPath = join(directory, suppressedTextFrameName(checkpoint.frameIndex)); ownedFiles.push(suppressedPath);
+              await writeFile(suppressedPath, suppressedPng, {flag: "wx", mode: 0o600});
+            }
+          }) : textRead;
         const usedFonts = await platformFonts.verify(text);
         if (fontCheckpoints.has(checkpoint.frameIndex) && !isDeepStrictEqual(fontCheckpoints.get(checkpoint.frameIndex), usedFonts)) {
           throw new Error("CONFORMANCE_FONT_REVERSE_SEEK_MISMATCH");
@@ -250,6 +306,10 @@ export async function captureMaterializedConformancePreview(params: {
     const textParity = captureTextRegions ? validateTextParityEvidence({schemaVersion: 1,
       policy: COMPOSITION_TEXT_PARITY_POLICY.id, repeatability: TEXT_PARITY_REPEATABILITY, checkpoints: textCheckpoints}, contract) : undefined;
     const fontUsageRequired = contract.schemaVersion === 4 && contract.fontUsageContract !== undefined;
+    const deckText = contract.schemaVersion === 4 && contract.deckTextPlan ? validateDeckTextEvidence({
+      policy: "DECK_SOURCE_NODE_CAPTURE_V1", scope: "PREVIEW_TEXT_CONTENT_GEOMETRY_NOT_PAINT_OR_RENDER_FONT_EVIDENCE",
+      documentHash: contract.documentHash, planSha256: hashDeckTextPlan(contract.deckTextPlan),
+      repeatability: "EXACT_DECK_TEXT_GEOMETRY_FORWARD_REVERSE_V1", checkpoints: deckCheckpoints}, contract) : undefined;
     const fontUsage = (fonts.length || fontUsageRequired) && textParity ? validateFontUsageEvidence({schemaVersion: 1, policy: FONT_USAGE_EVIDENCE_POLICY,
       scope: "DECLARED_CUSTOM_NATIVE_PREVIEW_ONLY", status: "CAPTURED", manifest: fonts, manifestSha256: conformanceFontManifestHash(fonts),
       bindings: platformFonts.bindings, checkpoints: contract.checkpoints.map((checkpoint) => ({
@@ -259,6 +319,7 @@ export async function captureMaterializedConformancePreview(params: {
       browserIdentity,
       browserExecutableIdentity,
       ...(textParity ? {textParity} : {}),
+      ...(deckText ? {deckText} : {}),
       ...(fontUsage ? {fontUsage} : {}),
       frames: frames.map(({ frameIndex, timeSeconds }) => ({ frameIndex, timeSeconds })) });
     const receipt = { ...params.materialized.receipt, status: "VISUAL_CAPTURED_AUDIO_PENDING", frames, networkPolicy: "EXACT_LOCAL_ALLOWLIST_V1",
@@ -266,20 +327,25 @@ export async function captureMaterializedConformancePreview(params: {
       browserIdentitySha256: browserIdentityHash(browserIdentity),
       browserExecutableIdentitySha256: browserExecutableIdentityHash(browserExecutableIdentity),
       ...(textParity ? {textParitySha256: textParityEvidenceHash(textParity)} : {}),
+      ...(deckText ? {deckTextSha256: hashDeckTextEvidence(deckText)} : {}),
       ...(fontUsage ? {fontUsageSha256: fontUsageEvidenceHash(fontUsage)} : {}),
       seekRepeatability: { policy: "EXACT_PNG_FORWARD_REVERSE_V1", status: "PASS", checkpointCount: frames.length } };
     for (const [name, value] of [["preview-metadata.json", metadata], ["capture-receipt.json", receipt]] as const) {
+      assertConformanceJobActive(params.signal);
       const serialized = `${JSON.stringify(value, null, 2)}\n`;
       if (Buffer.byteLength(serialized) > CAPTURE_LIMITS.metadataBytes) throw new Error("CONFORMANCE_CAPTURE_METADATA_LIMIT");
       const path = join(directory, name); ownedFiles.push(path); await writeFile(path, serialized, { flag: "wx", mode: 0o600 });
     }
+    assertConformanceJobActive(params.signal);
     return { directory, metadata, receipt, playback, cleanup, contract };
-  } catch (error) { await cleanup(); throw error; }
+  } catch (error) { await cleanup(); assertConformanceJobActive(params.signal); throw error; }
   finally {
+    cancellation?.dispose();
     platformFonts?.close();
-    unsubscribe?.(); unsubscribeNetwork?.(); let closeFailed = false;
+    unsubscribe?.(); unsubscribeNetwork?.(); let closeFailed = cancellation?.closeFailed ?? false;
     try { await browser?.close(); } catch { closeFailed = true; }
     try { await server.close(); } catch { closeFailed = true; }
     if (closeFailed) { await cleanup(); throw new Error("CONFORMANCE_CAPTURE_RESOURCE_CLOSE_FAILED"); }
+    if (params.signal?.aborted) {await cleanup(); assertConformanceJobActive(params.signal);}
   }
 }

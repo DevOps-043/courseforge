@@ -12,6 +12,9 @@ import { compositionConformanceContractSchema } from "../composition-preview-ren
 import { CONFORMANCE_EVIDENCE_STORAGE, validateVisualConformanceCapture, visualCaptureReceiptSchema } from "./composition-conformance-evidence-package";
 import { eventBatchAuthorizationManifestSchema, COMPOSITION_EVENT_PLAN_MAX_BATCHES } from "../composition-conformance-batch-contract";
 import { assertEventBatchCaptureLineage, eventBatchCaptureLineageSchema } from "../composition-conformance-event-batch-lineage";
+import { suppressedTextFrameName } from "./composition-text-paint-mask-derivation";
+import { suppressedDeckTextFrameName } from "./composition-deck-text-paint-derivation";
+import { COMPOSITION_TEXT_PARITY_POLICY } from "../composition-text-parity-policy";
 
 const digestSchema = z.string().regex(/^[a-f0-9]{64}$/);
 const evidenceRecordSchema = z.object({
@@ -64,6 +67,12 @@ export async function readPersistedVisualConformanceEvidence(params: {
     ...record.contract.checkpoints.map(({ frameIndex }) => [`frame-${frameIndex}.png`, 20 * 1024 * 1024] as [string, number]),
   ]);
   const entries = Object.values(zip.files);
+  for (const checkpoint of record.contract.checkpoints) {
+    const name = suppressedTextFrameName(checkpoint.frameIndex);
+    if (zip.file(name)) files.set(name, COMPOSITION_TEXT_PARITY_POLICY.maximumPaintCapturePngBytes);
+    const deckName = suppressedDeckTextFrameName(checkpoint.frameIndex);
+    if (zip.file(deckName)) files.set(deckName, COMPOSITION_TEXT_PARITY_POLICY.maximumPaintCapturePngBytes);
+  }
   if (entries.length !== files.size || entries.some((entry) => entry.dir || !files.has(entry.name)
     || entry.unsafeOriginalName !== entry.name)) throw new Error("CONFORMANCE_EVIDENCE_ARCHIVE_INVALID");
   const directory = await mkdtemp(join(params.outputParentDirectory, "conformance-evidence-"));
@@ -90,11 +99,13 @@ export async function readPersistedVisualConformanceEvidence(params: {
     const capture = await validateVisualConformanceCapture({ captureDirectory: directory,
       organizationId: record.organizationId, revisionId: record.revisionId, projectHash: record.projectHash, contract,
       ...(record.eventAuthorization ? {authorizedEventRevision: record.eventAuthorization} : {}) });
+    if (capture.images.length + 3 !== files.size || capture.images.some((image) => !files.has(image.name)))
+      throw new Error("CONFORMANCE_EVIDENCE_ARCHIVE_INVALID");
     if (record.eventAuthorization && !isDeepStrictEqual(capture.receipt.eventBatchLineage, record.eventAuthorization.lineage)) {
       throw new Error("CONFORMANCE_EVENT_EVIDENCE_LINEAGE_MISMATCH");
     }
     if (!isDeepStrictEqual(capture.receipt.frames, record.frames)) throw new Error("CONFORMANCE_EVIDENCE_RECEIPT_MISMATCH");
-    return { directory, contractPath: join(directory, "conformance-contract.json"),
+    return { directory, contract, contractPath: join(directory, "conformance-contract.json"),
       previewDirectory: directory, previewMetadataPath: join(directory, "preview-metadata.json"),
       receipt: capture.receipt, checksum: record.checksum, status: record.status, cleanup };
   } catch (error) { await cleanup(); throw error; }

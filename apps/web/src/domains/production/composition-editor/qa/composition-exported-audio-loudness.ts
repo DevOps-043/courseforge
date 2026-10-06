@@ -1,7 +1,10 @@
 import { execFile } from "node:child_process";
+import {assertConformanceJobActive} from "./composition-conformance-job-lease";
+import {createControlledProcessEnvironment} from "./composition-controlled-process-environment";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { AUDIO_PROCESSING_PROFILES } from "../../audio-processing/audio-processing-profiles";
+import {requiresControlledExecutorIntervention} from "./composition-controlled-execution-fence";
 
 const execFileAsync = promisify(execFile);
 const MAX_MEASUREMENT_OUTPUT_CHARS = 512 * 1024;
@@ -87,22 +90,28 @@ export function buildExportedAudioLoudnessArgs(videoPath: string): string[] {
   ];
 }
 
-type AudioAnalysisExecutor = (binary: string, args: string[], options: { maxBuffer: number; timeout: number; windowsHide: boolean; encoding: "utf8" }) => Promise<{ stderr: string }>;
+type AudioAnalysisExecutor = (binary: string, args: string[], options: { maxBuffer: number; timeout: number; windowsHide: boolean; encoding: "utf8"; signal?: AbortSignal; env: NodeJS.ProcessEnv }) => Promise<{ stderr: string }>;
 
 export async function measureExportedAudioLoudness(params: {
   ffmpegPath: string;
   videoPath: string;
   policyId?: ExportedAudioLoudnessPolicyId;
   execute?: AudioAnalysisExecutor;
+  signal?: AbortSignal;
 }): Promise<ExportedAudioLoudnessReport> {
+  assertConformanceJobActive(params.signal);
   resolveExportedAudioLoudnessPolicyId(params.policyId);
   const args = buildExportedAudioLoudnessArgs(params.videoPath);
   try {
     const { stderr } = await (params.execute ?? execFileAsync)(params.ffmpegPath, args, {
       encoding: "utf8", maxBuffer: MAX_MEASUREMENT_OUTPUT_CHARS, timeout: ANALYSIS_TIMEOUT_MS, windowsHide: true,
+      signal: params.signal, env: createControlledProcessEnvironment(),
     });
+    assertConformanceJobActive(params.signal);
     return evaluateExportedAudioLoudness(parseExportedAudioLoudness(stderr), params.policyId);
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && requiresControlledExecutorIntervention(error.message)) throw error;
+    assertConformanceJobActive(params.signal);
     return {
       failures: ["MEASUREMENT_FAILED"], measurement: null, method: "FFMPEG_LOUDNORM_INPUT_V1",
       policy: params.policyId ? { id: params.policyId, ...EXPORTED_AUDIO_LOUDNESS_POLICIES[params.policyId] } : null,

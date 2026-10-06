@@ -6,7 +6,9 @@ import { z } from "zod";
 import { AUDIO_TIMING_POLICY, AUDIO_RMS_WINDOW_POLICY, AUDIO_STREAM_LIMITS } from "./composition-audio-conformance-policy";
 import { StereoPcmEnergyAccumulator } from "./composition-pcm-energy-stream";
 import { consumeDecodedPcm } from "./composition-pcm-decoder-stream";
+import {assertConformanceJobActive} from "./composition-conformance-job-lease";
 import { audioRmsWindowReport, buildStereoPcmEnergyWindows, compareStereoRmsWindows, type AudioRmsWindowReport } from "./composition-audio-rms-windows";
+import {requiresControlledExecutorIntervention} from "./composition-controlled-execution-fence";
 
 export { AUDIO_TIMING_POLICY } from "./composition-audio-conformance-policy";
 
@@ -138,7 +140,9 @@ async function hashReference(filePath: string) {
 export async function measureExportedAudioTiming(params: {
   ffmpegPath: string; videoPath: string; referencePath: string; referenceMetadataPath: string;
   documentHash: string; durationSeconds: number; frameDurationMilliseconds?: number;
+  signal?: AbortSignal;
 }, decodePcm?: (filePath: string) => Promise<Buffer>, decodeStream = consumeDecodedPcm): Promise<AudioTimingReport> {
+  assertConformanceJobActive(params.signal);
   if (!Number.isFinite(params.durationSeconds) || params.durationSeconds <= 0) {
     return audioTimingReport("MEASUREMENT_FAILED", "AUDIO_TIMING_DECODE_INPUT_INVALID");
   }
@@ -154,18 +158,21 @@ export async function measureExportedAudioTiming(params: {
     const referencePath = resolve(params.referencePath);
     if (await hashReference(referencePath) !== metadata.audioSha256) throw new Error("AUDIO_TIMING_REFERENCE_HASH_MISMATCH");
     const decode = async (filePath: string) => {
+      assertConformanceJobActive(params.signal);
       const timing = new StereoPcmEnergyAccumulator(AUDIO_TIMING_POLICY.binMilliseconds);
       const rms = new StereoPcmEnergyAccumulator(AUDIO_RMS_WINDOW_POLICY.windowMilliseconds);
       const consume = (bytes: Uint8Array) => { timing.push(bytes); rms.push(bytes); };
       if (decodePcm) consume(await decodePcm(filePath));
       else await decodeStream({ binary: params.ffmpegPath, arguments: audioTimingDecodeArguments(filePath, params.durationSeconds),
         timeoutMilliseconds: AUDIO_STREAM_LIMITS.decodeTimeoutMilliseconds,
-        maximumBytes: Math.ceil((params.durationSeconds + 1) * AUDIO_TIMING_POLICY.sampleRate) * 8, consume });
+        maximumBytes: Math.ceil((params.durationSeconds + 1) * AUDIO_TIMING_POLICY.sampleRate) * 8, consume, signal: params.signal });
+      assertConformanceJobActive(params.signal);
       return { timing: timing.finish().channels, rms: rms.finish() };
     };
     const reference = await decode(referencePath);
     const rendered = await decode(params.videoPath);
     if (await hashReference(referencePath) !== metadata.audioSha256) throw new Error("AUDIO_TIMING_REFERENCE_CHANGED");
+    assertConformanceJobActive(params.signal);
     const expectedBins = params.durationSeconds * 1000 / AUDIO_TIMING_POLICY.binMilliseconds;
     if ([reference, rendered].some((envelope) => Math.abs(envelope.timing[0].length - expectedBins)
       * AUDIO_TIMING_POLICY.binMilliseconds > AUDIO_TIMING_POLICY.toleranceMilliseconds)) {
@@ -178,6 +185,8 @@ export async function measureExportedAudioTiming(params: {
     return { ...timing, status, reason: rms.status === "FAIL" ? rms.reason : timing.reason ?? rms.reason,
       rms, alignment: { status: timing.status, reason: timing.reason }, referenceSha256: metadata.audioSha256 };
   } catch (error) {
+    if (error instanceof Error && requiresControlledExecutorIntervention(error.message)) throw error;
+    assertConformanceJobActive(params.signal);
     const reason = error instanceof Error && /^AUDIO_TIMING_[A-Z_]+$/.test(error.message) ? error.message : "AUDIO_TIMING_MEASUREMENT_FAILED";
     return audioTimingReport("MEASUREMENT_FAILED", reason);
   }

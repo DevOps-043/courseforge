@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertSnapshotVisibilityReuse, restrictSnapshotVisibilityReuse, snapshotMotionVisibilityEnabled } from "../composition-snapshot-conformance-policy";
+import { assertSnapshotVisibilityReuse, restrictSnapshotVisibilityReuse, restrictSnapshotPaintMaskReuse, snapshotMotionVisibilityEnabled } from "../composition-snapshot-conformance-policy";
 import { buildSnapshotConformanceContract } from "../composition-snapshot-conformance-contract";
+import { compositionConformanceContractSchema } from "../composition-preview-render-conformance";
 import { createTransitionDocument } from "./composition-transition-test-fixtures";
 import { createCompositionNativeOverlay } from "../composition-native-overlay.factory";
 import { NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT, compositionEditorDocumentSchema } from "../composition-document.types";
@@ -22,6 +23,33 @@ function contract(motionVisibility = false, contractVersion: 1 | 2 | 3 | 4 = 4) 
   return buildSnapshotConformanceContract({document, documentHash: "a".repeat(64), assets: [], contractVersion, motionVisibility,
     renderProfile: {format: "mp4", fps: 25, quality: "high", resolution: "1080p"}});
 }
+
+test("paint-mask revision identity matches policy presence and absence exactly", () => {
+  const legacy = contract(); if (legacy.schemaVersion !== 4) throw new Error("Expected v4");
+  const required = compositionConformanceContractSchema.parse({...legacy,
+    textParity: {...legacy.textParity, paintMaskPolicy: "NATIVE_TEXT_PAINT_SUPPRESSION_RESTORED_V1"}});
+  const calls: unknown[] = [];
+  const query = {eq(column: string, value: string) {calls.push(["eq", column, value]); return this;},
+    is(column: string, value: null) {calls.push(["is", column, value]); return this;}};
+  restrictSnapshotPaintMaskReuse(query, legacy); restrictSnapshotPaintMaskReuse(query, required);
+  assert.deepEqual(calls, [["is", "manifest->conformance_contract->textParity->>paintMaskPolicy", null],
+    ["is", "manifest->conformance_contract->textParity->>paintRegionExpansionPolicy", null],
+    ["is", "manifest->conformance_contract->textParity->>paintOffcanvasSeedPolicy", null],
+    ["eq", "manifest->conformance_contract->textParity->>paintMaskPolicy", "NATIVE_TEXT_PAINT_SUPPRESSION_RESTORED_V1"],
+    ["is", "manifest->conformance_contract->textParity->>paintRegionExpansionPolicy", null],
+    ["is", "manifest->conformance_contract->textParity->>paintOffcanvasSeedPolicy", null]]);
+  assertSnapshotVisibilityReuse({conformance_contract: required}, required);
+  assert.throws(() => assertSnapshotVisibilityReuse({conformance_contract: required}, legacy), /POLICY_MISMATCH/);
+  assert.throws(() => assertSnapshotVisibilityReuse({conformance_contract: legacy}, required), /POLICY_MISMATCH/);
+  if (required.schemaVersion !== 4) throw new Error("Expected v4");
+  const expanded = compositionConformanceContractSchema.parse({...required, textParity: {...required.textParity,
+    paintRegionExpansionPolicy: "JOINT_NATIVE_PAINT_DELTA_NEAREST_ROI_V1"}});
+  calls.length = 0; restrictSnapshotPaintMaskReuse(query, expanded);
+  assert.deepEqual(calls[1], ["eq", "manifest->conformance_contract->textParity->>paintRegionExpansionPolicy",
+    "JOINT_NATIVE_PAINT_DELTA_NEAREST_ROI_V1"]);
+  assert.throws(() => assertSnapshotVisibilityReuse({conformance_contract: required}, expanded), /POLICY_MISMATCH/);
+  assert.throws(() => assertSnapshotVisibilityReuse({conformance_contract: expanded}, required), /POLICY_MISMATCH/);
+});
 
 test("motion rollout is exact opt-in and requires the text v4 contract", () => {
   for (const version of [1, 2, 3]) assert.equal(snapshotMotionVisibilityEnabled(version, "true"), false);

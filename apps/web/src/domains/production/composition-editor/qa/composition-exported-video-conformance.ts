@@ -1,12 +1,12 @@
-import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { createReadStream } from "node:fs";
-import { mkdtemp, readFile, readdir, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { RenderInternals } from "@remotion/renderer";
 import { z } from "zod";
+import { evaluateExportedVideoConformanceStatus, type ExportedAudioPresenceStatus } from "./composition-exported-conformance-gate";
+export { evaluateExportedVideoConformanceStatus } from "./composition-exported-conformance-gate";
 import { compositionConformanceContractSchema, type CompositionConformanceReport } from "../composition-preview-render-conformance";
 import { measureCompositionConformanceDirectories, compositionConformanceCaptureMetadataSchema } from "./composition-conformance-files";
 import { parseExportedAudioSignal, type ExportedAudioSignal } from "./composition-exported-audio-signal";
@@ -14,6 +14,20 @@ import { evaluateExportedAudioLoudness, measureExportedAudioLoudness, type Expor
 import { audioTimingReport, measureExportedAudioTiming, type AudioTimingReport } from "./composition-exported-audio-timing";
 import { evaluateExportedColorTags, readExportedColorTags, resolveExportedColorTagPolicyId,
   type ExportedColorTagPolicyId, type ExportedColorTagReport } from "./composition-exported-color-tags";
+import type { ColorChartAuditPlan } from "./composition-color-chart-audit";
+import { auditExportedColorChartCheckpoints, validateExportedColorChartPlan,
+  type ExportedColorChartReport } from "./composition-exported-color-chart";
+import { assertConformanceFileUnchanged, pinConformanceFile } from "./composition-conformance-file-integrity";
+import {controlledRenderExecutionObservationSchema, evaluateControlledRenderExecution} from "../composition-render-execution-contract";
+import {controlledSeekRepeatabilityReportSchema} from "../composition-render-seek-policy";
+import {bindControlledSeekRepeatability} from "./composition-controlled-seek-binding";
+import {controlledNativeEvidenceSchema, bindControlledRendererFontWitness} from "./composition-controlled-font-witness";
+import {assertConformanceJobActive} from "./composition-conformance-job-lease";
+import {createControlledProcessEnvironment} from "./composition-controlled-process-environment";
+import {pinComparisonTools} from "./composition-comparison-tool-integrity";
+import {resolveSdrCheckpointFilter, assertSdrCheckpointStreamProfile} from "./composition-sdr-checkpoint-decoder";
+import type {ComparisonProcessPorts} from "./composition-comparison-process-ports";
+import {requiresControlledExecutorIntervention} from "./composition-controlled-execution-fence";
 
 const execFileAsync = promisify(execFile);
 const MAX_EXPORTED_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
@@ -30,16 +44,20 @@ const probeSchema = z.object({
 export const exportedVideoReceiptSchema = z.object({
   documentHash: z.string().regex(/^[a-f0-9]{64}$/),
   videoSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  renderExecution: controlledRenderExecutionObservationSchema.optional(),
+  seekRepeatability: controlledSeekRepeatabilityReportSchema.optional(),
+  nativeEvidence: controlledNativeEvidenceSchema.optional(),
 }).strict();
 
 export interface ExportedVideoConformanceReport {
   visualMeasurements?: Awaited<ReturnType<typeof measureCompositionConformanceDirectories>>["measurements"];
   colorTags?: ExportedColorTagReport;
+  colorChart?: ExportedColorChartReport;
   documentHash: string;
   audioTiming: AudioTimingReport;
   audioLoudness: ExportedAudioLoudnessReport;
   audioSignal: ExportedAudioSignal | null;
-  audioStatus: "EXPECTATION_UNKNOWN" | "MISSING_REQUIRED_TRACK" | "NOT_REQUIRED" | "REQUIRED_AUDIO_BELOW_FLOOR" | "SIGNAL_ABOVE_FLOOR_NOT_FULLY_EVALUATED";
+  audioStatus: ExportedAudioPresenceStatus;
   provenance: "LOCAL_RECEIPT_NOT_AUTHENTICATED";
   reportVersion: 2;
   scope: "EXPORTED_VIDEO_VISUAL_AND_AUDIO_MEASUREMENTS";
@@ -83,21 +101,6 @@ export function evaluateExportedAudioPresence(required: boolean | undefined, has
   return hasAudio ? "TRACK_PRESENT_NEEDS_SIGNAL_CHECK" : "MISSING_REQUIRED_TRACK";
 }
 
-export function evaluateExportedVideoConformanceStatus(input: {
-  audioStatus: ExportedVideoConformanceReport["audioStatus"];
-  audioLoudnessStatus: ExportedAudioLoudnessReport["status"];
-  visualStatus: CompositionConformanceReport["status"];
-  audioTimingStatus?: AudioTimingReport["status"];
-  colorTagStatus?: ExportedColorTagReport["status"];
-}): CompositionConformanceReport["status"] {
-  if (input.audioStatus === "MISSING_REQUIRED_TRACK" || input.audioStatus === "REQUIRED_AUDIO_BELOW_FLOOR"
-    || input.audioLoudnessStatus === "FAIL" || input.audioLoudnessStatus === "MEASUREMENT_FAILED"
-    || input.audioTimingStatus === "FAIL" || input.audioTimingStatus === "MEASUREMENT_FAILED"
-    || input.colorTagStatus === "FAIL") return "FAIL";
-  return (input.audioTimingStatus === "INCOMPLETE" || input.colorTagStatus === "INCOMPLETE")
-    && input.visualStatus === "PASS" ? "INCOMPLETE" : input.visualStatus;
-}
-
 export function parseExportedFrameTimes(stdout: string, frameIndexes: number[], timeline?: {
   expectedFrameCount: number;
   fps: number;
@@ -134,38 +137,68 @@ export async function compareExportedVideoWithPreview(params: {
   audioReferenceMetadataPath?: string;
   audioPolicyId?: ExportedAudioLoudnessPolicyId;
   colorTagPolicyId?: ExportedColorTagPolicyId;
+  colorChartAuditPlan?: ColorChartAuditPlan;
   contractPath: string;
   previewDirectory: string;
   previewMetadataPath: string;
   renderReceiptPath: string;
   videoPath: string;
   includeVisualMeasurements?: boolean;
+  signal?: AbortSignal;
+  /** Host configuration, never supplied by a receipt/client. All process paths are mandatory together. */
+  processPorts?: ComparisonProcessPorts;
 }): Promise<ExportedVideoConformanceReport> {
+  assertConformanceJobActive(params.signal);
+  const processPorts = params.processPorts;
+  if (processPorts && (typeof processPorts.pixelDecoderPath !== "string" || typeof processPorts.probePath !== "string"
+    || !isAbsolute(processPorts.pixelDecoderPath) || !isAbsolute(processPorts.probePath)
+    || processPorts.pixelDecoderPath.includes("\0") || processPorts.probePath.includes("\0")
+    || typeof processPorts.execute !== "function" || typeof processPorts.consumePcm !== "function"))
+    throw new Error("EXPORTED_VIDEO_PROCESS_CONFIGURATION_INVALID");
+  const execute = async (binary: string, args: string[], options: {maxBuffer: number; timeout: number; windowsHide: boolean}) => {
+    assertConformanceJobActive(params.signal);
+    try {
+      const result = await (processPorts?.execute ?? execFileAsync)(binary, args,
+        {...options, encoding: "utf8", signal: params.signal, env: createControlledProcessEnvironment()});
+      assertConformanceJobActive(params.signal); return result;
+    } catch (error) {
+      if (error instanceof Error && requiresControlledExecutorIntervention(error.message)) throw error;
+      assertConformanceJobActive(params.signal); throw error;
+    }
+  };
   if (Boolean(params.audioReferencePath) !== Boolean(params.audioReferenceMetadataPath)) throw new Error("EXPORTED_AUDIO_REFERENCE_ARGUMENTS_INVALID");
   resolveExportedColorTagPolicyId(params.colorTagPolicyId);
   const contract = compositionConformanceContractSchema.parse(JSON.parse(await readFile(resolve(params.contractPath), "utf8")) as unknown);
+  const colorChartPlan = params.colorChartAuditPlan ? validateExportedColorChartPlan(contract, params.colorChartAuditPlan) : undefined;
   const receipt = exportedVideoReceiptSchema.parse(JSON.parse(await readFile(resolve(params.renderReceiptPath), "utf8")) as unknown);
-  const file = await stat(resolve(params.videoPath));
-  if (!file.isFile() || file.size <= 0 || file.size > MAX_EXPORTED_VIDEO_BYTES) throw new Error("EXPORTED_VIDEO_SIZE_INVALID");
-  const digest = createHash("sha256");
-  for await (const chunk of createReadStream(resolve(params.videoPath))) digest.update(chunk as Buffer);
-  const sha256 = digest.digest("hex");
+  const videoPin = await pinConformanceFile(resolve(params.videoPath), MAX_EXPORTED_VIDEO_BYTES);
+  const sha256 = videoPin.sha256;
   if (sha256 !== receipt.videoSha256) throw new Error("EXPORTED_VIDEO_RECEIPT_HASH_MISMATCH");
   if (receipt.documentHash !== contract.documentHash) throw new Error("EXPORTED_VIDEO_DOCUMENT_HASH_MISMATCH");
+  const native = bindControlledRendererFontWitness(contract, receipt.nativeEvidence, sha256);
+  const checkpointFilter = resolveSdrCheckpointFilter({expected: contract.schemaVersion === 4 ? contract.renderExecution : undefined,
+    observation: receipt.renderExecution, documentHash: contract.documentHash, videoSha256: sha256});
 
-  const ffprobePath = RenderInternals.getExecutablePath({ binariesDirectory: null, indent: false, logLevel: "error", type: "ffprobe" });
-  const ffmpegPath = RenderInternals.getExecutablePath({ binariesDirectory: null, indent: false, logLevel: "error", type: "ffmpeg" });
-  const { stdout } = await execFileAsync(ffprobePath, [
-    "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate,color_space,color_primaries,color_transfer,color_range",
+  const ffprobePath = processPorts?.probePath ?? RenderInternals.getExecutablePath({ binariesDirectory: null, indent: false, logLevel: "error", type: "ffprobe" });
+  const ffmpegPath = processPorts?.pixelDecoderPath ?? RenderInternals.getExecutablePath({ binariesDirectory: null, indent: false, logLevel: "error", type: "ffmpeg" });
+  // Resolve locally, never accept executable paths from the receipt or a browser/client.
+  const comparisonTools = await pinComparisonTools({pixelDecoderPath: ffmpegPath, probePath: ffprobePath,
+    expected: contract.schemaVersion === 4 ? contract.renderExecution?.comparisonTools : undefined, signal: params.signal});
+  const { stdout } = await execute(ffprobePath, [
+    "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate,pix_fmt,chroma_location,color_space,color_primaries,color_transfer,color_range,sample_rate,channels,start_time,duration",
     "-of", "json", resolve(params.videoPath),
   ], { maxBuffer: 128 * 1024, timeout: 30_000, windowsHide: true });
-  const probe = parseExportedVideoProbe(JSON.parse(stdout) as unknown);
+  const rawProbe: unknown = JSON.parse(stdout);
+  if (checkpointFilter) assertSdrCheckpointStreamProfile(rawProbe,
+    contract.schemaVersion === 4 ? contract.renderExecution?.sdrAudioMuxPolicy : undefined,
+    {durationSeconds: contract.canvas.durationSeconds, frameDurationSeconds: 1 / contract.renderProfile.fps});
+  const probe = parseExportedVideoProbe(rawProbe);
   const frozenColorPolicy = contract.schemaVersion === 4 ? contract.colorTagPolicy : undefined;
   const colorTags = evaluateExportedColorTags(probe.colorTags, frozenColorPolicy ?? params.colorTagPolicyId);
   let audioStatus = evaluateExportedAudioPresence(contract.schemaVersion !== 1 ? contract.audio.required : undefined, probe.hasAudio);
   let audioSignal: ExportedAudioSignal | null = null;
   if (audioStatus === "TRACK_PRESENT_NEEDS_SIGNAL_CHECK") {
-    const { stderr } = await execFileAsync(ffmpegPath, [
+    const { stderr } = await execute(ffmpegPath, [
       "-hide_banner", "-nostdin", "-v", "info", "-i", resolve(params.videoPath),
       "-map", "0:a:0", "-vn", "-af", "volumedetect", "-f", "null", "-",
     ], { maxBuffer: 512 * 1024, timeout: VIDEO_DECODE_TIMEOUT_MS, windowsHide: true });
@@ -178,21 +211,25 @@ export async function compareExportedVideoWithPreview(params: {
     throw new Error("EXPORTED_VIDEO_DURATION_MISMATCH");
   }
   const audioLoudness = probe.hasAudio
-    ? await measureExportedAudioLoudness({ ffmpegPath, videoPath: resolve(params.videoPath), policyId: params.audioPolicyId })
+    ? await measureExportedAudioLoudness({ ffmpegPath, videoPath: resolve(params.videoPath), policyId: params.audioPolicyId,
+      signal: params.signal, ...(processPorts ? {execute: processPorts.execute} : {}) })
     : evaluateExportedAudioLoudness(null, params.audioPolicyId);
   const audioTiming = params.audioReferencePath && params.audioReferenceMetadataPath
     ? probe.hasAudio ? await measureExportedAudioTiming({
       ffmpegPath, videoPath: resolve(params.videoPath), referencePath: params.audioReferencePath,
       referenceMetadataPath: params.audioReferenceMetadataPath, documentHash: contract.documentHash, frameDurationMilliseconds: 1000 / probe.fps,
       durationSeconds: contract.canvas.durationSeconds,
-    }) : audioTimingReport("MEASUREMENT_FAILED", "AUDIO_TIMING_TRACK_MISSING")
+      signal: params.signal,
+    }, undefined, processPorts?.consumePcm) : audioTimingReport("MEASUREMENT_FAILED", "AUDIO_TIMING_TRACK_MISSING")
     : audioTimingReport("NOT_REQUESTED");
 
   const workDirectory = await mkdtemp(join(tmpdir(), "courseforge-export-conformance-"));
   const metadataPath = join(workDirectory, "render-metadata.json");
+  let terminationUnconfirmed = false;
   try {
+    assertConformanceJobActive(params.signal);
     const indexes = contract.checkpoints.map((checkpoint) => checkpoint.frameIndex);
-    const frameProbe = await execFileAsync(ffprobePath, [
+    const frameProbe = await execute(ffprobePath, [
       "-v", "error", "-select_streams", "v:0", "-show_entries", "frame=best_effort_timestamp_time",
       "-of", "csv=p=0", resolve(params.videoPath),
     ], { maxBuffer: 64 * 1024 * 1024, timeout: VIDEO_DECODE_TIMEOUT_MS, windowsHide: true });
@@ -202,14 +239,16 @@ export async function compareExportedVideoWithPreview(params: {
       maxTemporalDriftFrames: contract.thresholds.maxTemporalDriftFrames,
     });
     for (let position = 0; position < indexes.length; position += 1) {
-      await execFileAsync(ffmpegPath, [
+      await execute(ffmpegPath, [
         "-hide_banner", "-nostdin", "-loglevel", "error", "-i", resolve(params.videoPath),
         "-map", "0:v:0", "-an", "-ss", String(timeline.checkpointTimes[position]), "-frames:v", "1",
+        ...(checkpointFilter ? ["-vf", checkpointFilter] : []),
         join(workDirectory, `frame-${indexes[position]}.png`),
       ], { maxBuffer: 128 * 1024, timeout: VIDEO_DECODE_TIMEOUT_MS, windowsHide: true });
     }
     const renderMetadata = compositionConformanceCaptureMetadataSchema.parse({
       colorTags,
+      ...(native ? {textParity: native.nativeEvidence.textEvidence} : {}),
       documentHash: receipt.documentHash,
       frames: indexes.map((frameIndex, position) => ({ frameIndex, timeSeconds: timeline.checkpointTimes[position] })),
     });
@@ -222,9 +261,33 @@ export async function compareExportedVideoWithPreview(params: {
       renderMetadataPath: metadataPath,
     });
     const visual = measuredVisual.report;
+    assertConformanceJobActive(params.signal);
+    if (native) {
+      if (!visual.fontUsage) throw new Error("EXPORTED_VIDEO_FONT_PENDING_REPORT_REQUIRED");
+      visual.fontUsage.observedWitness = native.summary;
+    }
+    if (contract.schemaVersion === 4 && contract.renderExecution) {
+      visual.renderExecution = evaluateControlledRenderExecution({expected: contract.renderExecution,
+        documentHash: contract.documentHash, videoSha256: sha256, observation: receipt.renderExecution});
+      if (visual.renderExecution.status === "MISMATCH") {
+        visual.status = "FAIL";
+        visual.failures.push({metric: "render_execution", message: "La ejecución no coincide con el contrato congelado."});
+      }
+    } else if (receipt.renderExecution) throw new Error("CONFORMANCE_RENDER_EXECUTION_UNAUTHORIZED");
+    const seek = bindControlledSeekRepeatability(contract, receipt.seekRepeatability);
+    if (seek) {
+      visual.seekRepeatability = seek;
+      visual.incompletenessReasons = visual.incompletenessReasons?.filter(reason => reason !== "RENDER_SEEK_REPEATABILITY_UNAVAILABLE");
+    }
+    const colorChart = colorChartPlan ? await auditExportedColorChartCheckpoints({plan: colorChartPlan, frameIndexes: indexes,
+      previewDirectory: resolve(params.previewDirectory), renderDirectory: workDirectory}) : undefined;
+    await assertConformanceFileUnchanged(resolve(params.videoPath), videoPin, MAX_EXPORTED_VIDEO_BYTES);
+    await comparisonTools.assertUnchanged();
+    assertConformanceJobActive(params.signal);
     return {
       ...(params.includeVisualMeasurements === true ? {visualMeasurements: measuredVisual.measurements} : {}),
       colorTags,
+      ...(colorChart ? {colorChart} : {}),
       documentHash: contract.documentHash,
       audioTiming,
       audioLoudness,
@@ -234,16 +297,23 @@ export async function compareExportedVideoWithPreview(params: {
       reportVersion: 2,
       scope: "EXPORTED_VIDEO_VISUAL_AND_AUDIO_MEASUREMENTS",
       status: evaluateExportedVideoConformanceStatus({ audioStatus, audioLoudnessStatus: audioLoudness.status,
-        visualStatus: visual.status, audioTimingStatus: audioTiming.status, colorTagStatus: colorTags.status }),
-      video: { codec: probe.codec, durationSeconds: probe.durationSeconds, frameCount: timeline.frameCount, hasAudio: probe.hasAudio, maxTimelineDriftFrames: timeline.maxTimelineDriftFrames, sha256, sizeBytes: file.size },
+        visualStatus: visual.status, audioTimingStatus: audioTiming.status, audioRmsStatus: audioTiming.rms.status,
+        colorTagStatus: colorTags.status, colorChartStatus: colorChart?.status }),
+      video: { codec: probe.codec, durationSeconds: probe.durationSeconds, frameCount: timeline.frameCount, hasAudio: probe.hasAudio, maxTimelineDriftFrames: timeline.maxTimelineDriftFrames, sha256, sizeBytes: videoPin.sizeBytes },
       visual,
     };
+  } catch (error) {
+    terminationUnconfirmed = error instanceof Error && requiresControlledExecutorIntervention(error.message);
+    throw error;
   } finally {
-    for (const entry of await readdir(workDirectory)) {
-      if (/^frame-\d+\.png$/.test(entry) || entry === "render-metadata.json") {
-        await rm(join(workDirectory, entry), { force: true });
+    // An owned decoder with unknown closure may still access these files. Never clean them under it.
+    if (!terminationUnconfirmed) {
+      for (const entry of await readdir(workDirectory)) {
+        if (/^frame-\d+\.png$/.test(entry) || entry === "render-metadata.json") {
+          await rm(join(workDirectory, entry), { force: true });
+        }
       }
+      await rmdir(workDirectory);
     }
-    await rmdir(workDirectory);
   }
 }

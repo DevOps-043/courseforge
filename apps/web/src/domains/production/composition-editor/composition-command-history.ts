@@ -61,6 +61,29 @@ export class CompositionCommandHistory {
     this.redoEntries.length = 0;
   }
 
+  /** Rebase a trusted immutable projection without recording a user command.
+   * Keep only the contiguous safe tail at each cursor; an incompatible checkpoint
+   * is a history barrier, not permission to jump across an unrepresented edit. */
+  rebaseDocuments(transform: (document: CompositionEditorDocument) => CompositionEditorDocument | null) {
+    const stacks = [this.undoEntries, this.redoEntries];
+    const projections: CompositionCommandHistoryEntry[][] = [];
+    for (const entries of stacks) {
+      const rebased: CompositionCommandHistoryEntry[] = [];
+      for (let index = entries.length - 1; index >= 0; index -= 1) {
+        const entry = entries[index]!;
+        const beforeDocument = transform(structuredClone(entry.beforeDocument));
+        const afterDocument = transform(structuredClone(entry.afterDocument));
+        if (!beforeDocument || !afterDocument) break;
+        const beforeJson = JSON.stringify(beforeDocument), afterJson = JSON.stringify(afterDocument);
+        rebased.unshift({ ...entry, beforeDocument: JSON.parse(beforeJson), afterDocument: JSON.parse(afterJson),
+          serializedBytes: utf8ByteLength(beforeJson) + utf8ByteLength(afterJson) });
+      }
+      projections.push(rebased);
+    }
+    stacks.forEach((entries, index) => entries.splice(0, entries.length, ...projections[index]!));
+    this.enforceLimits();
+  }
+
   commitRedo(expectedEntryId: string) {
     const entry = this.redoEntries.at(-1);
     if (!entry || entry.id !== expectedEntryId) return false;
@@ -125,9 +148,11 @@ export class CompositionCommandHistory {
   }
 
   private enforceLimits() {
-    while (this.undoEntries.length + this.redoEntries.length > this.maxEntries) this.undoEntries.shift();
-    while (this.snapshot().retainedSerializedBytes > this.maxSerializedBytes && this.undoEntries.length > 0) {
-      this.undoEntries.shift();
+    while (this.undoEntries.length + this.redoEntries.length > this.maxEntries) {
+      (this.undoEntries.length ? this.undoEntries : this.redoEntries).shift();
+    }
+    while (this.snapshot().retainedSerializedBytes > this.maxSerializedBytes && (this.undoEntries.length || this.redoEntries.length)) {
+      (this.undoEntries.length ? this.undoEntries : this.redoEntries).shift();
     }
   }
 }

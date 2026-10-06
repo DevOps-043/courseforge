@@ -3,24 +3,29 @@ import { createMaterializedAudioReference } from "./composition-audio-reference"
 import { persistAudioConformanceEvidence } from "./composition-audio-evidence-persistence";
 import { audioEvidenceHashSchema } from "./composition-audio-evidence-contract";
 import { createMaterializedPlaybackAudioReference } from "./composition-materialized-playback-audio";
+import {assertConformanceJobActive} from "./composition-conformance-job-lease";
 
 const defaultDependencies = { materialize: materializeAuthorizedConformanceRevision, createAudio: createMaterializedAudioReference,
   persist: persistAudioConformanceEvidence };
 type Dependencies = typeof defaultDependencies & {createPlaybackAudio?: typeof createMaterializedPlaybackAudioReference};
 /** Worker preparation only. Does not enqueue a durable conformance job or approve the video. */
 export async function prepareAndPersistAudioConformanceReference(
-  params: Parameters<typeof materializeAuthorizedConformanceRevision>[0] & { visualChecksum: string; ffmpegPath: string; allowLongAudio?: boolean; capturePlaybackAudio?: boolean },
+  params: Parameters<typeof materializeAuthorizedConformanceRevision>[0] & { visualChecksum: string; ffmpegPath: string; allowLongAudio?: boolean; capturePlaybackAudio?: boolean; signal?: AbortSignal },
   dependencies: Dependencies = defaultDependencies,
 ) {
   audioEvidenceHashSchema.parse(params.visualChecksum);
   let materialized: Awaited<ReturnType<typeof materializeAuthorizedConformanceRevision>> | null = null;
   let audio: {directory: string; cleanup: () => Promise<void>} | null = null;
   try {
+    assertConformanceJobActive(params.signal);
     materialized = await dependencies.materialize(params);
+    assertConformanceJobActive(params.signal);
     const createAudio = params.capturePlaybackAudio === true ? (dependencies.createPlaybackAudio ?? createMaterializedPlaybackAudioReference) : dependencies.createAudio;
     audio = await createAudio({ materialized, outputParentDirectory: params.outputParentDirectory,
       ffmpegPath: params.ffmpegPath, allowLongAudio: params.allowLongAudio });
-    return await dependencies.persist({ ...params, audioDirectory: audio.directory });
+    assertConformanceJobActive(params.signal);
+    const persisted = await dependencies.persist({ ...params, audioDirectory: audio.directory });
+    assertConformanceJobActive(params.signal); return persisted;
   } finally {
     const cleanups = await Promise.allSettled([
       ...(audio ? [Promise.resolve().then(() => audio!.cleanup())] : []),

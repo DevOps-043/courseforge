@@ -1,3 +1,4 @@
+import { HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT } from "./html-editing/html-editing-reference.contract";
 import {
   COMPOSITION_DOCUMENT_FORMAT,
   NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT,
@@ -1264,7 +1265,12 @@ export function applyCompositionEditorPatches(
   }
 
   // Every newly appended document uses the current motion contract, including restores.
-  next.format = next.clips.some((clip) => clip.kind === "TEXT" || clip.kind === "CAPTION")
+  if (next.htmlEditing) {
+    next.htmlEditing.items = next.htmlEditing.items.filter(reference => next.clips.some(clip => clip.id === reference.clipId));
+    if (!next.htmlEditing.items.length) delete next.htmlEditing;
+  }
+  next.format = next.htmlEditing ? HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT
+    : next.clips.some((clip) => clip.kind === "TEXT" || clip.kind === "CAPTION")
     ? NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT
     : COMPOSITION_DOCUMENT_FORMAT;
   next.motion.schemaVersion = 2;

@@ -13,8 +13,8 @@ async function main() {
   if (!supabaseUrl || !key) throw new Error("CONFORMANCE_JOB_ENVIRONMENT_MISSING");
   const { createNodeSupabaseClient } = require("../apps/api/dist/core/supabase-client.js");
   const { snapshotImportedHyperframesVideo, checkImportedHyperframesVideo } = require("../apps/api/dist/features/video-integrity/video-integrity.service.js");
-  const { processConformanceJob, classifyConformanceJobFailure } = require("../apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/qa/composition-conformance-job-worker.js");
-  const { executeConformanceJob } = require("../apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/qa/composition-conformance-job-execution.js");
+  const { processConformanceJob, classifyConformanceJobFailure } = require("../apps/web/dist/composition-worker/domains/production/composition-editor/qa/composition-conformance-job-worker.js");
+  const { executeConformanceJob } = require("../apps/web/dist/composition-worker/domains/production/composition-editor/qa/composition-conformance-job-execution.js");
   const { RenderInternals } = require("@remotion/renderer");
   const ffmpegPath = RenderInternals.getExecutablePath({ binariesDirectory: null, indent: false, logLevel: "error", type: "ffmpeg" });
   const supabase = createNodeSupabaseClient(supabaseUrl, key, { auth: { persistSession: false } });
@@ -24,10 +24,10 @@ async function main() {
   try {
     while (!shutdown.signal.aborted) {
       try {
-        const result = await processConformanceJob(supabase, (claim) => executeConformanceJob({ claim, supabase, supabaseUrl, ffmpegPath,
+        const result = await processConformanceJob(supabase, (claim, signal) => executeConformanceJob({ claim, signal, supabase, supabaseUrl, ffmpegPath,
           allowLongAudio: process.env.HYPERFRAMES_CONFORMANCE_LONG_AUDIO_ENABLED === "true",
           capturePlaybackAudio: process.env.HYPERFRAMES_CONFORMANCE_PLAYBACK_AUDIO_ENABLED === "true" },
-          { snapshot: snapshotImportedHyperframesVideo, recheck: checkImportedHyperframesVideo }));
+          { snapshot: snapshotImportedHyperframesVideo, recheck: checkImportedHyperframesVideo }), undefined, {signal: shutdown.signal});
         if (result.status !== "IDLE") console.info("conformance_job", result);
       } catch (error) { console.error("conformance_worker_failed", classifyConformanceJobFailure(error)); }
       try { await delay(5_000, undefined, { signal: shutdown.signal }); }

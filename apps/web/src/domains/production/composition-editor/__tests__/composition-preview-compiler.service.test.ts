@@ -504,6 +504,15 @@ test("compiles the native document into a seekable preview with stable visual id
   assert.match(html, /window\.__timelines\["courseforge-composition"\]/);
   assert.match(html, /courseforge-composition-selection/);
   assert.match(html, /composition-selection-marquee/);
+  assert.match(html, /resolveCanvasKeyboardSelection/);
+  assert.match(html, /keyboardTransform.keys.add\(event.key\)/);
+  assert.match(html, /const seek = .*\{\s+cancelKeyboardTransform\(\)/);
+  assert.match(html, /restoreCanvasControlFocus\(focusToken, target\)/);
+  assert.match(html, /restoreCanvasFocusAfterReload\(message.hfId\)/);
+  assert.match(html, /resolveEditorShortcut/);
+  assert.match(html, /applyRuntimeVisibilityOverrides\(\);\s+reconcileCanvasFocus\(\)/);
+  assert.match(html, /focus\(\{ preventScroll: true \}\)/);
+  assert.match(html, /data-editor-label=/);
   assert.match(html, /event\.ctrlKey \|\| event\.metaKey \|\| event\.shiftKey/);
   assert.match(html, /hfIds: \[\.\.\.selectedHfIds\]/);
   assert.match(html, /selectTarget\(target, "PARENT",/);
@@ -515,7 +524,12 @@ test("compiles the native document into a seekable preview with stable visual id
   assert.match(html, /resolveClosestSmartGuide/);
   assert.match(html, /resolveSmartMove/);
   assert.match(html, /resolveSmartResize/);
-  assert.match(html, /Math\.max\(2, 7 \/ scale\)/);
+  assert.match(html, /compositionCanvasVisibleBounds\(readLayoutBox\(peer\), readCrop\(peer\)\)/);
+  assert.match(html, /resolveVisibleResizeSnap\(/);
+  assert.match(html, /Math\.abs\(visibleBounds\.right - smartResize\?\.guideX\)/);
+  assert.match(html, /canvasSnapTolerance\(scale, canvasSnapGeometry\.screenTolerancePixels\)/);
+  assert.match(html, /boundCanvasResize\(/);
+  assert.doesNotMatch(html, /Math\.max\(2, 7 \/ scale\)/);
   assert.match(html, /background-size: 16px 16px/);
   assert.match(html, /composition-move-handle/);
   assert.match(html, /Mover elemento/);
@@ -523,6 +537,8 @@ test("compiles the native document into a seekable preview with stable visual id
   assert.match(html, /--preview-user-scale/);
   assert.match(html, /composition-viewport/);
   assert.match(html, /fitCompositionToViewport/);
+  assert.match(html, /const resolvePreviewCanvasBounds =/);
+  assert.match(html, /viewportWidth: viewport\.clientWidth, viewportHeight: viewport\.clientHeight, zoom: previewUserScale/);
   assert.match(html, /class="deck-scope" data-appearance="dark"/);
   assert.match(html, /\.deck-scope\[data-appearance="dark"\] \{ --bg: #0F1419; \}/);
   assert.match(html, /class="deck-shell"/);
@@ -734,6 +750,13 @@ test("compiles a deterministic HyperFrames render document without the interacti
   assert.match(html, /window\.__timelines\["courseforge-composition"\]/);
   assert.match(html, /gsap\.timeline\(\{ paused: true \}\)/);
   assert.doesNotMatch(html, /requestAnimationFrame|performance\.now|courseforge-composition-media-error/);
+  assert.doesNotMatch(html, /canvasSnapGeometry|canvasSnapTolerance|boundCanvasResize/);
+  assert.doesNotMatch(html, /compositionCanvasVisibleBounds|resolveVisibleResizeSnap/);
+  assert.doesNotMatch(html, /resolvePreviewCanvasBounds/);
+  assert.doesNotMatch(html, /resolveCanvasKeyboardSelection|data-editor-label|setAttribute\("tabindex"/);
+  assert.doesNotMatch(html, /restoreCanvasControlFocus|reconcileCanvasFocus|restoreCanvasFocusAfterReload/);
+  assert.doesNotMatch(html, /keyboardTransform|keyboardCanvasStep/);
+  assert.doesNotMatch(html, /resolveEditorShortcut|courseforge-composition-shortcut/);
   assert.doesNotMatch(html, /GSAP 3\./);
   assert.match(html, /<script src="assets\/gsap\.min\.js"><\/script>/);
   for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
@@ -1402,5 +1425,5 @@ test("compiles a transition sound effect with the complete HyperFrames audio con
   assert.match(html, /data-var-src="cf_asset_sfx"/);
   assert.match(html, /data-media-start="0.1"/);
   assert.match(html, /data-volume="0.45499999999999996"/);
-  assert.match(html, /data-start="1.2" data-duration="0.8" data-track-index="/);
+  assert.match(html, /data-start="1.2" data-duration="0.8" data-end="2" data-track-index="/);
 });

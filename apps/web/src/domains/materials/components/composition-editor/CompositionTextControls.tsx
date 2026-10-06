@@ -174,7 +174,7 @@ export function CompositionTextControls({
       </p>
     </div>
     {source.type === "NATIVE_TEXT"
-      ? <textarea value={text} maxLength={4_000} disabled={disabled} onChange={(event) => setText(event.target.value)} className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white" />
+      ? <textarea aria-label="Contenido de la capa de texto" dir="auto" style={{ unicodeBidi: "plaintext" }} value={text} maxLength={4_000} disabled={disabled} onChange={(event) => setText(event.target.value)} className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white" />
       : <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-slate-300 p-2 dark:border-white/15">
           <div><p className="text-[10px] font-semibold text-slate-600 dark:text-gray-300">Importar subtítulos</p><p className="text-[9px] text-slate-400">SRT o WebVTT · máximo 1 MiB · reemplaza los cues al guardar</p></div>
@@ -190,7 +190,7 @@ export function CompositionTextControls({
           {listCompositionCaptionPresets().map((preset) => <option key={preset.id} value={preset.id}>{preset.label} · {preset.description}</option>)}
         </select></label>
         {cues.map((cue, index) => <div key={cue.id} className="rounded-md border border-slate-200 p-2 dark:border-white/10">
-          <textarea value={cue.text} disabled={disabled} onChange={(event) => setCues((current) => current.map((item) => item.id === cue.id ? { ...item, text: event.target.value } : item))} className="min-h-14 w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs dark:border-white/10 dark:bg-slate-950" />
+          <textarea aria-label={`Texto del caption ${index + 1}`} dir="auto" style={{ unicodeBidi: "plaintext" }} value={cue.text} disabled={disabled} onChange={(event) => setCues((current) => current.map((item) => item.id === cue.id ? { ...item, text: event.target.value } : item))} className="min-h-14 w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs dark:border-white/10 dark:bg-slate-950" />
           <div className="mt-2 grid grid-cols-2 gap-2"><NumberField label="Inicio (s)" value={cue.startSeconds} disabled={disabled} onChange={(value) => setCues((current) => current.map((item) => item.id === cue.id ? { ...item, startSeconds: value } : item))} /><NumberField label="Fin (s)" value={cue.endSeconds} disabled={disabled} onChange={(value) => setCues((current) => current.map((item) => item.id === cue.id ? { ...item, endSeconds: value } : item))} /></div>
           <div className="mt-1 flex items-center justify-between"><p className="text-[9px] text-slate-400">Caption {index + 1}</p><button type="button" aria-label={`Eliminar caption ${index + 1}`} disabled={disabled || cues.length === 1} onClick={() => setCues((current) => current.filter((item) => item.id !== cue.id))} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 dark:hover:bg-red-500/10"><Trash2 size={12} /></button></div>
         </div>)}

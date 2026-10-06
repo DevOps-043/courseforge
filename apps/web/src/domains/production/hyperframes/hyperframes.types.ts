@@ -5,6 +5,7 @@ import { ANIMATED_DECK_APPEARANCES } from "../animated-deck/animated-deck-appear
 export const HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES = 200 * 1024 * 1024;
 export const HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 export const HYPERFRAMES_COMPOSITION_FORMAT = "hyperframes-html-v1";
+export const HYPERFRAMES_MAXIMUM_MANIFEST_ASSETS = 250;
 
 export const HYPERFRAMES_ASSET_DELIVERY_MODES = {
   EMBEDDED: "EMBEDDED",
@@ -53,7 +54,7 @@ export const hyperframesAssetManifestItemSchema = z
 
 export const hyperframesAssetManifestSchema = z
   .array(hyperframesAssetManifestItemSchema)
-  .max(250, "La composición excede el máximo de assets permitidos.");
+  .max(HYPERFRAMES_MAXIMUM_MANIFEST_ASSETS, "La composición excede el máximo de assets permitidos.");
 
 export const hyperframesAnimatedDeckSourceSchema = z.object({
   /** Optional only for decks persisted before appearance-aware composition. */

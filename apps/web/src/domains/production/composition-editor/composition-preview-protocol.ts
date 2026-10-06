@@ -4,6 +4,7 @@ import { compositionColorGradingSchema } from "./composition-color-grading.types
 import { compositionPreviewMetricSchema } from "./composition-preview-telemetry";
 import { compositionPreviewVisualPatchSchema } from "./composition-preview-visual-patch";
 import { COMPOSITION_PREVIEW_MAX_GENERATION } from "./composition-preview-comparison";
+import { COMPOSITION_EDITOR_SHORTCUTS } from "./composition-editor-shortcut";
 
 export const COMPOSITION_PREVIEW_PROTOCOL_VERSION = 1 as const;
 export const COMPOSITION_PREVIEW_SELECTION_ORIGINS = ["PARENT", "PREVIEW"] as const;
@@ -26,6 +27,7 @@ export const compositionPreviewLoadErrorCodeSchema = z.enum(["AUTH_REQUIRED", "A
 export type CompositionPreviewLoadErrorCode = z.infer<typeof compositionPreviewLoadErrorCodeSchema>;
 
 export const compositionPreviewIframeMessageSchema = z.discriminatedUnion("type", [
+  z.object({ ...iframeMessageBase, previewGeneration: previewGenerationSchema, command: z.enum(COMPOSITION_EDITOR_SHORTCUTS), type: z.literal("courseforge-composition-shortcut") }).strict(),
   z.object({ ...iframeMessageBase, documentHash: z.string().regex(/^[a-f0-9]{64}$/i).nullable().optional(), duration: secondsSchema, selectedHfId: hfIdSchema.nullable().optional(), type: z.literal("courseforge-composition-ready") }).strict(),
   z.object({ ...iframeMessageBase, code: compositionPreviewLoadErrorCodeSchema, documentHash: z.string().regex(/^[a-f0-9]{64}$/i), previewGeneration: previewGenerationSchema, type: z.literal("courseforge-composition-load-error") }).strict(),
   z.object({ ...iframeMessageBase, seconds: secondsSchema, type: z.literal("courseforge-composition-time") }).strict(),
@@ -78,6 +80,7 @@ export const compositionPreviewIframeMessageSchema = z.discriminatedUnion("type"
   || (message.state === "ACTIVE" ? message.channels.length === 2 : message.channels.length === 0));
 
 export const compositionPreviewParentCommandSchema = z.discriminatedUnion("type", [
+  z.object({ protocolVersion: protocolVersionSchema, hfId: hfIdSchema.nullable(), type: z.literal("courseforge-composition-restore-focus") }).strict(),
   z.object({ protocolVersion: protocolVersionSchema, seconds: secondsSchema, type: z.literal("courseforge-composition-seek") }).strict(),
   z.object({ protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-play") }).strict(),
   z.object({ protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-pause") }).strict(),

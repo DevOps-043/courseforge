@@ -300,3 +300,25 @@ test("failed pipeline cleanup does not skip disposal of the independent source w
   await assert.rejects(prepareAndPersistAudioConformanceReference(pipelineInput, dependencies), /CLEANUP_FAILED/);
   assert.deepEqual(calls, ["audio", "source"]);
 });
+
+test("cancellation after audio creation blocks persistence and cleans both owned workspaces", async () => {
+  const calls: string[] = [], cancellation = new AbortController();
+  const dependencies = {materialize: async () => ({cleanup: async () => {calls.push("source");}}),
+    createAudio: async () => {
+      cancellation.abort("private reason"); return {directory: "audio", cleanup: async () => {calls.push("audio");}};
+    }, persist: async () => {assert.fail("cancelled audio must not persist");}} as never;
+  await assert.rejects(prepareAndPersistAudioConformanceReference({...pipelineInput, signal: cancellation.signal}, dependencies),
+    /CONFORMANCE_JOB_EXECUTION_CANCELLED/);
+  assert.deepEqual(calls, ["audio", "source"]);
+});
+
+test("cancellation after reading the audio reference skips comparison and releases its workspace", async () => {
+  let cleaned = false; const cancellation = new AbortController();
+  const dependencies = {readAudio: async () => {
+    cancellation.abort("private reason"); return {cleanup: async () => {cleaned = true;}};
+  }, compare: async () => {assert.fail("cancelled reference must not start comparison");}} as never;
+  await assert.rejects(compareVideoWithPersistedConformanceReferences({...pipelineInput, checksum: visualChecksum,
+    audioChecksum: "a".repeat(64), videoPath: "verified", renderReceiptPath: "internal", signal: cancellation.signal}, dependencies),
+    /CONFORMANCE_JOB_EXECUTION_CANCELLED/);
+  assert.equal(cleaned, true);
+});

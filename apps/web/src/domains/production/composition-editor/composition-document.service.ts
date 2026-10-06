@@ -1,5 +1,8 @@
 import { readStandaloneHtmlLibrary, hasCanonicalHtmlSource } from "../standalone/standalone-timeline-library.service";
-import { createHash, randomUUID } from "node:crypto";
+import { preservesCompositionHtmlRevisionReferences } from "./composition-html-editing-reference-policy";
+import { randomUUID } from "node:crypto";
+import { hashCompositionDocument } from "./composition-document-hash";
+export { hashCompositionDocument } from "./composition-document-hash";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "./composition-document.types";
 import { applyCompositionEditorPatches, CompositionEditorPatchError } from "./editor-patch.service";
@@ -145,10 +148,6 @@ export async function listCompositionDocumentHistory(params: {
   }));
 }
 
-export function hashCompositionDocument(document: CompositionEditorDocument) {
-  return createHash("sha256").update(stableStringify(document)).digest("hex");
-}
-
 export async function applyAndAppendCompositionDocumentPatches(params: {
   auditSource?: "SYSTEM";
   draftId: string;
@@ -204,6 +203,11 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
     throw error;
   }
   const nextHash = hashCompositionDocument(nextDocument);
+  // Generic timeline/history commands cannot publish or retarget HTML revision
+  // references. Only the dedicated atomic HTML repository may do that.
+  if (!preservesCompositionHtmlRevisionReferences(current.document, nextDocument)) {
+    throw new CompositionDocumentError("Las revisiones HTML deben cambiarse mediante su guardado versionado específico.", 422);
+  }
   const documentBytes = Buffer.byteLength(JSON.stringify(nextDocument), "utf8");
   const rpcStartedAt = Date.now();
   let appendRequest = params.supabase.rpc("append_video_composition_draft_document_v2", {
@@ -582,15 +586,6 @@ function resolveCompositionDocumentRow(params: {
     documentHash: documentHash.toLowerCase(),
     version: Number(params.version),
   };
-}
-
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function parsePersistedCompositionDocument(input: unknown): CompositionEditorDocument {

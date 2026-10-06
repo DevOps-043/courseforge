@@ -3,6 +3,29 @@ import test from "node:test";
 import { CompositionSaveQueue } from "../composition-save-queue";
 import { COMPOSITION_PREVIEW_SAVE_QUEUE_CONFIG } from "../composition-preview-sync.config";
 
+test("external idle reservation rejects saves and nested reservations until release", async () => {
+  const queue = new CompositionSaveQueue<number>(async () => true);
+  let release!: () => void;
+  const reserved = queue.runExclusiveWhenIdle(() => new Promise<void>(resolve => { release = resolve; }));
+  assert.equal(queue.snapshot().status, "RUNNING");
+  assert.equal(await queue.enqueue(1), false);
+  await assert.rejects(queue.runExclusiveWhenIdle(async () => {}), /BUSY/);
+  let idle = false; const waiter = queue.whenIdle().then(() => { idle = true; });
+  await Promise.resolve(); assert.equal(idle, false);
+  release(); await Promise.all([reserved, waiter]);
+  assert.equal(idle, true); assert.equal(await queue.enqueue(2), true);
+});
+
+test("external reservation rejects an active queue and releases after thrown workflow", async () => {
+  let release!: (value: boolean) => void;
+  const queue = new CompositionSaveQueue<number>(() => new Promise(resolve => { release = resolve; }));
+  const saving = queue.enqueue(1);
+  await assert.rejects(queue.runExclusiveWhenIdle(async () => {}), /BUSY/);
+  release(true); await saving;
+  await assert.rejects(queue.runExclusiveWhenIdle(async () => { throw new Error("workflow"); }), /workflow/);
+  assert.equal(queue.snapshot().status, "IDLE"); await queue.whenIdle();
+});
+
 test("executes saves serially in insertion order", async () => {
   const executed: number[] = [];
   let active = 0;

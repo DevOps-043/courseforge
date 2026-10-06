@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { COMPOSITION_TEXT_PARITY_POLICY as policy } from "./composition-text-parity-policy";
 import { nativeTextPaintPoseSchema } from "./composition-text-paint-pose";
+import { TEXT_PAINT_REGION_EXPANSION_POLICY, OFFCANVAS_TEXT_PAINT_SEED_POLICY } from "./composition-text-parity-policy";
 export const NATIVE_MOTION_VISIBILITY_POLICY = "NATIVE_MOTION_OPACITY_GSAP_V1" as const;
 export const NATIVE_TRANSITION_VISIBILITY_POLICY = "NATIVE_MOTION_TRANSITION_OPACITY_GSAP_V2" as const;
 export const NATIVE_TEXT_APPEARANCE_POLICY = "NATIVE_TRANSITION_APPEARANCE_GSAP_V3" as const;
 export const NATIVE_TEXT_GEOMETRY_POLICY = "NATIVE_TRANSFORM_CLIP_GEOMETRY_GSAP_V4" as const;
+export const NATIVE_TEXT_PAINT_MASK_POLICY = "NATIVE_TEXT_PAINT_SUPPRESSION_RESTORED_V1" as const;
 export type NativeTextVisibilityPolicy = typeof NATIVE_MOTION_VISIBILITY_POLICY | typeof NATIVE_TRANSITION_VISIBILITY_POLICY | typeof NATIVE_TEXT_APPEARANCE_POLICY | typeof NATIVE_TEXT_GEOMETRY_POLICY;
 export const textPresentationSchema = z.object({effectiveOpacity: z.number().finite().min(0).max(1),
   opaqueOverlayIds: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,135}$/i)).max(499)
@@ -22,9 +24,15 @@ export const textCheckpointPlanSchema = z.object({frameIndex: z.number().int().n
     .refine((texts) => new Set(texts.map((text) => text.elementId)).size === texts.length),
 }).strict();
 export const textParityContractSchema = z.object({policy: z.literal(policy.id), scope: z.literal("NATIVE_TEXT_AND_CAPTIONS"),
+  paintMaskPolicy: z.literal(NATIVE_TEXT_PAINT_MASK_POLICY).optional(),
+  paintRegionExpansionPolicy: z.literal(TEXT_PAINT_REGION_EXPANSION_POLICY).optional(),
+  paintOffcanvasSeedPolicy: z.literal(OFFCANVAS_TEXT_PAINT_SEED_POLICY).optional(),
   visibilityPolicy: z.enum([NATIVE_MOTION_VISIBILITY_POLICY, NATIVE_TRANSITION_VISIBILITY_POLICY, NATIVE_TEXT_APPEARANCE_POLICY, NATIVE_TEXT_GEOMETRY_POLICY]).optional(),
   checkpoints: z.array(textCheckpointPlanSchema).min(1).max(48),
-}).strict().refine((text) => new Set(text.checkpoints.map((checkpoint) => checkpoint.frameIndex)).size === text.checkpoints.length
+}).strict().refine((text) => !text.paintRegionExpansionPolicy || Boolean(text.paintMaskPolicy), "CONFORMANCE_TEXT_PAINT_EXPANSION_POLICY_INVALID")
+  .refine((text) => !text.paintOffcanvasSeedPolicy || Boolean(text.paintRegionExpansionPolicy
+    && text.visibilityPolicy === NATIVE_TEXT_GEOMETRY_POLICY), "CONFORMANCE_TEXT_PAINT_SEED_POLICY_INVALID")
+  .refine((text) => new Set(text.checkpoints.map((checkpoint) => checkpoint.frameIndex)).size === text.checkpoints.length
   && text.checkpoints.reduce((count, checkpoint) => count + checkpoint.expectedTexts.length, 0) <= policy.maximumRegionsPerCapture
   && text.checkpoints.reduce((count, checkpoint) => count + checkpoint.expectedTexts.reduce((references, expected) =>
     references + (expected.presentation?.opaqueOverlayIds.length ?? 0), 0), 0) <= policy.maximumOverlayReferencesPerCapture)

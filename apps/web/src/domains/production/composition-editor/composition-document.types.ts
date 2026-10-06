@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT, htmlEditingReferencesSchema } from "./html-editing/html-editing-reference.contract";
 import { COMPOSITION_VIDEO_PLAYBACK_RATES, videoRateSourceWindowFits } from "./composition-video-rate";
 import { COMPOSITION_VIDEO_FREEZE_TOLERANCE_SECONDS, COMPOSITION_VIDEO_MAX_FREEZE_SECONDS, resolveVideoFreezeTailSeconds } from "./composition-video-freeze";
 import { ANIMATED_DECK_APPEARANCES } from "../animated-deck/animated-deck-appearance.service";
@@ -352,7 +353,8 @@ export const compositionEditorDocumentSchema = z.object({
   }).strict(),
   clips: z.array(compositionClipSchema).max(500),
   deckStyles: deckStylesSchema.nullable(),
-  format: z.enum([LEGACY_COMPOSITION_DOCUMENT_FORMAT, COMPOSITION_DOCUMENT_FORMAT, NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT]),
+  format: z.enum([LEGACY_COMPOSITION_DOCUMENT_FORMAT, COMPOSITION_DOCUMENT_FORMAT, NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT, HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT]),
+  htmlEditing: htmlEditingReferencesSchema.optional(),
   groups: z.array(compositionGroupSchema).max(250).optional(),
   motion: compositionMotionSchema,
   /** Optional for backward compatibility; new transition edits initialize V1. */
@@ -368,8 +370,17 @@ export const compositionEditorDocumentSchema = z.object({
     context.addIssue({ code: "custom", message: "La composición debe conservar al menos un clip y una pista." });
   }
   const hasNativeText = document.clips.some((clip) => clip.kind === "TEXT" || clip.kind === "CAPTION");
-  if (hasNativeText && document.format !== NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT) {
+  if (hasNativeText && document.format !== NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT && document.format !== HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT) {
     context.addIssue({ code: "custom", message: "Las capas de texto y captions requieren el contrato courseforge-composition-v3." });
+  }
+  if (document.htmlEditing && document.format !== HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT) {
+    context.addIssue({ code: "custom", message: "Las revisiones HTML requieren el contrato courseforge-composition-v4." });
+  }
+  for (const reference of document.htmlEditing?.items || []) {
+    const clip = document.clips.find(candidate => candidate.id === reference.clipId);
+    if (!clip || clip.kind !== "DECK_SLIDE" || clip.source.type !== "DECK_SLIDE") {
+      context.addIssue({ code: "custom", message: "La revisión HTML debe pertenecer a un clip de deck existente." });
+    }
   }
   const trackIds = new Set(document.tracks.map((track) => track.id));
   const tracksById = new Map(document.tracks.map((track) => [track.id, track]));

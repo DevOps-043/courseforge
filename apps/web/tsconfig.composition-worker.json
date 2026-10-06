@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "noEmit": false,
+    "noEmitOnError": true,
+    "incremental": false,
+    "outDir": "dist/composition-worker",
+    "rootDir": "src",
+    "types": ["node"],
+    "plugins": [],
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": [
+    "src/domains/production/composition-editor/qa/composition-conformance-job-worker.ts",
+    "src/domains/production/composition-editor/qa/composition-conformance-job-execution.ts",
+    "src/domains/production/composition-editor/qa/composition-controlled-render-worker-host.ts",
+    "src/domains/production/composition-editor/qa/composition-windows-render-worker-host.ts",
+    "src/domains/production/composition-editor/qa/composition-exported-video-conformance.ts",
+    "src/domains/production/composition-editor/qa/composition-conformance-file-integrity.ts",
+    "src/domains/production/composition-editor/qa/composition-controlled-render-storage-policy.ts"
+  ],
+  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "src/app/**"]
+}

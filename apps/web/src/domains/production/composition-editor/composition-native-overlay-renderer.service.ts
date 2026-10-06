@@ -1,5 +1,6 @@
 import type { CompositionClip } from "./composition-document.types";
 import type { CompositionTextLayerStyle } from "./composition-text-layer.types";
+import { COMPOSITION_NATIVE_TEXT_BIDI, COMPOSITION_NATIVE_TEXT_DIRECTION, resolveCompositionCaptionWordGaps, resolveCompositionTextLanguage } from "./composition-text-presentation";
 
 export function renderCompositionNativeOverlay(params: {
   clip: CompositionClip;
@@ -13,8 +14,10 @@ export function renderCompositionNativeOverlay(params: {
   }
   if (clip.kind === "CAPTION" && clip.source.type === "NATIVE_CAPTIONS") {
     const style = clip.source.style;
+    const language = resolveCompositionTextLanguage(clip.source.language);
+    const languageAttribute = language ? ` lang="${escapeAttribute(language)}"` : "";
     const cues = clip.source.cues.map((cue) => (
-      `<div id="${escapeAttribute(captionCueElementId(clip.id, cue.id))}" class="composition-caption-cue" style="${renderTextStyle(style)};position:absolute;inset:0;visibility:hidden;opacity:0;">${renderCaptionCueText(clip.id, cue)}</div>`
+      `<div id="${escapeAttribute(captionCueElementId(clip.id, cue.id))}" class="composition-caption-cue" dir="${COMPOSITION_NATIVE_TEXT_DIRECTION}"${languageAttribute} style="${renderTextStyle(style)};position:absolute;inset:0;visibility:hidden;opacity:0;">${renderCaptionCueText(clip.id, cue)}</div>`
     )).join("");
     return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${params.visualTiming}><div ${params.commonAttributes} class="clip-content composition-native-overlay"><div id="${params.motionId}" class="motion-subject composition-native-caption" style="position:absolute;inset:0;">${cues}</div></div></section>`;
   }
@@ -34,7 +37,12 @@ function renderCaptionCueText(
   cue: Extract<CompositionClip["source"], { type: "NATIVE_CAPTIONS" }>['cues'][number],
 ) {
   if (!cue.words?.length) return escapeHtml(cue.text);
-  return cue.words.map((word, index) => `${index > 0 ? " " : ""}<span id="${escapeAttribute(captionWordElementId(clipId, cue.id, word.id))}" class="composition-caption-word" style="opacity:0.55;">${escapeHtml(word.text)}</span>`).join("");
+  const gaps = resolveCompositionCaptionWordGaps(cue);
+  // The cue is authoritative. Unalignable legacy words retain hidden timing anchors, not substituted visible text.
+  if (!gaps) return escapeHtml(cue.text) + cue.words.map((word) =>
+    `<span id="${escapeAttribute(captionWordElementId(clipId, cue.id, word.id))}" class="composition-caption-word" hidden aria-hidden="true">${escapeHtml(word.text)}</span>`).join("");
+  return cue.words.map((word, index) => `${escapeHtml(gaps.prefixes[index]!)}<span id="${escapeAttribute(captionWordElementId(clipId, cue.id, word.id))}" class="composition-caption-word" style="opacity:0.55;">${escapeHtml(word.text)}</span>`).join("")
+    + escapeHtml(gaps.suffix);
 }
 
 function renderTextLayer(
@@ -43,7 +51,7 @@ function renderTextLayer(
   style: CompositionTextLayerStyle,
 ) {
   const clip = params.clip;
-  return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${params.visualTiming}><div ${params.commonAttributes} class="clip-content composition-native-overlay"><div id="${params.motionId}" class="motion-subject composition-native-text" style="${renderTextStyle(style)};position:absolute;inset:0;">${escapeHtml(text)}</div></div></section>`;
+  return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${params.visualTiming}><div ${params.commonAttributes} class="clip-content composition-native-overlay"><div id="${params.motionId}" class="motion-subject composition-native-text" dir="${COMPOSITION_NATIVE_TEXT_DIRECTION}" style="${renderTextStyle(style)};position:absolute;inset:0;">${escapeHtml(text)}</div></div></section>`;
 }
 
 function renderTextStyle(style: CompositionTextLayerStyle) {
@@ -75,6 +83,7 @@ function renderTextStyle(style: CompositionTextLayerStyle) {
     stroke,
     "overflow:hidden",
     "white-space:pre-wrap",
+    `unicode-bidi:${COMPOSITION_NATIVE_TEXT_BIDI}`,
     "overflow-wrap:anywhere",
   ].filter(Boolean).join(";");
 }

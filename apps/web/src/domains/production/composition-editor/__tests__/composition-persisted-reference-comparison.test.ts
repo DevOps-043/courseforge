@@ -30,6 +30,26 @@ test("comparison consumes only verified reference paths, preserves failure statu
   assert.equal(result.report.status, "FAIL"); assert.equal(result.reference.provenance, "SCOPED_WORKER_VISUAL_EVIDENCE");
   assert.equal(result.reference.status, "VISUAL_CAPTURED_AUDIO_PENDING");
 });
+
+test("unknown owned decoder closure preserves reference and intervention error", async () => {
+  const state = fixture();
+  state.dependencies.compare = async () => {throw new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED");};
+  await assert.rejects(compareVideoWithPersistedVisualReference(input, state.dependencies),
+    {message: "CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED"});
+  assert.deepEqual(state.calls, ["read"]);
+});
+test("comparison forwards cancellation and discards a late result while cleaning its reference", async () => {
+  const cancellation = new AbortController();
+  const state = fixture();
+  state.dependencies.compare = async (params) => {
+    assert.equal(params.signal, cancellation.signal);
+    cancellation.abort("private reason");
+    return {status: "PASS"} as never;
+  };
+  await assert.rejects(compareVideoWithPersistedVisualReference({...input, signal: cancellation.signal}, state.dependencies),
+    /CONFORMANCE_JOB_EXECUTION_CANCELLED/);
+  assert.deepEqual(state.calls, ["read", "cleanup"]);
+});
 test("explicit color tag policy reaches the actual comparator without replacing authorized paths", async () => {
   const state = fixture();
   state.dependencies.compare = async (params) => {

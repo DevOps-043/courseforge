@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { compareTextParityRegions } from "../qa/composition-text-region-comparison";
 import { buildNativeTextPaintPose } from "../composition-text-paint-pose";
+import { isPointInConvexPaintPolygon } from "../composition-text-paint-geometry";
 
 const width = 48, height = 24, channels = 3;
 const region = {elementId: "caption", textSha256: "a".repeat(64), left: 8, top: 4, width: 20, height: 12};
@@ -18,6 +19,37 @@ function compare(rendered = frame(), regions: unknown = [region], expectedElemen
   return compareTextParityRegions({preview, rendered, width, height, channels, regions,
     expectedTexts: expectedElementIds.map((elementId) => ({elementId, textSha256: region.textSha256}))});
 }
+
+test("convex support membership handles rotation, either winding, boundaries and degenerate support", () => {
+  const polygon = [{x: 10, y: 0}, {x: 20, y: 10}, {x: 10, y: 20}, {x: 0, y: 10}];
+  for (const points of [polygon, [...polygon].reverse()]) {
+    assert.equal(isPointInConvexPaintPolygon({x: 10, y: 10}, points), true);
+    assert.equal(isPointInConvexPaintPolygon({x: 10, y: 0}, points), true);
+    assert.equal(isPointInConvexPaintPolygon({x: 0, y: 0}, points), false);
+  }
+  assert.equal(isPointInConvexPaintPolygon({x: 0, y: 0}, []), false);
+  assert.equal(isPointInConvexPaintPolygon({x: 1, y: 1}, [{x: 0, y: 0}, {x: 1, y: 1}, {x: 2, y: 2}]), false);
+});
+
+test("contrast outside a partial wipe cannot prove informative text; outside paint is never ignored", () => {
+  const paintPose = buildNativeTextPaintPose("native", {canvas: {width, height},
+    layout: {x: 8, y: 4, width: 20, height: 12, rotation: 0}, motion: {x: 0, y: 0, scale: 1, rotation: 0},
+    transition: {xPercent: 0, yPercent: 0, clipPath: "inset(0 0 0 75%)"}}, "blur(0px)");
+  const presentation = {effectiveOpacity: 1, opaqueOverlayIds: [], paintPose};
+  const decoratedBackground = Buffer.alloc(width * height * channels);
+  decoratedBackground.fill(240, (6 * width + 10) * channels, (6 * width + 11) * channels);
+  const input = {width, height, channels, regions: [{...region, visibility: "VISIBLE" as const, presentation}],
+    expectedTexts: [{elementId: region.elementId, textSha256: region.textSha256, visibility: "VISIBLE" as const, presentation}]};
+  const noText = compareTextParityRegions({...input, preview: decoratedBackground, rendered: decoratedBackground});
+  assert.equal(noText.status, "INCOMPLETE"); assert.equal(noText.checkedRegionCount, 0);
+  assert.equal(noText.regions[0]!.reason, "TEXT_REGION_UNINFORMATIVE");
+  const visible = Buffer.from(decoratedBackground);
+  visible.fill(240, (6 * width + 24) * channels, (6 * width + 25) * channels);
+  assert.equal(compareTextParityRegions({...input, preview: visible, rendered: visible}).status, "PASS");
+  const unexpected = Buffer.from(visible);
+  unexpected.fill(240, (12 * width + 12) * channels, (12 * width + 13) * channels);
+  assert.equal(compareTextParityRegions({...input, preview: visible, rendered: unexpected}).status, "FAIL");
+});
 
 test("coincident text passes local stricter gates with zero displacement", () => {
   const result = compare(); assert.equal(result.status, "PASS"); assert.equal(result.maximumAcceptedDisplacementPixels, 0);

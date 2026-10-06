@@ -107,3 +107,16 @@ test("packet migration keeps private permissions, reference FK and immutable con
   assert.match(sql, /SET search_path = pg_catalog, public, private/);
   assert.doesNotMatch(sql, /DO UPDATE|CREATE POLICY|status text/);
 });
+
+test("finalization migration atomically binds all packet identities and preserves legacy audio/integrity gates", async () => {
+  const sql = await readFile("supabase/migrations/20261001160000_bind_event_summary_to_job_finalization.sql", "utf8");
+  assert.match(sql, /WHERE identity = v_identity FOR SHARE/);
+  assert.match(sql, /v_packet\.packet_sha256 IS DISTINCT FROM v_batch->>'packetSha256'/);
+  assert.match(sql, /v_packet\.visual_sha256 FOR SHARE/);
+  assert.match(sql, /v_revision\.manifest->'conformance_event_batch_authorization'/);
+  assert.match(sql, /lease_expires_at > now\(\) FOR UPDATE/);
+  assert.match(sql, /RETURN private\.finish_hyperframes_conformance_job_before_events\(p_job_id, p_lease_token, p_report, p_error_code, p_retryable\)/);
+  assert.match(sql, /REVOKE ALL ON FUNCTION private\.finish_hyperframes_conformance_job_before_events[^;]+FROM PUBLIC, anon, authenticated, service_role/);
+  assert.match(sql, /CONFORMANCE_JOB_EVENT_GLOBAL_GATE_PENDING/);
+  assert.doesNotMatch(sql, /DELETE FROM|TRUNCATE|GRANT EXECUTE ON FUNCTION private/);
+});

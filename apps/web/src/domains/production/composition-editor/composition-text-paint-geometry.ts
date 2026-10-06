@@ -1,6 +1,21 @@
 export type PaintPoint = {x: number; y: number};
 type Rectangle = {left: number; top: number; right: number; bottom: number};
 
+/** Pixel-center membership in the validated convex support; clockwise and counterclockwise are equivalent. */
+export function isPointInConvexPaintPolygon(point: PaintPoint, polygon: readonly PaintPoint[]): boolean {
+  if (polygon.length < 3) return false;
+  let orientation = 0;
+  for (let index = 0; index < polygon.length; index++) {
+    const current = polygon[index]!, next = polygon[(index + 1) % polygon.length]!;
+    const cross = (next.x - current.x) * (point.y - current.y) - (next.y - current.y) * (point.x - current.x);
+    if (cross === 0) continue;
+    const direction = cross > 0 ? 1 : -1;
+    if (orientation !== 0 && direction !== orientation) return false;
+    orientation = direction;
+  }
+  return orientation !== 0;
+}
+
 /** Convex clipping keeps rotated support precise; bounding boxes alone cannot prove absence. */
 function clipToRectangle(points: PaintPoint[], rectangle: Rectangle): PaintPoint[] {
   let polygon = points;

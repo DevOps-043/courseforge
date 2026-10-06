@@ -3,6 +3,7 @@ import { Loader2, Pause, Play, RefreshCw } from "lucide-react";
 import type { CompositionSceneSummary } from "@/domains/production/composition-editor/composition-scene.service";
 import { formatCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import { CompositionComparisonPane } from "./CompositionComparisonPane";
+import { CompositionSafeAreaOverlay } from "./CompositionSafeAreaOverlay";
 import styles from "./CompositionStudio.module.css";
 
 interface CompositionPreviewViewportProps {
@@ -34,6 +35,7 @@ interface CompositionPreviewViewportProps {
   previewMediaState: "BUFFERING" | "PLAYING" | "PREPARING" | "READY";
   previewReady: boolean;
   previewUrl: string;
+  previewZoom: number;
   safeAreasVisible: boolean;
   saving: boolean;
   scenes: CompositionSceneSummary[];
@@ -42,7 +44,7 @@ interface CompositionPreviewViewportProps {
   transportActive: boolean;
 }
 
-export function CompositionPreviewViewport({ activeSceneId, agentProposalActive, canvasHeight, canvasWidth, comparisonActive, comparisonBaselineFrameRef, comparisonBaselineLoading, comparisonBaselineUrl, duration, fps, frameRef, onBeginScrub, onFrameError, onFrameLoad, onPlaySelectedAnimation, onRefreshDocument, onRefreshMedia, onSceneSelect, onSeek, onTogglePlayback, pendingMediaCount, playbackError, previewErrorActionLabel, presetPreviewActive, previewDirty, previewMediaState, previewReady, previewUrl, safeAreasVisible, saving, scenes, seconds, selectedAnimationId, transportActive }: CompositionPreviewViewportProps) {
+export function CompositionPreviewViewport({ activeSceneId, agentProposalActive, canvasHeight, canvasWidth, comparisonActive, comparisonBaselineFrameRef, comparisonBaselineLoading, comparisonBaselineUrl, duration, fps, frameRef, onBeginScrub, onFrameError, onFrameLoad, onPlaySelectedAnimation, onRefreshDocument, onRefreshMedia, onSceneSelect, onSeek, onTogglePlayback, pendingMediaCount, playbackError, previewErrorActionLabel, presetPreviewActive, previewDirty, previewMediaState, previewReady, previewUrl, previewZoom, safeAreasVisible, saving, scenes, seconds, selectedAnimationId, transportActive }: CompositionPreviewViewportProps) {
   const frameStyle = {
     "--composition-aspect-ratio": canvasWidth / canvasHeight,
     aspectRatio: `${canvasWidth} / ${canvasHeight}`,
@@ -82,12 +84,7 @@ export function CompositionPreviewViewport({ activeSceneId, agentProposalActive,
           <div className={styles.previewStage}>
             <div className={styles.previewFrame} style={frameStyle}>
               <iframe ref={frameRef} title="Preview completo de composición" src={previewUrl} onError={onFrameError} onLoad={onFrameLoad} sandbox="allow-scripts" allow="autoplay" className="absolute inset-0 h-full w-full" />
-              {safeAreasVisible && <div aria-hidden="true" className={styles.safeAreaOverlay}>
-                <span className={styles.safeActionArea} />
-                <span className={styles.safeTitleArea} />
-                <span className={styles.safeCenterHorizontal} />
-                <span className={styles.safeCenterVertical} />
-              </div>}
+              {safeAreasVisible && <CompositionSafeAreaOverlay canvasWidth={canvasWidth} canvasHeight={canvasHeight} zoom={previewZoom} />}
               {previewMediaState === "PREPARING" && <div className={styles.mediaPreparing}><div className={styles.mediaStatus}><Loader2 className="animate-spin" size={15} /> Preparando medios{pendingMediaCount > 0 ? ` (${pendingMediaCount})` : ""}…</div></div>}
               {previewMediaState === "BUFFERING" && <div className={styles.mediaBuffering}><span className={styles.mediaStatus}><Loader2 className="animate-spin" size={13} /> Cargando medio{pendingMediaCount > 1 ? ` (${pendingMediaCount})` : ""}…</span></div>}
             </div>

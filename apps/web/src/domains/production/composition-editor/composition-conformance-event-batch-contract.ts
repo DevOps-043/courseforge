@@ -5,6 +5,7 @@ import { buildCompositionEventCheckpointPlan } from "./composition-conformance-e
 import { compositionConformanceContractSchema, type CompositionConformanceContract } from "./composition-preview-render-conformance";
 import { buildTextParityCheckpointPlans } from "./composition-text-checkpoint-plan";
 import { eventBatchAuthorizationManifestSchema } from "./composition-conformance-batch-contract";
+import { validateDeckTextPlan } from "./composition-deck-text-plan";
 
 const sha256 = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
@@ -19,6 +20,7 @@ export function prepareCompositionEventBatchContracts(input: {
     throw new Error("CONFORMANCE_EVENT_EXECUTION_PARENT_INVALID");
   }
   const plan = buildCompositionEventCheckpointPlan(document);
+  if (parent.deckTextPlan) validateDeckTextPlan(document, parent.deckTextPlan);
   const planSha256 = sha256(plan);
   if (planSha256 !== parent.checkpointBatch.planSha256 || plan.batches.length !== parent.checkpointBatch.batchCount
     || plan.checkpointCount !== parent.checkpointBatch.totalCheckpointCount

@@ -3,6 +3,7 @@ import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readBrowserExecutableIdentity, assertBrowserExecutableUnchanged, type BrowserExecutableIdentity } from "./composition-browser-executable-identity";
+import {assertConformanceJobActive} from "./composition-conformance-job-lease";
 
 const CDP_COMMAND_TIMEOUT_MS = 20_000;
 const DEVTOOLS_STARTUP_TIMEOUT_MS = 15_000;
@@ -26,13 +27,20 @@ export async function launchCompositionQaBrowser(params: {
   isolatedCapture?: boolean;
   gpuEnabled?: boolean;
   profilePrefix: string;
+  signal?: AbortSignal;
 }): Promise<CompositionQaBrowser> {
+  assertConformanceJobActive(params.signal);
   if (params.isolatedCapture && process.platform === "linux" && typeof process.getuid === "function" && process.getuid() === 0) {
     throw new Error("CONFORMANCE_CAPTURE_BROWSER_SANDBOX_REQUIRED");
   }
   const browserPath = await resolveCompositionQaChromePath();
   const executableIdentity = params.isolatedCapture ? await readBrowserExecutableIdentity(browserPath) : undefined;
+  assertConformanceJobActive(params.signal);
   const profilePath = await mkdtemp(join(tmpdir(), params.profilePrefix));
+  if (params.signal?.aborted) {
+    await rm(profilePath, {force: true, recursive: true});
+    assertConformanceJobActive(params.signal);
+  }
   let diagnostics = "";
   const browserProcess = spawn(browserPath, [
     "--headless=new",
@@ -87,15 +95,20 @@ export async function launchCompositionQaBrowser(params: {
   };
 
   try {
-    const port = await readDevToolsPort(profilePath, browserProcess, () => diagnostics);
-    const websocketUrl = await resolvePageWebsocketUrl(port);
+    const port = await readDevToolsPort(profilePath, browserProcess, () => diagnostics, params.signal);
+    assertConformanceJobActive(params.signal);
+    const websocketUrl = await resolvePageWebsocketUrl(port, params.signal);
+    assertConformanceJobActive(params.signal);
     client = await openCdpClient(websocketUrl);
+    assertConformanceJobActive(params.signal);
     await client.send("Page.enable");
     await client.send("Runtime.enable");
+    assertConformanceJobActive(params.signal);
     return { browserPath, client, close, ...(executableIdentity ? {executableIdentity,
       verifyExecutableIdentity: () => assertBrowserExecutableUnchanged(browserPath, executableIdentity)} : {}) };
   } catch (error) {
     await close();
+    assertConformanceJobActive(params.signal);
     throw error;
   }
 }
@@ -121,10 +134,12 @@ async function readDevToolsPort(
   profilePath: string,
   browserProcess: ChildProcess,
   getDiagnostics: () => string,
+  signal?: AbortSignal,
 ): Promise<number> {
   const activePortPath = join(profilePath, "DevToolsActivePort");
   const deadline = Date.now() + DEVTOOLS_STARTUP_TIMEOUT_MS;
   while (Date.now() < deadline) {
+    assertConformanceJobActive(signal);
     if (browserProcess.exitCode !== null || browserProcess.signalCode !== null) {
       throw new Error(formatBrowserStartupError(browserProcess, getDiagnostics()));
     }
@@ -140,18 +155,22 @@ async function readDevToolsPort(
   throw new Error(`Chromium no expuso DevToolsActivePort dentro del tiempo esperado.${diagnosticSuffix(getDiagnostics())}`);
 }
 
-async function resolvePageWebsocketUrl(port: number): Promise<string> {
+async function resolvePageWebsocketUrl(port: number, signal?: AbortSignal): Promise<string> {
+  assertConformanceJobActive(signal);
   const endpoint = `http://127.0.0.1:${port}`;
-  const listResponse = await fetch(`${endpoint}/json/list`, { signal: AbortSignal.timeout(5_000) });
+  const requestSignal = () => signal ? AbortSignal.any([signal, AbortSignal.timeout(5_000)]) : AbortSignal.timeout(5_000);
+  const listResponse = await fetch(`${endpoint}/json/list`, { signal: requestSignal() });
   const targets = await listResponse.json() as Array<{ type?: string; webSocketDebuggerUrl?: string }>;
+  assertConformanceJobActive(signal);
   const existingPage = targets.find((target) => target.type === "page" && target.webSocketDebuggerUrl);
   if (existingPage?.webSocketDebuggerUrl) return existingPage.webSocketDebuggerUrl;
 
   const createResponse = await fetch(`${endpoint}/json/new?about:blank`, {
     method: "PUT",
-    signal: AbortSignal.timeout(5_000),
+    signal: requestSignal(),
   });
   const createdPage = await createResponse.json() as { webSocketDebuggerUrl?: string };
+  assertConformanceJobActive(signal);
   if (!createdPage.webSocketDebuggerUrl) {
     throw new Error("Chromium no expuso un target de página para QA.");
   }
@@ -165,7 +184,13 @@ async function openCdpClient(websocketUrl: string): Promise<CompositionQaCdpClie
     resolve: (value: Record<string, unknown>) => void;
   }>();
   let sequence = 0;
+  let closed = false;
   const eventHandlers = new Map<string, Set<(params: Record<string, unknown>) => void>>();
+  const rejectPending = () => {
+    closed = true;
+    for (const request of pending.values()) request.reject(new Error("CONFORMANCE_CAPTURE_CDP_CLOSED"));
+    pending.clear(); eventHandlers.clear();
+  };
 
   await new Promise<void>((resolveConnection, rejectConnection) => {
     const timeout = setTimeout(
@@ -182,6 +207,7 @@ async function openCdpClient(websocketUrl: string): Promise<CompositionQaCdpClie
     }, { once: true });
   });
   socket.addEventListener("message", (event) => {
+    if (closed) return;
     const message = JSON.parse(String(event.data)) as {
       error?: { message?: string };
       id?: number;
@@ -199,6 +225,8 @@ async function openCdpClient(websocketUrl: string): Promise<CompositionQaCdpClie
     if (message.error) request.reject(new Error(message.error.message ?? "Error desconocido de Chromium DevTools."));
     else request.resolve(message.result ?? {});
   });
+  socket.addEventListener("close", rejectPending);
+  socket.addEventListener("error", rejectPending);
 
   return {
     onEvent: (method, handler) => {
@@ -206,8 +234,9 @@ async function openCdpClient(websocketUrl: string): Promise<CompositionQaCdpClie
       handlers.add(handler); eventHandlers.set(method, handlers);
       return () => { handlers.delete(handler); if (!handlers.size) eventHandlers.delete(method); };
     },
-    close: () => socket.close(),
+    close: () => {rejectPending(); socket.close();},
     send: (method, params = {}) => new Promise((resolveRequest, rejectRequest) => {
+      if (closed) {rejectRequest(new Error("CONFORMANCE_CAPTURE_CDP_CLOSED")); return;}
       sequence += 1;
       const requestId = sequence;
       const timeout = setTimeout(() => {
@@ -224,7 +253,8 @@ async function openCdpClient(websocketUrl: string): Promise<CompositionQaCdpClie
           resolveRequest(value);
         },
       });
-      socket.send(JSON.stringify({ id: requestId, method, params }));
+      try {socket.send(JSON.stringify({ id: requestId, method, params }));}
+      catch {pending.get(requestId)?.reject(new Error("CONFORMANCE_CAPTURE_CDP_SEND_FAILED")); pending.delete(requestId);}
     }),
   };
 }

@@ -24,9 +24,13 @@ import { fontUsageEvidenceHash, validateFontUsageEvidence } from "../qa/composit
 import { buildVisualConformanceEvidencePackage } from "../qa/composition-conformance-evidence-package";
 import { browserIdentityHash } from "../qa/composition-browser-identity";
 import { browserExecutableIdentityHash } from "../qa/composition-browser-executable-identity";
+import { readPersistedVisualConformanceEvidence } from "../qa/composition-conformance-evidence-reader";
+import { suppressedTextFrameName } from "../qa/composition-text-paint-mask-derivation";
+import { buildDeckConformanceCorpusCase } from "../qa/composition-deck-conformance-corpus";
+import { hashDeckTextEvidence, validateDeckTextEvidence } from "../qa/composition-deck-text-evidence";
 
 const identifier = "70000000-0000-4000-8000-000000000001";
-async function withSource(run: (parent: string, materialized: Awaited<ReturnType<typeof materializeConformanceReference>>) => Promise<void>, nativeText = false, contractVersion: 2 | 4 = 2, motionVisibility = false, visibilityPolicy?: NativeTextVisibilityPolicy, nativeOutsideCanvas = false, declaredFont = false, fontObligation = false, eventCheckpoints = false) {
+async function withSource(run: (parent: string, materialized: Awaited<ReturnType<typeof materializeConformanceReference>>) => Promise<void>, nativeText = false, contractVersion: 2 | 4 = 2, motionVisibility = false, visibilityPolicy?: NativeTextVisibilityPolicy, nativeOutsideCanvas = false, declaredFont = false, fontObligation = false, eventCheckpoints = false, paintMasks = false, deckText = false, deckTextPaintMasks = false) {
   const parent = await mkdtemp(join(tmpdir(), "visual-capture-test-"));
   const media = Buffer.from("controlled media fixture");
   const fontBytes = Buffer.from("controlled font fixture, not decoder evidence");
@@ -47,7 +51,11 @@ async function withSource(run: (parent: string, materialized: Awaited<ReturnType
       target: {clipId: clip.id, part: "CONTENT"}, timing: {anchor: "CLIP_START", offsetSeconds: 0, durationSeconds: 1},
       keyframes: [{offset: 0, values: {opacity: 0}}, {offset: 1, values: {opacity: 0}, ease: "none"}]});
   }
-  const contract = buildSnapshotConformanceContract({ document, contractVersion, motionVisibility, visibilityPolicy, eventCheckpoints,
+  if (deckText) {
+    const deck = buildDeckConformanceCorpusCase("deck-basic", 25).document;
+    document.clips.push(...deck.clips); document.tracks.push(...deck.tracks); document.deckStyles = deck.deckStyles;
+  }
+  const contract = buildSnapshotConformanceContract({ document, contractVersion, motionVisibility, visibilityPolicy, eventCheckpoints, paintMasks, deckText, deckTextPaintMasks,
     fontUsage: fontObligation, fontManifest: declaredFont ? [font] : [], documentHash: hashCompositionDocument(document), assets: [{ id: identifier, checksum: asset.checksum }],
     renderProfile: { format: "mp4", fps: 25, quality: "high", resolution: "1080p" } });
   const source = await buildConformanceReferenceSource({ document, contract, assets: [asset],
@@ -65,7 +73,7 @@ async function withSource(run: (parent: string, materialized: Awaited<ReturnType
   finally { await materialized.cleanup(); await rmdir(parent); }
 }
 
-async function browserAdapter(documentHash: string, mode: "normal" | "external" | "hash" | "time" | "image" | "interception" | "unstable" | "playback" | "text" | "text-unstable" | "text-motion" | "text-geometry" | "text-geometry-bad" | "text-absence" = "normal", fontFailureAt = Infinity, glyphFailureAt = Infinity) {
+async function browserAdapter(documentHash: string, mode: "normal" | "external" | "hash" | "time" | "image" | "interception" | "unstable" | "playback" | "text" | "text-unstable" | "text-motion" | "text-geometry" | "text-geometry-bad" | "text-absence" | "deck" | "deck-unstable" = "normal", fontFailureAt = Infinity, glyphFailureAt = Infinity) {
   const png = await sharp({ create: { width: mode === "image" ? 1 : 1920, height: 1080, channels: 4, background: "#020617" } }).png().toBuffer();
   const calls: Array<{ method: string; params?: Record<string, unknown> }> = [];
   const handlers = new Map<string, (params: Record<string, unknown>) => void>();
@@ -95,7 +103,16 @@ async function browserAdapter(documentHash: string, mode: "normal" | "external" 
         if (method === "DOM.requestNode") return {nodeId: 1};
         if (method === "CSS.getPlatformFontsForNode") return {fonts: [{familyName: "Internal Editorial", postScriptName: "InternalEditorial-Regular", isCustomFont: ++glyphChecks < glyphFailureAt, glyphCount: 14}]};
         if (method === "Runtime.evaluate") {
+          if (String(params?.expression).includes("setNativeTextPaintSuppression")
+            || String(params?.expression).includes("setDeckTextPaintSuppression")
+            || String(params?.expression).includes("removeNativeTextPaintSuppression")) return {result: {value: true}};
           const expression = String(params?.expression);
+          if (expression.includes("readDeckTextDom")) {
+            const visits = (textVisits.get(textTarget) ?? 0) + 1; textVisits.set(textTarget, visits);
+            return {result: {value: textTarget >= 8 ? [] : [{clipId: "deck-slide-0", nodePath: [1, 0],
+              text: "Deck HTML — Áé 123", left: mode === "deck-unstable" && visits > 1 ? 11 : 10,
+              top: 20, width: 30, height: 40}]}};
+          }
           if (params?.returnByValue === false && expression.startsWith("document.getElementById(")) return {result: {objectId: "controlled-native-node"}};
           if (expression.includes("verifyDeclaredFontFaces")) return ++fontChecks >= fontFailureAt
             ? {exceptionDetails: {text: "controlled private font decoding failure"}}
@@ -106,7 +123,7 @@ async function browserAdapter(documentHash: string, mode: "normal" | "external" 
           }
           if (expression.includes("readTextParityDom")) {
             const visits = (textVisits.get(textTarget) ?? 0) + 1; textVisits.set(textTarget, visits);
-            return {result: {value: textTarget >= 5 || mode === "normal" ? [] : [{elementId: "native-motion", text: "Captura nativa",
+            return {result: {value: textTarget >= 5 || mode === "normal" || mode.startsWith("deck") ? [] : [{elementId: "native-motion", text: "Captura nativa",
               left: mode === "text-unstable" && visits > 1 ? 11 : 10, top: 20, width: 30, height: 40,
               ...(mode === "text-motion" ? {visibility: "HIDDEN"} : {}),
               ...(mode === "text-geometry" || mode === "text-geometry-bad" || mode === "text-absence" ? {visibility: "VISIBLE",
@@ -145,6 +162,113 @@ async function browserAdapter(documentHash: string, mode: "normal" | "external" 
   };
   return { launch, calls, handlers, wasClosed: () => closed, wasAudioStopped: () => audioStopped };
 }
+
+test("capture cancellation interrupts stuck CDP and closes its browser without output", async () => {
+  await withSource(async (parent, materialized) => {
+    const adapter = await browserAdapter(materialized.receipt.documentHash);
+    const cancellation = new AbortController();
+    const launch: typeof launchCompositionQaBrowser = async (options) => {
+      assert.equal(options.signal, cancellation.signal);
+      const browser = await adapter.launch(options);
+      browser.client.send = async () => {
+        queueMicrotask(() => cancellation.abort("private reason"));
+        return new Promise(() => {});
+      };
+      return browser;
+    };
+    await assert.rejects(captureMaterializedConformancePreview({materialized, outputParentDirectory: parent,
+      signal: cancellation.signal}, launch), /CONFORMANCE_JOB_EXECUTION_CANCELLED/);
+    assert.equal(adapter.wasClosed(), true);
+    assert.deepEqual(await readdir(parent), [materialized.directory.split(/[\\/]/).at(-1)]);
+  });
+});
+
+test("abort during browser cleanup cannot hand off a completed capture package", async () => {
+  await withSource(async (parent, materialized) => {
+    const adapter = await browserAdapter(materialized.receipt.documentHash);
+    const cancellation = new AbortController();
+    const launch: typeof launchCompositionQaBrowser = async (options) => {
+      const browser = await adapter.launch(options);
+      const close = browser.close;
+      browser.close = async () => {await close(); cancellation.abort("private reason");};
+      return browser;
+    };
+    await assert.rejects(captureMaterializedConformancePreview({materialized, outputParentDirectory: parent,
+      signal: cancellation.signal}, launch), /CONFORMANCE_JOB_EXECUTION_CANCELLED/);
+    assert.equal(adapter.wasClosed(), true);
+    assert.deepEqual(await readdir(parent), [materialized.directory.split(/[\\/]/).at(-1)]);
+  });
+});
+
+test("frozen deck capture survives private packaging and cannot remove both evidence and its receipt pin", async () => {
+  await withSource(async (parent, materialized) => {
+    const adapter = await browserAdapter(materialized.receipt.documentHash, "deck");
+    const capture = await captureMaterializedConformancePreview({materialized, outputParentDirectory: parent}, adapter.launch);
+    try {
+      const metadataPath = join(capture.directory, "preview-metadata.json"), receiptPath = join(capture.directory, "capture-receipt.json");
+      const metadata = JSON.parse(await readFile(metadataPath, "utf8")), receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+      assert.equal(receipt.deckTextSha256, hashDeckTextEvidence(metadata.deckText));
+      assert.equal(metadata.deckText.scope, "PREVIEW_TEXT_CONTENT_GEOMETRY_NOT_PAINT_OR_RENDER_FONT_EVIDENCE");
+      const input = {captureDirectory: capture.directory, organizationId: identifier, revisionId: identifier,
+        projectHash: materialized.receipt.projectHash, contract: capture.contract};
+      const packaged = await buildVisualConformanceEvidencePackage(input);
+      const zip = await JSZip.loadAsync(packaged.bytes);
+      assert.ok(JSON.parse(await zip.file("preview-metadata.json")!.async("string")).deckText);
+      delete metadata.deckText; delete receipt.deckTextSha256;
+      await writeFile(metadataPath, JSON.stringify(metadata)); await writeFile(receiptPath, JSON.stringify(receipt));
+      await assert.rejects(buildVisualConformanceEvidencePackage(input), /DECK_TEXT_EVIDENCE_REQUIRED/);
+    } finally {await capture.cleanup();}
+  }, false, 4, false, undefined, false, false, false, false, false, true);
+});
+
+test("deck geometry must repeat exactly on reverse seeks even when PNGs remain identical", async () => {
+  await withSource(async (parent, materialized) => {
+    const adapter = await browserAdapter(materialized.receipt.documentHash, "deck-unstable");
+    await assert.rejects(captureMaterializedConformancePreview({materialized, outputParentDirectory: parent}, adapter.launch), /DECK_TEXT_REVERSE_SEEK_MISMATCH/);
+    assert.equal(adapter.wasClosed(), true);
+  }, false, 4, false, undefined, false, false, false, false, false, true);
+});
+
+test("frozen deck paint obligation retains its own private pair and cannot remove masks plus metadata", async () => {
+  await withSource(async (parent, materialized) => {
+    const adapter = await browserAdapter(materialized.receipt.documentHash, "deck");
+    const capture = await captureMaterializedConformancePreview({materialized, outputParentDirectory: parent}, adapter.launch);
+    try {
+      const metadataPath = join(capture.directory, "preview-metadata.json"), receiptPath = join(capture.directory, "capture-receipt.json");
+      const metadata = JSON.parse(await readFile(metadataPath, "utf8")), receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+      const checkpoint = metadata.deckText.checkpoints.find((entry: {paintCapture?: unknown}) => entry.paintCapture);
+      assert.ok(checkpoint);
+      const withoutPaintPolicy = structuredClone(capture.contract);
+      if (withoutPaintPolicy.schemaVersion !== 4) throw new Error("Expected v4 contract");
+      delete withoutPaintPolicy.deckTextPaintMaskPolicy;
+      assert.throws(() => validateDeckTextEvidence(metadata.deckText, withoutPaintPolicy), /DECK_PAINT_EVIDENCE_UNAUTHORIZED/);
+      const input = {captureDirectory: capture.directory, organizationId: identifier, revisionId: identifier,
+        projectHash: materialized.receipt.projectHash, contract: capture.contract};
+      const packaged = await buildVisualConformanceEvidencePackage(input), zip = await JSZip.loadAsync(packaged.bytes);
+      assert.ok(zip.file(`deck-text-suppressed-${checkpoint.frameIndex}.png`));
+      const restored = await readPersistedVisualConformanceEvidence({supabase: {
+        rpc: async () => ({error: null, data: {organizationId: identifier, revisionId: identifier,
+          checksum: packaged.checksum, projectHash: materialized.receipt.projectHash, documentHash: materialized.receipt.documentHash,
+          storagePath: packaged.storagePath, sizeBytes: packaged.bytes.length, frames: capture.receipt.frames,
+          status: "VISUAL_CAPTURED_AUDIO_PENDING", contract: capture.contract}}),
+        storage: {from: () => ({download: async () => ({error: null, data: new Blob([new Uint8Array(packaged.bytes)])})})},
+      } as never, organizationId: identifier, revisionId: identifier, checksum: packaged.checksum, outputParentDirectory: parent});
+      try {
+        assert.equal(createHash("sha256").update(await readFile(join(restored.directory, `deck-text-suppressed-${checkpoint.frameIndex}.png`))).digest("hex"),
+          checkpoint.paintCapture.suppressedPngSha256);
+      } finally {await restored.cleanup();}
+      // Uniform injected PNGs honestly derive empty masks; this is not proof of actual HTML paint.
+      assert.equal(checkpoint.regions[0].paintMask.pixelCount, 0);
+      for (const entry of metadata.deckText.checkpoints) {
+        delete entry.paintCapture;
+        for (const region of entry.regions) delete region.paintMask;
+      }
+      receipt.deckTextSha256 = hashDeckTextEvidence(metadata.deckText);
+      await writeFile(metadataPath, JSON.stringify(metadata)); await writeFile(receiptPath, JSON.stringify(receipt));
+      await assert.rejects(buildVisualConformanceEvidencePackage(input), /DECK_PAINT_EVIDENCE_REQUIRED/);
+    } finally {await capture.cleanup();}
+  }, false, 4, false, undefined, false, false, false, false, false, true, true);
+});
 
 test("URL and byte-range policies reject traversal, foreign origins, extra query and invalid/multiple ranges", () => {
   const origin = "http://127.0.0.1:12345"; const paths = new Set(["conformance-preview.html"]);
@@ -404,6 +528,84 @@ test("opt-in text capture pins every checkpoint and rejects changed reverse geom
       assert.deepEqual(JSON.parse(await readFile(join(capture.directory, "preview-metadata.json"), "utf8")).textParity, capture.metadata.textParity);
     } finally {await capture.cleanup();}
   }, true);
+});
+
+test("paint-mask opt-in forces text capture and persists repeatable frame-bound witnesses", async () => {
+  await withSource(async (parent, materialized) => {
+    const adapter = await browserAdapter(materialized.receipt.documentHash, "text");
+    const capture = await captureMaterializedConformancePreview({materialized, outputParentDirectory: parent,
+      captureTextPaintMasks: true}, adapter.launch);
+    try {
+      assert.ok(capture.metadata.textParity);
+      const masked = capture.metadata.textParity.checkpoints.filter((checkpoint) => checkpoint.regions.length > 0);
+      assert.ok(masked.length > 0);
+      for (const checkpoint of masked) {
+        assert.equal(checkpoint.paintMaskCapture?.paintedPngSha256,
+          capture.receipt.frames.find((frame) => frame.frameIndex === checkpoint.frameIndex)!.sha256);
+        assert.equal(checkpoint.paintMaskCapture?.scope, "ALL_NATIVE_TEXT_SUPPRESSED_NOT_PER_GLYPH_CAUSALITY");
+        // The injected browser has uniform pixels: an empty mask is evidence, not proof of painted glyphs.
+        assert.equal(checkpoint.regions[0]!.paintMask?.pixelCount, 0);
+      }
+      assert.equal(capture.receipt.seekRepeatability.status, "PASS");
+      assert.deepEqual(JSON.parse(await readFile(join(capture.directory, "preview-metadata.json"), "utf8")).textParity,
+        capture.metadata.textParity);
+      const bundle = await buildVisualConformanceEvidencePackage({captureDirectory: capture.directory,
+        organizationId: materialized.receipt.organizationId, revisionId: materialized.receipt.revisionId,
+        projectHash: materialized.receipt.projectHash, contract: capture.contract});
+      assert.ok(bundle.bytes.length > 0);
+      const zip = await JSZip.loadAsync(bundle.bytes);
+      for (const checkpoint of masked) assert.ok(zip.file(suppressedTextFrameName(checkpoint.frameIndex)));
+      const restored = await readPersistedVisualConformanceEvidence({supabase: {
+        rpc: async () => ({error: null, data: {organizationId: materialized.receipt.organizationId,
+          revisionId: materialized.receipt.revisionId, checksum: bundle.checksum, projectHash: materialized.receipt.projectHash,
+          documentHash: materialized.receipt.documentHash, storagePath: bundle.storagePath, sizeBytes: bundle.bytes.length,
+          frames: capture.receipt.frames, status: "VISUAL_CAPTURED_AUDIO_PENDING", contract: capture.contract}}),
+        storage: {from: () => ({download: async () => ({error: null, data: new Blob([new Uint8Array(bundle.bytes)])})})},
+      } as never, organizationId: materialized.receipt.organizationId, revisionId: materialized.receipt.revisionId,
+        checksum: bundle.checksum, outputParentDirectory: parent});
+      try {
+        for (const checkpoint of masked) assert.equal(createHash("sha256")
+          .update(await readFile(join(restored.directory, suppressedTextFrameName(checkpoint.frameIndex)))).digest("hex"),
+          checkpoint.paintMaskCapture!.suppressedPngSha256);
+      } finally {await restored.cleanup();}
+    } finally {await capture.cleanup();}
+  }, true);
+});
+
+test("frozen paint-mask obligation overrides operator opt-out and survives package readback", async () => {
+  await withSource(async (parent, materialized) => {
+    const adapter = await browserAdapter(materialized.receipt.documentHash, "text");
+    const capture = await captureMaterializedConformancePreview({materialized, outputParentDirectory: parent,
+      captureTextPaintMasks: false, captureTextRegions: false}, adapter.launch);
+    try {
+      assert.equal(capture.contract.schemaVersion, 4);
+      assert.ok(capture.metadata.textParity!.checkpoints.some((checkpoint) => checkpoint.paintMaskCapture));
+      const downgrade = structuredClone(capture.metadata);
+      for (const entry of downgrade.textParity!.checkpoints) if (entry.paintMaskCapture) {
+        delete entry.paintMaskCapture.regionExpansionPolicy; delete entry.paintMaskCapture.sourceRegions;
+      }
+      await writeFile(join(capture.directory, "preview-metadata.json"), JSON.stringify(downgrade));
+      await assert.rejects(buildVisualConformanceEvidencePackage({captureDirectory: capture.directory,
+        organizationId: materialized.receipt.organizationId, revisionId: materialized.receipt.revisionId,
+        projectHash: materialized.receipt.projectHash, contract: capture.contract}), /TEXT_PAINT_EXPANSION_REQUIRED/);
+      const checkpoint = capture.metadata.textParity!.checkpoints.find((entry) => entry.paintMaskCapture)!;
+      const metadata = structuredClone(capture.metadata);
+      const stripped = metadata.textParity!.checkpoints.find((entry) => entry.frameIndex === checkpoint.frameIndex)!;
+      delete stripped.paintMaskCapture;
+      for (const region of stripped.regions) delete region.paintMask;
+      await writeFile(join(capture.directory, "preview-metadata.json"), JSON.stringify(metadata));
+      await assert.rejects(buildVisualConformanceEvidencePackage({captureDirectory: capture.directory,
+        organizationId: materialized.receipt.organizationId, revisionId: materialized.receipt.revisionId,
+        projectHash: materialized.receipt.projectHash, contract: capture.contract}), /TEXT_PAINT_MASK_REQUIRED/);
+      delete metadata.textParity;
+      const receipt = structuredClone(capture.receipt); delete receipt.textParitySha256;
+      await writeFile(join(capture.directory, "preview-metadata.json"), JSON.stringify(metadata));
+      await writeFile(join(capture.directory, "capture-receipt.json"), JSON.stringify(receipt));
+      await assert.rejects(buildVisualConformanceEvidencePackage({captureDirectory: capture.directory,
+        organizationId: materialized.receipt.organizationId, revisionId: materialized.receipt.revisionId,
+        projectHash: materialized.receipt.projectHash, contract: capture.contract}), /TEXT_PAINT_MASK_REQUIRED/);
+    } finally {await capture.cleanup();}
+  }, true, 4, false, undefined, false, false, false, false, true);
 });
 
 test("modo audio integra captura en el mismo navegador y dispone ambos workspaces independientes", async () => {

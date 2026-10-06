@@ -33,6 +33,13 @@ export const fontUsageEvidenceHash = (input: unknown) => createHash("sha256").up
 /** This is scoped preview evidence, not a render/font-system or full parity PASS. */
 export function validateFontUsageEvidence(input: unknown, textEvidence: TextParityEvidence) {
   const evidence = fontUsageEvidenceSchema.parse(input);
+  validateFontUsageCheckpointCoverage(evidence, textEvidence);
+  return evidence;
+}
+
+/** Shared glyph/coverage rules; callers retain distinct preview and controlled-session evidence schemas. */
+export function validateFontUsageCheckpointCoverage(evidence: Pick<FontUsageEvidence, "bindings" | "checkpoints">,
+  textEvidence: TextParityEvidence) {
   const bindings = new Map(evidence.bindings.map((binding) => [binding.elementId, binding.fontAssetId]));
   const checkpoints = new Map(evidence.checkpoints.map((checkpoint) => [checkpoint.frameIndex, checkpoint]));
   if (checkpoints.size !== textEvidence.checkpoints.length) throw new Error("CONFORMANCE_FONT_USAGE_CHECKPOINT_MISMATCH");
@@ -55,7 +62,6 @@ export function validateFontUsageEvidence(input: unknown, textEvidence: TextPari
       }
     }
   }
-  return evidence;
 }
 
 /** The authorized frozen contract is independent of both copies of capture metadata. */

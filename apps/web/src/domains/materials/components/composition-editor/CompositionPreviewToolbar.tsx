@@ -1,7 +1,8 @@
-import type { ReactNode, RefObject } from "react";
+import { useRef, type ReactNode, type RefObject } from "react";
+import { useCompositionPanelFocus } from "./useCompositionPanelFocus";
 import { ArrowRight, ChevronDown, Clapperboard, Columns2, Command, Crop, Grid3X3, History, Magnet, Maximize2, Minimize2, Minus, MousePointer2, PanelLeftOpen, PanelRight, Plus, Redo2, RefreshCw, Scan, Scissors, SlidersHorizontal, Sparkles, SquareDashed, Trash2, Undo2, X } from "lucide-react";
 import type { CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
-import { formatCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
+import { formatCompositionUiTimecode } from "@/domains/production/composition-editor/composition-ui-presentation";
 import styles from "./CompositionStudio.module.css";
 
 export type CompositionDocumentHistoryEntry = {
@@ -66,6 +67,10 @@ interface CompositionPreviewToolbarProps {
 }
 
 export function CompositionPreviewToolbar({ canvas, onCanvasFormatChange, agentProposalActive, canRedo, canUndo, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, libraryOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenCommandPalette, onOpenLibrary, onOpenPresets, onRedo, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSafeAreas, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onUndo, onZoom, previewFullscreen, previewStatusLabel, previewZoom, redoLabel, removalRangeStartSeconds, safeAreasVisible, saveError, saving, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, undoLabel, visualCropEnabled }: CompositionPreviewToolbarProps) {
+  const toolsPanelRef = useRef<HTMLDivElement>(null);
+  const historyPanelRef = useRef<HTMLDivElement>(null);
+  useCompositionPanelFocus({ open: toolMenuOpen, panelRef: toolsPanelRef, kind: "MENU", onClose: onToggleToolMenu });
+  useCompositionPanelFocus({ open: Boolean(history), panelRef: historyPanelRef, kind: "POPOVER", onClose: onCloseHistory });
   return <div className={styles.previewToolbar}>
     <div className={styles.previewIdentity}>
       <span className={styles.previewIdentityIcon}><Clapperboard size={14} aria-hidden="true" /></span>
@@ -88,13 +93,13 @@ export function CompositionPreviewToolbar({ canvas, onCanvasFormatChange, agentP
       </div>
       <div ref={toolMenuRef} className={styles.toolMenuWrap}>
         <button type="button" aria-expanded={toolMenuOpen} aria-haspopup="menu" onClick={onToggleToolMenu} className={`${styles.toolButton} ${comparisonActive || gridVisible || safeAreasVisible || visualCropEnabled || trimToolEnabled || removalRangeStartSeconds !== null ? styles.toolButtonActive : ""}`} title="Abrir herramientas adicionales"><SlidersHorizontal size={13} /><span>Herramientas</span><ChevronDown className={toolMenuOpen ? styles.toolMenuChevronOpen : ""} size={12} /></button>
-        {toolMenuOpen && <div className={styles.toolMenu} role="menu" aria-label="Herramientas adicionales">
+        {toolMenuOpen && <div ref={toolsPanelRef} className={`${styles.toolMenu} ${styles.keyboardPanel}`} role="menu" aria-label="Herramientas adicionales">
           <button type="button" role="menuitemcheckbox" aria-checked={comparisonActive} onClick={onToggleComparison} className={styles.toolMenuItem}><Columns2 size={14} /><span><strong>Comparar antes / después</strong><small>Revisar color y composición</small></span><i data-active={comparisonActive} /></button>
           <button type="button" role="menuitemcheckbox" aria-checked={gridVisible} onClick={onToggleGrid} className={styles.toolMenuItem}><Grid3X3 size={14} /><span><strong>Rejilla</strong><small>Guías visuales del canvas</small></span><i data-active={gridVisible} /></button>
           <button type="button" role="menuitemcheckbox" aria-checked={safeAreasVisible} onClick={onToggleSafeAreas} className={styles.toolMenuItem}><SquareDashed size={14} /><span><strong>Áreas seguras</strong><small>Título 80% · acción 90%</small></span><i data-active={safeAreasVisible} /></button>
           <button type="button" role="menuitemcheckbox" aria-checked={visualCropEnabled} onClick={onToggleVisualCrop} className={styles.toolMenuItem}><Scan size={14} /><span><strong>Recorte visual</strong><small>Ajustar bordes del medio</small></span><i data-active={visualCropEnabled} /></button>
           <button type="button" role="menuitemcheckbox" aria-checked={trimToolEnabled} onClick={onToggleTrim} className={styles.toolMenuItem}><Crop size={14} /><span><strong>Recorte temporal</strong><small>Modificar inicio y duración</small></span><i data-active={trimToolEnabled} /></button>
-          <button type="button" role="menuitem" onClick={onIntervalAction} className={styles.toolMenuItem}><Trash2 size={14} /><span><strong>{removalRangeStartSeconds === null ? "Marcar intervalo" : "Eliminar intervalo"}</strong><small>{removalRangeStartSeconds === null ? "Define el inicio de un corte" : `Desde ${formatCompositionTimecode(removalRangeStartSeconds)} al cursor`}</small></span><i data-active={removalRangeStartSeconds !== null} /></button>
+          <button type="button" role="menuitem" onClick={onIntervalAction} className={styles.toolMenuItem}><Trash2 size={14} /><span><strong>{removalRangeStartSeconds === null ? "Marcar intervalo" : "Eliminar intervalo"}</strong><small>{removalRangeStartSeconds === null ? "Define el inicio de un corte" : `Desde ${formatCompositionUiTimecode(removalRangeStartSeconds)} al cursor`}</small></span><i data-active={removalRangeStartSeconds !== null} /></button>
         </div>}
       </div>
       <div className={styles.toolbarGroup} aria-label="Vista del monitor">
@@ -112,7 +117,7 @@ export function CompositionPreviewToolbar({ canvas, onCanvasFormatChange, agentP
         <button type="button" onClick={onInspectorToggle} className={`${styles.toolIconButton} ${inspectorOpen ? styles.toolIconButtonActive : ""}`} title={inspectorOpen ? "Cerrar inspector" : "Abrir inspector"} aria-label={inspectorOpen ? "Cerrar inspector" : "Abrir inspector"}><PanelRight size={14} /></button>
         <div className={styles.historyWrap}>
           <button type="button" disabled={saving} onClick={onHistoryOpen} className={styles.toolIconButton} title="Historial de edición" aria-label="Abrir historial de edición"><History size={14} /></button>
-          {history && <div className={styles.historyMenu} role="dialog" aria-label="Historial de edición"><div className={styles.historyMenuHeader}><span>Historial de edición</span><button type="button" aria-label="Cerrar historial" onClick={onCloseHistory}><X size={12} /></button></div>{history.map((entry, entryIndex) => <button key={`${entry.documentHash}-${entry.version}-${entryIndex}`} type="button" disabled={saving || entry.version === currentVersion} onClick={() => onRestoreHistory(entry)} className={styles.historyItem}><span><strong>Versión {entry.version}{entry.version === currentVersion ? " · actual" : ""}</strong><small>{new Date(entry.createdAt).toLocaleString()}</small></span>{entry.version !== currentVersion && <em>Restaurar</em>}</button>)}</div>}
+          {history && <div ref={historyPanelRef} className={`${styles.historyMenu} ${styles.keyboardPanel}`} role="dialog" aria-label="Historial de edición"><div className={styles.historyMenuHeader}><span>Historial de edición</span><button type="button" aria-label="Cerrar historial" onClick={onCloseHistory}><X size={12} /></button></div>{history.map((entry, entryIndex) => <button key={`${entry.documentHash}-${entry.version}-${entryIndex}`} type="button" disabled={saving || entry.version === currentVersion} onClick={() => onRestoreHistory(entry)} className={styles.historyItem}><span><strong>Versión {entry.version}{entry.version === currentVersion ? " · actual" : ""}</strong><small>{new Date(entry.createdAt).toLocaleString()}</small></span>{entry.version !== currentVersion && <em>Restaurar</em>}</button>)}</div>}
         </div>
         <button type="button" onClick={onReload} className={styles.toolIconButton} title="Recargar composición" aria-label="Recargar composición"><RefreshCw size={14} /></button>
       </div>
@@ -130,6 +135,5 @@ function PreviewToolButton({ active, children, label, onClick, title }: { active
 }
 
 function formatSeconds(value: number) {
-  const seconds = Math.max(0, Math.floor(value));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return formatCompositionUiTimecode(Math.max(0, Math.floor(value)));
 }

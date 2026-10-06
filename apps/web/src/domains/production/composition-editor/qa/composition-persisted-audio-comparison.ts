@@ -1,17 +1,21 @@
 import { readPersistedAudioConformanceEvidence } from "./composition-audio-evidence-reader";
 import { compareVideoWithPersistedVisualReference } from "./composition-persisted-reference-comparison";
 import { evaluatePlaybackAudioWitness } from "./composition-playback-audio-gate";
+import {assertConformanceJobActive} from "./composition-conformance-job-lease";
 
 const defaultDependencies = { readAudio: readPersistedAudioConformanceEvidence, compare: compareVideoWithPersistedVisualReference };
 /** Reads an exact visual/audio pair. Video integrity is a separate prerequisite; audio remains a source-derived model. */
 export async function compareVideoWithPersistedConformanceReferences(
   params: Omit<Parameters<typeof compareVideoWithPersistedVisualReference>[0], "audioReferencePath" | "audioReferenceMetadataPath">
-    & { audioChecksum: string }, dependencies: typeof defaultDependencies = defaultDependencies,
+    & { audioChecksum: string; signal?: AbortSignal }, dependencies: typeof defaultDependencies = defaultDependencies,
 ) {
+  assertConformanceJobActive(params.signal);
   const audio = await dependencies.readAudio({ ...params, visualChecksum: params.checksum, checksum: params.audioChecksum });
   try {
+    assertConformanceJobActive(params.signal);
     const result = await dependencies.compare({ ...params, audioReferencePath: audio.audioReferencePath,
       audioReferenceMetadataPath: audio.audioReferenceMetadataPath });
+    assertConformanceJobActive(params.signal);
     if (result.reference.checksum !== audio.receipt.visualChecksum
       || result.reference.projectHash !== audio.receipt.projectHash || result.reference.documentHash !== audio.receipt.documentHash
       || result.reference.organizationId !== audio.receipt.organizationId || result.reference.revisionId !== audio.receipt.revisionId) {

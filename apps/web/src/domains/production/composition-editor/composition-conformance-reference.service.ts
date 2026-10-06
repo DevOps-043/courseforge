@@ -9,13 +9,22 @@ import { compositionConformanceContractSchema } from "./composition-preview-rend
 import { buildTextParityCheckpointPlans } from "./composition-text-checkpoint-plan";
 import { assertCompiledConformanceFontBindings, assertConformanceFontManifestPin, buildDeclaredNativeFontUsageContract, conformanceFontManifestHash, type ConformanceFontManifest } from "./composition-conformance-font-bindings";
 import { assertCompositionEventCheckpointBatch } from "./composition-conformance-batch-identity";
+import { validateDeckTextPlan } from "./composition-deck-text-plan";
+import {
+  HTML_EDITING_SNAPSHOT_BUNDLE_POLICY, verifyCompositionHtmlEditingSnapshotContent,
+  type HtmlEditingFrozenCompilationInput, type HtmlEditingFrozenSnapshotBundle,
+} from "./composition-html-editing-snapshot-bundle.server";
 
 /** Byte integrity alone cannot prove that a producer froze the document's actual text. */
 function validateReferenceTextPlan(
   document: z.infer<typeof compositionEditorDocumentSchema>,
   contract: z.infer<typeof compositionConformanceContractSchema>,
+  htmlEditingBundle?: HtmlEditingFrozenSnapshotBundle,
 ) {
+  if (document.htmlEditing?.items.length && (contract.schemaVersion !== 4 || !contract.deckTextPlan))
+    throw new Error("CONFORMANCE_REFERENCE_HTML_TEXT_PLAN_REQUIRED");
   if (contract.schemaVersion !== 4) return;
+  if (contract.deckTextPlan) validateDeckTextPlan(document, contract.deckTextPlan, htmlEditingBundle);
   if (contract.checkpointPolicy) assertCompositionEventCheckpointBatch(document, contract);
   const expected = buildTextParityCheckpointPlans(document, contract.checkpoints, contract.textParity.visibilityPolicy ?? false);
   if (JSON.stringify(expected) !== JSON.stringify(contract.textParity.checkpoints)) {
@@ -38,6 +47,9 @@ export const conformanceReferenceSourceSchema = z.object({
   mediaState: z.literal("REQUIRES_VERIFIED_MATERIALIZATION"),
   audioState: z.literal("REFERENCE_NOT_CAPTURED"), bindings: z.array(referenceBindingSchema).max(250),
   fontManifestSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  htmlEditingSnapshot: z.object({ schemaVersion: z.literal(1),
+    path: z.literal(HTML_EDITING_SNAPSHOT_BUNDLE_POLICY.archivePath), sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  }).strict().optional(),
 }).strict();
 
 export function conformanceReferenceVersion(raw: string | undefined): 1 | null {
@@ -48,6 +60,7 @@ export function conformanceReferenceVersion(raw: string | undefined): 1 | null {
 export function verifyConformanceReferenceSource(input: {
   metadata: unknown; previewHtml: string; documentJson: string; contractJson: string;
   fontManifest?: unknown;
+  htmlEditingBundle?: HtmlEditingFrozenSnapshotBundle;
 }) {
   const metadata = conformanceReferenceSourceSchema.parse(input.metadata);
   const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -59,7 +72,8 @@ export function verifyConformanceReferenceSource(input: {
   if (hashCompositionDocument(document) !== metadata.documentHash || contract.documentHash !== metadata.documentHash) {
     throw new Error("CONFORMANCE_REFERENCE_DOCUMENT_MISMATCH");
   }
-  validateReferenceTextPlan(document, contract);
+  const htmlEditingBundle = assertReferenceHtmlBundle(document, metadata, input.htmlEditingBundle);
+  validateReferenceTextPlan(document, contract, htmlEditingBundle);
   if (metadata.fontManifestSha256 !== undefined && input.fontManifest === undefined) {
     throw new Error("CONFORMANCE_REFERENCE_FONT_MANIFEST_MISSING");
   }
@@ -77,7 +91,7 @@ export function verifyConformanceReferenceSource(input: {
     productionAssetId: binding.assetId, checksum: binding.checksum, fileSizeBytes: binding.fileSizeBytes,
     mimeType: binding.mimeType, storageBucket: binding.storageBucket, storagePath: binding.storagePath,
   })));
-  return { metadata, document, contract, ...(fontManifest ? {fontManifest} : {}) };
+  return { metadata, document, contract, ...(fontManifest ? {fontManifest} : {}), ...(htmlEditingBundle ? {htmlEditingBundle} : {}) };
 }
 
 /** Compiles from the saved document; no draft fetch, signed URL or remote media download. */
@@ -88,6 +102,7 @@ export async function buildConformanceReferenceSource(params: {
   fontAssets?: Map<string, CompositionCompiledFont>;
   fontManifest?: ConformanceFontManifest;
   deckPublicUrls?: Map<string, string>;
+  htmlEditingSnapshot?: HtmlEditingFrozenCompilationInput;
 }) {
   const document = compositionEditorDocumentSchema.parse(params.document);
   const contract = compositionConformanceContractSchema.parse(params.contract);
@@ -95,7 +110,12 @@ export async function buildConformanceReferenceSource(params: {
   const fontManifest = params.fontManifest === undefined ? undefined
     : assertCompiledConformanceFontBindings(document, params.fontManifest, params.fontAssets);
   if (hashCompositionDocument(document) !== contract.documentHash) throw new Error("CONFORMANCE_REFERENCE_DOCUMENT_MISMATCH");
-  validateReferenceTextPlan(document, contract);
+  const htmlEditingBundle = params.htmlEditingSnapshot ? {
+    archivePath: params.htmlEditingSnapshot.archivePath, encodedBundle: params.htmlEditingSnapshot.encodedBundle,
+    sha256: params.htmlEditingSnapshot.sha256,
+  } : undefined;
+  if (Boolean(document.htmlEditing?.items.length) !== Boolean(htmlEditingBundle)) throw new Error("CONFORMANCE_REFERENCE_HTML_BUNDLE_REQUIRED");
+  validateReferenceTextPlan(document, contract, htmlEditingBundle);
   validateReferenceFontContract(document, contract, fontManifest);
   const byId = new Map(assets.map((asset) => [asset.productionAssetId, asset]));
   if (byId.size !== assets.length || contract.assets.length !== assets.length
@@ -119,6 +139,7 @@ export async function buildConformanceReferenceSource(params: {
   const previewHtml = await compileCompositionPreview({
     assetUrls, deckAssetUrls, document, documentHash: contract.documentHash, fontAssets: params.fontAssets,
     audioMetersEnabled: false, target: COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW,
+    htmlEditingSnapshot: params.htmlEditingSnapshot,
   });
   const documentJson = JSON.stringify(document, null, 2);
   const contractJson = JSON.stringify(contract, null, 2);
@@ -129,8 +150,31 @@ export async function buildConformanceReferenceSource(params: {
     nativeDocumentSha256: sha256(documentJson), contractSha256: sha256(contractJson),
     mediaState: "REQUIRES_VERIFIED_MATERIALIZATION", audioState: "REFERENCE_NOT_CAPTURED", bindings,
     ...(fontManifest ? {fontManifestSha256: conformanceFontManifestHash(fontManifest)} : {}),
+    ...(htmlEditingBundle ? {htmlEditingSnapshot: {schemaVersion: 1,
+      path: htmlEditingBundle.archivePath, sha256: htmlEditingBundle.sha256}} : {}),
   });
-  return { previewHtml, metadata, documentJson, contractJson };
+  assertReferenceHtmlBundle(document, metadata, htmlEditingBundle);
+  return { previewHtml, metadata, documentJson, contractJson, ...(fontManifest ? {fontManifest} : {}),
+    ...(htmlEditingBundle ? {htmlEditingBundle} : {}) };
+}
+
+function assertReferenceHtmlBundle(document: z.infer<typeof compositionEditorDocumentSchema>,
+  metadata: z.infer<typeof conformanceReferenceSourceSchema>, bundle: HtmlEditingFrozenSnapshotBundle | undefined) {
+  const required = Boolean(document.htmlEditing?.items.length);
+  if (required !== Boolean(metadata.htmlEditingSnapshot) || required !== Boolean(bundle)) {
+    throw new Error("CONFORMANCE_REFERENCE_HTML_BUNDLE_REQUIRED");
+  }
+  if (!bundle) return undefined;
+  if (metadata.htmlEditingSnapshot?.path !== bundle.archivePath || metadata.htmlEditingSnapshot.sha256 !== bundle.sha256) {
+    throw new Error("CONFORMANCE_REFERENCE_HTML_BUNDLE_PIN_MISMATCH");
+  }
+  const content = verifyCompositionHtmlEditingSnapshotContent({ ...bundle, document, documentHash: metadata.documentHash });
+  const assets = new Map(metadata.bindings.map(binding => [binding.assetId, binding]));
+  if (content.usedAssetIds.some(id => !assets.has(id)
+    || !["image/png", "image/jpeg", "image/webp"].includes(assets.get(id)!.mimeType))) {
+    throw new Error("CONFORMANCE_REFERENCE_HTML_ASSETS_MISMATCH");
+  }
+  return bundle;
 }
 
 function validateReferenceFontContract(document: z.infer<typeof compositionEditorDocumentSchema>,

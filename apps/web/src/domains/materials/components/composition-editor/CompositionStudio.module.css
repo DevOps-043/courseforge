@@ -1111,8 +1111,13 @@
 .safeAreaOverlay {
   position: absolute;
   z-index: 2;
-  inset: 0;
   pointer-events: none;
+}
+
+.keyboardTimeline button:focus-visible,
+.keyboardTimeline [role="slider"]:focus-visible {
+  outline: 2px solid #06b6d4;
+  outline-offset: 1px;
 }
 
 .safeActionArea,
@@ -2411,6 +2416,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .studio *,
+  .keyboardPanel * {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
   .historyMenu,
   .libraryNarrative,
   .libraryNarrative .libraryBody {
@@ -2430,4 +2442,18 @@
   .assetItem {
     transition-duration: 1ms;
   }
+}
+
+.studio button:focus-visible,
+.studio input:focus-visible,
+.studio textarea:focus-visible,
+.studio select:focus-visible,
+.studio [tabindex]:focus-visible,
+.keyboardPanel button:focus-visible,
+.keyboardPanel input:focus-visible,
+.keyboardPanel textarea:focus-visible,
+.keyboardPanel select:focus-visible,
+.keyboardPanel a:focus-visible {
+  outline: 2px solid var(--engine-accent, #06b6d4);
+  outline-offset: 2px;
 }

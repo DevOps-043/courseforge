@@ -1,6 +1,9 @@
 "use client";
 
 import { stepCompositionFrame } from "@/domains/production/composition-editor/composition-timecode";
+import { formatCompositionUiTimecode } from "@/domains/production/composition-editor/composition-ui-presentation";
+import { resolveCompositionTimelineFocusKey, resolveCompositionTimelineFocusIndex, resolveCompositionTimelineCursorKey } from "@/domains/production/composition-editor/composition-timeline-focus-keyboard";
+import styles from "./CompositionStudio.module.css";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
@@ -502,7 +505,22 @@ export function CompositionTimeline({ assetLabels, waveforms, currentTime, docum
     });
   };
 
-  return <div className="space-y-2 pb-2">
+  return <div data-composition-timeline className={`space-y-2 pb-2 ${styles.keyboardTimeline}`} onKeyDownCapture={(event) => {
+    if (!(event.target instanceof HTMLElement) || !event.target.closest('[role="slider"]:not([data-animation-id])')) return;
+    const action = resolveCompositionTimelineCursorKey({ key: event.key, altKey: event.altKey, ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing });
+    if (!action) {
+      // Cursor-only gestures must not edit the selected clip; explicit global commands remain available.
+      if ((event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight"))
+        || event.key === "Delete" || event.key === "Backspace") event.stopPropagation();
+      return;
+    }
+    event.stopPropagation();
+    event.preventDefault();
+    if (action === "START") onSeek(0);
+    else if (action === "END") onSeek(maxDuration);
+    else onSeek(stepCompositionFrame(currentTime, action === "BACKWARD" ? -1 : 1, fps, maxDuration, event.shiftKey));
+  }}>
     <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">
       <span>Timeline</span>
       <div className="flex flex-wrap items-center justify-end gap-2">
@@ -626,14 +644,34 @@ export function CompositionTimeline({ assetLabels, waveforms, currentTime, docum
                   }}
                   onDoubleClick={() => { if (logicalGroup && editingGroupId !== logicalGroup.id) enterSelectedGroup(logicalGroup, clip); }}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && logicalGroup && editingGroupId !== logicalGroup.id) {
+                    if (event.nativeEvent.isComposing) return;
+                    if (event.key === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && logicalGroup && editingGroupId !== logicalGroup.id) {
                       event.preventDefault();
                       enterSelectedGroup(logicalGroup, clip);
                       return;
                     }
-                    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                    const action = resolveCompositionTimelineFocusKey({ key: event.key, altKey: event.altKey, ctrlKey: event.ctrlKey,
+                      metaKey: event.metaKey, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing });
+                    if (!action) return;
                     event.preventDefault();
-                    const direction = event.key === "ArrowLeft" ? -1 : 1;
+                    event.stopPropagation();
+                    if (action === "CLEAR") {
+                      if (editingGroupId) onEditingGroupChange(null);
+                      clearTimelineSelection();
+                      return;
+                    }
+                    if (action === "TOGGLE") { selectTimelineClip(clip, event); return; }
+                    if (action === "PREVIOUS" || action === "NEXT" || action === "FIRST" || action === "LAST") {
+                      const timeline = event.currentTarget.closest("[data-composition-timeline]");
+                      const buttons = [...(timeline?.querySelectorAll<HTMLButtonElement>("button[data-clip-id]:not([disabled])") || [])];
+                      const index = resolveCompositionTimelineFocusIndex(buttons.length, buttons.indexOf(event.currentTarget), action);
+                      if (index !== null) {
+                        buttons[index].focus();
+                        buttons[index].scrollIntoView({ block: "nearest", inline: "nearest" });
+                      }
+                      return;
+                    }
+                    const direction = action === "MOVE_LEFT" ? -1 : 1;
                     if (logicalGroup && editingGroupId !== logicalGroup.id) {
                       const bounds = resolveCompositionGroupBounds(document, logicalGroup.id);
                       if (!bounds) return;
@@ -659,6 +697,7 @@ export function CompositionTimeline({ assetLabels, waveforms, currentTime, docum
                   onPointerUp={finishGesture}
                   onPointerCancel={finishGesture}
                   aria-pressed={isSelected}
+                  aria-label={`${label}: ${formatSeconds(clipStart)} – ${formatSeconds(clipStart + clipDuration)}`}
                   title={`${logicalGroup ? `${logicalGroup.label || "Grupo"} · ` : ""}${label}: ${formatSeconds(clipStart)} – ${formatSeconds(clipStart + clipDuration)} · Alt+arrastrar: slide${logicalGroup && editingGroupId !== logicalGroup.id ? " · doble clic para editar su contenido" : ""}`}
                   style={{
                     left: `${(clipStart / maxDuration) * 100}%`,
@@ -750,6 +789,5 @@ function formatSnapLabel(match: TimelineSnapMatch) {
 }
 
 function formatSeconds(value: number) {
-  const seconds = Math.max(0, Math.floor(value));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return formatCompositionUiTimecode(Math.max(0, Math.floor(value)));
 }

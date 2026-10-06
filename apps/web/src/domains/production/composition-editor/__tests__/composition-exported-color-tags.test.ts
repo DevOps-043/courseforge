@@ -10,6 +10,7 @@ import { evaluateExportedColorTags, EXPORTED_COLOR_TAG_POLICY, exportedColorTagR
   readExportedColorTags, resolveExportedColorTagPolicyId } from "../qa/composition-exported-color-tags";
 import { evaluateExportedVideoConformanceStatus, parseExportedVideoProbe } from "../qa/composition-exported-video-conformance";
 import { buildSnapshotConformanceContract } from "../composition-snapshot-conformance-contract";
+import { assertConformanceReportMatchesContract } from "../qa/composition-conformance-contract-report-gate";
 import { evaluateCompositionConformance, compositionConformanceContractSchema } from "../composition-preview-render-conformance";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import { COMPOSITION_TEXT_PARITY_POLICY } from "../composition-text-parity-policy";
@@ -91,9 +92,18 @@ test("frozen v4 tag obligation is opt-in, independent of caller policy and requi
   assert.equal(missing.status, "INCOMPLETE"); assert.equal(missing.colorTags?.status, "INCOMPLETE");
   const observedWithoutPolicy = evaluateExportedColorTags(tags);
   const matched = evaluateCompositionConformance({...evaluation, renderColorTags: observedWithoutPolicy});
-  assert.equal(matched.status, "PASS"); assert.equal(matched.colorTags?.policy, EXPORTED_COLOR_TAG_POLICY);
+  assert.equal(matched.status, "INCOMPLETE"); assert.equal(matched.colorTags?.policy, EXPORTED_COLOR_TAG_POLICY);
+  assert.ok(matched.incompletenessReasons?.includes("SDR_PIXEL_CONVERSION_UNATTESTED"));
+  assertConformanceReportMatchesContract(contract, matched);
+  assert.throws(() => assertConformanceReportMatchesContract(contract, {...matched, status: "PASS"}), /SDR_CONVERSION_ATTESTATION_PENDING/);
+  assert.throws(() => assertConformanceReportMatchesContract(contract, {...matched, colorTags: {
+    ...matched.colorTags!, tags: {...matched.colorTags!.tags, transfer: "smpte2084"}}}), /COLOR_TAG_CONTRACT/);
+  assert.throws(() => assertConformanceReportMatchesContract(contract, {...missing, status: "PASS"}), /SDR_CONVERSION_ATTESTATION_PENDING/);
+  assert.throws(() => assertConformanceReportMatchesContract(contract, {...matched,
+    incompletenessReasons: []}), /SDR_CONVERSION_ATTESTATION_PENDING/);
   const mismatch = evaluateCompositionConformance({...evaluation, renderColorTags: evaluateExportedColorTags({...tags, transfer: "smpte2084"})});
   assert.equal(mismatch.status, "FAIL"); assert.equal(mismatch.colorTags?.status, "FAIL");
+  assert.throws(() => assertConformanceReportMatchesContract(contract, {...mismatch, status: "INCOMPLETE"}), /COLOR_TAG_FAILURE/);
   assert.equal(evaluateCompositionConformance({...evaluation, contract: legacy}).status, "PASS");
 });
 
@@ -124,9 +134,9 @@ test("directory comparator consumes render tags and cannot substitute preview ta
     await writeFile(renderMetadataPath, JSON.stringify(metadata));
     assert.equal((await compareCompositionConformanceDirectories(input)).status, "INCOMPLETE");
     await writeFile(renderMetadataPath, JSON.stringify({...metadata, colorTags: evaluateExportedColorTags(tags)}));
-    assert.equal((await compareCompositionConformanceDirectories(input)).status, "PASS");
+    assert.equal((await compareCompositionConformanceDirectories(input)).status, "INCOMPLETE");
     const measured = await measureCompositionConformanceDirectories(input);
-    assert.equal(measured.report.status, "PASS");
+    assert.equal(measured.report.status, "INCOMPLETE");
     assert.equal(measured.measurements.samples.length, contract.checkpoints.length);
     assert.equal(measured.measurements.previewDocumentHash, documentHash);
     assert.equal(measured.measurements.renderDocumentHash, documentHash);

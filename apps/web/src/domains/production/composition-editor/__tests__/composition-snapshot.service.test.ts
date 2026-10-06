@@ -7,12 +7,21 @@ import {
 } from "../composition-snapshot.service";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import { hashCompositionDocument } from "../composition-document.service";
+import { createHtmlEditingRevisionFixture } from "./composition-html-editing-test-fixtures";
+import { bindHtmlEditingRevisionToComposition } from "../composition-html-editing-document.server";
 
 const COMPOSITION_ID = "10000000-0000-4000-8000-000000000001";
 const ORGANIZATION_ID = "20000000-0000-4000-8000-000000000001";
 const ACTIVE_REVISION_ID = "30000000-0000-4000-8000-000000000002";
 const DRAFT_ID = "50000000-0000-4000-8000-000000000001";
 const USER_ID = "60000000-0000-4000-8000-000000000001";
+
+test("HTML snapshots cannot bypass frozen-source integration by reusing a saved native hash", () => {
+  const input = createHtmlEditingRevisionFixture();
+  const bound = bindHtmlEditingRevisionToComposition({ ...input.authority, document: input.document,
+    revision: input.next.revision, revisionSha256: input.next.sha256 });
+  assert.throws(() => assertCompositionSnapshotRenderContract(bound.document), /crear o reutilizar/);
+});
 
 test("rejects legacy documents before creating a paid render snapshot", () => {
   const document = createInitialCompositionDocument({

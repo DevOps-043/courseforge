@@ -12,6 +12,7 @@ import { assertRequiredFontUsageEvidence } from "../qa/composition-font-usage-ev
 import { createFontUsageEvidenceFixture } from "./fixtures/composition-font-usage.fixture";
 import { evaluateCompositionConformance } from "../composition-preview-render-conformance";
 import { COMPOSITION_TEXT_PARITY_POLICY } from "../composition-text-parity-policy";
+import { assertConformanceReportMatchesContract } from "../qa/composition-conformance-contract-report-gate";
 
 function fixture() {
   const {fontUsage} = createFontUsageEvidenceFixture([{frameIndex: 0, timeSeconds: 0}]);
@@ -75,6 +76,11 @@ test("perfect image/text samples cannot grant full PASS while required renderer 
   const params = {contract, samples, previewDocumentHash: contract.documentHash, renderDocumentHash: contract.documentHash};
   const pending = evaluateCompositionConformance(params);
   assert.equal(pending.status, "INCOMPLETE");
+  assertConformanceReportMatchesContract(contract, pending);
+  assert.throws(() => assertConformanceReportMatchesContract(contract, {...pending, status: "PASS"}), /FONT_ATTESTATION_PENDING/);
+  assert.throws(() => assertConformanceReportMatchesContract(contract, {...pending, fontUsage: {
+    ...pending.fontUsage!, manifestSha256: "f".repeat(64)}}), /FONT_USAGE_CONTRACT/);
+  assert.throws(() => assertConformanceReportMatchesContract(contract, {...pending, incompletenessReasons: []}), /FONT_ATTESTATION_PENDING/);
   assert.deepEqual(pending.fontUsage, {policy: contract.fontUsageContract!.policy, scope: "RENDERER_GLYPH_PROVENANCE",
     status: "INCOMPLETE", reason: "RENDERER_FONT_USAGE_EVIDENCE_UNAVAILABLE",
     manifestSha256: contract.fontUsageContract!.manifestSha256, requiredBindingCount: contract.fontUsageContract!.bindings.length});

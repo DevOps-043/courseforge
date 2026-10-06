@@ -43,6 +43,18 @@ import {
   type CompositionEditorPreferences,
 } from "@/domains/production/composition-editor/composition-editor-preferences";
 import { CompositionNarrativePanel } from "./CompositionNarrativePanel";
+import { CompositionNarrativeExtractionHost, useNarrativeExtractionHost } from "./CompositionNarrativeExtractionHost";
+import { acceptsNarrativeExtractionReload } from "@/domains/production/composition-editor/composition-narrative-reload-policy";
+import type { NarrativeEditorReload } from "@/domains/production/composition-editor/composition-narrative-editor-controller";
+import { CompositionHtmlSnapshotRecoveryPanel } from "./CompositionHtmlSnapshotRecoveryPanel";
+import { CompositionHtmlEditorialInspector } from "./CompositionHtmlEditorialInspector";
+import { CompositionHtmlRecoveryCenter } from "./CompositionHtmlRecoveryCenter";
+import { useAuthStore } from "@/core/stores/authStore";
+import { useOrganizationStore } from "@/core/stores/organizationStore";
+import { CompositionHtmlEditorialNativeHost } from "@/domains/production/composition-editor/composition-html-editing-native-host.client";
+import { projectCurrentHtmlReferencesIntoHistory } from "@/domains/production/composition-editor/composition-html-editing-history-projection.client";
+import { htmlSnapshotLocatorScopeSchema, resolveHtmlSnapshotLocatorStorage } from "@/domains/production/composition-editor/composition-html-snapshot-locator.client";
+import { resolveHtmlSnapshotPublicationLock } from "@/domains/production/composition-editor/composition-html-snapshot-publication-lock.client";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
 import { applyCompositionEditorPatches, ensureCanvasDurationForClipPatches } from "@/domains/production/composition-editor/editor-patch.service";
 import { resolveAvatarAudioLink } from "@/domains/production/composition-editor/composition-avatar-audio-link.service";
@@ -62,6 +74,8 @@ import {
 } from "@/domains/production/composition-editor/composition-native-overlay.factory";
 import { reconcileProductionIntroDocument } from "@/domains/production/composition-editor/composition-production-intro.service";
 import { deriveCompositionScenes } from "@/domains/production/composition-editor/composition-scene.service";
+import { resolveNarrativeRangePreview, shouldStopNarrativeRangePreview, NARRATIVE_RANGE_PREVIEW_TIMEOUT_MARGIN_MS,
+  type NarrativeRangePreview, type NarrativeRangeSelection } from "@/domains/production/composition-editor/composition-narrative-range.service";
 import { createCompositionTranscriptCaptionPlan } from "@/domains/production/composition-editor/composition-transcript-caption.service";
 import {
   COMPOSITION_VERSION_FALLBACK_HEADER,
@@ -96,6 +110,7 @@ import {
 import { COMPOSITION_PREVIEW_DOCUMENT_READY_CONFIG, COMPOSITION_PREVIEW_SYNC_V2_ENABLED } from "@/domains/production/composition-editor/composition-preview-sync.config";
 import { resolveCompositionPreviewLoadErrorPresentation } from "@/domains/production/composition-editor/composition-preview-load-error";
 import { classifyCompositionPreviewMessage } from "@/domains/production/composition-editor/composition-preview-message-policy";
+import { acceptsCompositionPreviewShortcut, resolveCompositionEditorShortcut, type CompositionEditorShortcut } from "@/domains/production/composition-editor/composition-editor-shortcut";
 import {
   applyCompositionPreviewTerminalFailure,
   type TerminalPreviewFailure,
@@ -250,8 +265,19 @@ type HistoricalRecoveryResponse = {
 };
 
 /** The native assembly studio: library, full preview, timeline and contextual inspector. */
-export function NativeCompositionPreview({ assets, componentId, compositionId, draftId, lessons, onAssetsChanged, onContinueToPublication, onRefreshProductionAssets, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
+export function NativeCompositionPreview(props: NativeCompositionPreviewProps) {
+  return <CompositionNarrativeExtractionHost draftId={props.draftId} enabled={process.env.NEXT_PUBLIC_NARRATIVE_EXTRACTION_ENABLED === "true"}
+    fragmentEnabled={process.env.NEXT_PUBLIC_NARRATIVE_FRAGMENT_ENABLED === "true"}><NativeCompositionPreviewSession {...props} /></CompositionNarrativeExtractionHost>;
+}
+
+function NativeCompositionPreviewSession({ assets, componentId, compositionId, draftId, lessons, onAssetsChanged, onContinueToPublication, onRefreshProductionAssets, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
+  const narrativeExtractionHost = useNarrativeExtractionHost();
+  const narrativeExtractionHostRef = useRef(narrativeExtractionHost);
+  useEffect(() => { narrativeExtractionHostRef.current = narrativeExtractionHost; }, [narrativeExtractionHost]);
+  const narrativeExtractionBeforeRef = useRef<DocumentPayload | null>(null);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const previewFocusRestoredRef = useRef(false);
+  const executeEditorShortcutRef = useRef<((command: CompositionEditorShortcut) => void) | null>(null);
   const comparisonBaselineFrameRef = useRef<HTMLIFrameElement | null>(null);
   const editorPreferencesRef = useRef<CompositionEditorPreferences | null>(null);
   if (!editorPreferencesRef.current) {
@@ -291,6 +317,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const payloadRef = useRef<DocumentPayload | null>(null);
   const saveInFlightRef = useRef(false);
   const saveQueueRef = useRef<CompositionSaveQueue<() => Promise<boolean>> | null>(null);
+  const htmlEditorialHostRef = useRef<CompositionHtmlEditorialNativeHost | null>(null);
+  const nativeBypassPendingRef = useRef(0);
+  const presetWritePendingRef = useRef(false);
+  const nativeMountedRef = useRef(true);
+  const [htmlEditorialBusy, setHtmlEditorialBusy] = useState(false);
   const commandHistoryRef = useRef<CompositionCommandHistory | null>(null);
   const externalMutationBasePayloadRef = useRef<CompositionDocumentPayload | null>(null);
   const agentMutationPreviewRef = useRef<{ generation: number; ready: boolean; source: string | null } | null>(null);
@@ -328,6 +359,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const pendingEditTelemetryRef = useRef<PendingEditTelemetry | null>(null);
   const comparisonBaselineReadyRef = useRef(false);
   const [payload, setPayload] = useState<DocumentPayload | null>(null);
+  const compositionScenes = useMemo(() => payload ? deriveCompositionScenes(payload.document) : [], [payload]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
@@ -401,8 +433,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       },
     });
   }, []);
-  const getCurrentPayload = useCallback(() => payloadRef.current, []);
-  const isSaveInFlight = useCallback(() => saveInFlightRef.current, []);
+  const getCurrentPayload = useCallback(() => htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHostRef.current?.isBlocked() ? null : payloadRef.current, []);
+  const isSaveInFlight = useCallback(() => saveInFlightRef.current || Boolean(htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHostRef.current?.isBlocked()), []);
   const adoptSavedPreviewRevision = useCallback((documentHash: string) => {
     previewDocumentHashRef.current = documentHash;
     previewRuntimeBaseHashRef.current = documentHash;
@@ -541,7 +573,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     onDocumentApplied: applyPresetDocument,
     onError: setSaveError,
     onPreviewDismissed: restoreSavedPreviewAfterDismissal,
-    onSavingChange: setSaving,
+    onSavingChange: (pending) => { presetWritePendingRef.current = pending; setSaving(pending); },
     saving,
   });
   const [assembly, setAssembly] = useState<ActiveCompositionAssembly | null>(null);
@@ -565,7 +597,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
   if (!saveQueueRef.current) {
     saveQueueRef.current = new CompositionSaveQueue(
-      (saveCommand) => saveCommand(),
+      (saveCommand) => htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHostRef.current?.isBlocked() ? Promise.resolve(false) : saveCommand(),
       (snapshot) => setSaving(snapshot.status === "RUNNING" || snapshot.pendingCount > 0),
       () => setSaveError("Hay demasiados cambios pendientes. Espera a que termine el guardado actual."),
     );
@@ -584,6 +616,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(null);
   const [applyingPreassembly, setApplyingPreassembly] = useState(false);
   const animationPlaybackEndRef = useRef<number | null>(null);
+  const narrativeRangePlaybackRef = useRef<NarrativeRangePreview | null>(null);
+  const narrativeRangeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const narrativeRangeStopRef = useRef<() => void>(() => {});
   const previewReadyRef = useRef(false);
   const [manualInspectorOpen, setManualInspectorOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -601,6 +636,68 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const [removalRangeStart, setRemovalRangeStart] = useState<{ clipId: string; seconds: number } | null>(null);
   const [history, setHistory] = useState<CompositionDocumentHistoryEntry[] | null>(null);
   const [brandingAvailability, setBrandingAvailability] = useState<AssemblyBrandingAvailability | null>(null);
+
+  const htmlEditorialContextRef = useRef({ draftId, saving, blockingWork: false });
+  htmlEditorialContextRef.current = { draftId, saving, blockingWork: Boolean(loading || previewDirty || saveError || failedSave
+    || recoveryConflict || agentProposal || presetPreview || proposing || presetBusy || comparisonActive || assembling
+    || applyingPreassembly || separatingAudio || refreshingProductionAssets || recoveringHistoricalAssets
+    || renderRequestId || ["validating", "sending", "rendering"].includes(renderStatus)) };
+  if (!htmlEditorialHostRef.current) {
+    htmlEditorialHostRef.current = new CompositionHtmlEditorialNativeHost({
+      enabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_MUTATIONS_ENABLED === "true",
+      durableEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_OPERATION_RECEIPTS_ENABLED === "true",
+      initializationEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED === "true",
+      getScope: () => {
+        if (!nativeMountedRef.current) return null;
+        const scope = htmlSnapshotLocatorScopeSchema.safeParse({ actorId: useAuthStore.getState().user?.id,
+          organizationId: useOrganizationStore.getState().activeOrganizationId, draftId: htmlEditorialContextRef.current.draftId });
+        return scope.success ? scope.data : null;
+      },
+      getPayload: () => payloadRef.current,
+      hasConflictingWork: reserved => Boolean(htmlEditorialContextRef.current.blockingWork || nativeBypassPendingRef.current || narrativeExtractionHostRef.current?.isBlocked()
+        || presetWritePendingRef.current || saveInFlightRef.current || renderPollInFlightRef.current
+        || (!reserved && htmlEditorialContextRef.current.saving)),
+      reserve: task => saveQueueRef.current!.runExclusiveWhenIdle(task),
+      getStorage: resolveHtmlSnapshotLocatorStorage,
+      getLock: resolveHtmlSnapshotPublicationLock,
+      onBusyChange: busy => {
+        if (!nativeMountedRef.current) return;
+        setHtmlEditorialBusy(busy);
+        if (busy) { postPreviewMessage({ type: "courseforge-composition-pause" }); setPlaying(false); }
+      },
+      adopt: nextPayload => {
+        payloadRef.current = nextPayload; setPayload(nextPayload);
+        commandHistoryRef.current?.rebaseDocuments(document => projectCurrentHtmlReferencesIntoHistory(document, nextPayload.document));
+        syncCommandHistoryState();
+        setHistory(null); setAssembly(null); setSnapshotHistory(null);
+        clearLastAppliedAgentProposal(); setLastAppliedPreset(null);
+        pendingPreviewRestoreSecondsRef.current = playheadSecondsRef.current;
+        refreshPreviewDocument(false, "EDIT_SAVED");
+      },
+    });
+  }
+  useEffect(() => {
+    nativeMountedRef.current = true;
+    return () => { nativeMountedRef.current = false; htmlEditorialHostRef.current?.abortPending(); };
+  }, []);
+
+  async function runNativeBypass(task: () => Promise<void>) {
+    if (htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHostRef.current?.isBlocked()) {
+      setSaveError("Hay una escritura editorial pendiente de confirmación o actualización. Revisa su seguimiento antes de editar."); return;
+    }
+    nativeBypassPendingRef.current += 1;
+    try { await task(); } finally { nativeBypassPendingRef.current -= 1; }
+  }
+  const addSoundEffectToTimeline = (item: SoundEffectCatalogItem) => runNativeBypass(() => linkAndInsertSoundEffect(item));
+  const separateSelectedVideoAudio = (clip: CompositionClip) => runNativeBypass(() => detachAndInsertVideoAudio(clip));
+  const refreshProductionAssets = () => runNativeBypass(refreshNativeProductionAssets);
+  const recoverHistoricalAssets = () => runNativeBypass(recoverNativeHistoricalAssets);
+  const placeAssemblyBranding = (assetId?: string | null) => runNativeBypass(() => placeNativeAssemblyBranding(assetId));
+  const prepareAssembly = () => runNativeBypass(prepareNativeAssembly);
+  const restoreSnapshot = (snapshot: CompositionSnapshotEntry) => runNativeBypass(() => restoreNativeSnapshot(snapshot));
+  const approveAssembly = () => runNativeBypass(approveNativeAssembly);
+  const submitAssemblyRender = (options: { forceNewAttempt?: boolean } = {}) => runNativeBypass(() => submitNativeAssemblyRender(options));
+  const deletePriorVideoAndRender = () => runNativeBypass(deleteNativePriorVideoAndRender);
 
   function persistEditorPreferences(
     update: Partial<Pick<CompositionEditorPreferences, "assetInsertionMode" | "timelineFrameStep" | "timelineKeyboardEditMode">>,
@@ -639,7 +736,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     beforePayload: CompositionDocumentPayload;
     source: "SYSTEM" | "USER";
     summary: string;
-  }) => {
+    expectedAfterHash?: string;
+    selectedClipId?: string;
+  }, extractionReceipt?: NarrativeEditorReload) => {
+    if (htmlEditorialHostRef.current?.isBusy()) return false;
+    nativeBypassPendingRef.current += 1;
     setLoading(true);
     setError(null);
     try {
@@ -648,14 +749,18 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       if (!response.ok) throw new Error(body.error || "No se pudo cargar la composición.");
       const nextPayload = body.data as DocumentPayload;
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
-      if (historyCommand && historyCommand.beforePayload.documentHash !== nextPayload.documentHash) {
+      if (extractionReceipt && !acceptsNarrativeExtractionReload(nextPayload.document, nextPayload.documentHash, extractionReceipt)) {
+        throw new Error("El documento recargado no acredita el lote completo de extracción. Se conserva el comando pendiente.");
+      }
+      if (historyCommand && historyCommand.beforePayload.documentHash !== nextPayload.documentHash
+        && (!historyCommand.expectedAfterHash || historyCommand.expectedAfterHash === nextPayload.documentHash)) {
         commandHistoryRef.current?.record({
           afterDocument: nextPayload.document,
           beforeDocument: historyCommand.beforePayload.document,
           source: historyCommand.source,
           summary: historyCommand.summary,
         });
-      } else if (!historyCommand) {
+      } else if (!historyCommand || (historyCommand.expectedAfterHash && historyCommand.expectedAfterHash !== nextPayload.documentHash)) {
         commandHistoryRef.current?.clear();
       }
       syncCommandHistoryState();
@@ -674,7 +779,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       setComparisonActive(false);
       setComparisonBaselineHash(null);
       setComparisonBaselineLoading(false);
-      setSelectedHfId(null);
+      setSelectedHfId(historyCommand?.selectedClipId ? nextPayload.document.clips.find(clip => clip.id === historyCommand.selectedClipId)?.hfId ?? null : null);
       setSelectedAnimationId(null);
       setSelectedTimelineClipIds(new Set());
       setSelectedTimelineGroupId(null);
@@ -686,12 +791,36 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       resetAgentProposalState();
       setLastAppliedPreset(null);
       void loadRecoverablePresetApplication();
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudo cargar la composición.");
+      return false;
     } finally {
+      nativeBypassPendingRef.current -= 1;
       setLoading(false);
     }
   }, [adoptSavedPreviewRevision, draftId, loadRecoverablePresetApplication, resetAgentProposalState, syncCommandHistoryState]);
+
+  useEffect(() => narrativeExtractionHost?.registerOwner({
+    canApply: () => Boolean(payloadRef.current && !htmlEditorialContextRef.current.blockingWork
+      && !htmlEditorialHostRef.current?.isBusy() && !nativeBypassPendingRef.current
+      && !saveInFlightRef.current && !presetWritePendingRef.current
+      && saveQueueRef.current?.snapshot().status === "IDLE"),
+    beforeApply: () => { narrativeExtractionBeforeRef.current = payloadRef.current ? structuredClone(payloadRef.current) : null; },
+    reloadDocument: async receipt => {
+      const { anchorClipId: selectedClipId, documentHash: expectedAfterHash } = receipt;
+      const beforePayload = narrativeExtractionBeforeRef.current;
+      const loaded = await loadDocument(beforePayload ? { beforePayload, expectedAfterHash, selectedClipId,
+        source: "USER", summary: receipt.kind === "AUDIOVISUAL" ? "Extrajo un fragmento audiovisual al final de la composición."
+          : "Extrajo una copia de voz al final de la composición." } : undefined, receipt);
+      if (loaded) {
+        narrativeExtractionBeforeRef.current = null;
+        const extractedClip = payloadRef.current?.document.clips.find(clip => clip.id === selectedClipId);
+        if (extractedClip) setSelectedHfId(extractedClip.hfId);
+      }
+      return loaded;
+    },
+  }), [narrativeExtractionHost?.registerOwner, loadDocument]);
 
   const loadBrandingAvailability = useCallback(async () => {
     try {
@@ -706,7 +835,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }
   }, [draftId]);
 
-  const loadSnapshotHistory = useCallback(async (signal?: AbortSignal) => {
+  const loadSnapshotHistory = useCallback(async (signal?: AbortSignal, options?: {preserveRenderProfile?:boolean}) => {
+    if (options?.preserveRenderProfile) setSnapshotHistory(null);
     const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/revisions`, {
       cache: "no-store",
       signal,
@@ -719,7 +849,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     if (signal?.aborted) return;
     setSnapshotHistory(body.data.snapshots);
     const activeSnapshot = body.data.snapshots.find((snapshot) => snapshot.id === body.data?.activeRevisionId);
-    if (activeSnapshot) {
+    if (activeSnapshot && !options?.preserveRenderProfile) {
       setSelectedRenderProfileId(
         activeSnapshot.renderProfileId
         || findHyperframesRenderProfile(activeSnapshot.renderProfile)?.id
@@ -803,59 +933,39 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   }, [draftId]);
   useEffect(() => () => runtimePatchCoordinatorRef.current?.dispose(), []);
   useEffect(() => {
+    const executeShortcut = (command: CompositionEditorShortcut) => {
+      if (command === "PALETTE") { setCommandPaletteOpen(true); return; }
+      if (command === "UNDO") { void undoLastEditRef.current?.(); return; }
+      if (command === "REDO") { void redoLastEditRef.current?.(); return; }
+      if (command === "PASTE") { if (timelineClipboardRef.current) void pasteTimelineClipboardRef.current?.(); return; }
+      if (!selectedTimelineClipIdsRef.current.size) return;
+      if (command === "DUPLICATE") { void duplicateTimelineSelectionRef.current?.(); return; }
+      if (command === "COPY") { copyTimelineSelectionRef.current?.(); return; }
+      if (command === "DELETE" || command === "RIPPLE_DELETE") {
+        void deleteTimelineSelectionRef.current?.(command === "RIPPLE_DELETE"); return;
+      }
+      const timelineCommand = resolveCompositionTimelineKeyboardCommand({ altKey: true, ctrlKey: false, metaKey: false,
+        key: command === "TIMELINE_LEFT" ? "ArrowLeft" : "ArrowRight", frameStep: timelineFrameStepRef.current,
+        hasSelection: true, mode: timelineKeyboardEditModeRef.current });
+      if (timelineCommand?.type === "SLIDE") void slideTimelineSelectionRef.current?.(timelineCommand.deltaFrames);
+      else if (timelineCommand) void rollTimelineSelectionRef.current?.(timelineCommand.edge, timelineCommand.deltaFrames);
+    };
+    executeEditorShortcutRef.current = executeShortcut;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return;
       const target = event.target;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) return;
-      const modifier = event.ctrlKey || event.metaKey;
-      if (modifier && !event.altKey && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setCommandPaletteOpen(true);
-        return;
-      }
-      const timelineCommand = resolveCompositionTimelineKeyboardCommand({
-        altKey: event.altKey,
-        ctrlKey: event.ctrlKey,
-        frameStep: timelineFrameStepRef.current,
-        hasSelection: selectedTimelineClipIdsRef.current.size > 0,
-        key: event.key,
-        metaKey: event.metaKey,
-        mode: timelineKeyboardEditModeRef.current,
-      });
-      if (timelineCommand) {
-        event.preventDefault();
-        if (timelineCommand.type === "SLIDE") {
-          void slideTimelineSelectionRef.current?.(timelineCommand.deltaFrames);
-        } else {
-          void rollTimelineSelectionRef.current?.(timelineCommand.edge, timelineCommand.deltaFrames);
-        }
-        return;
-      }
-      if (!modifier && selectedTimelineClipIdsRef.current.size > 0 && (event.key === "Delete" || event.key === "Backspace")) {
-        event.preventDefault();
-        void deleteTimelineSelectionRef.current?.(event.shiftKey);
-        return;
-      }
-      if (!modifier || event.altKey) return;
-      if (event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        if (event.shiftKey) void redoLastEditRef.current?.();
-        else void undoLastEditRef.current?.();
-      } else if (event.key.toLowerCase() === "y") {
-        event.preventDefault();
-        void redoLastEditRef.current?.();
-      } else if (event.key.toLowerCase() === "d") {
-        event.preventDefault();
-        void duplicateTimelineSelectionRef.current?.();
-      } else if (event.key.toLowerCase() === "c" && selectedTimelineClipIdsRef.current.size > 0) {
-        event.preventDefault();
-        copyTimelineSelectionRef.current?.();
-      } else if (event.key.toLowerCase() === "v" && timelineClipboardRef.current) {
-        event.preventDefault();
-        void pasteTimelineClipboardRef.current?.();
-      }
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
+        || (target instanceof HTMLElement && (target.isContentEditable || target.closest('[role="dialog"], [aria-modal="true"]')))) return;
+      const command = resolveCompositionEditorShortcut(event);
+      if (!command) return;
+      if (["DELETE", "RIPPLE_DELETE", "COPY", "DUPLICATE", "TIMELINE_LEFT", "TIMELINE_RIGHT"].includes(command)
+        && !selectedTimelineClipIdsRef.current.size) return;
+      if (command === "PASTE" && !timelineClipboardRef.current) return;
+      event.preventDefault();
+      executeShortcut(command);
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => { executeEditorShortcutRef.current = null; window.removeEventListener("keydown", onKeyDown); };
   }, []);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -864,6 +974,15 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       if (!isCurrentFrame && !isComparisonBaselineFrame) return;
       const message = parseCompositionPreviewIframeMessage(event.data);
       if (!message) return;
+      if (message.type === "courseforge-composition-shortcut") {
+        if (!acceptsCompositionPreviewShortcut({ currentFrame: isCurrentFrame,
+          messageGeneration: message.previewGeneration, currentGeneration: previewGenerationRef.current,
+          ready: previewReadyRef.current, focused: document.hasFocus() && document.activeElement === frameRef.current,
+          modalOpen: Boolean(document.querySelector('[role="dialog"], [aria-modal="true"]')),
+          previewOnly: Boolean(agentProposal || presetPreview), saving: isSaveInFlight() })) return;
+        executeEditorShortcutRef.current?.(message.command);
+        return;
+      }
       const messageDecision = classifyCompositionPreviewMessage({
         documentHash: previewDocumentHashRef.current,
         generation: previewGenerationRef.current,
@@ -937,6 +1056,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         pendingSeekSecondsRef.current = null;
         playheadSecondsRef.current = message.seconds;
         setSeconds(message.seconds);
+        const narrativeRange = narrativeRangePlaybackRef.current;
+        if (narrativeRange && shouldStopNarrativeRangePreview(narrativeRange, payloadRef.current?.documentHash || null, message.seconds)) {
+          narrativeRangeStopRef.current();
+        }
         if (comparisonActive && comparisonBaselineReadyRef.current) {
           postComparisonBaselineMessage({ type: "courseforge-composition-seek", seconds: message.seconds });
         }
@@ -1184,6 +1307,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     setPendingPreviewMediaIds([]);
     setColorGradingStatuses({});
     setPreviewLoadErrorCode(null);
+    previewFocusRestoredRef.current = false;
   }, [previewUrl]);
   useEffect(() => {
     if (!COMPOSITION_PREVIEW_SYNC_V2_ENABLED || !savedPreviewUrl || previewUrl !== savedPreviewUrl) return;
@@ -1236,23 +1360,37 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           ? "Cambios pendientes"
           : null;
 
-  const postPreviewMessage = (message: CompositionPreviewParentCommandInput) => {
+  const postPreviewMessage = useCallback((message: CompositionPreviewParentCommandInput) => {
     const command = createCompositionPreviewParentCommand(message);
     if (!command) return false;
     frameRef.current?.contentWindow?.postMessage(command, "*");
     return true;
-  };
-  const postComparisonBaselineMessage = (message: CompositionPreviewParentCommandInput) => {
+  }, []);
+  const postComparisonBaselineMessage = useCallback((message: CompositionPreviewParentCommandInput) => {
     const command = createCompositionPreviewParentCommand(message);
     if (!command) return false;
     comparisonBaselineFrameRef.current?.contentWindow?.postMessage(command, "*");
     return true;
-  };
+  }, []);
+  const stopNarrativeRangePreview = useCallback(() => {
+    if (!narrativeRangePlaybackRef.current) return;
+    narrativeRangePlaybackRef.current = null;
+    if (narrativeRangeTimeoutRef.current !== null) clearTimeout(narrativeRangeTimeoutRef.current);
+    narrativeRangeTimeoutRef.current = null;
+    postPreviewMessage({ type: "courseforge-composition-pause" });
+    if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-pause" });
+  }, [postPreviewMessage, postComparisonBaselineMessage]);
+  useEffect(() => {
+    const range = narrativeRangePlaybackRef.current;
+    if (range && (range.selection.documentHash !== payload?.documentHash || range.hfId !== selectedHfId
+      || !libraryOpen || !previewReady || previewDirty || saving || agentProposal || presetPreview || comparisonActive)) stopNarrativeRangePreview();
+  }, [payload?.documentHash, selectedHfId, libraryOpen, previewReady, previewDirty, saving, agentProposal, presetPreview, comparisonActive, stopNarrativeRangePreview]);
+  useEffect(() => () => stopNarrativeRangePreview(), [stopNarrativeRangePreview]);
   useEffect(() => {
     if (!previewReady) return;
     postPreviewMessage({
-      editingEnabled: directEditingEnabled && !agentProposal && !presetPreview,
-      cropEnabled: visualCropEnabled && !agentProposal && !presetPreview,
+      editingEnabled: directEditingEnabled && !agentProposal && !presetPreview && !saving && !isSaveInFlight(),
+      cropEnabled: visualCropEnabled && !agentProposal && !presetPreview && !saving && !isSaveInFlight(),
       gridVisible,
       snapEnabled,
       type: "courseforge-composition-editor-settings",
@@ -1266,7 +1404,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         type: "courseforge-composition-editor-settings",
       });
     }
-  }, [agentProposal, comparisonActive, directEditingEnabled, gridVisible, presetPreview, previewReady, snapEnabled, visualCropEnabled]);
+  }, [agentProposal, comparisonActive, directEditingEnabled, gridVisible, presetPreview, previewReady, saving, snapEnabled, visualCropEnabled, htmlEditorialBusy, isSaveInFlight]);
   useEffect(() => {
     if (previewReady) postPreviewMessage({ scale: previewZoom, type: "courseforge-composition-preview-zoom" });
     if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ scale: previewZoom, type: "courseforge-composition-preview-zoom" });
@@ -1281,6 +1419,12 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       ? selectedHfId
       : hfIds.at(-1) || null;
     postPreviewMessage({ hfId: primaryHfId, hfIds, type: "courseforge-composition-select" });
+    if (!previewFocusRestoredRef.current) {
+      previewFocusRestoredRef.current = true;
+      if (document.hasFocus() && document.activeElement === frameRef.current) {
+        postPreviewMessage({ hfId: primaryHfId, type: "courseforge-composition-restore-focus" });
+      }
+    }
   }, [payload?.document, previewReady, selectedHfId, selectedTimelineClipIds]);
   useEffect(() => {
     const syncFullscreenState = () => setPreviewFullscreen(document.fullscreenElement === previewShellRef.current);
@@ -1303,6 +1447,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     setPlaybackError("Renovando el acceso a los medios del preview…");
   };
   const seek = (nextSeconds: number) => {
+    stopNarrativeRangePreview();
     pendingSeekSecondsRef.current = nextSeconds;
     playheadSecondsRef.current = nextSeconds;
     setSeconds(nextSeconds);
@@ -1310,11 +1455,13 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-seek", seconds: nextSeconds });
   };
   const beginScrub = () => {
+    stopNarrativeRangePreview();
     postPreviewMessage({ type: "courseforge-composition-pause" });
     if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-pause" });
     setPlaying(false);
   };
   const selectClip = (hfId: string, preserveTimelineSelection = false) => {
+    stopNarrativeRangePreview();
     const nextClip = payloadRef.current?.document.clips.find((clip) => clip.hfId === hfId);
     if (removalRangeStart && nextClip?.id !== removalRangeStart.clipId) setRemovalRangeStart(null);
     if (!preserveTimelineSelection) {
@@ -1349,6 +1496,23 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       postPreviewMessage({ type: "courseforge-composition-play" });
       if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-play" });
     }
+  };
+  const previewNarrativeRange = (selection: NarrativeRangeSelection): boolean => {
+    const currentPayload = payloadRef.current;
+    if (!currentPayload || !frameRef.current?.contentWindow || !previewReadyRef.current || previewDirty || saving
+      || agentProposal || presetPreview || comparisonActive
+      || previewDocumentHashRef.current !== currentPayload.documentHash) return false;
+    const resolution = resolveNarrativeRangePreview(currentPayload.document, currentPayload.documentHash, selection);
+    if (!resolution.ok) return false;
+    beginScrub();
+    selectClip(resolution.range.hfId);
+    seek(resolution.range.startSeconds);
+    animationPlaybackEndRef.current = null;
+    narrativeRangePlaybackRef.current = resolution.range;
+    narrativeRangeTimeoutRef.current = setTimeout(stopNarrativeRangePreview,
+      (resolution.range.endSeconds - resolution.range.startSeconds) * 1_000 + NARRATIVE_RANGE_PREVIEW_TIMEOUT_MARGIN_MS);
+    postPreviewMessage({ type: "courseforge-composition-play" });
+    return true;
   };
   const clearSelection = () => {
     setSelectedHfId(null);
@@ -1461,6 +1625,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     });
   };
   const togglePreviewPlayback = () => {
+    stopNarrativeRangePreview();
     if (transportActive) {
       postPreviewMessage({ type: "courseforge-composition-pause" });
       if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-pause" });
@@ -1498,6 +1663,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     source: "AGENT" | "USER" = "USER",
     options: SavePatchOptions = {},
   ): Promise<boolean> {
+    if (htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHost?.isBlocked()) return Promise.resolve(false);
     return saveQueueRef.current!.enqueue(() => executeSavePatch(operations, summary, source, options, true));
   }
 
@@ -1990,7 +2156,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }], `Reemplazó el medio de ${clip.label} por ${asset.label} sin alterar timing ni layout.`);
   }
 
-  async function addSoundEffectToTimeline(soundEffect: SoundEffectCatalogItem) {
+  async function linkAndInsertSoundEffect(soundEffect: SoundEffectCatalogItem) {
     const currentPayload = payloadRef.current;
     if (!currentPayload || soundEffect.durationMilliseconds <= 0) return;
     const linked = await fetch("/api/production/sound-effects", {
@@ -2077,7 +2243,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     await savePatch([{ document, type: "document.restore" }], "Quitó la intro y reacomodó el contenido del video.");
   }
 
-  async function separateSelectedVideoAudio(clip: CompositionClip) {
+  async function detachAndInsertVideoAudio(clip: CompositionClip) {
     if (clip.kind !== "VIDEO" || clip.source.type !== "PRODUCTION_ASSET") return;
     const sourceAssetId = clip.source.productionAssetId;
     const sourceAsset = assets.find((asset) => asset.id === sourceAssetId);
@@ -2563,7 +2729,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     await savePatch(operations, "Organizó los tiempos estimados sin reemplazar el layout manual.");
   }
 
-  async function refreshProductionAssets() {
+  async function refreshNativeProductionAssets() {
     if (!onRefreshProductionAssets) return;
     setRefreshingProductionAssets(true);
     setSaveError(null);
@@ -2579,7 +2745,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }
   }
 
-  async function recoverHistoricalAssets() {
+  async function recoverNativeHistoricalAssets() {
     if (!componentId) return;
     setRecoveringHistoricalAssets(true);
     setSaveError(null);
@@ -2634,7 +2800,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }
   }
 
-  async function placeAssemblyBranding(outroAssetId?: string | null) {
+  async function placeNativeAssemblyBranding(outroAssetId?: string | null) {
     if (saving || saveInFlightRef.current) return;
     setSaving(true);
     setSaveError(null);
@@ -2662,7 +2828,17 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }
   }
 
-  async function prepareAssembly() {
+  function getHtmlSnapshotPublicationContext() {
+    const current=payloadRef.current;
+    const queue=saveQueueRef.current?.snapshot();
+    return {documentHash:current?.documentHash ?? null,hasHtmlEditing:Boolean(current?.document.htmlEditing?.items.length),
+      snapshotHistoryLoaded:snapshotHistory !== null,expectedActiveRevisionId:assembly?.revisionId ?? null,
+      renderProfileId:selectedRenderProfileId,saving:Boolean(saving || saveInFlightRef.current || htmlEditorialHostRef.current?.isBlocked() || queue?.pendingCount || queue?.status !== "IDLE"),
+      otherWorkPending:Boolean(assembling || presetBusy || ["validating","sending","rendering"].includes(renderStatus)),
+      previewPending:Boolean(previewDirty || saveError || agentProposal || presetPreview || comparisonActive)};
+  }
+
+  async function prepareNativeAssembly() {
     setAssembling(true); setAssemblyError(null); setAssemblyNotice(null); setRenderStatus("validating");
     try {
       const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
@@ -2694,7 +2870,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     finally { setAssembling(false); }
   }
 
-  async function restoreSnapshot(snapshot: CompositionSnapshotEntry) {
+  async function restoreNativeSnapshot(snapshot: CompositionSnapshotEntry) {
     if ((snapshot.isActive && snapshot.isCurrentDocument) || assembling) return;
     const currentPayload = payloadRef.current;
     if (!currentPayload) return;
@@ -2783,7 +2959,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       setAssembling(false);
     }
   }
-  async function approveAssembly() {
+  async function approveNativeAssembly() {
     const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
     if (!assembly) return;
     if (!assembly.renderProfile || !sameHyperframesRenderSettings(assembly.renderProfile, selectedProfile)) {
@@ -3016,7 +3192,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     };
   }, [renderRecovery?.completedVideo, renderRequestId]);
 
-  async function submitAssemblyRender(options: { forceNewAttempt?: boolean } = {}) {
+  async function submitNativeAssemblyRender(options: { forceNewAttempt?: boolean } = {}) {
     const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
     if (!assembly || assembly.status !== "READY_FOR_RENDER") return;
     if (!assembly.renderProfile || !sameHyperframesRenderSettings(assembly.renderProfile, selectedProfile)) {
@@ -3063,7 +3239,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     finally { setAssembling(false); }
   }
 
-  async function deletePriorVideoAndRender() {
+  async function deleteNativePriorVideoAndRender() {
     const completedVideo = renderRecovery?.completedVideo;
     if (!completedVideo?.assetId || !assembly || assembly.status !== "READY_FOR_RENDER") return;
     const confirmed = window.confirm(
@@ -3110,6 +3286,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   }
 
   savePatchRef.current = savePatch;
+  narrativeRangeStopRef.current = stopNarrativeRangePreview;
   undoLastEditRef.current = undoLastEdit;
   redoLastEditRef.current = redoLastEdit;
   copyTimelineSelectionRef.current = copyTimelineSelection;
@@ -3124,6 +3301,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
   const deliveryMenu = (
     <CompositionDeliveryPanel
+      recovery={<CompositionHtmlSnapshotRecoveryPanel key={draftId} draftId={draftId}
+        publication={{context:getHtmlSnapshotPublicationContext(),getContext:getHtmlSnapshotPublicationContext,
+          onRegistered:signal => loadSnapshotHistory(signal,{preserveRenderProfile:true})}} />}
       canvas={payload?.document.canvas}
       compact
       assembly={assembly}
@@ -3151,7 +3331,6 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       onRestore={restoreSnapshot}
     />
   );
-  const compositionScenes = deriveCompositionScenes(payload.document);
   const captionTranscriptWordCount = compositionScenes.reduce(
     (total, scene) => total + (scene.wordCues?.length || 0),
     0,
@@ -3162,6 +3341,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const narrativeLibrary = compositionScenes.length > 0 ? (
     <CompositionNarrativePanel
       document={payload.document}
+      documentHash={payload.documentHash}
+      draftId={draftId}
+      canPreviewRange={previewReady && !previewDirty && !saving && !agentProposal && !presetPreview && !comparisonActive}
+      onPreviewRange={previewNarrativeRange}
+      onStopRange={stopNarrativeRangePreview}
       scenes={compositionScenes}
       currentTime={seconds}
       onSeek={(time) => { beginScrub(); seek(time); }}
@@ -3192,7 +3376,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   });
 
   return (
-    <section className={`${styles.studio} courseforge-composition-studio`}>
+    <section className={`${styles.studio} courseforge-composition-studio`} inert={htmlEditorialBusy || narrativeExtractionHost?.busy} aria-busy={htmlEditorialBusy || narrativeExtractionHost?.busy}>
+      {htmlEditorialHostRef.current && <CompositionHtmlRecoveryCenter draftId={draftId} host={htmlEditorialHostRef.current} />}
       {commandPaletteOpen && <CompositionCommandPalette items={commandPaletteItems} onClose={() => setCommandPaletteOpen(false)} onRun={runCompositionCommand} />}
       <CompositionPresetPanel
         activePreview={presetPreview}
@@ -3391,6 +3576,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
             previewMediaState={previewMediaState}
             previewReady={previewReady}
             previewUrl={previewUrl}
+            previewZoom={previewZoom}
             safeAreasVisible={safeAreasVisible}
             saving={saving}
             scenes={compositionScenes}
@@ -3491,6 +3677,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
             <button type="button" onClick={clearSelection} className={styles.inspectorClose} title="Cerrar inspector" aria-label="Cerrar inspector"><X size={15} /></button>
           </div>
           <div className={styles.inspectorBody}>
+            {inspectorTab === "properties" && selectedClip?.source.type === "DECK_SLIDE" &&
+              <CompositionHtmlEditorialInspector draftId={draftId} clipId={selectedClip.id} documentHash={payload.documentHash} host={htmlEditorialHostRef.current} />}
             {inspectorTab === "properties" && <CompositionAudioDiagnostics
               analysis={assets.find((asset) => asset.id === selectedSourceAssetId)?.audioAnalysis}
               clip={selectedClip}
