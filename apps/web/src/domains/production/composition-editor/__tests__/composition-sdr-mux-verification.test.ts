@@ -4,8 +4,8 @@ import {createHash} from "node:crypto";
 import {mkdtemp, writeFile, rm, rmdir} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {hashSdrVideoPackets, verifySdrAudioMuxOutput} from "../qa/composition-sdr-mux-verification";
-import {SDR_AUDIO_MUX_POLICY} from "../composition-sdr-conversion-policy";
+import {hashSdrVideoPackets, verifySdrAudioMuxOutput, verifySdrSilentAssemblyOutput} from "../qa/composition-sdr-mux-verification";
+import {SDR_AUDIO_MUX_POLICY, SDR_SILENT_ASSEMBLY_POLICY} from "../composition-sdr-conversion-policy";
 
 const packets = () => ({streams: [{codec_type: "video", time_base: "1/12800", extradata_hash: `SHA256:${"e".repeat(64)}`}],
   packets: ["a", "b"].map((hash, index) => ({size: "100", data_hash: `SHA256:${hash.repeat(64)}`,
@@ -48,6 +48,44 @@ async function fixture(run: (input: Parameters<typeof verifySdrAudioMuxOutput>[0
     await rmdir(directory);
   }
 }
+
+test("silent SDK remux accepts changed container bytes only with counted profile and equal packets/timing", async () => {
+  await fixture(async (input, metadata) => {
+    assert.notEqual(input.silentVideoSha256, input.videoSha256);
+    let calls = 0;
+    const result = await verifySdrSilentAssemblyOutput(input, async (_binary, args) => {
+      calls++;
+      const profile = metadata() as {streams: Array<{codec_type: string}>};
+      profile.streams = profile.streams.filter(stream => stream.codec_type === "video");
+      return {stdout: JSON.stringify(args.includes("-count_frames") ? profile : packets())};
+    });
+    assert.equal(calls, 3); assert.equal(result.policy, SDR_SILENT_ASSEMBLY_POLICY);
+    assert.equal(result.scope, "LOCAL_PROBED_SILENT_VIDEO_COPY_NOT_RENDER_ATTESTATION");
+    assert.equal(result.silentVideoSha256, input.silentVideoSha256); assert.equal(result.videoSha256, input.videoSha256);
+    assert.equal(JSON.stringify(result).includes(input.videoPath), false);
+  });
+});
+
+test("silent assembly rejects audio/extra streams, payload drift and changed decode timing", async () => {
+  await fixture(async (input, metadata) => {
+    for (const mode of ["audio", "extra", "payload", "timing"] as const) {
+      await assert.rejects(verifySdrSilentAssemblyOutput(input, async (_binary, args) => {
+        if (args.includes("-count_frames")) {
+          const profile = metadata() as {streams: Array<{codec_type: string}>};
+          if (mode !== "audio") profile.streams = profile.streams.filter(stream => stream.codec_type === "video");
+          if (mode === "extra") profile.streams.push({...profile.streams[0]!});
+          return {stdout: JSON.stringify(profile)};
+        }
+        const observed = packets();
+        if (args.at(-1) === input.videoPath) {
+          if (mode === "payload") observed.packets[0]!.data_hash = `SHA256:${"c".repeat(64)}`;
+          if (mode === "timing") for (const packet of observed.packets) packet.dts -= 512;
+        }
+        return {stdout: JSON.stringify(observed)};
+      }), mode === "payload" ? /PAYLOAD_CHANGED/ : mode === "timing" ? /TIMING_CHANGED/ : /PROFILE_INVALID/);
+    }
+  });
+});
 test("mux verifier binds final counted profile and copied payloads to rechecked files", async () => {
   await fixture(async (input, metadata) => {
     let calls = 0;

@@ -263,6 +263,30 @@ test("persisted-pair comparator receives verified paths and closes audio for res
     assert.equal(cleaned, true);
   }
 });
+
+test("uncertain decoder closure retains audio instead of cleaning inputs used by a live process", async () => {
+  let cleaned = false;
+  const dependencies = {
+    readAudio: async () => ({audioReferencePath: "owned-wav", audioReferenceMetadataPath: "owned-metadata",
+      receipt: {visualChecksum, organizationId: identifier, revisionId: identifier},
+      cleanup: async () => {cleaned = true;}}),
+    compare: async () => {throw new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED");},
+  } as unknown as NonNullable<Parameters<typeof compareVideoWithPersistedConformanceReferences>[1]>;
+  await assert.rejects(compareVideoWithPersistedConformanceReferences({...pipelineInput, checksum: visualChecksum,
+    audioChecksum: "a".repeat(64), videoPath: "bound-video", renderReceiptPath: "bound-receipt"}, dependencies), /TERMINATION_UNCONFIRMED/);
+  assert.equal(cleaned, false);
+});
+
+test("uncertain audio preparation retains source and does not persist partial evidence", async () => {
+  const calls: string[] = [];
+  const dependencies = {
+    materialize: async () => ({cleanup: async () => {calls.push("cleanup");}}),
+    createAudio: async () => {throw new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED");},
+    persist: async () => {calls.push("persist"); return {};},
+  } as unknown as NonNullable<Parameters<typeof prepareAndPersistAudioConformanceReference>[1]>;
+  await assert.rejects(prepareAndPersistAudioConformanceReference(pipelineInput, dependencies), /TERMINATION_UNCONFIRMED/);
+  assert.deepEqual(calls, []);
+});
 test("coordinador playback mantiene INCOMPLETE/FAIL del gate aunque métricas del MP4 pasen", async () => {
   for (const [drift, expected] of [[2, "PASS"], [15, "INCOMPLETE"], [40, "FAIL"]] as const) {
     let cleaned = false;

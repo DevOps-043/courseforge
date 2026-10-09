@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {createHash, generateKeyPairSync} from "node:crypto";
+import {join} from "node:path";
+import {mkdtemp, writeFile, unlink, rmdir} from "node:fs/promises";
+import {tmpdir} from "node:os";
 import sharp from "sharp";
 import {buildNativeConformanceCorpusCase} from "../qa/composition-native-conformance-corpus";
 import {buildCompositionEventCheckpointPlan} from "../composition-conformance-event-checkpoints";
@@ -8,11 +11,20 @@ import {buildSnapshotConformanceContract} from "../composition-snapshot-conforma
 import {hashCompositionDocument} from "../composition-document.service";
 import {measureControlledEventSeekRepeatability} from "../qa/composition-controlled-seek-repeatability";
 import {buildControlledComparisonArtifacts} from "../qa/composition-controlled-comparison-artifacts";
-import {controlledRenderExecutionContractSchema} from "../composition-render-execution-contract";
+import {controlledRenderExecutionContractSchema, evaluateControlledRenderExecution} from "../composition-render-execution-contract";
+import {evaluateCompositionConformance} from "../composition-preview-render-conformance";
+import {measureControlledConformanceReferences} from "../qa/composition-controlled-reference-measurement";
+import {pinConformanceFile} from "../qa/composition-conformance-file-integrity";
+import {bindControlledReferenceSelection, createControlledReferenceSelectionResolver} from "../qa/composition-controlled-reference-selection";
 import {buildControlledEventComparisonArtifacts} from "../qa/composition-controlled-event-comparison-artifacts";
 import {buildSupervisedEventComparisonArtifacts} from "../qa/composition-supervised-comparison-artifacts";
 import {signRenderSupervisorReceipt} from "../qa/composition-render-supervisor-signature";
 import {RENDER_SUPERVISOR_RECEIPT_POLICY} from "../composition-render-supervisor-receipt";
+import {startOriginalSessionEventNativeCapture} from "../qa/composition-original-session-event-native-capture";
+import {bindControlledEventNativeEvidence, attachOriginalNativeEventComparison} from "../qa/composition-controlled-event-native-binding";
+import {COMPOSITION_TEXT_PARITY_POLICY} from "../composition-text-parity-policy";
+import {createOriginalSessionSeekCapture} from "../qa/composition-original-session-seek-capture";
+import {bindControlledSeekRepeatability, attachControlledOriginalSeekReport} from "../qa/composition-controlled-seek-binding";
 
 function fixture() {
   const {document} = buildNativeConformanceCorpusCase("captions-multi-batch", 25);
@@ -31,6 +43,155 @@ function fixture() {
 }
 const image = (red = 40) => sharp({create: {width: 2, height: 2, channels: 4,
   background: {r: red, g: 20, b: 10, alpha: 1}}}).png().toBuffer();
+
+async function eventNativeFixture(drift = false) {
+  const state = fixture(), frames = state.plan.batches.flat(), reads: number[] = [], reverse: number[] = [];
+  const plans = state.contracts.flatMap(contract => contract.schemaVersion === 4 ? contract.textParity.checkpoints : []);
+  const capture = await startOriginalSessionEventNativeCapture({document: state.document, contract: state.contracts[0], fonts: [],
+    cdp: {send: async () => ({}), on() {}, off() {}}, serverUrl: "http://127.0.0.1:1234",
+    signal: new AbortController().signal, verifyFiles: async () => {},
+  }, {captureCheckpoint: async (_client, _document, seconds) => {
+    const plan = plans.find(point => point.timeSeconds === seconds)!;
+    reads.push(plan.frameIndex);
+    return {...plan, policy: COMPOSITION_TEXT_PARITY_POLICY.id, status: "CAPTURED", unavailable: [],
+      regions: plan.expectedTexts.map(expected => ({elementId: expected.elementId, textSha256: expected.textSha256,
+        ...(expected.visibility ? {visibility: expected.visibility} : {}), left: 0, top: 0,
+        width: drift && reads.length > frames.length ? 2 : 1, height: 1}))};
+  }});
+  const forward = async () => {
+    for (const point of frames) await capture.captureFrame(point.frameIndex,
+      Math.round(point.timeSeconds * state.document.canvas.fps) / state.document.canvas.fps);
+  };
+  const repeat = () => capture.repeatAtLastCheckpoint(frames.at(-1)!.frameIndex, async (index, seconds) => {
+    reverse.push(index); return {quantizedTime: Math.round(seconds * state.document.canvas.fps) / state.document.canvas.fps};
+  });
+  return {...state, capture, frames, reads, reverse, forward, repeat};
+}
+
+test("original incremental screenshots produce bound RGBA reports for every event partition", async () => {
+  const state = fixture(), png = await image(), repeatedPng = await sharp(png).png({compressionLevel: 9}).toBuffer();
+  const capture = createOriginalSessionSeekCapture({document: state.document, contract: state.contracts[0],
+    signal: new AbortController().signal, verifyFiles: async () => {}});
+  assert.throws(() => capture.finalize(), /INCOMPLETE/);
+  const reversed: number[] = [];
+  for (const point of state.plan.batches.flat()) await capture.captureFrame(point.frameIndex, point.timeSeconds, png,
+    async (index, seconds) => {reversed.push(index); return {quantizedTime: seconds, buffer: repeatedPng};});
+  assert.deepEqual(reversed, state.plan.batches.flat().map(point => point.frameIndex).reverse());
+  const measured = capture.finalize();
+  assert.equal(measured.eventSeekRepeatability?.length, state.contracts.length);
+  measured.eventSeekRepeatability!.forEach((report, index) => {
+    assert.deepEqual(bindControlledSeekRepeatability(state.contracts[index], report), report);
+    assert.equal(report.byteCounts.forward, png.length * report.checkpointCount);
+    assert.equal(report.byteCounts.reverse, repeatedPng.length * report.checkpointCount);
+  });
+  const first = measured.seekRepeatability;
+  assert.deepEqual(attachControlledOriginalSeekReport(state.contracts[0], first, undefined), first);
+  const conflicting = structuredClone(first); conflicting.samples[0].rgbaSha256 = "e".repeat(64);
+  assert.throws(() => attachControlledOriginalSeekReport(state.contracts[0], first, conflicting), /CONFLICT/);
+  assert.throws(() => attachControlledOriginalSeekReport(state.contracts[0], undefined, first), /REQUIRED/);
+  measured.eventSeekRepeatability!.length = 0;
+  assert.equal(capture.finalize().eventSeekRepeatability?.length, state.contracts.length);
+});
+
+test("original RGBA capture rejects drift, bad image and reverse timing without publishing partial success", async () => {
+  const state = fixture(), png = await image(), changed = await image(200);
+  for (const mode of ["pixel", "image", "time"]) {
+    const capture = createOriginalSessionSeekCapture({document: state.document, contract: state.contracts[0],
+      signal: new AbortController().signal, verifyFiles: async () => {}});
+    const run = async () => {
+      for (const point of state.plan.batches.flat()) await capture.captureFrame(point.frameIndex, point.timeSeconds, png,
+        async (_index, seconds) => ({quantizedTime: mode === "time" ? seconds + 1 : seconds,
+          buffer: mode === "pixel" ? changed : mode === "image" ? Buffer.from("invalid PNG") : png}));
+    };
+    await assert.rejects(run(), /ORIGINAL_SEEK_CAPTURE_FAILED/);
+    assert.throws(() => capture.finalize(), /ORIGINAL_SEEK_CAPTURE_FAILED/);
+  }
+});
+
+test("original RGBA capture rejects omitted checkpoints, file drift and cancellation", async () => {
+  const state = fixture(), png = await image();
+  for (const mode of ["missing", "files", "abort"]) {
+    const controller = new AbortController();
+    const capture = createOriginalSessionSeekCapture({document: state.document, contract: state.contracts[0],
+      signal: controller.signal, verifyFiles: async () => {if (mode === "files") throw new Error("private path");}});
+    if (mode === "abort") controller.abort();
+    const point = state.plan.batches.flat()[mode === "missing" ? 1 : 0];
+    await assert.rejects(capture.captureFrame(point.frameIndex, point.timeSeconds, png,
+      async (_index, seconds) => ({quantizedTime: seconds, buffer: png})), /ORIGINAL_SEEK_CAPTURE_FAILED/);
+    assert.throws(() => capture.finalize());
+  }
+});
+
+test("original event native capture performs one global forward/reverse sweep with distinct frozen child evidence", async () => {
+  const state = await eventNativeFixture();
+  assert.throws(() => state.capture.finalizeEvents(), /INCOMPLETE/);
+  await state.forward(); await state.repeat();
+  const indexes = state.frames.map(point => point.frameIndex);
+  assert.deepEqual(state.reads, [...indexes, ...indexes.slice().reverse()]);
+  assert.deepEqual(state.reverse, indexes.slice().reverse());
+  const evidence = state.capture.finalizeEvents();
+  assert.equal(evidence.batches.length, state.contracts.length);
+  assert.ok(evidence.batches.length > 1);
+  const bound = bindControlledEventNativeEvidence({document: state.document, parentContract: state.contracts[0],
+    videoSha256: "b".repeat(64), evidence});
+  assert.deepEqual(bound.batches[0].nativeEvidence, state.capture.finalize());
+  const comparison = await comparisonFixture();
+  const artifacts = attachOriginalNativeEventComparison({expectedDocument: state.document, expectedContract: state.contracts[0],
+    artifacts: {kind: "EVENT_BATCH_SET", input: comparison}, originalNative: {
+      documentHash: hashCompositionDocument(state.document), video: {sha256: comparison.videoSha256}, eventNativeEvidence: evidence,
+      eventSeekRepeatability: comparison.batches.map(batch => batch.seekRepeatability)}});
+  const built = buildControlledEventComparisonArtifacts(artifacts.input);
+  assert.deepEqual(built.artifacts.map(artifact => artifact.receipt.nativeEvidence), bound.batches.map(batch => batch.nativeEvidence));
+  const tools = join(process.cwd(), "apps/web/tools/controlled-hyperframes");
+  const {validateOriginalNativeReceipt} = await import(join(tools, "original-native-receipt.mjs"));
+  const {MATERIALIZED_MEASUREMENT_REQUEST_POLICY, materializedExecutionDigest, materializedProducerRequestDigest} =
+    await import(join(tools, "materialized-producer-request.mjs"));
+  const request = {policy: MATERIALIZED_MEASUREMENT_REQUEST_POLICY,
+    executionId: "00000000-0000-4000-8000-000000000001", organizationId: "00000000-0000-4000-8000-000000000002",
+    revisionId: "00000000-0000-4000-8000-000000000003", documentHash: hashCompositionDocument(state.document), projectHash: "c".repeat(64),
+    directory: join(process.cwd(), "fixture-input"), outputParentDirectory: join(process.cwd(), "fixture-output"),
+    browserPath: join(process.cwd(), "browser.exe"), encoderPath: join(process.cwd(), "encoder.exe"), probePath: join(process.cwd(), "probe.exe"),
+    fps: state.document.canvas.fps, renderExecutionSha256: materializedExecutionDigest(state.renderExecution),
+    measurementPlanSha256: "d".repeat(64), measurementPlanSizeBytes: 10};
+  const videoPin = {sha256: comparison.videoSha256, sizeBytes: 42};
+  const receipt = {version: 1, scope: "CANDIDATE_ORIGINAL_NATIVE_NOT_SUPERVISOR_ARTIFACT",
+    requestSha256: materializedProducerRequestDigest(request), measurementPlanSha256: request.measurementPlanSha256,
+    documentHash: request.documentHash, projectHash: request.projectHash, executionId: request.executionId,
+    video: videoPin, nativeEvidence: state.capture.finalize(), eventNativeEvidence: evidence, renderExecutionObservation: comparison.observation,
+    seekRepeatability: comparison.batches[0].seekRepeatability, eventSeekRepeatability: comparison.batches.map(batch => batch.seekRepeatability)};
+  const context = {request, videoPin, document: state.document, contract: state.contracts[0]};
+  assert.deepEqual(validateOriginalNativeReceipt(receipt, context).eventNativeEvidence, bound);
+  assert.throws(() => validateOriginalNativeReceipt({...receipt, eventNativeEvidence: undefined}, context));
+  assert.throws(() => validateOriginalNativeReceipt({...receipt, seekRepeatability: undefined}, context));
+  assert.throws(() => validateOriginalNativeReceipt({...receipt, eventSeekRepeatability: receipt.eventSeekRepeatability.slice(1)}, context));
+  assert.throws(() => validateOriginalNativeReceipt({...receipt, eventSeekRepeatability: receipt.eventSeekRepeatability.slice().reverse()}, context));
+  assert.throws(() => validateOriginalNativeReceipt(receipt, {...context, document: undefined}));
+  evidence.batches.length = 0;
+  assert.equal(state.capture.finalizeEvents().batches.length, state.contracts.length);
+  state.capture.close();
+});
+
+test("original event native binding rejects omissions, reordered partitions and relabeled parent text", async () => {
+  const state = await eventNativeFixture(); await state.forward(); await state.repeat();
+  const evidence = state.capture.finalizeEvents();
+  const bind = (changed: unknown) => bindControlledEventNativeEvidence({document: state.document,
+    parentContract: state.contracts[0], videoSha256: "b".repeat(64), evidence: changed});
+  assert.throws(() => bind({...evidence, batches: evidence.batches.slice(1)}), /COVERAGE_INVALID/);
+  assert.throws(() => bind({...evidence, batches: evidence.batches.slice().reverse()}), /CONTRACT_INVALID/);
+  assert.throws(() => bind({...evidence, planSha256: "e".repeat(64)}), /COVERAGE_INVALID/);
+  const relabeled = structuredClone(evidence);
+  relabeled.batches[1].nativeEvidence = structuredClone(relabeled.batches[0].nativeEvidence);
+  assert.throws(() => bind(relabeled), /CHECKPOINT_MISMATCH/);
+  state.capture.close();
+});
+
+test("event native reverse drift invalidates every partition and prevents partial finalization", async () => {
+  const state = await eventNativeFixture(true); await state.forward();
+  await assert.rejects(state.repeat(), /EVENT_NATIVE_REPEAT_FAILED/);
+  assert.throws(() => state.capture.finalize(), /EVENT_NATIVE_REPEAT_FAILED/);
+  assert.throws(() => state.capture.finalizeEvents(), /EVENT_NATIVE_REPEAT_FAILED/);
+  state.capture.close();
+});
 async function comparisonFixture() {
   const {document, contracts, renderExecution} = fixture(), png = await image();
   const reports = await measureControlledEventSeekRepeatability({document, contracts, capture: async () => png});
@@ -39,6 +200,68 @@ async function comparisonFixture() {
       files: renderExecution.files, browserBefore: renderExecution.expectedBrowser, browserAfter: renderExecution.expectedBrowser},
     batches: contracts.map((contract, index) => ({contract, seekRepeatability: reports[index]}))};
 }
+
+test("reference reservation and measurement consume every derived event partition in order", async () => {
+  const input = await comparisonFixture();
+  const directory = await mkdtemp(join(tmpdir(), "controlled-event-reference-test-"));
+  const videoPath = join(directory, "candidate.mp4"), referencePath = join(directory, "reference.json");
+  await writeFile(videoPath, "non-media event measurement fixture"); await writeFile(referencePath, "reference fixture");
+  try {
+    const videoPin = await pinConformanceFile(videoPath, 1024);
+    input.videoSha256 = videoPin.sha256; input.observation.videoSha256 = videoPin.sha256;
+    const parent = input.parentContract;
+    if (parent.schemaVersion !== 4) throw new Error("Expected V4");
+    const organizationId = "70000000-0000-4000-8000-000000000001", projectHash = "c".repeat(64);
+    const descriptor = {organizationId, revisionId: organizationId, executionId: organizationId,
+      documentHash: parent.documentHash, projectHash, contract: parent} as Parameters<typeof bindControlledReferenceSelection>[0];
+    const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+    const references = input.batches.map((_batch, batchIndex) => ({batchIndex, visualChecksum: digest(`visual-${batchIndex}`),
+      ...(parent.audio.required ? {audioChecksum: digest(`audio-${batchIndex}`)} : {})}));
+    const selection = bindControlledReferenceSelection(descriptor, references);
+    const resolveReferences = createControlledReferenceSelectionResolver([selection]);
+    const readIndexes: number[] = [], compared: number[] = [];
+    let cleanups = 0;
+    const context = {organizationId, revisionId: organizationId, projectHash, documentHash: parent.documentHash};
+    const dependencies = {
+      readVisual: async (params: {eventBatchIndex?: number; checksum: string}) => {
+        const index = params.eventBatchIndex!; readIndexes.push(index);
+        assert.equal(params.checksum, references[index]!.visualChecksum);
+        return {directory, contract: input.batches[index]!.contract, contractPath: referencePath,
+          previewDirectory: directory, previewMetadataPath: referencePath, checksum: params.checksum,
+          receipt: context, cleanup: async () => {cleanups++;}};
+      },
+      readAudio: async (params: {visualChecksum: string; checksum: string}) => {
+        const index = references.findIndex(reference => reference.visualChecksum === params.visualChecksum);
+        assert.equal(params.checksum, references[index]!.audioChecksum);
+        return {directory, contract: input.batches[index]!.contract, checksum: params.checksum,
+          audioReferencePath: referencePath, audioReferenceMetadataPath: referencePath,
+          receipt: {...context, schemaVersion: 2, visualChecksum: params.visualChecksum}, cleanup: async () => {cleanups++;}};
+      },
+      compare: async () => {
+        const index = compared.length; compared.push(index);
+        const contract = input.batches[index]!.contract;
+        if (contract.schemaVersion !== 4 || !contract.renderExecution) throw new Error("Expected V4");
+        const visual = evaluateCompositionConformance({contract, previewDocumentHash: parent.documentHash,
+          renderDocumentHash: parent.documentHash, samples: []});
+        visual.renderExecution = evaluateControlledRenderExecution({expected: contract.renderExecution!,
+          documentHash: parent.documentHash, videoSha256: videoPin.sha256, observation: input.observation});
+        visual.seekRepeatability = input.batches[index]!.seekRepeatability;
+        return {documentHash: parent.documentHash, video: {sha256: videoPin.sha256, sizeBytes: videoPin.sizeBytes},
+          status: "INCOMPLETE", visual, audioTiming: {status: parent.audio.required ? "INCOMPLETE" : "NOT_REQUESTED"}};
+      },
+    } as unknown as NonNullable<Parameters<typeof measureControlledConformanceReferences>[1]>;
+    const measured = await measureControlledConformanceReferences({descriptor,
+      artifacts: {kind: "EVENT_BATCH_SET", input}, references: await resolveReferences(descriptor), supabase: {} as never,
+      videoPath, videoPin, outputParentDirectory: directory, signal: new AbortController().signal,
+      processPorts: {execute: async () => {}, consumePcm: async () => {}} as never}, dependencies);
+    assert.ok(input.batches.length > 1);
+    assert.deepEqual(readIndexes, references.map(reference => reference.batchIndex));
+    assert.deepEqual(compared, readIndexes);
+    assert.equal(measured.reports.length, input.batches.length); assert.equal(measured.status, "INCOMPLETE");
+    assert.equal(cleanups, input.batches.length * (parent.audio.required ? 2 : 1));
+    assert.throws(() => bindControlledReferenceSelection(descriptor, references.slice(1)), /COVERAGE_INVALID/);
+  } finally {await unlink(videoPath); await unlink(referencePath); await rmdir(directory);}
+});
 
 async function supervisedEventFixture() {
   const input = await comparisonFixture(), artifacts = buildControlledEventComparisonArtifacts(input);

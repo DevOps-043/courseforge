@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {createHash} from "node:crypto";
+import {mkdtemp, writeFile, rm, rmdir} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
 import { compareVideoWithPersistedVisualReference } from "../qa/composition-persisted-reference-comparison";
 
 const input = { supabase: {} as never, organizationId: "70000000-0000-4000-8000-000000000001",
@@ -29,6 +33,41 @@ test("comparison consumes only verified reference paths, preserves failure statu
   assert.deepEqual(state.calls, ["read", "compare", "cleanup"]);
   assert.equal(result.report.status, "FAIL"); assert.equal(result.reference.provenance, "SCOPED_WORKER_VISUAL_EVIDENCE");
   assert.equal(result.reference.status, "VISUAL_CAPTURED_AUDIO_PENDING");
+});
+
+test("authenticated full contract binding is checked before invoking any decoder", async () => {
+  for (const matches of [true, false]) {
+    const state = fixture(), read = state.dependencies.readReference;
+    const contract = {documentHash: "c".repeat(64), frozenObligation: "test"};
+    state.dependencies.readReference = async (params) => ({...await read(params), contract: contract as never});
+    const expectedContractSha256 = matches ? createHash("sha256").update(JSON.stringify(contract)).digest("hex") : "f".repeat(64);
+    if (matches) await compareVideoWithPersistedVisualReference({...input, expectedContractSha256}, state.dependencies);
+    else await assert.rejects(compareVideoWithPersistedVisualReference({...input, expectedContractSha256}, state.dependencies), /AUTHORIZED_CONTRACT_MISMATCH/);
+    assert.deepEqual(state.calls, matches ? ["read", "compare", "cleanup"] : ["read", "cleanup"]);
+  }
+});
+
+test("authenticated receipt bytes reject substitution before decoding and mutation before returning", async () => {
+  for (const failure of [undefined, "before", "during"] as const) {
+    const directory = await mkdtemp(join(tmpdir(), "conformance-receipt-binding-test-"));
+    const renderReceiptPath = join(directory, "receipt.json"), bytes = JSON.stringify({owned: "receipt fixture"});
+    await writeFile(renderReceiptPath, bytes, {flag: "wx"});
+    const state = fixture(); let comparisons = 0;
+    state.dependencies.compare = async () => {
+      comparisons++;
+      if (failure === "during") await writeFile(renderReceiptPath, "changed");
+      return {status: "INCOMPLETE"} as never;
+    };
+    try {
+      const expectedRenderReceiptSha256 = failure === "before" ? "f".repeat(64)
+        : createHash("sha256").update(bytes).digest("hex");
+      const run = () => compareVideoWithPersistedVisualReference({...input, renderReceiptPath, expectedRenderReceiptSha256}, state.dependencies);
+      if (failure) await assert.rejects(run(), /AUTHORIZED_RECEIPT_MISMATCH|CONFORMANCE_FILE/);
+      else assert.equal((await run()).report.status, "INCOMPLETE");
+      assert.equal(comparisons, failure === "before" ? 0 : 1);
+      assert.deepEqual(state.calls, ["read", "cleanup"]);
+    } finally {await rm(renderReceiptPath, {force: true}); await rmdir(directory);}
+  }
 });
 
 test("unknown owned decoder closure preserves reference and intervention error", async () => {

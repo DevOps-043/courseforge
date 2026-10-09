@@ -107,6 +107,8 @@ const clipMediaFitOperationSchema = z.object({
 
 /** Rebinds one timeline clip without changing its placement or edit decisions. */
 const clipReplaceSourceOperationSchema = z.object({
+  /** Overwritten by the server after verifying derivative provenance. */
+  audioProcessingPreviousAssetId: z.string().uuid().optional(),
   productionAssetId: z.string().uuid(),
   mimeType: z.string().regex(/^(audio|image|video)\/[a-z0-9.+-]+$/i),
   sourceDurationSeconds: z.number().finite().positive().max(86_400).optional(),

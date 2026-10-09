@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const syllabusLessonSchema = z
   .object({
+    topics: z.array(z.string().trim().min(1).max(1_000)).max(20).optional(),
     id: z.string().trim().min(1).max(100).optional(),
     title: z
       .string()

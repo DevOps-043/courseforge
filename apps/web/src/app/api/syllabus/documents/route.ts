@@ -1,4 +1,6 @@
 import { extractSyllabusSourceDocument } from "@/domains/syllabus/lib/syllabus-document-extractor";
+import { createHash } from "node:crypto";
+import { isSyllabusImportEnabled } from "@/domains/syllabus/import/syllabus-import.repository";
 import {
   isSupportedSyllabusDocument,
   SYLLABUS_SOURCE_DOCUMENT_MAX_FILES,
@@ -58,6 +60,9 @@ export async function POST(request: Request) {
       });
     }
 
+    if (formData.get("persistDocuments") === "true" && tenant.userId !== authenticatedUser.userId) {
+      return apiErrorResponse({ requestId, status: 401, code: API_ERROR_CODE.authRequired, message: "La sesión y la empresa activa no corresponden al mismo usuario. Vuelve a iniciar sesión." });
+    }
     const authorized = await getAuthorizedArtifactAdminForTenant(artifactId, tenant);
     if (!authorized) {
       return apiErrorResponse({
@@ -66,6 +71,9 @@ export async function POST(request: Request) {
         requestId,
         status: 404,
       });
+    }
+    if (formData.get("persistDocuments") === "true" && !isSyllabusImportEnabled(tenant.organizationId)) {
+      return apiErrorResponse({ requestId, status: 409, code: API_ERROR_CODE.conflict, message: "La importación de temarios no está habilitada." });
     }
 
     if (files.length < 1 || files.length > SYLLABUS_SOURCE_DOCUMENT_MAX_FILES) {
@@ -117,6 +125,19 @@ export async function POST(request: Request) {
       documentCount: documents.length,
       totalCharacters,
     });
+    if (formData.get("persistDocuments") === "true") {
+      const records = await Promise.all(documents.map(async (document, index) => ({
+        id: document.fileId, artifact_id: artifactId, created_by: authenticatedUser.userId,
+        filename: document.filename, mime_type: document.mimeType, size_bytes: document.sizeBytes,
+        extracted_text: document.text, content_sha256: createHash("sha256").update(new Uint8Array(await files[index].arrayBuffer())).digest("hex"),
+      })));
+      const { error } = await authorized.admin.from("syllabus_source_documents").insert(records);
+      if (error) {
+        logger.warn("syllabus.documents.persistence_failed", { artifactId, code: error.code });
+        if (error.message.includes("SYLLABUS_DOCUMENT_QUOTA")) return apiErrorResponse({ requestId, status: 429, code: API_ERROR_CODE.rateLimited, message: "Este artefacto alcanzó el límite de 50 documentos guardados. Utiliza los documentos ya cargados." });
+        return apiErrorResponse({ requestId, status: 503, code: API_ERROR_CODE.dependencyUnavailable, message: "No se pudieron guardar los documentos. Reintenta la carga." });
+      }
+    }
     return apiSuccessResponse({ documents }, { requestId });
   } catch (error) {
     logger.error("syllabus.documents.failed", error);

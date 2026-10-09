@@ -34,6 +34,17 @@ test("pipeline uses capture output rather than operator files and disposes both 
   assert.deepEqual(fixtureState.calls, ["materialize", "capture", "persist", "cleanup-capture", "cleanup-source"]);
 });
 
+test("uncertain capture ownership retains acquired source and prevents evidence persistence", async () => {
+  const state = fixture();
+  state.dependencies.capture = async () => {
+    state.calls.push("capture");
+    throw new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED");
+  };
+  await assert.rejects(prepareAndPersistVisualConformanceReference(input, state.dependencies),
+    error => error instanceof ConformanceStageFailure && error.recoveryRequired && !error.retryable);
+  assert.deepEqual(state.calls, ["materialize", "capture"]);
+});
+
 test("cancelled materialization or capture cannot start persistence and still disposes acquired workspaces", async () => {
   for (const boundary of ["materialize", "capture", "persist"] as const) {
     const state = fixture(), cancellation = new AbortController();

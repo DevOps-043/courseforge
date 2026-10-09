@@ -37,7 +37,7 @@ const executeFile = promisify(execFile);
 export async function encodeSdrCapturedFrames(input: {profile: Profile; framesDirectory: string;
   outputParentDirectory: string; ffmpegPath: string; ffmpegSha256: string; timeoutMilliseconds: number;
   ffprobePath: string; ffprobeSha256: string;
-  signal?: AbortSignal}, execute: EncoderExecutor = executeFile) {
+  signal?: AbortSignal; retainWorkFilesOnFailure?: boolean}, execute: EncoderExecutor = executeFile) {
   assertConformanceJobActive(input.signal);
   const profile = profileSchema.parse(input.profile);
   if (!/^[a-f0-9]{64}$/.test(input.ffmpegSha256) || !/^[a-f0-9]{64}$/.test(input.ffprobeSha256) || !Number.isSafeInteger(input.timeoutMilliseconds)
@@ -87,7 +87,8 @@ export async function encodeSdrCapturedFrames(input: {profile: Profile; framesDi
       encoderSha256: binary.sha256, probeSha256: probePin.sha256, outputProfile, profile, frames};
   } catch {
     let cleanupFailed = false;
-    try {await cleanup();} catch {cleanupFailed = true;}
+    // An owned worker may still have an uncertain process tree: leave cleanup to its closure/fence.
+    if (!input.retainWorkFilesOnFailure) try {await cleanup();} catch {cleanupFailed = true;}
     assertConformanceJobActive(input.signal);
     throw new Error(cleanupFailed ? "SDR_FRAME_ENCODER_FAILED_WITH_CLEANUP" : "SDR_FRAME_ENCODER_FAILED");
   }

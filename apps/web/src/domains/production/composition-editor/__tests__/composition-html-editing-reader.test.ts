@@ -6,6 +6,7 @@ import { bindHtmlEditingRevisionToComposition } from "../composition-html-editin
 import { readCompositionHtmlEditingCompilation, readCompositionHtmlEditingSnapshot } from "../composition-html-editing-reader.service";
 import { compileCompositionPreview } from "../composition-preview-compiler.service";
 import { hashCompositionDocument } from "../composition-document.service";
+import { buildCompositionHtmlEditingPreviewCsp } from "../composition-html-editing-preview-csp.server";
 
 function readerFixture() {
   const input = createHtmlEditingRevisionFixture();
@@ -39,6 +40,21 @@ test("reader requests saved native hash and yields exactly the historical revisi
     ]) });
   assert.match(html, /Original/);
   assert.doesNotMatch(html, /Changed/);
+});
+
+test("authorized exact reader and interactive compiler produce a hash-pinned editable CSP without mutating HTML", async () => {
+  const host = readerFixture();
+  const result = await readCompositionHtmlEditingCompilation(host.request);
+  const html = await compileCompositionPreview({ document: result.document, documentHash: host.native.documentHash,
+    htmlEditingCompilation: result.context, target: "INTERACTIVE_PREVIEW", previewGeneration: 1,
+    assetUrls: new Map([[uuid, `conformance-media/${uuid}`],
+      ["40000000-0000-4000-8000-000000000002", "conformance-media/40000000-0000-4000-8000-000000000002"]]) });
+  const before = html;
+  const policy = buildCompositionHtmlEditingPreviewCsp(html);
+  assert.match(policy, /script-src 'sha256-/); assert.match(policy, /sandbox allow-scripts/);
+  assert.doesNotMatch(policy, /unsafe-inline|unsafe-eval|allow-same-origin/);
+  assert.equal(html, before); assert.equal(host.calls.length, 1);
+  assert.equal(host.calls[0].args.p_document_hash, host.native.documentHash);
 });
 
 test("provider returning latest instead of selected revision is rejected", async () => {

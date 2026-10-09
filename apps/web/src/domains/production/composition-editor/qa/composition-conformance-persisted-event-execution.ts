@@ -8,6 +8,8 @@ import { prepareCompositionEventBatchContracts, assertSnapshotEventBatchAuthoriz
 import { createPersistedCompositionEventBatchAdapters } from "./composition-conformance-event-batch-adapters";
 import { eventBatchMeasurementIdentitySchema, executeCompositionEventCheckpointBatches } from "./composition-conformance-event-batch-execution";
 import {assertConformanceJobActive} from "./composition-conformance-job-lease";
+import type {ComparisonProcessPorts} from "./composition-comparison-process-ports";
+import {requiresConformanceExecutionRecovery} from "./composition-conformance-stage-failure";
 
 async function readMaterializedSource(root: string) {
   return verifyConformanceReferenceSource({
@@ -25,6 +27,9 @@ const defaultDependencies = {materialize: materializeAuthorizedConformanceRevisi
 export async function executePersistedCompositionEventBatches(input:
   Parameters<typeof materializeAuthorizedConformanceRevision>[0] & {
     projectHash: string; documentHash: string; videoSha256: string; videoPath: string; renderReceiptPath: string; signal?: AbortSignal;
+    processPorts?: ComparisonProcessPorts;
+    visualReferenceChecksums?: string[];
+    resolveRenderReceipt?: (contractSha256: string, batchIndex: number) => {path: string; sha256: string};
   }, dependencies: typeof defaultDependencies = defaultDependencies) {
   const params = {...input};
   assertConformanceJobActive(params.signal);
@@ -38,6 +43,7 @@ export async function executePersistedCompositionEventBatches(input:
   if (parentContract.documentHash !== params.documentHash) throw new Error("CONFORMANCE_EVENT_JOB_DOCUMENT_MISMATCH");
   if (parentContract.schemaVersion !== 4 || !parentContract.checkpointBatch) return null;
   const materialized = await dependencies.materialize(params);
+  let recoveryRequired = false;
   try {
     assertConformanceJobActive(params.signal);
     const root = materialized.directory;
@@ -53,8 +59,14 @@ export async function executePersistedCompositionEventBatches(input:
       batchContractSha256: prepared.parentContractSha256, batch: parentContract.checkpointBatch});
     return await dependencies.execute({document: source.document, parentContract,
       organizationId: params.organizationId, revisionId: params.revisionId, projectHash: params.projectHash,
-      videoSha256: params.videoSha256}, dependencies.createAdapters({...params, rootIdentity}));
+      videoSha256: params.videoSha256, signal: params.signal, visualReferenceChecksums: params.visualReferenceChecksums},
+    dependencies.createAdapters({...params, rootIdentity}));
+  } catch (error) {
+    recoveryRequired = requiresConformanceExecutionRecovery(error);
+    throw error;
   } finally {
-    try {await materialized.cleanup();} catch {throw new Error("CONFORMANCE_EVENT_JOB_SOURCE_CLEANUP_FAILED");}
+    if (!recoveryRequired) {
+      try {await materialized.cleanup();} catch {throw new Error("CONFORMANCE_EVENT_JOB_SOURCE_CLEANUP_FAILED");}
+    }
   }
 }

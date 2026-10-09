@@ -14,7 +14,8 @@ function validateDraft(viewInput: unknown, overridesInput: unknown) {
     binding: view.manifest.binding, overrides }), manifest: view.manifest,
     verifiedBinding: view.manifest.binding, grantedAssetIds: view.grantedAssetIds });
   for (const override of overrides) {
-    if (override.operation === "RESET" && override.property === "IMAGE") {
+    if (override.operation === "RESET" && (override.property === "IMAGE"
+      || (override.property === "ALL" && view.manifest.elements.find(element => element.elementId === override.elementId)?.kind === "IMAGE"))) {
       const original = view.defaults.find(element => element.elementId === override.elementId);
       if (original?.kind === "IMAGE" && original.assetId && !view.grantedAssetIds.includes(original.assetId)) {
         throw new HtmlEditingValidationError("ASSET_NOT_AUTHORIZED");
@@ -36,6 +37,26 @@ export function stageHtmlEditingFieldOverride(viewInput: unknown, draftInput: un
   const byElement = new Map(valid.map(value => [value.elementId, value]));
   return view.manifest.elements.flatMap(element => {
     const value = byElement.get(element.elementId); return value ? [value] : [];
+  });
+}
+
+/** Prepare the original values of every declared field on one physical node.
+ * No dispatch and no target selector in the resulting command: one ordinary
+ * bounded batch of field RESETs. Any invalid default/grant/budget rejects the
+ * whole staging operation, leaving the caller's previous draft untouched. */
+export function stageHtmlEditingTargetReset(viewInput: unknown, draftInput: unknown, targetElementId: string): HtmlEditingFieldOverride[] {
+  const view = htmlEditingInspectorViewSchema.parse(viewInput);
+  const fields = view.manifest.elements.filter(element => (element.targetElementId ?? element.elementId) === targetElementId);
+  if (!fields.length) throw new HtmlEditingValidationError("UNKNOWN_ELEMENT");
+  const prior = htmlEditingCommandSchema.shape.overrides.element.array().max(HTML_EDITING_LIMITS.commandOverrides).parse(draftInput);
+  if (prior.length) validateDraft(view, prior);
+  const fieldIds = new Set(fields.map(field => field.elementId));
+  const resets: HtmlEditingFieldOverride[] = fields.map(field => ({ operation: "RESET", elementId: field.elementId, property: field.kind }));
+  const valid = validateDraft(view, [...prior.filter(override => !fieldIds.has(override.elementId)), ...resets]).overrides;
+  const byElement = new Map(valid.map(override => [override.elementId, override]));
+  return view.manifest.elements.flatMap(element => {
+    const override = byElement.get(element.elementId);
+    return override ? [override] : [];
   });
 }
 

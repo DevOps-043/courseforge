@@ -21,7 +21,8 @@ import { assertConformanceFileUnchanged, pinConformanceFile } from "./compositio
 import {controlledRenderExecutionObservationSchema, evaluateControlledRenderExecution} from "../composition-render-execution-contract";
 import {controlledSeekRepeatabilityReportSchema} from "../composition-render-seek-policy";
 import {bindControlledSeekRepeatability} from "./composition-controlled-seek-binding";
-import {controlledNativeEvidenceSchema, bindControlledRendererFontWitness} from "./composition-controlled-font-witness";
+import {controlledNativeEvidenceSchema} from "./composition-controlled-font-witness";
+import {bindControlledRendererNativeEvidence} from "./composition-controlled-native-binding";
 import {assertConformanceJobActive} from "./composition-conformance-job-lease";
 import {createControlledProcessEnvironment} from "./composition-controlled-process-environment";
 import {pinComparisonTools} from "./composition-comparison-tool-integrity";
@@ -175,7 +176,7 @@ export async function compareExportedVideoWithPreview(params: {
   const sha256 = videoPin.sha256;
   if (sha256 !== receipt.videoSha256) throw new Error("EXPORTED_VIDEO_RECEIPT_HASH_MISMATCH");
   if (receipt.documentHash !== contract.documentHash) throw new Error("EXPORTED_VIDEO_DOCUMENT_HASH_MISMATCH");
-  const native = bindControlledRendererFontWitness(contract, receipt.nativeEvidence, sha256);
+  const native = bindControlledRendererNativeEvidence(contract, receipt.nativeEvidence, sha256);
   const checkpointFilter = resolveSdrCheckpointFilter({expected: contract.schemaVersion === 4 ? contract.renderExecution : undefined,
     observation: receipt.renderExecution, documentHash: contract.documentHash, videoSha256: sha256});
 
@@ -262,9 +263,9 @@ export async function compareExportedVideoWithPreview(params: {
     });
     const visual = measuredVisual.report;
     assertConformanceJobActive(params.signal);
-    if (native) {
+    if (native?.fontWitness) {
       if (!visual.fontUsage) throw new Error("EXPORTED_VIDEO_FONT_PENDING_REPORT_REQUIRED");
-      visual.fontUsage.observedWitness = native.summary;
+      visual.fontUsage.observedWitness = native.fontWitness;
     }
     if (contract.schemaVersion === 4 && contract.renderExecution) {
       visual.renderExecution = evaluateControlledRenderExecution({expected: contract.renderExecution,

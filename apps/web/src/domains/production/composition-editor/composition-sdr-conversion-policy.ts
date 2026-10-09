@@ -1,6 +1,8 @@
 import {z} from "zod";
 /** Isomorphic, fixed pair. A declaration is not proof of the capture/display profile. */
 export const SDR_AUDIO_MUX_POLICY = "COPIED_H264_REC709_AAC_MUX_V1" as const;
+/** Internal successful-result binding, not an additional expected execution policy. */
+export const SDR_SILENT_ASSEMBLY_POLICY = "COPIED_H264_REC709_SILENT_ASSEMBLY_V1" as const;
 export const SDR_FRAME_CONVERSION_POLICY = Object.freeze({
   id: "DECLARED_SRGB_PNG_TO_REC709_LIMITED_V1" as const,
   captureProfile: "OPAQUE_SRGB_RGB_PNG" as const,

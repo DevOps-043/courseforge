@@ -21,6 +21,7 @@ interface CompositionPreviewViewportProps {
   onBeginScrub: PointerEventHandler<HTMLInputElement>;
   onFrameError: () => void;
   onFrameLoad: () => void;
+  onBaselineFrameLoad?: () => void;
   onPlaySelectedAnimation: () => void;
   onRefreshDocument: () => void;
   onRefreshMedia: () => void;
@@ -44,7 +45,7 @@ interface CompositionPreviewViewportProps {
   transportActive: boolean;
 }
 
-export function CompositionPreviewViewport({ activeSceneId, agentProposalActive, canvasHeight, canvasWidth, comparisonActive, comparisonBaselineFrameRef, comparisonBaselineLoading, comparisonBaselineUrl, duration, fps, frameRef, onBeginScrub, onFrameError, onFrameLoad, onPlaySelectedAnimation, onRefreshDocument, onRefreshMedia, onSceneSelect, onSeek, onTogglePlayback, pendingMediaCount, playbackError, previewErrorActionLabel, presetPreviewActive, previewDirty, previewMediaState, previewReady, previewUrl, previewZoom, safeAreasVisible, saving, scenes, seconds, selectedAnimationId, transportActive }: CompositionPreviewViewportProps) {
+export function CompositionPreviewViewport({ activeSceneId, agentProposalActive, canvasHeight, canvasWidth, comparisonActive, comparisonBaselineFrameRef, comparisonBaselineLoading, comparisonBaselineUrl, duration, fps, frameRef, onBeginScrub, onFrameError, onFrameLoad, onBaselineFrameLoad, onPlaySelectedAnimation, onRefreshDocument, onRefreshMedia, onSceneSelect, onSeek, onTogglePlayback, pendingMediaCount, playbackError, previewErrorActionLabel, presetPreviewActive, previewDirty, previewMediaState, previewReady, previewUrl, previewZoom, safeAreasVisible, saving, scenes, seconds, selectedAnimationId, transportActive }: CompositionPreviewViewportProps) {
   const frameStyle = {
     "--composition-aspect-ratio": canvasWidth / canvasHeight,
     aspectRatio: `${canvasWidth} / ${canvasHeight}`,
@@ -78,6 +79,7 @@ export function CompositionPreviewViewport({ activeSceneId, agentProposalActive,
           label="Antes"
           loading={comparisonBaselineLoading}
           previewUrl={comparisonBaselineUrl}
+          onFrameLoad={onBaselineFrameLoad}
         />}
         <section className={styles.comparisonPane} aria-label="Composición actual">
           {comparisonActive && <div className={styles.comparisonHeader}><div><strong>Después</strong><small>Preview actual con cambios</small></div></div>}

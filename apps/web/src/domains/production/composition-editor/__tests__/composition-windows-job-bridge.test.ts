@@ -12,6 +12,8 @@ const executionId = "00000000-0000-4000-8000-000000000001";
 type Start = ControlledOwnedExecutorConfiguration["start"];
 const descriptor = {executionId} as Parameters<Start>[0];
 const workspace = {directory: resolve("apps/web/.tmp")} as Parameters<Start>[1];
+const resourceLimits = {policy: "WINDOWS_JOB_RESOURCE_LIMITS_V1" as const, maximumProcesses: 8,
+  processMemoryBytes: 256 * 1024 ** 2, jobMemoryBytes: 512 * 1024 ** 2, userCpuSeconds: 60, cpuRatePercent: 25};
 const result = {videoPath: "operator output"} as Awaited<ReturnType<Start>["completion"]>;
 function fixture() {
   const child = Object.assign(new EventEmitter(), {stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
@@ -27,6 +29,7 @@ function fixture() {
     assert.deepEqual(args, ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", configuration.bridgeScriptPath]);
     assert.equal(options?.shell, false); assert.equal(options?.windowsHide, true);
     assert.equal(options?.env?.SUPABASE_SERVICE_ROLE_KEY, undefined);
+    for (const name of ["TEMP", "TMP", "TMPDIR"]) assert.equal(options?.env?.[name], workspace.directory);
     return child as unknown as ChildProcessWithoutNullStreams;
   };
   const start = createWindowsJobBridgeStart(configuration, {spawnBridge, platform: "win32"});
@@ -34,9 +37,58 @@ function fixture() {
     send: (status: string, extra = {}) => child.stdout.write(Buffer.from(JSON.stringify({status, executionId, ...extra}) + "\n"))};
 }
 
+test("operator resource limits use V2, are cloned before start and preserve confirmed closure", async () => {
+  const f = fixture(), limits = {...resourceLimits};
+  const start = createWindowsJobBridgeStart({...f.configuration, resourceLimits: limits},
+    {spawnBridge: f.spawnBridge, platform: "win32"});
+  limits.cpuRatePercent = 99;
+  const handle = start(descriptor, workspace, new AbortController().signal);
+  const command = JSON.parse(f.commands[0]);
+  assert.equal(command.policy, "WINDOWS_JOB_CONTROL_CHANNEL_V2");
+  assert.deepEqual(command.resourceLimits, resourceLimits);
+  f.send("READY"); f.send("ROOT_EXITED", {exitCode: 0}); await Promise.resolve();
+  const stopping = handle.stopAndConfirm(); f.send("STOPPED", {activeProcesses: 0}); f.child.emit("close", 0);
+  await stopping; assert.equal(await handle.completion, result);
+});
+
+test("invalid or coerced quotas fail before bridge spawn", () => {
+  for (const mutation of [{cpuRatePercent: 0}, {cpuRatePercent: 101}, {cpuRatePercent: 1.5},
+    {cpuRatePercent: "25"}, {maximumProcesses: 65}, {userCpuSeconds: 601},
+    {processMemoryBytes: 32 * 1024 ** 2}, {jobMemoryBytes: 5 * 1024 ** 3},
+    {jobMemoryBytes: 128 * 1024 ** 2}, {arbitrary: true}]) {
+    const f = fixture();
+    assert.throws(() => createWindowsJobBridgeStart({...f.configuration,
+      resourceLimits: {...resourceLimits, ...mutation} as typeof resourceLimits}, {spawnBridge: f.spawnBridge, platform: "win32"}));
+    assert.equal(f.counts().calls, 0);
+  }
+});
+
+test("reduced token is explicit V3, pinned before launch and requires quotas and nondefault desktop", async () => {
+  const f = fixture(), reducedToken = {policy: "WINDOWS_LUA_NO_PRIVILEGES_V1" as const, desktop: "winsta0\\courseforge-worker"};
+  const start = createWindowsJobBridgeStart({...f.configuration, resourceLimits, reducedToken},
+    {spawnBridge: f.spawnBridge, platform: "win32"});
+  reducedToken.desktop = "winsta0\\default";
+  const handle = start(descriptor, workspace, new AbortController().signal);
+  const command = JSON.parse(f.commands[0]);
+  assert.equal(command.policy, "WINDOWS_JOB_CONTROL_CHANNEL_V3");
+  assert.deepEqual(command.reducedToken, {policy: "WINDOWS_LUA_NO_PRIVILEGES_V1", desktop: "winsta0\\courseforge-worker"});
+  f.send("READY"); f.send("ROOT_EXITED", {exitCode: 0}); await Promise.resolve();
+  const stopping = handle.stopAndConfirm(); f.send("STOPPED", {activeProcesses: 0}); f.child.emit("close", 0);
+  await stopping; await handle.completion;
+  for (const desktop of ["winsta0\\default", "winsta0\\DEFAULT", "default", "winsta0\\custom\\extra", "winsta0\\custom\n"]) {
+    assert.throws(() => createWindowsJobBridgeStart({...f.configuration, resourceLimits,
+      reducedToken: {policy: "WINDOWS_LUA_NO_PRIVILEGES_V1", desktop}}, {spawnBridge: f.spawnBridge, platform: "win32"}));
+  }
+  assert.throws(() => createWindowsJobBridgeStart({...f.configuration,
+    reducedToken: {policy: "WINDOWS_LUA_NO_PRIVILEGES_V1", desktop: "winsta0\\custom"}}, {spawnBridge: f.spawnBridge, platform: "win32"}));
+  assert.equal(f.counts().calls, 1);
+});
+
 test("bridge keeps command in stdin and requires stop metadata plus clean bridge exit", async () => {
   const f = fixture(), handle = f.start(descriptor, workspace, new AbortController().signal);
   assert.equal(JSON.parse(f.commands[0]).executionId, executionId);
+  assert.equal(JSON.parse(f.commands[0]).policy, "WINDOWS_JOB_CONTROL_CHANNEL_V1");
+  assert.equal(JSON.parse(f.commands[0]).resourceLimits, undefined);
   f.send("READY"); f.send("ROOT_EXITED", {exitCode: 0});
   await Promise.resolve();
   assert.equal(f.counts().collections, 0);
@@ -164,4 +216,90 @@ test("Windows host factory rejects a bridge outside declared inventory without a
   assert.throws(() => createWindowsControlledRenderWorkerHost({dependencyInventory: {manifest: {files: []}, roots: {}},
     jobBridge: f.configuration} as never), process.platform === "win32" ? /BRIDGE_INVENTORY_REQUIRED/ : /PLATFORM_UNSUPPORTED/);
   assert.equal(f.counts().calls, 0);
+});
+
+function deferredCollectionFixture() {
+  const f = fixture();
+  let finish!: (value: typeof result) => void, fail!: (error: Error) => void;
+  let notifyStarted!: () => void;
+  const started = new Promise<void>(resolve => {notifyStarted = resolve;});
+  const collection = new Promise<typeof result>((resolve, reject) => {finish = resolve; fail = reject;});
+  const start = createWindowsJobBridgeStart({...f.configuration,
+    collectResult: async () => {notifyStarted(); return collection;}}, {spawnBridge: f.spawnBridge, platform: "win32"});
+  const closeProducer = async () => {
+    f.send("READY"); f.send("ROOT_EXITED", {exitCode: 0});
+    await new Promise<void>(resolve => setImmediate(resolve));
+    f.send("STOPPED", {activeProcesses: 0}); f.child.emit("close", 0);
+    await started;
+  };
+  return {...f, start, finish, fail, closeProducer};
+}
+
+test("parent cancellation waits for independent collection before releasing its fence", async () => {
+  const f = deferredCollectionFixture(), controller = new AbortController();
+  let released = 0;
+  const execute = createOwnedControlledExecutor({start: f.start, fence: {
+    acquire: async () => ({executionId}) as never,
+    releaseConfirmed: async () => {released++;},
+  }});
+  const running = execute(descriptor, workspace, controller.signal);
+  let settled = false;
+  const rejection = assert.rejects(running, /CONTROLLED_RENDER_ABORTED/).then(() => {settled = true;});
+  // Fence acquisition is asynchronous; let the owned bridge start before delivering protocol events.
+  await new Promise<void>(resolve => setImmediate(resolve));
+  await f.closeProducer(); controller.abort();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(released, 0); assert.equal(settled, false);
+  f.finish(result); await rejection;
+  assert.equal(released, 1); assert.equal(execute.isQuarantined(), false);
+});
+
+test("uncertain independent collection quarantines parent despite confirmed producer closure", async () => {
+  const f = deferredCollectionFixture();
+  let released = 0;
+  const execute = createOwnedControlledExecutor({start: f.start, fence: {
+    acquire: async () => ({executionId}) as never,
+    releaseConfirmed: async () => {released++;},
+  }});
+  const running = execute(descriptor, workspace);
+  const rejection = assert.rejects(running, /CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED/);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  await f.closeProducer();
+  f.fail(new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED"));
+  await rejection;
+  assert.equal(released, 0); assert.equal(execute.isQuarantined(), true);
+  await assert.rejects(execute(descriptor, workspace), /TERMINATION_UNCONFIRMED/);
+  assert.equal(f.counts().calls, 1);
+});
+
+test("settled ordinary collection failure allows confirmed cleanup without publication", async () => {
+  const f = deferredCollectionFixture();
+  let released = 0;
+  const execute = createOwnedControlledExecutor({start: f.start, fence: {
+    acquire: async () => ({executionId}) as never,
+    releaseConfirmed: async () => {released++;},
+  }});
+  const running = execute(descriptor, workspace);
+  const rejection = assert.rejects(running, /CONTROLLED_RENDER_MEASUREMENT_FAILED/);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  await f.closeProducer(); f.fail(new Error("CONTROLLED_RENDER_MEASUREMENT_FAILED"));
+  await rejection;
+  assert.equal(released, 1); assert.equal(execute.isQuarantined(), false);
+});
+
+test("unresponsive independent collection has bounded stop and retains parent fence", async () => {
+  const f = deferredCollectionFixture(), controller = new AbortController();
+  let released = 0;
+  const execute = createOwnedControlledExecutor({start: f.start, stopMilliseconds: 20, fence: {
+    acquire: async () => ({executionId}) as never,
+    releaseConfirmed: async () => {released++;},
+  }});
+  const running = execute(descriptor, workspace, controller.signal);
+  const rejection = assert.rejects(running, /TERMINATION_UNCONFIRMED/);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  await f.closeProducer(); controller.abort(); await rejection;
+  assert.equal(released, 0); assert.equal(execute.isQuarantined(), true);
+  // Late collection settlement never retroactively releases a quarantined parent's lease.
+  f.finish(result); await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(released, 0);
 });

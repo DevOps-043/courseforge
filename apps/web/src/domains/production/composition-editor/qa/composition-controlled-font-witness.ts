@@ -9,7 +9,7 @@ const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(va
 export const controlledNativeEvidenceSchema = z.object({
   scope: z.literal("SDK_SESSION_NATIVE_TEXT_AND_CUSTOM_GLYPHS_NOT_PREVIEW_PARITY"),
   textEvidence: textParityEvidenceSchema,
-  fontEvidence: controlledFontUsageEvidenceSchema,
+  fontEvidence: controlledFontUsageEvidenceSchema.optional(),
 }).strict();
 
 /** Validate the full receipt before deriving its path/text-free durable summary. */
@@ -17,6 +17,7 @@ export function bindControlledRendererFontWitness(contractInput: unknown, input:
   const contract = compositionConformanceContractSchema.parse(contractInput);
   if (input === undefined) return undefined;
   const nativeEvidence = controlledNativeEvidenceSchema.parse(input);
+  if (!nativeEvidence.fontEvidence) throw new Error("CONTROLLED_RENDER_COMPARISON_FONT_REQUIRED");
   const evidence = validateControlledFontUsageEvidence(nativeEvidence.fontEvidence, contract, nativeEvidence.textEvidence);
   const summary = controlledFontUsageWitnessSchema.parse({policy: evidence.policy, scope: evidence.scope,
     status: "OBSERVED_UNATTESTED", documentHash: evidence.documentHash, contractSha256: evidence.contractSha256,

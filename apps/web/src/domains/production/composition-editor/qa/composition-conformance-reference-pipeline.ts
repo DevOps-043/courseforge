@@ -4,7 +4,7 @@ import { captureMaterializedConformancePreview } from "./composition-conformance
 import { persistVisualConformanceEvidence } from "./composition-conformance-evidence-persistence";
 import {assertConformanceJobActive} from "./composition-conformance-job-lease";
 import { type ConformanceExecutionStage, type ConformanceStageFailure,
-  recordConformanceCleanupFailure, wrapConformanceStageFailure } from "./composition-conformance-stage-failure";
+  recordConformanceCleanupFailure, wrapConformanceStageFailure, requiresConformanceExecutionRecovery } from "./composition-conformance-stage-failure";
 
 const defaultDependencies = {
   materialize: materializeAuthorizedConformanceRevision,
@@ -46,11 +46,13 @@ export async function prepareAndPersistVisualConformanceReference(params: {
     primaryFailure = wrapConformanceStageFailure(stage, error);
     throw primaryFailure;
   } finally {
-    // Both workspaces are independent; a failed cleanup must not skip the other one.
-    const cleanups = await Promise.allSettled([
-      ...(capture ? [Promise.resolve().then(() => capture!.cleanup())] : []),
-      ...(materialized ? [Promise.resolve().then(() => materialized!.cleanup())] : []),
-    ]);
-    if (cleanups.some((result) => result.status === "rejected")) throw recordConformanceCleanupFailure(primaryFailure);
+    if (!requiresConformanceExecutionRecovery(primaryFailure)) {
+      // Both workspaces are independent; a failed cleanup must not skip the other one.
+      const cleanups = await Promise.allSettled([
+        ...(capture ? [Promise.resolve().then(() => capture!.cleanup())] : []),
+        ...(materialized ? [Promise.resolve().then(() => materialized!.cleanup())] : []),
+      ]);
+      if (cleanups.some((result) => result.status === "rejected")) throw recordConformanceCleanupFailure(primaryFailure);
+    }
   }
 }

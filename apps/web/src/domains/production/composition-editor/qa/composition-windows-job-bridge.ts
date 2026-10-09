@@ -3,6 +3,9 @@ import {isAbsolute} from "node:path";
 import {z} from "zod";
 import {createControlledProcessEnvironment} from "./composition-controlled-process-environment";
 import type {ControlledOwnedExecutorConfiguration} from "./composition-controlled-owned-executor";
+import {requiresControlledExecutorIntervention} from "./composition-controlled-execution-fence";
+import {windowsJobResourceLimitsSchema, type WindowsJobResourceLimits} from "./composition-windows-job-resource-policy";
+import {windowsReducedTokenSchema, type WindowsReducedToken} from "./composition-windows-reduced-token-policy";
 
 export const WINDOWS_JOB_BRIDGE_POLICY = {id: "WINDOWS_JOB_CONTROL_CHANNEL_V1", maximumCommandBytes: 64 * 1024,
   maximumResponseBytes: 16 * 1024, maximumLineBytes: 4096} as const;
@@ -17,12 +20,16 @@ const eventSchema = z.discriminatedUnion("status", [
 ]);
 type Start = ControlledOwnedExecutorConfiguration["start"];
 export type WindowsOwnedLaunch = z.infer<typeof launchSchema>;
-export type WindowsJobBridgeConfiguration = {
+export type WindowsJobBridgeConfiguration<TResult = Awaited<ReturnType<Start>["completion"]>,
+  TWorkspace extends {directory: string} = Parameters<Start>[1]> = {
   powerShellPath: string; bridgeScriptPath: string;
+  resourceLimits?: WindowsJobResourceLimits;
+  reducedToken?: WindowsReducedToken;
   /** Operator code, not CLI arguments or a script submitted by a document/user. */
-  prepareLaunch: (descriptor: Parameters<Start>[0], workspace: Parameters<Start>[1]) => WindowsOwnedLaunch;
-  collectResult: (descriptor: Parameters<Start>[0], workspace: Parameters<Start>[1], signal: AbortSignal)
-    => ReturnType<Start>["completion"];
+  prepareLaunch: (descriptor: Parameters<Start>[0], workspace: TWorkspace) => WindowsOwnedLaunch;
+  /** Must settle only after any independently owned measurement jobs close; uncertainty must propagate. */
+  collectResult: (descriptor: Parameters<Start>[0], workspace: TWorkspace, signal: AbortSignal)
+    => Promise<TResult>;
 };
 type SpawnBridge = (binary: string, args: string[], options: Parameters<typeof spawn>[2]) => ChildProcessWithoutNullStreams;
 function pending<T>() {
@@ -33,22 +40,30 @@ function pending<T>() {
 }
 
 /** Bridges an operator driver into OwnedRenderJob. Process control only, never a security sandbox. */
-export function createWindowsJobBridgeStart(configuration: WindowsJobBridgeConfiguration,
-  ports: {spawnBridge?: SpawnBridge; platform?: string} = {}): Start {
+export function createWindowsJobBridgeStart<TResult, TWorkspace extends {directory: string} = Parameters<Start>[1]>(configuration: WindowsJobBridgeConfiguration<TResult, TWorkspace>,
+  ports: {spawnBridge?: SpawnBridge; platform?: string} = {}): ControlledOwnedExecutorConfiguration<TResult, TWorkspace>["start"] {
   const powerShell = pathSchema.parse(configuration.powerShellPath), script = pathSchema.parse(configuration.bridgeScriptPath);
+  const resourceLimits = configuration.resourceLimits === undefined ? undefined
+    : windowsJobResourceLimitsSchema.parse(configuration.resourceLimits);
+  const reducedToken = configuration.reducedToken === undefined ? undefined : windowsReducedTokenSchema.parse(configuration.reducedToken);
+  if (reducedToken && !resourceLimits) throw new Error("CONTROLLED_RENDER_WINDOWS_RESOURCE_LIMIT_REQUIRED");
   return (descriptor, workspace, signal) => {
     if ((ports.platform ?? process.platform) !== "win32") throw new Error("CONTROLLED_RENDER_WINDOWS_PLATFORM_UNSUPPORTED");
     signal.throwIfAborted();
     const launch = launchSchema.parse(configuration.prepareLaunch(descriptor, workspace));
-    const command = JSON.stringify({policy: WINDOWS_JOB_BRIDGE_POLICY.id, command: "START", executionId: descriptor.executionId, ...launch}) + "\n";
+    const command = JSON.stringify({policy: reducedToken ? "WINDOWS_JOB_CONTROL_CHANNEL_V3"
+      : resourceLimits ? "WINDOWS_JOB_CONTROL_CHANNEL_V2" : WINDOWS_JOB_BRIDGE_POLICY.id,
+      command: "START", executionId: descriptor.executionId, ...launch, ...(resourceLimits ? {resourceLimits} : {}),
+      ...(reducedToken ? {reducedToken} : {})}) + "\n";
     if (Buffer.byteLength(command) > WINDOWS_JOB_BRIDGE_POLICY.maximumCommandBytes)
       throw new Error("CONTROLLED_RENDER_WINDOWS_COMMAND_LIMIT");
     const root = pending<void>(), stopped = pending<void>();
     const child = (ports.spawnBridge ?? (spawn as SpawnBridge))(powerShell,
       ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", script],
-      {cwd: workspace.directory, env: createControlledProcessEnvironment(), windowsHide: true, shell: false, stdio: "pipe"});
+      {cwd: workspace.directory, env: createControlledProcessEnvironment(process.env, launch.directory), windowsHide: true, shell: false, stdio: "pipe"});
     let ready = false, rootExited = false, stopRequested = false, stopObserved = false, closed = false, failed = false;
     let bytesSeen = 0, buffered = "", stopPromise: Promise<unknown> | undefined;
+    let collection: Promise<TResult> | undefined, collectionStop: Promise<unknown> | undefined;
     const decoder = new TextDecoder("utf-8", {fatal: true});
     const fail = () => {
       if (failed) return;
@@ -95,7 +110,7 @@ export function createWindowsJobBridgeStart(configuration: WindowsJobBridgeConfi
       closed = true; stopped.resolve();
     });
     try {child.stdin.write(command);} catch {fail();}
-    const stopAndConfirm = () => {
+    const confirmProducerStop = () => {
       if (!stopPromise) {
         stopRequested = true;
         try {child.stdin.end(JSON.stringify({command: "STOP", executionId: descriptor.executionId}) + "\n");} catch {fail();}
@@ -103,11 +118,30 @@ export function createWindowsJobBridgeStart(configuration: WindowsJobBridgeConfi
       }
       return stopPromise;
     };
+    const stopAndConfirm = () => {
+      const stoppedProducer = confirmProducerStop();
+      if (!collection) return stoppedProducer;
+      // The producer's empty job does not contain independently started measurement jobs.
+      // Never release the parent's fence/materialized files while their collection is outstanding.
+      collectionStop ??= stoppedProducer.then(async confirmation => {
+        try {await collection;}
+        catch (error) {
+          if (error instanceof Error && requiresControlledExecutorIntervention(error.message)) throw error;
+          // A settled failure without uncertain ownership still permits confirmed cleanup.
+        }
+        return confirmation;
+      });
+      return collectionStop;
+    };
     const completion = root.promise.then(async () => {
       // The root exiting does not stop descendants. Freeze their writes before collecting evidence.
-      await stopAndConfirm();
+      await confirmProducerStop();
       signal.throwIfAborted();
-      return configuration.collectResult(structuredClone(descriptor), structuredClone(workspace), signal);
+      collection = Promise.resolve().then(() => {
+        signal.throwIfAborted();
+        return configuration.collectResult(structuredClone(descriptor), structuredClone(workspace), signal);
+      });
+      return collection;
     });
     void completion.catch(() => {});
     return {completion, stopAndConfirm};

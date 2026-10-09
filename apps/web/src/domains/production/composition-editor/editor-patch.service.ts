@@ -718,7 +718,9 @@ export function applyCompositionEditorPatches(
       if (clip.source.type !== "PRODUCTION_ASSET" || clip.source.placement === "INTRO") {
         throw new CompositionEditorPatchError("Este clip no admite reemplazo directo de su fuente.");
       }
-      if (clip.sceneId && resolveAvatarAudioLink(next, clip.id).status !== "NONE") {
+      const isProcessedAudioReplacement = clip.kind === "AUDIO"
+        && operation.audioProcessingPreviousAssetId === clip.source.productionAssetId;
+      if (clip.sceneId && resolveAvatarAudioLink(next, clip.id).status !== "NONE" && !isProcessedAudioReplacement) {
         throw new CompositionEditorPatchError("Reemplaza la escena avatar-voz desde su flujo coordinado para conservar la sincronía.");
       }
       const expectedMimePrefix = clip.kind === "AUDIO" ? "audio/" : clip.kind === "VIDEO" ? "video/" : clip.kind === "IMAGE" ? "image/" : null;

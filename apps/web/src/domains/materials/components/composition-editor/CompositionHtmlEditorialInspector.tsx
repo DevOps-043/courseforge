@@ -56,11 +56,25 @@ function ScopedInspector({ scope, clipId, documentHash, host }: {
           const original = view.defaults.find(item => item.elementId === element.elementId);
           const value = override?.operation === "SET_TEXT" ? override.value : override?.operation === "SET_IMAGE" ? override.assetId
             : override?.operation === "SET_THEME" ? override.choiceId : original?.kind === "TEXT" ? original.value
-            : original?.kind === "IMAGE" ? original.assetId : original?.kind === "THEME" ? original.choiceId : null;
+            : override?.operation === "SET_ATTRIBUTE" ? override.value : override?.operation === "SET_VISIBILITY" ? String(override.visible)
+              : original?.kind === "IMAGE" ? original.assetId : original?.kind === "THEME" ? original.choiceId
+                : override?.operation === "SET_SLOT_ORDER" ? override.itemIds.join(" → ") : original?.kind === "ATTRIBUTE" ? original.value
+                  : original?.kind === "VISIBILITY" ? String(original.visible) : original?.kind === "SLOTS" ? original.itemIds.join(" → ")
+                    : override?.operation === "SET_CHART_DATA" ? JSON.stringify(override.dataset)
+                      : original?.kind === "CHART" ? JSON.stringify(original.dataset)
+                        : override?.operation === "SET_STYLE_RANGE" ? String(override.value)
+                          : original?.kind === "RANGE_TOKEN" ? String(original.value) : null;
           return <li key={element.elementId}><p>{element.label} · {element.kind}</p><p className="whitespace-pre-wrap break-words">{value ?? "Sin valor declarado"}</p>
             {element.kind === "TEXT" && <p>Límite de edición: {element.maxCharacters} caracteres.</p>}
+            {element.kind === "TEXT" && element.localePolicy && <p>Idiomas/direcciones: {element.localePolicy.allowedLocales.map(locale => `${locale.language}/${locale.direction}`).join(", ")}.</p>}
             {element.kind === "IMAGE" && <p>Opciones con permiso vigente: {element.allowedAssetIds.filter(id => view.grantedAssetIds.includes(id)).length}.</p>}
             {element.kind === "THEME" && <p>Opciones: {element.allowedChoiceIds.join(", ")}.</p>}
+            {element.kind === "ATTRIBUTE" && <p>Atributo: {element.attributeName}. {element.allowedValues
+              ? `Valores declarados: ${element.allowedValues.join(", ")}.` : `Texto acotado a ${element.maxCharacters} caracteres.`}</p>}
+            {element.kind === "VISIBILITY" && <p>Visibilidad reversible; display visible: {element.visibleDisplay}.</p>}
+            {element.kind === "SLOTS" && <p>Slots repetibles declarados: {element.itemIds.length}. Sin inserción ni movimientos entre contenedores.</p>}
+            {element.kind === "CHART" && <p>Gráfico {element.chart.type}: datos tipados; diseño e identidad fijados por plantilla.</p>}
+            {element.kind === "RANGE_TOKEN" && <p>Token {element.tokenId}: {element.range.minimum}–{element.range.maximum}, paso {element.range.step}.</p>}
           </li>;
         })}
       </ul>

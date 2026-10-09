@@ -43,6 +43,12 @@ test("exact declared tree admits and emits bounded metadata without host paths",
     assert.equal(admitted.receipt.totalBytes, identity.sizeBytes);
     assert.equal(admitted.receipt.manifestSha256, f.configuration.expectedManifestSha256);
     assert.equal(JSON.stringify(admitted.receipt).includes(f.root), false);
+    const measured = await admitted.readFileObservations();
+    assert.deepEqual(measured.files, f.execution.files);
+    assert.equal(JSON.stringify(measured).includes(f.root), false);
+    measured.files.node.sizeBytes++;
+    f.execution.files.node.sha256 = "e".repeat(64);
+    assert.deepEqual((await admitted.readFileObservations()).files.node, identity);
     await admitted.assertUnchanged();
   } finally {await f.cleanup();}
 });
@@ -65,6 +71,7 @@ test("missing, added and altered files reject both admission and post-execution 
       if (mutation === "added") await writeFile(join(f.root, "injected.js"), "unexpected");
       if (mutation === "changed") await writeFile(join(f.root, "lib", "entry.js"), "modified");
       await assert.rejects(admitted.assertUnchanged(), /DEPENDENCY_|CONFORMANCE_FILE_/);
+      await assert.rejects(admitted.readFileObservations(), /DEPENDENCY_|CONFORMANCE_FILE_/);
       await assert.rejects(admitControlledDependencyInventory(f.configuration, f.execution), /DEPENDENCY_|CONFORMANCE_FILE_/);
     } finally {await f.cleanup();}
   }

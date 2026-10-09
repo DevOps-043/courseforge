@@ -1,6 +1,9 @@
 "use client";
 
 import { COMPOSITION_CANVAS_FORMATS, resolveCompositionCanvasFormat } from "@/domains/production/composition-editor/composition-canvas-format";
+import { createHtmlEditingPreviewSession } from "@/domains/production/composition-editor/composition-html-editing-preview-channel.contract";
+import { buildHtmlEditingPreviewPageUrl, createHtmlEditingPreviewHost, isHtmlEditingPreviewPageUrl } from "@/domains/production/composition-editor/composition-html-editing-preview-host.client";
+import { resolveHtmlEditingPublishedPreviewRevision } from "@/domains/production/composition-editor/composition-html-editing-preview-selection";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
@@ -350,6 +353,21 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const previewRuntimeBaseHashRef = useRef<string | null>(null);
   const previewReloadRequestRef = useRef(0);
   const previewGenerationRef = useRef(0);
+  const htmlPreviewHostRef = useRef<ReturnType<typeof createHtmlEditingPreviewHost> | null>(null);
+  const htmlBaselineHostRef = useRef<ReturnType<typeof createHtmlEditingPreviewHost> | null>(null);
+  const htmlPortMessageRef = useRef<((source: Window, message: unknown) => void) | null>(null);
+  const postPreviewMessage = useCallback((message: CompositionPreviewParentCommandInput) => {
+    if (isHtmlEditingPreviewPageUrl(frameRef.current?.src || "")) return htmlPreviewHostRef.current?.send(message) ?? false;
+    const command = createCompositionPreviewParentCommand(message), target = frameRef.current?.contentWindow;
+    if (!command || !target) return false;
+    target.postMessage(command, "*"); return true;
+  }, []);
+  const postComparisonBaselineMessage = useCallback((message: CompositionPreviewParentCommandInput) => {
+    if (isHtmlEditingPreviewPageUrl(comparisonBaselineFrameRef.current?.src || "")) return htmlBaselineHostRef.current?.send(message) ?? false;
+    const command = createCompositionPreviewParentCommand(message), target = comparisonBaselineFrameRef.current?.contentWindow;
+    if (!command || !target) return false;
+    target.postMessage(command, "*"); return true;
+  }, []);
   const failedPreviewGenerationRef = useRef<number | null>(null);
   const previewRuntimeHandshakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRuntimeSignalGenerationRef = useRef<number | null>(null);
@@ -370,6 +388,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const [pendingPreviewMediaIds, setPendingPreviewMediaIds] = useState<string[]>([]);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const advancePreviewGeneration = useCallback(() => {
+    htmlPreviewHostRef.current?.dispose(); htmlPreviewHostRef.current = null;
     runtimePatchCoordinatorRef.current?.dispose();
     if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
     previewRuntimeHandshakeTimerRef.current = null;
@@ -386,6 +405,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const [previewDirty, setPreviewDirty] = useState(false);
   const [comparisonActive, setComparisonActive] = useState(false);
   const [comparisonBaselineHash, setComparisonBaselineHash] = useState<string | null>(null);
+  const [comparisonBaselineHasHtml, setComparisonBaselineHasHtml] = useState(false);
+  const [comparisonBaselineHtmlRevisionId, setComparisonBaselineHtmlRevisionId] = useState<string | undefined>(undefined);
   const [comparisonBaselineLoading, setComparisonBaselineLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [previewLoadErrorCode, setPreviewLoadErrorCode] = useState<CompositionPreviewLoadErrorCode | null>(null);
@@ -419,8 +440,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
         previewRuntimeHandshakeTimerRef.current = null;
         const pauseCommand = createCompositionPreviewParentCommand({ type: "courseforge-composition-pause" });
-        frameRef.current?.contentWindow?.postMessage(pauseCommand, "*");
-        comparisonBaselineFrameRef.current?.contentWindow?.postMessage(pauseCommand, "*");
+        if (pauseCommand) { postPreviewMessage(pauseCommand); postComparisonBaselineMessage(pauseCommand); }
         previewReadyRef.current = presentation.ready;
         setAudioMeterMessage(null);
         autoPlayAfterPreviewRefreshRef.current = false;
@@ -490,10 +510,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     previewReadyRef.current = false;
     pendingPreviewRestoreSecondsRef.current = playheadSecondsRef.current;
     pendingSeekSecondsRef.current = null;
-    frameRef.current?.contentWindow?.postMessage(
-      createCompositionPreviewParentCommand({ type: "courseforge-composition-pause" }),
-      "*",
-    );
+    postPreviewMessage({ type: "courseforge-composition-pause" });
     setPlaying(false);
     setPreviewReady(false);
     setPreviewMediaState("PREPARING");
@@ -968,10 +985,12 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     return () => { executeEditorShortcutRef.current = null; window.removeEventListener("keydown", onKeyDown); };
   }, []);
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
+    const onMessage = (event: MessageEvent, fromPrivatePort = false) => {
       const isCurrentFrame = event.source === frameRef.current?.contentWindow;
       const isComparisonBaselineFrame = event.source === comparisonBaselineFrameRef.current?.contentWindow;
       if (!isCurrentFrame && !isComparisonBaselineFrame) return;
+      if (!fromPrivatePort && ((isCurrentFrame && isHtmlEditingPreviewPageUrl(frameRef.current?.src || ""))
+        || (isComparisonBaselineFrame && isHtmlEditingPreviewPageUrl(comparisonBaselineFrameRef.current?.src || "")))) return;
       const message = parseCompositionPreviewIframeMessage(event.data);
       if (!message) return;
       if (message.type === "courseforge-composition-shortcut") {
@@ -988,7 +1007,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         generation: previewGenerationRef.current,
         failedGeneration: failedPreviewGenerationRef.current,
         message,
-        strictSync: isCurrentFrame && COMPOSITION_PREVIEW_SYNC_V2_ENABLED && !presetPreview && !agentProposal,
+        strictSync: isCurrentFrame && (COMPOSITION_PREVIEW_SYNC_V2_ENABLED || isHtmlEditingPreviewPageUrl(frameRef.current?.src || "")) && !presetPreview && !agentProposal,
       });
       if (!messageDecision.accept) {
         if (messageDecision.outcome) previewTelemetryRef.current?.record({
@@ -999,7 +1018,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         });
         return;
       }
-      if (messageDecision.runtimeSignal) {
+      if (messageDecision.runtimeSignal && isCurrentFrame) {
         previewRuntimeSignalGenerationRef.current = previewGenerationRef.current;
         if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
         previewRuntimeHandshakeTimerRef.current = null;
@@ -1233,8 +1252,10 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         }
       }
     };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    htmlPortMessageRef.current = (source, message) => onMessage(new MessageEvent("message", { source, data: message }), true);
+    const onWindowMessage = (event: MessageEvent) => onMessage(event);
+    window.addEventListener("message", onWindowMessage);
+    return () => { htmlPortMessageRef.current = null; window.removeEventListener("message", onWindowMessage); };
   }, [agentProposal, commitTerminalPreviewFailure, comparisonActive, gridVisible, payload, playing, presetPreview, snapEnabled]);
 
   const duration = payload?.document.canvas.durationSeconds || 0;
@@ -1242,18 +1263,36 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const durationSourceLabel = payload?.document.canvas.durationSource
     ? DURATION_SOURCE_LABELS[payload.document.canvas.durationSource]
     : null;
+  const hasHtmlEditing = Boolean(payload?.document.htmlEditing?.items.length);
+  const htmlSavedRevisionId = resolveHtmlEditingPublishedPreviewRevision({
+    documentHash: previewDocumentHash, activeRevisionId: assembly?.revisionId ?? null, snapshots: snapshotHistory,
+  });
+  const htmlSavedSession = useMemo(() => hasHtmlEditing && previewDocumentHash
+    ? createHtmlEditingPreviewSession(previewDocumentHash, previewRefreshKey) : null,
+  [hasHtmlEditing, previewDocumentHash, previewRefreshKey]);
   const savedPreviewUrl = useMemo(() => {
     if (!payload || !previewDocumentHash) return null;
+    if (htmlSavedSession) return buildHtmlEditingPreviewPageUrl(draftId, htmlSavedSession, htmlSavedRevisionId);
     return buildCompositionSavedPreviewUrl({
       draftId,
       documentHash: previewDocumentHash,
       refreshKey: previewRefreshKey,
       strictSyncEnabled: COMPOSITION_PREVIEW_SYNC_V2_ENABLED,
     });
-  }, [draftId, payload, previewDocumentHash, previewRefreshKey]);
+  }, [draftId, payload, previewDocumentHash, previewRefreshKey, htmlSavedSession, htmlSavedRevisionId]);
   const comparisonBaselineUrl = useMemo(() => comparisonBaselineHash
-    ? buildCompositionComparisonPreviewUrl({ draftId, documentHash: comparisonBaselineHash })
-    : null, [comparisonBaselineHash, draftId]);
+    ? comparisonBaselineHasHtml
+      ? buildHtmlEditingPreviewPageUrl(draftId, createHtmlEditingPreviewSession(comparisonBaselineHash, 0), comparisonBaselineHtmlRevisionId)
+      : buildCompositionComparisonPreviewUrl({ draftId, documentHash: comparisonBaselineHash })
+    : null, [comparisonBaselineHash, draftId, comparisonBaselineHasHtml, comparisonBaselineHtmlRevisionId]);
+  // Pin the owner before navigation, not at load: a delayed response must not
+  // acquire the identity of a user/tenant selected while the page was loading.
+  const htmlSavedOwner = useMemo(() => ({ url: savedPreviewUrl,
+    actorId: useAuthStore.getState().user?.id,
+    organizationId: useOrganizationStore.getState().activeOrganizationId }), [savedPreviewUrl]);
+  const htmlBaselineOwner = useMemo(() => ({ url: comparisonBaselineUrl,
+    actorId: useAuthStore.getState().user?.id,
+    organizationId: useOrganizationStore.getState().activeOrganizationId }), [comparisonBaselineUrl]);
   const previewUrl = presetPreview
     ? `/api/production/hyperframes/drafts/${draftId}/preset-applications/${presetPreview.applicationId}/preview`
     : agentProposal
@@ -1276,6 +1315,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     commitTerminalPreviewFailure({ message, outcome: syncOutcome });
   };
   const onPreviewFrameLoad = () => {
+    if (savedPreviewUrl && previewUrl === savedPreviewUrl && isHtmlEditingPreviewPageUrl(savedPreviewUrl)) connectHtmlPreviewFrame(false);
     if (!COMPOSITION_PREVIEW_SYNC_V2_ENABLED || !savedPreviewUrl || previewUrl !== savedPreviewUrl
       || previewRuntimeSignalGenerationRef.current === previewGenerationRef.current) return;
     if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
@@ -1287,12 +1327,55 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const onPreviewFrameError = () => {
     if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
     previewRuntimeHandshakeTimerRef.current = null;
+    if (isHtmlEditingPreviewPageUrl(previewUrl || "")) {
+      htmlPreviewHostRef.current?.dispose();
+      commitTerminalPreviewFailure({ outcome: "PREVIEW_IFRAME_ERROR", message: "No se pudo cargar el preview HTML. Reintenta cargarlo." });
+      return;
+    }
     reportPreviewNavigationFailure("PREVIEW_IFRAME_ERROR", "No se pudo navegar al preview. Comprueba tu conexión y reintenta.");
   };
   useEffect(() => () => {
+    htmlPreviewHostRef.current?.dispose(); htmlPreviewHostRef.current = null;
     if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
     previewRuntimeHandshakeTimerRef.current = null;
   }, [previewUrl]);
+  useEffect(() => () => { htmlBaselineHostRef.current?.dispose(); htmlBaselineHostRef.current = null; }, [comparisonBaselineUrl]);
+  const connectHtmlPreviewFrame = (baseline: boolean) => {
+    const iframe = baseline ? comparisonBaselineFrameRef.current : frameRef.current;
+    const url = baseline ? comparisonBaselineUrl : savedPreviewUrl;
+    const holder = baseline ? htmlBaselineHostRef : htmlPreviewHostRef;
+    if (!iframe?.contentWindow || !url || !isHtmlEditingPreviewPageUrl(url)) return;
+    if (iframe.src !== new URL(url, window.location.origin).href) return;
+    if (holder.current?.getState().connected && !holder.current.getState().disposed) return;
+    const target = iframe.contentWindow, query = new URL(url, window.location.origin).searchParams;
+    const { actorId, organizationId } = baseline ? htmlBaselineOwner : htmlSavedOwner;
+    const isCurrentOwner = () => Boolean(actorId && organizationId) && useAuthStore.getState().user?.id === actorId
+      && useOrganizationStore.getState().activeOrganizationId === organizationId;
+    holder.current?.dispose();
+    const host = createHtmlEditingPreviewHost({ session: { version: 1, documentHash: query.get("documentHash")!,
+      previewGeneration: Number(query.get("r")), nonce: query.get("nonce")! },
+      resources: { documentId: draftId, audience: window.location.origin, revisionId: query.get("revisionId") ?? undefined },
+      onRuntimeSignal: () => {
+        if (holder.current !== host || baseline) return;
+        previewRuntimeSignalGenerationRef.current = Number(query.get("r"));
+        if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
+        previewRuntimeHandshakeTimerRef.current = null;
+      },
+      isCurrentOwner,
+      subscribeOwner: onChange => {
+        const unsubscribeAuth = useAuthStore.subscribe(onChange);
+        const unsubscribeOrganization = useOrganizationStore.subscribe(onChange);
+        return () => { unsubscribeAuth(); unsubscribeOrganization(); };
+      },
+      onEvent: message => { if (holder.current === host) htmlPortMessageRef.current?.(target, message); },
+      onFailure: () => { if (holder.current !== host) return;
+        iframe.src = "about:blank";
+        if (baseline) { comparisonBaselineReadyRef.current = false; setComparisonBaselineLoading(false);
+          setPlaybackError("El canal de comparación HTML se cerró. Vuelve a abrir la comparación."); }
+        else commitTerminalPreviewFailure({ message: "El canal del preview HTML se cerró. Reintenta cargarlo.", outcome: "PREVIEW_LOADED_NO_RUNTIME" });
+      } });
+    holder.current = host; host.connect(target);
+  };
   useEffect(() => {
     comparisonBaselineReadyRef.current = false;
     if (comparisonBaselineUrl) setComparisonBaselineLoading(true);
@@ -1360,18 +1443,6 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           ? "Cambios pendientes"
           : null;
 
-  const postPreviewMessage = useCallback((message: CompositionPreviewParentCommandInput) => {
-    const command = createCompositionPreviewParentCommand(message);
-    if (!command) return false;
-    frameRef.current?.contentWindow?.postMessage(command, "*");
-    return true;
-  }, []);
-  const postComparisonBaselineMessage = useCallback((message: CompositionPreviewParentCommandInput) => {
-    const command = createCompositionPreviewParentCommand(message);
-    if (!command) return false;
-    comparisonBaselineFrameRef.current?.contentWindow?.postMessage(command, "*");
-    return true;
-  }, []);
   const stopNarrativeRangePreview = useCallback(() => {
     if (!narrativeRangePlaybackRef.current) return;
     narrativeRangePlaybackRef.current = null;
@@ -1652,6 +1723,10 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     if (!currentPayload || saving) return;
     comparisonBaselineReadyRef.current = false;
     setComparisonBaselineHash(currentPayload.documentHash);
+    setComparisonBaselineHasHtml(Boolean(currentPayload.document.htmlEditing?.items.length));
+    setComparisonBaselineHtmlRevisionId(resolveHtmlEditingPublishedPreviewRevision({
+      documentHash: currentPayload.documentHash, activeRevisionId: assembly?.revisionId ?? null, snapshots: snapshotHistory,
+    }));
     setComparisonBaselineLoading(true);
     setComparisonActive(true);
     setLibraryOpen(false);
@@ -3559,6 +3634,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
             onBeginScrub={beginScrub}
             onFrameError={onPreviewFrameError}
             onFrameLoad={onPreviewFrameLoad}
+            onBaselineFrameLoad={() => connectHtmlPreviewFrame(true)}
             onPlaySelectedAnimation={playSelectedAnimation}
             onRefreshDocument={() => refreshPreviewDocument(false)}
             onRefreshMedia={refreshPreviewMedia}

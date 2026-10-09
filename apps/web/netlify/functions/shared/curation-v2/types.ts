@@ -48,6 +48,7 @@ export interface CurationCandidate {
 }
 
 export interface CurationLesson {
+  topics?: string[];
   lesson_id: string;
   lesson_title: string;
   lesson_objective: string;

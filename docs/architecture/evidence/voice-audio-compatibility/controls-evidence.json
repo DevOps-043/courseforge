@@ -1,0 +1,51 @@
+{
+  "controls": "passed",
+  "requests": [
+    {
+      "method": "GET",
+      "sourceAssetId": "f81d4fae-7dec-4a08-bd4b-5d2b2b6d0c44",
+      "jobId": null
+    },
+    {
+      "method": "POST",
+      "sourceAssetId": null,
+      "jobId": null,
+      "body": {
+        "componentId": "4fbcd2af-f3ea-42cd-95fe-f822d201273d",
+        "profileId": "voice-course-v1",
+        "sourceAssetId": "f81d4fae-7dec-4a08-bd4b-5d2b2b6d0c44",
+        "retryFailed": false
+      }
+    },
+    {
+      "method": "GET",
+      "sourceAssetId": "f81d4fae-7dec-4a08-bd4b-5d2b2b6d0c44",
+      "jobId": "91ee2ece-eb0e-4273-a727-c8c731a83b89"
+    },
+    {
+      "method": "GET",
+      "sourceAssetId": "18335cbe-52e0-4ef7-94e2-6a4e2cd4f296",
+      "jobId": null
+    },
+    {
+      "method": "GET",
+      "sourceAssetId": "f81d4fae-7dec-4a08-bd4b-5d2b2b6d0c44",
+      "jobId": null
+    },
+    {
+      "method": "GET",
+      "sourceAssetId": "music",
+      "jobId": null
+    }
+  ],
+  "replacements": [
+    {
+      "id": "18335cbe-52e0-4ef7-94e2-6a4e2cd4f296",
+      "duration": 6.375
+    },
+    {
+      "id": "f81d4fae-7dec-4a08-bd4b-5d2b2b6d0c44",
+      "duration": 6.375
+    }
+  ]
+}

@@ -55,7 +55,7 @@ export async function pinSdrFrameSequence(input: FrameGeometry & {directory: str
     const path = join(root, frameName(index));
     const file = await lstat(path);
     if (file.nlink !== 1) throw new Error("SDR_FRAME_SEQUENCE_LINK_INVALID");
-    const pin = await pinConformanceFile(path, SDR_FRAME_SEQUENCE_LIMITS.pngBytes);
+    const pin = await pinConformanceFile(path, SDR_FRAME_SEQUENCE_LIMITS.pngBytes, false, input.signal);
     totalBytes += pin.sizeBytes;
     if (totalBytes > SDR_FRAME_SEQUENCE_LIMITS.totalBytes) throw new Error("SDR_FRAME_SEQUENCE_BYTE_LIMIT");
     let readBytes = 0; const chunks: Buffer[] = [];
@@ -75,7 +75,7 @@ export async function pinSdrFrameSequence(input: FrameGeometry & {directory: str
       || metadata.depth !== "uchar" || metadata.orientation && metadata.orientation !== 1)
       throw new Error("SDR_FRAME_SEQUENCE_PROFILE_INVALID");
     if (metadata.hasAlpha && !(await image.stats()).isOpaque) throw new Error("SDR_FRAME_SEQUENCE_ALPHA_UNSUPPORTED");
-    await assertConformanceFileUnchanged(path, pin, SDR_FRAME_SEQUENCE_LIMITS.pngBytes);
+    await assertConformanceFileUnchanged(path, pin, SDR_FRAME_SEQUENCE_LIMITS.pngBytes, false, input.signal);
     assertConformanceJobActive(input.signal);
     pins.push(Object.freeze(pin)); digest.update(JSON.stringify([index, pin.sha256, pin.sizeBytes]));
   }
@@ -95,7 +95,7 @@ export async function assertSdrFrameSequenceUnchanged(summary: SequenceSummary, 
     assertConformanceJobActive(signal);
     const path = join(owned.root, frameName(index));
     if ((await lstat(path)).nlink !== 1) throw new Error("SDR_FRAME_SEQUENCE_LINK_INVALID");
-    await assertConformanceFileUnchanged(path, owned.pins[index]!, SDR_FRAME_SEQUENCE_LIMITS.pngBytes);
+    await assertConformanceFileUnchanged(path, owned.pins[index]!, SDR_FRAME_SEQUENCE_LIMITS.pngBytes, false, signal);
   }
   if (await assertExactDirectory(owned.root, owned.geometry, signal) !== owned.identity) throw new Error("SDR_FRAME_SEQUENCE_CHANGED");
   assertConformanceJobActive(signal);

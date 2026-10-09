@@ -2,7 +2,9 @@ import {mkdir, writeFile} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {resolve, relative, isAbsolute, sep, join} from "node:path";
 import {renderMaterializedProducer} from "./controlled-materialized-producer.mjs";
-import {decodeMaterializedProducerRequest, materializedProducerOutputPaths, materializedProducerRequestDigest} from "./materialized-producer-request.mjs";
+import {loadAdmittedObservedProducer} from "./admitted-observed-producer.mjs";
+import {decodeMaterializedProducerRequest, materializedProducerOutputPaths, materializedProducerRequestDigest,
+  isObservedMaterializedRequest, materializedExecutionDigest} from "./materialized-producer-request.mjs";
 
 /** Must run inside the admitted owned process. This is not a standalone sandbox or collector. */
 export async function runMaterializedProducer(encoded, ports = {}) {
@@ -18,19 +20,37 @@ export async function runMaterializedProducer(encoded, ports = {}) {
     HYPERFRAMES_FFMPEG_PATH: request.encoderPath, HYPERFRAMES_FFPROBE_PATH: request.probePath,
     PRODUCER_HEADLESS_SHELL_PATH: request.browserPath, PRODUCER_VERIFY_HYPERFRAME_RUNTIME: "true"});
   try {
-    const producer = ports.producer ?? await import("@hyperframes/producer");
+    const signal = ports.signal ?? new AbortController().signal;
+    if (!(signal instanceof AbortSignal)) throw new Error();
+    signal.throwIfAborted();
+    // This binding is host-only, deliberately absent from the bounded job/request schema.
+    const observed = Object.hasOwn(ports, "observedInstallation");
+    if (isObservedMaterializedRequest(request) !== observed
+      || observed && request.renderExecutionSha256 !== materializedExecutionDigest(ports.observedInstallation?.execution)) throw new Error();
+    if (observed && Object.hasOwn(ports, "producer")) throw new Error();
+    const admitted = observed ? await loadAdmittedObservedProducer({...ports.observedInstallation, signal,
+      nativePaths: {browser: request.browserPath, encoder: request.encoderPath, decoder: request.probePath}},
+      ports.observedLoaderPorts ?? {}) : undefined;
+    const producer = admitted?.producer ?? ports.producer ?? await import("@hyperframes/producer");
+    const beforeFiles = await admitted?.readFileObservations();
     // Full defaults from the admitted SDK, not resolveConfig() with caller env fallbacks.
     if (!producer.DEFAULT_CONFIG || typeof producer.DEFAULT_CONFIG !== "object") throw new Error();
     await (ports.mkdir ?? mkdir)(output.directory, {recursive: false, mode: 0o700});
     const candidate = await renderMaterializedProducer({directory: request.directory,
       entryPath: join(request.directory, "index.html"), outputPath: output.videoPath, fps: request.fps,
       producerConfig: {...structuredClone(producer.DEFAULT_CONFIG), chromePath: request.browserPath},
-      signal: new AbortController().signal}, {producer});
+      signal}, admitted ? {producer, observer: admitted.observer} : {producer});
+    await admitted?.assertUnchanged();
+    signal.throwIfAborted();
     const receipt = {version: 1, scope: "CANDIDATE_VIDEO_NOT_CONFORMANCE", requestSha256: materializedProducerRequestDigest(request),
       executionId: request.executionId, organizationId: request.organizationId, revisionId: request.revisionId,
       documentHash: request.documentHash, projectHash: request.projectHash, candidate};
     await (ports.writeFile ?? writeFile)(output.receiptPath, JSON.stringify(receipt), {flag: "wx", mode: 0o600});
-    return receipt;
+    signal.throwIfAborted();
+    const fileObservations = await admitted?.readFileObservations();
+    if (JSON.stringify(beforeFiles) !== JSON.stringify(fileObservations)) throw new Error();
+    // Runtime return only: the bounded candidate file remains unchanged and is not an observation.
+    return {...receipt, ...(fileObservations ? {fileObservations} : {})};
   } catch {throw new Error("CONTROLLED_RENDER_PRODUCER_PROCESS_FAILED");}
 }
 

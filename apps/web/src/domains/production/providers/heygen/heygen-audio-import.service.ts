@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { resolveImportedAudioFormat } from "../../audio-processing/audio-source-format";
 import { PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS } from "../../media-storage.config";
 import {
   PRODUCTION_ASSET_TYPES,
@@ -203,7 +204,7 @@ export class HeygenAudioImportService {
     if (error) throw error;
 
     const matches = (data || [])
-      .filter((entry) => entry.name === `${objectPrefix}mp3` || entry.name === `${objectPrefix}wav`)
+      .filter((entry) => ["mp3", "wav", "m4a", "aac"].some((extension) => entry.name === `${objectPrefix}${extension}`))
       .sort((left, right) => String(right.updated_at || right.created_at || "")
         .localeCompare(String(left.updated_at || left.created_at || "")));
     const stored = matches[0];
@@ -220,11 +221,14 @@ export class HeygenAudioImportService {
       .from(HEYGEN_VIDEO_STORAGE_BUCKET)
       .download(objectPath);
     if (downloadError) throw downloadError;
+    if (!blob || blob.size > HEYGEN_MAX_AUDIO_IMPORT_SIZE_BYTES) {
+      throw new Error("La voz almacenada de HeyGen excede el limite de importacion.");
+    }
     const buffer = Buffer.from(await blob.arrayBuffer());
     if (buffer.byteLength > HEYGEN_MAX_AUDIO_IMPORT_SIZE_BYTES) {
       throw new Error("La voz almacenada de HeyGen excede el limite de importacion.");
     }
-    const mimeType = stored.name.endsWith(".wav") ? "audio/wav" : "audio/mpeg";
+    const { contentType: mimeType } = resolveImportedAudioFormat("application/octet-stream", buffer);
     const { data: { publicUrl } } = this.supabase.storage
       .from(HEYGEN_VIDEO_STORAGE_BUCKET)
       .getPublicUrl(objectPath);
@@ -313,26 +317,26 @@ export function assertSafeHeygenAudioUrl(rawUrl: string) {
 }
 
 export async function downloadHeygenAudioWithLimits(params: { fetchImpl?: typeof fetch; url: string }) {
+  assertSafeHeygenAudioUrl(params.url);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), HEYGEN_AUDIO_IMPORT_TIMEOUT_MS);
   try {
     const response = await (params.fetchImpl || fetch)(params.url, {
-      headers: { Accept: "audio/mpeg,audio/wav,audio/x-wav,application/octet-stream" },
+      headers: { Accept: "audio/mpeg,audio/wav,audio/mp4,audio/aac,application/octet-stream" },
       redirect: "error",
       signal: controller.signal,
     });
     if (!response.ok) throw new Error("No se pudo descargar la voz generada por HeyGen.");
-    const contentType = normalizeAudioContentType(response.headers.get("content-type"), params.url);
     const declaredLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(declaredLength) && declaredLength > HEYGEN_MAX_AUDIO_IMPORT_SIZE_BYTES) {
       throw new Error("La voz de HeyGen excede el limite de importacion.");
     }
     const buffer = await readBodyWithLimit(response);
+    const format = resolveImportedAudioFormat(response.headers.get("content-type"), buffer);
     return {
       buffer,
       checksum: createHash("sha256").update(buffer).digest("hex"),
-      contentType,
-      extension: contentType === "audio/mpeg" ? "mp3" as const : "wav" as const,
+      ...format,
     };
   } finally {
     clearTimeout(timeout);
@@ -362,16 +366,6 @@ async function readBodyWithLimit(response: Response) {
     chunks.push(value);
   }
   return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), totalBytes);
-}
-
-function normalizeAudioContentType(header: string | null, url: string) {
-  const contentType = (header || "").split(";", 1)[0]!.trim().toLowerCase();
-  if (contentType === "audio/mpeg" || contentType === "audio/mp3") return "audio/mpeg";
-  if (["audio/wav", "audio/x-wav", "audio/wave"].includes(contentType)) return "audio/wav";
-  if (contentType === "application/octet-stream") {
-    return url.toLowerCase().includes(".wav") ? "audio/wav" : "audio/mpeg";
-  }
-  throw new Error("HeyGen devolvio un archivo de voz con MIME type no permitido.");
 }
 
 function buildContextFromJob(job: HeygenProductionJobRow) {

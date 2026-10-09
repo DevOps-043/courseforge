@@ -88,6 +88,75 @@ test("authorized render materialization compiles separate render entry with pinn
   } finally {await f.close();}
 });
 
+test("measurement plan preserves authorized native source and isolates executor mutations", async () => {
+  const f = await fixture();
+  try {
+    const workspace = await materializeControlledRenderRevision(f.input);
+    try {
+      const plan = await workspace.readMeasurementPlan();
+      assert.equal(plan.scope, "AUTHORIZED_MATERIALIZED_SOURCE_NOT_CAPTURE_EVIDENCE");
+      assert.equal(plan.organizationId, f.input.organizationId);
+      assert.equal(plan.revisionId, f.input.revisionId);
+      assert.equal(plan.documentHash, hashCompositionDocument(plan.document));
+      assert.deepEqual(plan.contract, f.input.expected.contract);
+      assert.equal(plan.contractSha256, sha256(JSON.stringify(plan.contract)));
+      assert.deepEqual(plan.fonts, []);
+      assert.deepEqual(plan.files, workspace.receipt.files);
+      const original = structuredClone(plan);
+      plan.document.clips.length = 0;
+      plan.fonts.length = 0;
+      plan.files[0].sha256 = "f".repeat(64);
+      plan.contract.thresholds.maxMeanAbsoluteError = 2;
+      assert.deepEqual(await workspace.readMeasurementPlan(), original);
+      await writeFile(join(workspace.directory, "font-manifest.json"), "[{}]");
+      await assert.rejects(workspace.readMeasurementPlan(), /CONFORMANCE_FILE_INTEGRITY_MISMATCH/);
+    } finally {await workspace.cleanup();}
+  } finally {await f.close();}
+});
+
+test("operational process reads host-pinned plan and rejects source or plan drift", async () => {
+  const tools = join(process.cwd(), "apps/web/tools/controlled-hyperframes");
+  // This test build lowers import() to require(); use a filesystem path, not a file URL.
+  const {readMaterializedMeasurementPlan} = await import(join(tools, "materialized-measurement-plan.mjs"));
+  const {MATERIALIZED_MEASUREMENT_REQUEST_POLICY, materializedExecutionDigest} = await import(join(tools, "materialized-producer-request.mjs"));
+  const f = await fixture();
+  try {
+    const workspace = await materializeControlledRenderRevision(f.input);
+    try {
+      assert.equal(f.input.expected.contract.schemaVersion, 4);
+      if (f.input.expected.contract.schemaVersion !== 4) throw new Error("fixture requires v4");
+      const request = {policy: MATERIALIZED_MEASUREMENT_REQUEST_POLICY, directory: workspace.directory,
+        organizationId: f.input.organizationId, revisionId: f.input.revisionId, ...f.input.expected,
+        fps: f.input.expected.contract.canvas.fps,
+        renderExecutionSha256: materializedExecutionDigest(f.input.expected.contract.renderExecution),
+        measurementPlanSha256: workspace.measurementPlanReference.sha256,
+        measurementPlanSizeBytes: workspace.measurementPlanReference.sizeBytes};
+      const signal = new AbortController().signal;
+      const read = await readMaterializedMeasurementPlan(request, signal);
+      assert.deepEqual(read.plan, await workspace.readMeasurementPlan());
+      read.plan.files[0].sha256 = "f".repeat(64);
+      await read.assertUnchanged();
+      await assert.rejects(readMaterializedMeasurementPlan({...request, revisionId: id(99)}, signal), /MEASUREMENT_PLAN_INVALID/);
+      await assert.rejects(readMaterializedMeasurementPlan({...request, measurementPlanSha256: "f".repeat(64)}, signal), /MEASUREMENT_PLAN_INVALID/);
+      await writeFile(workspace.entryPath, "changed render entry");
+      await assert.rejects(read.assertUnchanged(), /CONFORMANCE_FILE_INTEGRITY_MISMATCH/);
+      await assert.rejects(readMaterializedMeasurementPlan(request, signal), /MEASUREMENT_PLAN_INVALID/);
+    } finally {await workspace.cleanup();}
+  } finally {await f.close();}
+});
+
+test("host revalidates measurement plan bytes, not only its in-memory snapshot", async () => {
+  const f = await fixture();
+  try {
+    const workspace = await materializeControlledRenderRevision(f.input);
+    try {
+      await writeFile(join(workspace.directory, "controlled-measurement-plan.json"), "{}");
+      await assert.rejects(workspace.readMeasurementPlan(), /CONFORMANCE_FILE_INTEGRITY_MISMATCH/);
+      await assert.rejects(workspace.assertUnchanged(), /CONFORMANCE_FILE_INTEGRITY_MISMATCH/);
+    } finally {await workspace.cleanup();}
+  } finally {await f.close();}
+});
+
 test("controlled deck admission allows only exact materialized resources and local SVG fragments", () => {
   const document = policyDocument();
   const clip = document.clips[0];
@@ -169,6 +238,34 @@ test("materialized supervisor adapter rechecks source after renderer before hand
     }});
     await assert.rejects(renderer({...f.input.expected,organizationId:f.input.organizationId,revisionId:f.input.revisionId,executionId:id(5)}),
       /CONFORMANCE_FILE_INTEGRITY_MISMATCH/);
+  } finally {await f.close();}
+});
+
+test("executor receives the complete native measurement plan and a live file verifier", async () => {
+  const f = await fixture();
+  try {
+    let calls = 0;
+    const renderer = createMaterializedControlledRenderer({storage: f.input, execute: async (descriptor, workspace, _signal, controls) => {
+      calls++;
+      assert.ok(workspace.measurementPlan);
+      assert.ok(controls);
+      assert.deepEqual(structuredClone(workspace), workspace);
+      assert.equal(workspace.measurementPlan.documentHash, descriptor.documentHash);
+      assert.deepEqual(workspace.measurementPlan.contract, descriptor.contract);
+      assert.equal(workspace.measurementPlan.documentHash, hashCompositionDocument(workspace.measurementPlan.document));
+      assert.deepEqual(workspace.measurementPlan.files, workspace.receipt.files);
+      await controls.verifyMeasurementFiles();
+      // A received snapshot cannot alter materialization's authority or pins.
+      workspace.measurementPlan.files[0].sha256 = "f".repeat(64);
+      workspace.measurementPlan.document.clips.length = 0;
+      await controls.verifyMeasurementFiles();
+      await writeFile(join(workspace.directory, "composition-document.json"), "{}");
+      await controls.verifyMeasurementFiles();
+      throw new Error("must not reach after input mutation");
+    }});
+    await assert.rejects(renderer({...f.input.expected, organizationId: f.input.organizationId,
+      revisionId: f.input.revisionId, executionId: id(5)}), /CONFORMANCE_FILE_INTEGRITY_MISMATCH/);
+    assert.equal(calls, 1);
   } finally {await f.close();}
 });
 

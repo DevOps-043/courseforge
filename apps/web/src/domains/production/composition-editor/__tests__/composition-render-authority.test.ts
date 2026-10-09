@@ -20,6 +20,17 @@ import {prepareCompositionEventBatchContracts} from "../composition-conformance-
 import {buildControlledEventComparisonArtifacts} from "../qa/composition-controlled-event-comparison-artifacts";
 import {CompositionRenderCheckpointStore} from "../qa/composition-render-checkpoint-store";
 import {parseControlledRenderCheckpoint} from "../qa/composition-render-checkpoint";
+import {recoverConformanceRenderEvidence} from "../qa/composition-conformance-render-evidence";
+import {executeConformanceJob} from "../qa/composition-conformance-job-execution";
+import {evaluateCompositionConformance, compositionConformanceContractSchema} from "../composition-preview-render-conformance";
+import {AUDIO_TIMING_POLICY, AUDIO_RMS_WINDOW_POLICY} from "../qa/composition-audio-conformance-policy";
+import {bindControlledReferenceSelection} from "../qa/composition-controlled-reference-selection";
+import {bindConformanceReferenceReservation} from "../qa/composition-conformance-reference-reservation";
+import {audioTimingReport} from "../qa/composition-exported-audio-timing";
+import {evaluateExportedAudioLoudness} from "../qa/composition-exported-audio-loudness";
+import {durableConformanceReportSchema, processConformanceJob} from "../qa/composition-conformance-job-worker";
+import {CompositionConformanceRenderReservationService} from "../qa/composition-conformance-render-reservation.service";
+import {createReservedConformanceWorkerHost} from "../qa/composition-reserved-conformance-worker-host";
 
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -80,7 +91,8 @@ function uploader(input: Awaited<ReturnType<typeof fixture>>) {
     "https://project.supabase.co", fetchImpl, () => input.state.clockMilliseconds)};
 }
 
-function supervisor(input: Awaited<ReturnType<typeof fixture>>, render?: ControlledSupervisorRenderer, key = pair.privateKey,workerLeaseToken?:string) {
+function supervisor(input: Awaited<ReturnType<typeof fixture>>, render?: ControlledSupervisorRenderer, key = pair.privateKey,workerLeaseToken?:string,
+  defer?: ConstructorParameters<typeof CompositionRenderSupervisorService>[7]) {
   const upload = uploader(input);
   let renderCalls = 0;
   const service = new CompositionRenderSupervisorService(input.supabase,"https://project.supabase.co",key,
@@ -91,7 +103,7 @@ function supervisor(input: Awaited<ReturnType<typeof fixture>>, render?: Control
       if (workerLeaseToken) assert.equal(JSON.stringify(descriptor).includes(workerLeaseToken),false);
       assert.equal("key" in descriptor, false);
       return render ? render(descriptor,signal) : {videoPath: input.videoPath, artifacts: input.admit.artifacts};
-    }, upload.fetchImpl, () => input.state.clockMilliseconds,workerLeaseToken);
+    }, upload.fetchImpl, () => input.state.clockMilliseconds,workerLeaseToken,defer);
   const issue = {organizationId: input.scope.organizationId, requestId: input.scope.requestId,
     issuanceId: id(7), supervisorId: input.context.supervisorId, keyId: input.context.keyId, contract: input.context.contract};
   return {service, upload, issue, renderCalls: () => renderCalls};
@@ -246,6 +258,73 @@ test("checkpoint publication failure cancels unconsumed authority without starti
     assert.equal(input.state.cancelled,true);
     assert.equal(input.calls.some(call => call.name === "consume_composition_render_execution"),false);
     assert.deepEqual(host.upload.state.requests,[]);
+  } finally {await input.close();}
+});
+
+test("deferred conformance handoff requires persisted checkpoint and exact references before admission", async () => {
+  const input = await fixture();
+  let staged = 0;
+  try {
+    const host = supervisor(input, undefined, pair.privateKey, undefined, async () => {staged++;});
+    await assert.rejects(host.service.execute(host.issue), /CHECKPOINT_RESERVATION_REQUIRED/);
+    assert.equal(staged, 0); assert.equal(input.state.receipt, null); assert.equal(input.state.cancelled, true);
+    assert.deepEqual(host.upload.state.requests, []);
+    await assert.rejects(host.service.resume({...input.admit, scope: input.recoveryScope}), /CHECKPOINT_RESERVATION_REQUIRED/);
+  } finally {await input.close();}
+});
+
+test("deferred conformance lost ACK preserves consumed checkpoint and resume stages without rerender", async () => {
+  const input = await fixture(), local = await journal(input);
+  let staged = 0, loseAck = true;
+  const referenceSelection = bindControlledReferenceSelection({organizationId: input.context.organizationId,
+    revisionId: input.context.revisionId, executionId: input.context.executionId, documentHash: input.context.documentHash,
+    projectHash: input.context.projectHash, contract: input.context.contract}, [{batchIndex: 0, visualChecksum: "e".repeat(64)}]);
+  try {
+    const host = supervisor(input, async () => ({videoPath: input.videoPath, artifacts: input.admit.artifacts, referenceSelection}),
+      pair.privateKey, undefined, async (checkpoint, signal) => {
+        staged++; assert.ok(input.state.receipt); assert.equal(input.state.receiptHash, digest(checkpoint.supervisorReceipt));
+        assert.deepEqual(host.upload.state.requests, []); assert.ok(!signal?.aborted);
+        assert.deepEqual(checkpoint.referenceSelection, referenceSelection);
+        // Callback mutation cannot affect uploader or retained checkpoint.
+        checkpoint.videoPath = "mutated trusted callback copy";
+        if (loseAck) throw new Error("private DB failure");
+      });
+    await assert.rejects(host.service.execute(host.issue, undefined, checkpoint => local.store.save(checkpoint)),
+      {message: "RENDER_SUPERVISOR_CHECKPOINT_RESERVATION_UNCONFIRMED"});
+    assert.equal(input.state.cancelled, false); assert.equal(staged, 1);
+    const checkpoint = await local.store.read(input.recoveryScope); loseAck = false;
+    assert.equal((await host.service.resumeCheckpoint(checkpoint, input.recoveryScope)).assetId, id(80));
+    assert.equal(staged, 2); assert.equal(host.renderCalls(), 1);
+    assert.equal(input.calls.filter(call => call.name === "issue_composition_render_execution").length, 1);
+    assert.equal(input.calls.filter(call => call.name === "consume_composition_render_execution").length, 1);
+  } finally {await local.close(); await input.close();}
+});
+
+test("deferred conformance transport omits job IDs, leases and local paths and requires exact write ACK", async () => {
+  const input = await fixture();
+  try {
+    const referenceSelection = bindControlledReferenceSelection({organizationId: input.context.organizationId,
+      revisionId: input.context.revisionId, executionId: input.context.executionId, documentHash: input.context.documentHash,
+      projectHash: input.context.projectHash, contract: input.context.contract}, [{batchIndex: 0, visualChecksum: "e".repeat(64)}]);
+    const checkpoint = parseControlledRenderCheckpoint({version: 1, scope: input.recoveryScope, leaseToken: input.scope.leaseToken,
+      supervisorReceipt: input.supervisorReceipt, videoPath: input.videoPath, artifacts: input.admit.artifacts, referenceSelection}, input.recoveryScope);
+    let wrongAck = false, calls = 0;
+    const client = {rpc(name: string, args: any) {
+      assert.equal(name, "stage_hyperframes_conformance_render_reservation"); calls++;
+      const payload = JSON.parse(args.p_reservation_text);
+      assert.equal(payload.policy, "EXACT_RENDER_RESERVATION_OUTBOX_V1");
+      assert.equal("jobId" in payload, false); assert.equal("leaseToken" in payload, false); assert.equal("videoPath" in payload, false);
+      assert.equal(args.p_reservation_sha256, createHash("sha256").update(args.p_reservation_text).digest("hex"));
+      return {abortSignal: (signal: AbortSignal) => {assert.ok(signal instanceof AbortSignal);
+        return Promise.resolve({data: wrongAck ? "a".repeat(64) : args.p_reservation_sha256, error: null});}};
+    }} as unknown as SupabaseClient<any, any, any>;
+    const service = new CompositionConformanceRenderReservationService(client);
+    await service.defer(checkpoint); wrongAck = true;
+    await assert.rejects(service.defer(checkpoint), /WRITE_UNCONFIRMED/);
+    const abort = new AbortController(); abort.abort();
+    await assert.rejects(service.defer(checkpoint, abort.signal), /EXECUTION_CANCELLED/);
+    assert.equal(calls, 2);
+    await assert.rejects(service.defer({...checkpoint, referenceSelection: undefined}), /REFERENCES_REQUIRED/);
   } finally {await input.close();}
 });
 
@@ -471,7 +550,7 @@ test("controlled finalization refuses external signed URLs and revocation during
   }
 });
 
-async function fixture(bytes = Buffer.from("owned output")) {
+async function fixture(bytes = Buffer.from("owned output"), audibleContract = false) {
   const directory = await mkdtemp(join(tmpdir(), "render-authority-test-")), videoPath = join(directory, "owned.mp4");
   // A filesystem hash fixture, not an actual video/render or codec validation.
   await writeFile(videoPath, bytes, {flag: "wx"});
@@ -483,8 +562,9 @@ async function fixture(bytes = Buffer.from("owned output")) {
     files: Object.fromEntries(["node", "producer", "engine", "runtime", "browser", "encoder", "decoder"]
       .map(role => [role, {sha256: "a".repeat(64), sizeBytes: 10}]))});
   const documentHash = hashCompositionDocument(document);
-  const contract = buildSnapshotConformanceContract({document, documentHash, assets: [], contractVersion: 4,
+  const initialContract = buildSnapshotConformanceContract({document, documentHash, assets: [], contractVersion: 4,
     renderExecution, renderProfile: {format: "mp4", fps: 25, quality: "high", resolution: "1080p"}});
+  const contract = audibleContract ? compositionConformanceContractSchema.parse({...initialContract, audio: {required: true}}) : initialContract;
   const observation = controlledRenderExecutionObservationSchema.parse({policy: renderExecution.policy, documentHash,
     videoSha256, files: renderExecution.files, browserBefore: browser, browserAfter: browser});
   const artifactsInput = {contract, observation, documentHash, videoSha256};
@@ -548,6 +628,234 @@ async function fixture(bytes = Buffer.from("owned output")) {
       revisionId: context.revisionId, productionJobId: context.productionJobId},
     close: async () => {await rm(videoPath, {force: true}); await rmdir(directory);}};
 }
+
+test("conformance admission reuses a consumed signed output without issuing or consuming again", async () => {
+  const input = await fixture();
+  try {
+    await input.service.admit(input.admit);
+    const result = await recoverConformanceRenderEvidence({supabase: input.supabase,
+      reservation: {scope: input.recoveryScope, artifacts: input.admit.artifacts}, jobScope: input.recoveryScope,
+      integrity: {documentHash: input.context.documentHash, checksum: input.payload.binding.videoSha256,
+        sizeBytes: input.payload.binding.sizeBytes}, videoPath: input.videoPath}, () => input.state.clockMilliseconds);
+    assert.equal(result.scope, "CONSUMED_SUPERVISOR_ISSUER_OUTPUT_NOT_ISOLATION_OR_CONFORMANCE");
+    assert.equal(result.supervisorReceiptSha256, digest(input.supervisorReceipt));
+    assert.equal(result.batches[0]!.contractSha256, input.context.contractSha256);
+    assert.deepEqual(result.batches[0]!.receipt.renderExecution, input.admit.artifacts.input.observation);
+    const selection = bindControlledReferenceSelection({organizationId: input.context.organizationId,
+      revisionId: input.context.revisionId, executionId: input.context.executionId,
+      documentHash: input.context.documentHash, projectHash: input.context.projectHash, contract: input.context.contract},
+    [{batchIndex: 0, visualChecksum: "e".repeat(64)}]);
+    const reservation = {scope: input.recoveryScope, artifacts: input.admit.artifacts};
+    assert.deepEqual(bindConformanceReferenceReservation(reservation, result, selection).selection, selection);
+    assert.throws(() => bindConformanceReferenceReservation(reservation, result,
+      {...selection, executionId: id(99)}), /RESERVATION_MISMATCH/);
+    const checkpoint = parseControlledRenderCheckpoint({version: 1, scope: input.recoveryScope,
+      leaseToken: input.scope.leaseToken, supervisorReceipt: input.supervisorReceipt,
+      videoPath: input.videoPath, artifacts: input.admit.artifacts, referenceSelection: selection}, input.recoveryScope);
+    assert.deepEqual(checkpoint.referenceSelection, selection);
+    assert.throws(() => parseControlledRenderCheckpoint({...checkpoint,
+      referenceSelection: {...selection, projectHash: "f".repeat(64)}}, input.recoveryScope), /CHECKPOINT_INVALID/);
+    assert.equal(input.calls.filter(call => call.name === "consume_composition_render_execution").length, 1);
+    assert.equal(input.calls.some(call => call.name === "issue_composition_render_execution"), false);
+  } finally {await input.close();}
+});
+
+test("conformance admission rejects foreign scope, changed hash, revocation, absent admission and forged evidence", async () => {
+  for (const failure of ["scope", "hash", "revoke", "unconsumed", "observation", "signature"] as const) {
+    const input = await fixture();
+    try {
+      if (failure !== "unconsumed") await input.service.admit(input.admit);
+      if (failure === "revoke") input.context.key.revoked = true;
+      const artifacts = structuredClone(input.admit.artifacts);
+      if (failure === "observation") artifacts.input.observation.browserAfter.product = "Other/test";
+      if (failure === "signature") {
+        input.state.receipt!.signature = (input.state.receipt!.signature.startsWith("A") ? "B" : "A")
+          + input.state.receipt!.signature.slice(1);
+        input.state.receiptHash = digest(input.state.receipt);
+      }
+      await assert.rejects(recoverConformanceRenderEvidence({supabase: input.supabase,
+        reservation: {scope: input.recoveryScope, artifacts},
+        jobScope: {...input.recoveryScope, ...(failure === "scope" ? {requestId: id(98)} : {})},
+        integrity: {documentHash: input.context.documentHash, checksum: failure === "hash" ? "f".repeat(64) : input.payload.binding.videoSha256,
+          sizeBytes: input.payload.binding.sizeBytes}, videoPath: input.videoPath}, () => input.state.clockMilliseconds),
+      /SCOPE_MISMATCH|INTEGRITY_MISMATCH|ISSUER_UNAUTHORIZED|RECOVERY_UNAVAILABLE|EXECUTION_MISMATCH|SIGNATURE_INVALID/);
+    } finally {await input.close();}
+  }
+});
+
+test("durable worker writes original authenticated receipt before root comparison and cleans owned files on rejection", async () => {
+  const input = await fixture();
+  let directory = "", comparisons = 0;
+  try {
+    await input.service.admit(input.admit);
+    const integrity = {assetId: id(80), checksum: input.payload.binding.videoSha256,
+      documentHash: input.context.documentHash, sizeBytes: input.payload.binding.sizeBytes, status: "MATCH" as const};
+    const evidence = {
+      visual: async () => ({documentHash: input.context.documentHash, projectHash: input.context.projectHash,
+        organizationId: input.context.organizationId, revisionId: input.context.revisionId, checksum: "e".repeat(64)}),
+      audio: async () => ({checksum: "d".repeat(64)}),
+      compare: async (params: {renderReceiptPath: string; expectedContractSha256: string; expectedRenderReceiptSha256: string}) => {
+        comparisons++;
+        const receipt = JSON.parse(await readFile(params.renderReceiptPath, "utf8"));
+        assert.deepEqual(receipt.renderExecution, input.admit.artifacts.input.observation);
+        assert.equal(params.expectedContractSha256, input.context.contractSha256);
+        assert.equal(params.expectedRenderReceiptSha256, digest(receipt));
+        throw new Error("CONFORMANCE_JOB_TEST_COMPARISON_REJECTED_INVALID");
+      },
+      events: async () => {throw new Error("Must not measure events after rejection");},
+    } as unknown as NonNullable<Parameters<typeof executeConformanceJob>[2]>;
+    await assert.rejects(executeConformanceJob({claim: {id: id(95), organization_id: input.context.organizationId,
+      request_id: input.context.requestId, revision_id: input.context.revisionId, lease_token: id(96), attempts: 1},
+      supabase: input.supabase, supabaseUrl: "https://project.supabase.co", ffmpegPath: "not-executed",
+      processPorts: {} as never, controlledRenderEvidence: {scope: input.recoveryScope, artifacts: input.admit.artifacts}}, {
+      snapshot: async (params) => {directory = dirname(params.destinationPath);
+        await writeFile(params.destinationPath, await readFile(input.videoPath), {flag: "wx"}); return integrity;},
+      recheck: async () => {throw new Error("Must not recheck after rejection");},
+    }, evidence), /TEST_COMPARISON_REJECTED_INVALID/);
+    assert.equal(comparisons, 1);
+    await assert.rejects(readdir(directory), /ENOENT/);
+  } finally {await input.close();}
+});
+
+test("durable admitted route preserves incomplete measurements and rechecks issuer revocation before reporting", async () => {
+  for (const route of ["CHECKPOINT", "DURABLE"] as const)
+  for (const audible of [true, false]) for (const revokeDuringComparison of [false, true]) {
+    const input = await fixture(undefined, audible); let directory = "";
+    try {
+      await input.service.admit(input.admit);
+      const integrity = {assetId: id(80), checksum: input.payload.binding.videoSha256,
+        documentHash: input.context.documentHash, sizeBytes: input.payload.binding.sizeBytes, status: "MATCH" as const};
+      const reference = {documentHash: input.context.documentHash, projectHash: input.context.projectHash,
+        organizationId: input.context.organizationId, revisionId: input.context.revisionId, checksum: "e".repeat(64)};
+      const referenceSelection = bindControlledReferenceSelection({organizationId: input.context.organizationId,
+        revisionId: input.context.revisionId, executionId: input.context.executionId,
+        documentHash: input.context.documentHash, projectHash: input.context.projectHash, contract: input.context.contract},
+      [{batchIndex: 0, visualChecksum: reference.checksum, ...(audible ? {audioChecksum: "d".repeat(64)} : {})}]);
+      const checkpoint = parseControlledRenderCheckpoint({version: 1, scope: input.recoveryScope,
+        leaseToken: input.scope.leaseToken, supervisorReceipt: input.supervisorReceipt,
+        videoPath: input.videoPath, artifacts: input.admit.artifacts, referenceSelection}, input.recoveryScope);
+      let checkpointReads = 0;
+      const claim = {id: id(95), organization_id: input.context.organizationId, request_id: input.context.requestId,
+        revision_id: input.context.revisionId, lease_token: id(96), attempts: 1};
+      let storedText = "", storedSha256 = "", reservationReads = 0;
+      const registryClient = {rpc: (name: string, args: Record<string, unknown>) => {
+        let response: {data: unknown; error: null};
+        if (name === "register_hyperframes_conformance_render_reservation") {
+          const bytes = String(args.p_reservation_text), sha256 = String(args.p_reservation_sha256);
+          assert.equal(storedText === "" || storedText === bytes, true);
+          storedText = bytes; storedSha256 = sha256;
+          response = {data: sha256, error: null};
+        } else if (name === "read_hyperframes_conformance_render_reservation") {
+          assert.equal(args.p_job_id, claim.id); assert.equal(args.p_lease_token, claim.lease_token);
+          reservationReads++;
+          response = {data: {reservationText: storedText, sha256: storedSha256}, error: null};
+        } else return input.supabase.rpc(name, args);
+        const request = Promise.resolve(response);
+        return Object.assign(request, {abortSignal: (signal: AbortSignal) => {assert.equal(signal.aborted, false); return request;}});
+      }} as unknown as SupabaseClient<any, any, any>;
+      if (route === "DURABLE") {
+        const registry = new CompositionConformanceRenderReservationService(registryClient);
+        await registry.publish(claim, checkpoint);
+        await registry.publish(claim, checkpoint);
+        assert.equal(storedText.includes(input.videoPath), false);
+        assert.equal(storedText.includes('"leaseToken"'), false);
+        assert.equal(storedText.includes('"videoPath"'), false);
+      }
+      const local = buildControlledComparisonArtifacts(input.admit.artifacts.input);
+      // No fabricated measured samples: real evaluator must preserve their explicit incompleteness.
+      const visual = {...evaluateCompositionConformance({contract: input.context.contract,
+        previewDocumentHash: input.context.documentHash, renderDocumentHash: input.context.documentHash, samples: []}), renderExecution: local.execution};
+      const evidence = {
+        visual: async () => {throw new Error("Reserved reference must not be recaptured");},
+        audio: async () => {throw new Error("Reserved audio must not be regenerated");}, events: async () => null,
+        compare: async (params: {checksum: string; audioChecksum: string}) => {
+          assert.equal(audible, true);
+          assert.equal(params.checksum, reference.checksum);
+          assert.equal(params.audioChecksum, "d".repeat(64));
+          if (revokeDuringComparison) input.context.key.revoked = true;
+          return {reference: {...reference, contract: input.context.contract}, audioReference: {checksum: "d".repeat(64)},
+            report: {reportVersion: 2, documentHash: input.context.documentHash, status: "INCOMPLETE", visual,
+              video: {sha256: integrity.checksum, sizeBytes: integrity.sizeBytes},
+              audioTiming: {status: "INCOMPLETE", method: "STEREO_ENERGY_ENVELOPE_STREAM_V3", policy: AUDIO_TIMING_POLICY,
+                rms: {status: "INCOMPLETE", policy: AUDIO_RMS_WINDOW_POLICY}}}};
+        },
+        compareSilent: async (params: {checksum: string}) => {
+          assert.equal(audible, false);
+          assert.equal(params.checksum, reference.checksum);
+          assert.equal("audioChecksum" in params, false);
+          if (revokeDuringComparison) input.context.key.revoked = true;
+          return {reference: {...reference, contract: input.context.contract},
+            report: {reportVersion: 2, documentHash: input.context.documentHash, status: "INCOMPLETE", visual,
+              video: {sha256: integrity.checksum, sizeBytes: integrity.sizeBytes, hasAudio: false},
+              audioStatus: "NOT_REQUIRED", audioLoudness: evaluateExportedAudioLoudness(null),
+              audioTiming: audioTimingReport("NOT_REQUESTED")}};
+        },
+      } as unknown as NonNullable<Parameters<typeof executeConformanceJob>[2]>;
+      const integrityAdapters: Parameters<typeof executeConformanceJob>[1] = {
+        snapshot: async (params) => {directory = dirname(params.destinationPath);
+          await writeFile(params.destinationPath, await readFile(input.videoPath), {flag: "wx"}); return integrity;},
+        recheck: async () => integrity,
+      };
+      const run = (enableSilentDurableReports = !audible) => route === "DURABLE"
+        ? createReservedConformanceWorkerHost({supabase: registryClient, supabaseUrl: "https://project.supabase.co",
+          ffmpegPath: "not-executed", enableSilentDurableReports, integrity: integrityAdapters, evidence,
+          resolveProcessPorts: reservation => {
+            assert.equal(reservation.scope.executionId, input.context.executionId);
+            return {pixelDecoderPath: join(tmpdir(), "not-executed-decoder"), probePath: join(tmpdir(), "not-executed-probe"),
+              execute: async () => {throw new Error("Unexpected decoder");},
+              consumePcm: async () => {throw new Error("Unexpected PCM");}};
+          }})(claim, new AbortController().signal)
+        : executeConformanceJob({claim,
+        supabase: input.supabase, supabaseUrl: "https://project.supabase.co", ffmpegPath: "not-executed", processPorts: {} as never,
+        enableSilentDurableReports,
+        checkpointReservation: {scope: input.recoveryScope, store: {read: async scope => {
+          assert.deepEqual(scope, input.recoveryScope);
+          checkpointReads++;
+          return structuredClone(checkpoint);
+        }}}}, integrityAdapters, evidence);
+      if (!audible) await assert.rejects(run(false), /SILENT_RESERVED_REPORT_UNSUPPORTED/);
+      if (revokeDuringComparison) await assert.rejects(run(), /RENDER_EVIDENCE_ADMISSION_FAILED/);
+      else {
+        const result = await run();
+        assert.equal(result.status, "INCOMPLETE");
+        assert.equal(result.renderEvidence?.supervisorReceiptSha256, digest(input.supervisorReceipt));
+        assert.deepEqual(result.referenceSelection, referenceSelection);
+        assert.equal(result.reportVersion, audible ? 1 : 2);
+        if (route === "DURABLE") {
+          assert.equal(result.reservationEvidence?.sha256, storedSha256);
+          assert.equal(result.reservationEvidence?.executionId, input.context.executionId);
+        }
+        if (!audible) {
+          assert.equal(result.references.audioChecksum, undefined);
+          assert.equal(result.audioExpectation?.contractSha256, input.context.contractSha256);
+          for (const invalid of [
+            {...result, reportVersion: 1}, {...result, renderEvidence: undefined},
+            {...result, referenceSelection: undefined}, {...result, audioExpectation: undefined},
+            {...result, audioExpectation: {...result.audioExpectation, contractSha256: "f".repeat(64)}},
+            {...result, references: {...result.references, audioChecksum: "f".repeat(64)}},
+            {...result, comparison: {...result.comparison, video: {...result.comparison.video, hasAudio: true}}},
+            {...result, status: "PASS", comparison: {...result.comparison, status: "PASS"}},
+          ]) assert.equal(durableConformanceReportSchema.safeParse(invalid).success, false);
+          let writes = 0;
+          const queue = {rpc: async (name: string, args?: Record<string, unknown>) => {
+            if (name === "claim_hyperframes_conformance_job") return {data: [{id: id(95),
+              organization_id: input.context.organizationId, request_id: input.context.requestId,
+              revision_id: input.context.revisionId, lease_token: id(96), attempts: 1}], error: null};
+            assert.equal(name, "finish_hyperframes_conformance_job");
+            assert.deepEqual(args?.p_report, result);
+            writes++;
+            return {data: true, error: null};
+          }} as unknown as SupabaseClient<any, any, any>;
+          assert.equal((await processConformanceJob(queue, async () => result)).status, "SUCCEEDED");
+          assert.equal(writes, 1);
+        }
+      }
+      assert.equal(checkpointReads, route === "CHECKPOINT" ? audible ? 1 : 2 : 0);
+      assert.equal(reservationReads, route === "DURABLE" ? audible ? 1 : 2 : 0);
+      await assert.rejects(readdir(directory), /ENOENT/);
+    } finally {await input.close();}
+  }
+});
 
 test("authority issues against the supplied frozen contract and rejects foreign context", async () => {
   const input = await fixture();

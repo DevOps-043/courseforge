@@ -18,6 +18,52 @@ const ORGANIZATION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const READY_EFFECT_ID = "11111111-1111-4111-8111-111111111111";
 const NOT_READY_EFFECT_ID = "22222222-2222-4222-8222-222222222222";
 
+test("links verified processed voice and restores the original while protecting paired scenes", async () => {
+  const originalId = "33333333-3333-4333-8333-333333333333";
+  const processedId = "44444444-4444-4444-8444-444444444444";
+  const componentId = "55555555-5555-4555-8555-555555555555";
+  let document = createInitialCompositionDocument({ animatedDeck: null, assets: [
+    { checksum: "a".repeat(64), durationSeconds: 8, fileSizeBytes: 42, mimeType: "audio/mpeg", productionAssetId: originalId,
+      publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/voice.mp3", timelineRole: "VOICE", sceneClipId: "scene-1", sceneOrder: 1 },
+    { checksum: "b".repeat(64), durationSeconds: 8, fileSizeBytes: 42, mimeType: "video/mp4", productionAssetId: READY_EFFECT_ID,
+      publicUrl: null, storageBucket: "production-assets", storagePath: "production-assets/avatar.mp4", timelineRole: "AVATAR", sceneClipId: "scene-1", sceneOrder: 1 },
+  ], plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Voz procesada" } });
+  const voice = document.clips.find((clip) => clip.kind === "AUDIO")!;
+  const linkedIds = new Set([originalId]);
+  const original = { id: originalId, asset_type: "SOURCE_MEDIA", provider: "manual", material_component_id: componentId,
+    checksum: "a".repeat(64), file_size_bytes: 42, mime_type: "audio/mpeg", duration_milliseconds: 8000, duration_seconds: 8,
+    metadata: { has_audio: true }, qa_status: "READY_FOR_QA", storage_bucket: "production-assets", storage_path: "voice.mp3" };
+  const processed = { ...original, id: processedId, asset_type: "PROCESSED_AUDIO", provider: "ffmpeg", mime_type: "audio/mp4",
+    metadata: { has_audio: true, source_asset_id: originalId, audio_analysis: { passed: true } }, storage_path: "processed.m4a" };
+  const query = (response: () => unknown) => {
+    const builder = { eq: () => builder, in: () => builder, order: () => builder, limit: () => builder, select: () => builder,
+      maybeSingle: async () => response(), then: (resolve: (value: unknown) => unknown) => resolve(response()),
+      upsert: async (value: { production_asset_id: string }) => { linkedIds.add(value.production_asset_id); return { error: null }; } };
+    return builder;
+  };
+  const supabase = {
+    from: (table: string) => table === "video_composition_draft_assets"
+      ? query(() => ({ data: [...linkedIds].map((id) => ({ production_asset_id: id })), error: null }))
+      : table === "production_assets" ? query(() => ({ data: [original, processed], error: null }))
+        : query(() => ({ data: { document, document_hash: hashCompositionDocument(document), version: 1 }, error: null })),
+    storage: { from: () => ({ info: async () => ({ data: { size: 42 }, error: null }) }) },
+    rpc: (_name: string, parameters: { p_document: typeof document }) => {
+      document = parameters.p_document;
+      return { retry: () => ({ data: [{ document_hash: hashCompositionDocument(document), outcome: "APPENDED", version: 2 }], error: null }) };
+    },
+  };
+  const replace = (assetId: string) => applyAndAppendCompositionDocumentPatches({ draftId: DRAFT_ID, expectedDocumentHash: hashCompositionDocument(document),
+    organizationId: ORGANIZATION_ID, supabase: supabase as never, userId: READY_EFFECT_ID,
+    patch: { source: "USER", summary: "Cambió la voz.", operations: [{ type: "clip.replace-source", clipId: voice.id, productionAssetId: assetId, mimeType: "audio/mp4" }] } });
+  await replace(processedId);
+  assert.equal(linkedIds.has(processedId), true);
+  assert.equal(document.clips.find((clip) => clip.id === voice.id)?.source.type, "PRODUCTION_ASSET");
+  await replace(originalId);
+  assert.deepEqual(document.clips.find((clip) => clip.id === voice.id)?.source, { ...voice.source, hasAudio: true });
+  processed.metadata.audio_analysis.passed = false;
+  await assert.rejects(() => replace(processedId), /avatar-voz/);
+});
+
 test("reemplazo rechaza medios sin identidad y límites de entrega verificables", () => {
   const asset = {
     checksum: "a".repeat(64),
@@ -95,7 +141,8 @@ test("reemplazo exige vínculo al borrador y normaliza metadatos desde el regist
     },
   };
   const patch = {
-    operations: [{ clipId: clip.id, productionAssetId: replacementId, mimeType: "audio/mpeg", sourceDurationSeconds: 3600, type: "clip.replace-source" as const }],
+    operations: [{ clipId: clip.id, productionAssetId: replacementId, mimeType: "audio/mpeg", sourceDurationSeconds: 3600,
+      audioProcessingPreviousAssetId: originalId, type: "clip.replace-source" as const }],
     source: "USER" as const,
     summary: "Reemplazó el medio del clip.",
   };
@@ -107,6 +154,7 @@ test("reemplazo exige vínculo al borrador y normaliza metadatos desde el regist
   assert.equal(source?.type, "PRODUCTION_ASSET");
   if (source?.type === "PRODUCTION_ASSET") {
     assert.equal(source.productionAssetId, replacementId);
+    assert.equal(patch.operations[0]?.audioProcessingPreviousAssetId, undefined, "client-supplied treatment provenance must be removed");
     assert.equal(source.hasAudio, true);
     assert.equal(source.sourceWidth, 1920);
   }

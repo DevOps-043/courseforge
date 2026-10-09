@@ -2,7 +2,8 @@ import {createHash} from "node:crypto";
 import {lstat, opendir} from "node:fs/promises";
 import {isAbsolute, join, parse, resolve, sep} from "node:path";
 import {z} from "zod";
-import {controlledExecutionFilesSchema, controlledRenderExecutionContractSchema, type ControlledRenderExecutionContract} from "../composition-render-execution-contract";
+import {controlledExecutionFilesSchema, controlledComparisonToolsSchema, CONTROLLED_COMPARISON_TOOLS_POLICY,
+  controlledRenderExecutionContractSchema, type ControlledRenderExecutionContract} from "../composition-render-execution-contract";
 import {assertConformanceFileUnchanged, pinConformanceFile, type ConformanceFilePin} from "./composition-conformance-file-integrity";
 
 export const CONTROLLED_DEPENDENCY_INVENTORY_POLICY = {
@@ -27,6 +28,7 @@ const manifestSchema = z.object({policy: z.literal(CONTROLLED_DEPENDENCY_INVENTO
   comparisonTools: z.object({pixelDecoder: location, probe: location}).strict().optional(),
 }).strict();
 export type ControlledDependencyManifest = z.infer<typeof manifestSchema>;
+export const controlledDependencyManifestSchema = manifestSchema;
 /** Host-owned configuration; never accept roots or manifests from a composition/upload/job payload. */
 export type ControlledDependencyInventoryConfiguration = {
   manifest: ControlledDependencyManifest; expectedManifestSha256: string; roots: Record<string, string>;
@@ -129,11 +131,11 @@ export async function admitControlledDependencyInventory(configuration: Controll
             if (!expected || observed.has(key)) throw new Error("CONTROLLED_RENDER_DEPENDENCY_FILE_SET_MISMATCH");
             observed.add(key);
             if (initial) {
-              const pin = await pinConformanceFile(absolutePath, CONTROLLED_DEPENDENCY_INVENTORY_POLICY.maximumFileBytes, true);
+              const pin = await pinConformanceFile(absolutePath, CONTROLLED_DEPENDENCY_INVENTORY_POLICY.maximumFileBytes, true, signal);
               if (pin.sha256 !== expected.sha256 || pin.sizeBytes !== expected.sizeBytes)
                 throw new Error("CONTROLLED_RENDER_DEPENDENCY_FILE_MISMATCH");
               pins.set(key, pin);
-            } else await assertConformanceFileUnchanged(absolutePath, pins.get(key)!, CONTROLLED_DEPENDENCY_INVENTORY_POLICY.maximumFileBytes, true);
+            } else await assertConformanceFileUnchanged(absolutePath, pins.get(key)!, CONTROLLED_DEPENDENCY_INVENTORY_POLICY.maximumFileBytes, true, signal);
           }
           await rememberDirectory(directory.path, false);
         }
@@ -148,7 +150,23 @@ export async function admitControlledDependencyInventory(configuration: Controll
     };
     // Re-enumerate after acquisition: mutations during a scan must not become its baseline.
     await assertUnchanged();
-    return {assertUnchanged, receipt: {scope: "DECLARED_TREES_NOT_OS_IMAGE_OR_DYNAMIC_DEPENDENCY_PROOF" as const,
+    const readFileObservations = async () => {
+      await assertUnchanged();
+      const observed = (reference: z.infer<typeof location>) => {
+        const pin = pins.get(fileKey(reference));
+        if (!pin) throw new Error("CONTROLLED_RENDER_DEPENDENCY_ROLE_MISMATCH");
+        return {sha256: pin.sha256, sizeBytes: pin.sizeBytes};
+      };
+      // Source values are measured pins, never the expected contract or manifest identities.
+      const files = controlledExecutionFilesSchema.parse(Object.fromEntries(roleNames.map(role => [role, observed(manifest.roles[role])])));
+      const comparisonTools = manifest.comparisonTools ? controlledComparisonToolsSchema.parse({
+        policy: CONTROLLED_COMPARISON_TOOLS_POLICY, pixelDecoder: observed(manifest.comparisonTools.pixelDecoder),
+        probe: observed(manifest.comparisonTools.probe),
+      }) : undefined;
+      return {scope: "DECLARED_TREES_NOT_OS_IMAGE_OR_DYNAMIC_DEPENDENCY_PROOF" as const,
+        files, ...(comparisonTools ? {comparisonTools} : {})};
+    };
+    return {assertUnchanged, readFileObservations, receipt: {scope: "DECLARED_TREES_NOT_OS_IMAGE_OR_DYNAMIC_DEPENDENCY_PROOF" as const,
       policy: manifest.policy, manifestSha256: digest, fileCount: declared.size,
       totalBytes: manifest.files.reduce((sum, file) => sum + file.sizeBytes, 0)}};
   } catch (error) {throw safeFailure(error, signal);}

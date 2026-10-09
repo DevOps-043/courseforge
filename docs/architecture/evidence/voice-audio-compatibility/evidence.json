@@ -1,0 +1,44 @@
+{
+  "fixture": "synthetic tone, no user data",
+  "ffmpegVersion": "ffmpeg version 9.0-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+  "storage": "fake Supabase; real FFmpeg/ffprobe",
+  "results": [
+    {
+      "format": "mp3",
+      "sourceClassification": "VOICE_AUDIO",
+      "status": "passed",
+      "durationSeconds": 6.4,
+      "durationMilliseconds": 6375,
+      "integratedLufs": -16.01,
+      "truePeakDbtp": -11
+    },
+    {
+      "format": "wav",
+      "sourceClassification": "SOURCE_MEDIA",
+      "status": "passed",
+      "durationSeconds": 6.4,
+      "durationMilliseconds": 6375,
+      "integratedLufs": -15.95,
+      "truePeakDbtp": -10.87
+    },
+    {
+      "format": "m4a",
+      "sourceClassification": "SOURCE_MEDIA",
+      "status": "passed",
+      "durationSeconds": 6.4,
+      "durationMilliseconds": 6375,
+      "integratedLufs": -15.96,
+      "truePeakDbtp": -10.01
+    },
+    {
+      "format": "aac",
+      "sourceClassification": "SOURCE_MEDIA",
+      "status": "passed",
+      "durationSeconds": 6.4,
+      "durationMilliseconds": 6400,
+      "integratedLufs": -15.96,
+      "truePeakDbtp": -10.02
+    }
+  ],
+  "corruptSource": "rejected"
+}

@@ -14,6 +14,7 @@ import type {CompositionCompiledFont} from "../../fonts/organization-font.types"
 import type {ControlledSupervisorRenderer} from "./composition-render-supervisor.service";
 import {pinConformanceFile, assertConformanceFileUnchanged} from "./composition-conformance-file-integrity";
 import {assertControlledDeckSourcesLocal, applyControlledBrowserResourcePolicy} from "./composition-controlled-source-policy";
+import {MATERIALIZED_MEASUREMENT_PLAN_POLICY} from "./composition-materialized-measurement-plan-policy";
 
 type Descriptor = Parameters<ControlledSupervisorRenderer>[0];
 type MaterializationInput = Parameters<typeof materializeAuthorizedConformanceRevision>[0] & {
@@ -119,7 +120,37 @@ export async function materializeControlledRenderRevision(input: Materialization
       input.signal?.throwIfAborted();
     };
     await assertUnchanged();
-    return {directory:reference.directory,entryPath:join(reference.directory,"index.html"),assertUnchanged,cleanup,
+    // Keep an independent frozen source snapshot. Executors receive copies, not
+    // the objects used to authorize recompilation or refresh HTML grants.
+    const measurementPlan = structuredClone({
+      scope: MATERIALIZED_MEASUREMENT_PLAN_POLICY.scope,
+      organizationId: input.organizationId, revisionId: input.revisionId,
+      projectHash: input.expected.projectHash, documentHash: source.metadata.documentHash,
+      contractSha256: digest(source.contract), document: source.document,
+      contract: source.contract, fonts,
+      files: filePins.map(file => ({path: file.relative, sha256: file.pin.sha256, sizeBytes: file.pin.sizeBytes})),
+    });
+    const measurementBytes = JSON.stringify(measurementPlan);
+    if (Buffer.byteLength(measurementBytes) > MATERIALIZED_MEASUREMENT_PLAN_POLICY.maximumBytes)
+      throw new Error("CONTROLLED_RENDER_MEASUREMENT_PLAN_TOO_LARGE");
+    const measurementPath = join(reference.directory, MATERIALIZED_MEASUREMENT_PLAN_POLICY.path);
+    generated.push(measurementPath);
+    await writeFile(measurementPath, measurementBytes, {flag: "wx", mode: 0o600});
+    const measurementPin = await pinConformanceFile(measurementPath, MATERIALIZED_MEASUREMENT_PLAN_POLICY.maximumBytes);
+    const measurementPlanReference = {sha256: measurementPin.sha256, sizeBytes: measurementPin.sizeBytes};
+    const verifyMeasurementPlan = async () => {
+      await assertUnchanged();
+      await assertConformanceFileUnchanged(measurementPath, measurementPin, MATERIALIZED_MEASUREMENT_PLAN_POLICY.maximumBytes);
+      input.signal?.throwIfAborted();
+    };
+    const readMeasurementPlan = async () => {
+      await verifyMeasurementPlan();
+      const snapshot = structuredClone(measurementPlan);
+      input.signal?.throwIfAborted();
+      return snapshot;
+    };
+    return {directory:reference.directory,entryPath:join(reference.directory,"index.html"),assertUnchanged: verifyMeasurementPlan,cleanup,
+      readMeasurementPlan, measurementPlanReference,
       receipt:{scope:"AUTHORIZED_SOURCE_RECOMPILED_NOT_ORIGINAL_RENDER_HTML" as const,
         organizationId:input.organizationId,revisionId:input.revisionId,projectHash:input.expected.projectHash,
         documentHash:source.metadata.documentHash,contractSha256:digest(source.contract),

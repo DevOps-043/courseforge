@@ -38,6 +38,34 @@ test("root failure still drains ownership and never exposes private error detail
   assert.equal(closes, 1);
 });
 
+test("measurement files are verified before start and after confirmed stop, outside cloned workspace", async () => {
+  const events: string[] = [];
+  const execute = createOwnedControlledExecutor({start: (_descriptor, receivedWorkspace) => {
+    assert.deepEqual(structuredClone(receivedWorkspace), workspace);
+    events.push("start");
+    return {completion: Promise.resolve(result), stopAndConfirm: async () => {events.push("stop"); return stopped;}};
+  }});
+  assert.equal(await execute(descriptor, workspace, undefined,
+    {verifyMeasurementFiles: async () => {events.push("verify");}}), result);
+  assert.deepEqual(events, ["verify", "start", "stop", "verify"]);
+});
+
+test("file verification failure never starts a process or publishes a stopped candidate", async () => {
+  for (const failingCheck of [1, 2]) {
+    let checks = 0, starts = 0, stops = 0;
+    const execute = createOwnedControlledExecutor({start: () => {
+      starts++;
+      return {completion: Promise.resolve(result), stopAndConfirm: async () => {stops++; return stopped;}};
+    }});
+    await assert.rejects(execute(descriptor, workspace, undefined, {verifyMeasurementFiles: async () => {
+      if (++checks === failingCheck) throw new Error("CONFORMANCE_FILE_INTEGRITY_MISMATCH");
+    }}));
+    assert.equal(starts, failingCheck - 1);
+    assert.equal(stops, failingCheck - 1);
+    assert.equal(execute.isQuarantined(), false);
+  }
+});
+
 test("pre-abort never acquires ownership or incorrectly reports uncertain termination", async () => {
   const controller = new AbortController(); controller.abort();
   let calls = 0;

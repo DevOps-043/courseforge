@@ -22,9 +22,12 @@ import {controlledRenderExecutionReportSchema} from "../composition-render-execu
 import {controlledSeekRepeatabilityReportSchema} from "../composition-render-seek-policy";
 import { evaluateConformanceJobStatus } from "./composition-conformance-job-status";
 import { eventMeasurementGateSchema, evaluateEventMeasurementGate } from "./composition-event-measurement-gate";
-import { ConformanceStageFailure } from "./composition-conformance-stage-failure";
+import { ConformanceStageFailure, requiresConformanceExecutionRecovery } from "./composition-conformance-stage-failure";
 import {createConformanceJobLease, CONFORMANCE_JOB_LEASE_POLICY, validateConformanceJobLeaseTimers} from "./composition-conformance-job-lease";
 import {assertConformanceAttemptBinding, conformanceAttemptBindingSchema} from "./composition-conformance-attempt-binding";
+import {renderSupervisorBindingSchema} from "../composition-render-supervisor-receipt";
+import {controlledReferenceSelectionSchema} from "./composition-controlled-reference-selection";
+import {assertSilentConformanceAudioReport} from "./composition-silent-conformance-gate";
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 export const conformanceJobClaimSchema = z.object({
@@ -33,13 +36,19 @@ export const conformanceJobClaimSchema = z.object({
 }).strict();
 export type ConformanceJobClaim = z.infer<typeof conformanceJobClaimSchema>;
 export const durableConformanceReportSchema = z.object({
-  reportVersion: z.literal(1), scope: z.literal("REMOTE_INTEGRITY_AND_PERSISTED_CONFORMANCE"),
+  reportVersion: z.union([z.literal(1), z.literal(2)]), scope: z.literal("REMOTE_INTEGRITY_AND_PERSISTED_CONFORMANCE"),
   status: z.enum(["PASS", "FAIL", "INCOMPLETE"]), organizationId: z.string().uuid(), requestId: z.string().uuid(),
   revisionId: z.string().uuid(), integrity: z.object({ assetId: z.string().uuid(), checksum: hash,
     documentHash: hash, sizeBytes: z.number().int().positive().max(2 * 1024 ** 3) }).strict(),
-  references: z.object({ visualChecksum: hash, audioChecksum: hash }).strict(),
+  references: z.object({ visualChecksum: hash, audioChecksum: hash.optional() }).strict(),
+  audioExpectation: z.object({policy: z.literal("FROZEN_NO_AUDIO_TRACK_V1"), contractSha256: hash}).strict().optional(),
+  reservationEvidence: z.object({policy: z.literal("EXACT_JOB_RENDER_RESERVATION_V1"), sha256: hash,
+    executionId: z.string().uuid(), supervisorReceiptSha256: hash}).strict().optional(),
   // Optional only for historical reads. Current worker writes always require a claim binding.
   attemptBinding: conformanceAttemptBindingSchema.optional(),
+  renderEvidence: z.object({scope: z.literal("CONSUMED_SUPERVISOR_ISSUER_OUTPUT_NOT_ISOLATION_OR_CONFORMANCE"),
+    binding: renderSupervisorBindingSchema, supervisorReceiptSha256: hash}).strict().optional(),
+  referenceSelection: controlledReferenceSelectionSchema.optional(),
   eventCheckpointExecution: eventBatchExecutionSummarySchema.optional(),
   eventVisualCoverageGate: eventVisualCoverageGateSchema.optional(),
   eventMeasurementGate: eventMeasurementGateSchema.optional(),
@@ -86,8 +95,8 @@ export const durableConformanceReportSchema = z.object({
         expectedClipCount: z.number().int().nonnegative().max(64), maximumBoundaryErrorUpperBoundMilliseconds: z.number().finite().nonnegative(),
       }).passthrough(),
     }).passthrough().optional(),
-    video: z.object({ sha256: hash, sizeBytes: z.number().int().positive() }).passthrough(),
-    audioTiming: z.object({ status: z.enum(["PASS", "FAIL", "INCOMPLETE", "MEASUREMENT_FAILED"]),
+    video: z.object({ sha256: hash, sizeBytes: z.number().int().positive(), hasAudio: z.boolean().optional() }).passthrough(),
+    audioTiming: z.object({ status: z.enum(["NOT_REQUESTED", "PASS", "FAIL", "INCOMPLETE", "MEASUREMENT_FAILED"]),
       method: z.literal("STEREO_ENERGY_ENVELOPE_STREAM_V3"), policy: z.object({ id: z.literal(AUDIO_TIMING_POLICY.id) }).passthrough(),
       rms: z.object({ status: z.enum(["NOT_REQUESTED", "PASS", "FAIL", "INCOMPLETE"]),
         policy: z.object({ id: z.literal(AUDIO_RMS_WINDOW_POLICY.id) }).passthrough() }).passthrough(),
@@ -95,6 +104,41 @@ export const durableConformanceReportSchema = z.object({
   }).passthrough(),
   limitations: z.array(z.string().max(128)).max(8),
 }).strict().superRefine((report, context) => {
+  const admitted = report.renderEvidence?.binding;
+  const selection = report.referenceSelection;
+  const silent = report.reportVersion === 2;
+  if (report.reservationEvidence && (!admitted || !selection
+    || report.reservationEvidence.executionId !== admitted.executionId
+    || report.reservationEvidence.supervisorReceiptSha256 !== report.renderEvidence?.supervisorReceiptSha256))
+    context.addIssue({code: "custom", message: "CONFORMANCE_JOB_DURABLE_RESERVATION_BINDING_INVALID"});
+  if (silent) {
+    if (!admitted || !selection || !report.audioExpectation
+      || report.audioExpectation.contractSha256 !== admitted.contractSha256
+      || report.references.audioChecksum !== undefined
+      || selection.references.some(reference => reference.audioChecksum !== undefined))
+      context.addIssue({code: "custom", message: "CONFORMANCE_JOB_SILENT_BINDING_INVALID"});
+    try {assertSilentConformanceAudioReport(report.comparison);}
+    catch {context.addIssue({code: "custom", message: "CONFORMANCE_JOB_SILENT_MEASUREMENT_INVALID"});}
+  } else if (!report.references.audioChecksum || report.audioExpectation !== undefined
+    || report.comparison.audioTiming.status === "NOT_REQUESTED") {
+    context.addIssue({code: "custom", message: "CONFORMANCE_JOB_AUDIO_REFERENCE_REQUIRED_INVALID"});
+  }
+  if (selection && (!admitted || selection.organizationId !== admitted.organizationId
+    || selection.revisionId !== admitted.revisionId || selection.executionId !== admitted.executionId
+    || selection.documentHash !== admitted.documentHash || selection.projectHash !== admitted.projectHash
+    || selection.contractSha256 !== admitted.contractSha256
+    || selection.references[0]?.visualChecksum !== report.references.visualChecksum
+    || selection.references[0]?.audioChecksum !== report.references.audioChecksum
+    || (admitted.artifactKind === "SINGLE_CONTRACT" ? selection.references.length !== 1
+      : selection.references.length !== report.eventCheckpointExecution?.requiredBatchCount
+        || report.eventCheckpointExecution?.batches.some((batch, index) => batch.visualReferenceSha256 !== selection.references[index]?.visualChecksum))
+    || selection.references.some((reference, index) => reference.batchIndex !== index)))
+    context.addIssue({code: "custom", message: "CONFORMANCE_JOB_REFERENCE_SELECTION_BINDING_INVALID"});
+  if (admitted && (admitted.organizationId !== report.organizationId || admitted.requestId !== report.requestId
+    || admitted.revisionId !== report.revisionId || admitted.documentHash !== report.integrity.documentHash
+    || admitted.videoSha256 !== report.integrity.checksum || admitted.sizeBytes !== report.integrity.sizeBytes
+    || report.status === "PASS" || !report.comparison.visual?.renderExecution))
+    context.addIssue({code: "custom", message: "CONFORMANCE_JOB_RENDER_EVIDENCE_BINDING_INVALID"});
   const playback = report.comparison.audioPlayback;
   const lag = report.comparison.audioTiming.lagMilliseconds;
   const visual = report.comparison.visual;
@@ -219,7 +263,7 @@ export const durableConformanceReportSchema = z.object({
     || report.status !== expectedStatus || report.comparison.status !== expectedStatus || report.integrity.documentHash !== report.comparison.documentHash
     || report.integrity.checksum !== report.comparison.video.sha256
     || report.integrity.sizeBytes !== report.comparison.video.sizeBytes
-    || (report.status === "PASS" && (report.comparison.audioTiming.status !== "PASS"
+    || (report.status === "PASS" && !silent && (report.comparison.audioTiming.status !== "PASS"
       || report.comparison.audioTiming.rms.status !== "PASS"
       || (report.comparison.audioPlayback !== undefined && (report.comparison.audioPlayback.status !== "PASS"
         || report.comparison.audioPlayback.maximumAvDriftUpperBoundMilliseconds === null
@@ -232,6 +276,7 @@ export const durableConformanceReportSchema = z.object({
 export type DurableConformanceReport = z.infer<typeof durableConformanceReportSchema>;
 export function classifyConformanceJobFailure(error: unknown) {
   if (error instanceof ConformanceStageFailure) return {code: error.errorCode, retryable: error.retryable};
+  if (requiresConformanceExecutionRecovery(error)) return {code: "CONFORMANCE_JOB_EXECUTION_RECOVERY_REQUIRED", retryable: false};
   // Do not persist provider messages, URLs, paths or stack traces.
   const message = error instanceof Error ? error.message : "";
   const permanent = /(?:MISMATCH|INVALID|OVERWRITTEN|UNSUPPORTED|LEGACY|CLIPPING|LIMIT|EXCEEDED)/.test(message);
@@ -269,16 +314,19 @@ export async function processConformanceJob(supabase: SupabaseClient<any, any, a
   } catch (error) { report = null; failure = classifyConformanceJobFailure(error);
     stageFailure = error instanceof ConformanceStageFailure ? error : null; }
   finally {await lease.close();}
-  if (lease.lost) return { status: "LEASE_LOST" as const, jobId: claim.id };
+  if (lease.lost) return { status: "LEASE_LOST" as const, jobId: claim.id,
+    ...(failure?.code.endsWith("RECOVERY_REQUIRED") ? {recoveryRequired: true as const, errorCode: failure.code} : {}) };
   if (lease.signal.aborted && report !== null) {report = null; failure = classifyConformanceJobFailure(new Error("CONFORMANCE_JOB_EXECUTION_CANCELLED"));}
   // A lost finish acknowledgement must not be converted into a second failure write.
   const finished = await supabase.rpc("finish_hyperframes_conformance_job", {
     p_job_id: claim.id, p_lease_token: claim.lease_token, p_report: report,
     p_error_code: failure?.code ?? null, p_retryable: failure?.retryable ?? false,
   });
-  if (finished.error) throw new Error("CONFORMANCE_JOB_FINISH_FAILED");
+  if (finished.error) throw new Error(failure?.code.endsWith("RECOVERY_REQUIRED")
+    ? "CONFORMANCE_JOB_EXECUTION_RECOVERY_REQUIRED" : "CONFORMANCE_JOB_FINISH_FAILED");
   return { status: finished.data !== true ? "LEASE_LOST" as const : failure ? "FAILED_ATTEMPT" as const : "SUCCEEDED" as const,
     jobId: claim.id, requestId: claim.request_id, attempt: claim.attempts,
     conformanceStatus: report?.status ?? null, errorCode: failure?.code ?? null,
+    ...(failure?.code.endsWith("RECOVERY_REQUIRED") ? {recoveryRequired: true as const} : {}),
     ...(stageFailure ? {failureStage: stageFailure.stage, cleanupFailed: stageFailure.cleanupFailed} : {}) };
 }

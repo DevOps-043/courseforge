@@ -3,7 +3,7 @@ import {createHash} from "node:crypto";
 import {mkdtemp, mkdir, writeFile, readdir, rm, rmdir, stat} from "node:fs/promises";
 import sharp from "sharp";
 import {tmpdir} from "node:os";
-import {join} from "node:path";
+import {join, dirname} from "node:path";
 import test from "node:test";
 import {buildSdrFrameEncoderArguments, encodeSdrCapturedFrames, SDR_FRAME_CONVERSION_POLICY} from "../qa/composition-sdr-frame-encoder";
 
@@ -67,6 +67,22 @@ test("failure and late cancellation remove partial output and never fall back to
         if (cancelled) abort.abort("private reason"); else throw new Error("private provider message");
       }), cancelled ? /CONFORMANCE_JOB_EXECUTION_CANCELLED/ : /^Error: SDR_FRAME_ENCODER_FAILED$/);
       assert.equal(calls, 1); assert.deepEqual(await readdir(parent), ["frames", "mock-binary"]);
+    }
+  });
+});
+
+test("owned-worker failure retains its partial video until the owner confirms safe cleanup", async () => {
+  await fixture(async (parent, ffmpegPath, ffmpegSha256) => {
+    let partialPath: string | undefined;
+    try {
+      await assert.rejects(encodeSdrCapturedFrames({profile: fixtureProfile, framesDirectory: join(parent, "frames"),
+        outputParentDirectory: parent, ffmpegPath, ffmpegSha256, ffprobePath: ffmpegPath, ffprobeSha256: ffmpegSha256,
+        timeoutMilliseconds: 1000, retainWorkFilesOnFailure: true}, async (_binary, args) => {
+        partialPath = args.at(-1)!; await writeFile(partialPath, "partial"); throw new Error("fixture failure");
+      }), /SDR_FRAME_ENCODER_FAILED/);
+      assert.ok(partialPath); assert.equal((await stat(partialPath)).size, 7);
+    } finally {
+      if (partialPath) {await rm(partialPath, {force: true}); await rmdir(dirname(partialPath));}
     }
   });
 });

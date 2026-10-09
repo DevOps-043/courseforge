@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { getAudioProcessingProfile } from "./audio-processing-profiles";
 import type { AudioProcessingJobInput, AudioProcessingProfile } from "./audio-processing.types";
+import { AUDIO_SOURCE_MIME_TYPES, resolveAudioStorageSource } from "./audio-source-contract";
 
 const audioSourceSchema = z.object({
   assetId: z.string().uuid(),
   checksum: z.string().trim().min(16).max(256),
-  mimeType: z.enum(["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav"]),
+  mimeType: z.enum(AUDIO_SOURCE_MIME_TYPES),
   storageBucket: z.string().trim().min(1).max(100),
   storagePath: z.string().trim().min(1).max(2_000),
 }).strict();
@@ -56,7 +57,7 @@ export function resolveAudioProcessingWorkerInput(
   return {
     jobId: job.id,
     profile,
-    source: parsed.data.source,
+    source: { ...parsed.data.source, ...resolveAudioStorageSource(parsed.data.source.storageBucket, parsed.data.source.storagePath) },
   };
 }
 

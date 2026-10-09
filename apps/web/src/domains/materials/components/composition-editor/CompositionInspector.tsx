@@ -159,7 +159,9 @@ export function CompositionInspector({ animations, clip, colorGradingStatus, com
           <AudioFadeControls disabled={audioDisabled} fadeInSeconds={fadeInSeconds} fadeOutSeconds={fadeOutSeconds} onFadeInChange={setFadeInSeconds} onFadeOutChange={setFadeOutSeconds} />
           <p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Los fades son no destructivos y se aplican en preview y render. El volumen de la pista continúa funcionando como control maestro.</p>
         </section>
-        {voiceSourceAssetId !== null && <AudioProcessingControls componentId={componentId} disabled={audioDisabled} sourceAssetId={voiceSourceAssetId} sourcePreviewUrl={sourcePreviewUrl} />}
+        {voiceSourceAssetId !== null && <AudioProcessingControls key={`${clip.id}:${voiceSourceAssetId}`} componentId={componentId} disabled={audioDisabled} sourceAssetId={voiceSourceAssetId} sourcePreviewUrl={sourcePreviewUrl}
+          onReplaceAudio={(assetId, sourceDurationSeconds) => onPatch([{ type: "clip.replace-source", clipId: clip.id,
+            productionAssetId: assetId, mimeType: "audio/mp4", sourceDurationSeconds, hasAudio: true }], `Cambió el tratamiento de voz de ${clip.label} conservando sus ediciones.`)} />}
         {validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={audioDisabled} onClick={() => void saveAudioChanges()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={13} /> Guardar audio</button>

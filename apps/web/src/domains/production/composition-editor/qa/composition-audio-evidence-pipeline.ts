@@ -4,6 +4,7 @@ import { persistAudioConformanceEvidence } from "./composition-audio-evidence-pe
 import { audioEvidenceHashSchema } from "./composition-audio-evidence-contract";
 import { createMaterializedPlaybackAudioReference } from "./composition-materialized-playback-audio";
 import {assertConformanceJobActive} from "./composition-conformance-job-lease";
+import {requiresConformanceExecutionRecovery} from "./composition-conformance-stage-failure";
 
 const defaultDependencies = { materialize: materializeAuthorizedConformanceRevision, createAudio: createMaterializedAudioReference,
   persist: persistAudioConformanceEvidence };
@@ -16,6 +17,7 @@ export async function prepareAndPersistAudioConformanceReference(
   audioEvidenceHashSchema.parse(params.visualChecksum);
   let materialized: Awaited<ReturnType<typeof materializeAuthorizedConformanceRevision>> | null = null;
   let audio: {directory: string; cleanup: () => Promise<void>} | null = null;
+  let recoveryRequired = false;
   try {
     assertConformanceJobActive(params.signal);
     materialized = await dependencies.materialize(params);
@@ -26,11 +28,16 @@ export async function prepareAndPersistAudioConformanceReference(
     assertConformanceJobActive(params.signal);
     const persisted = await dependencies.persist({ ...params, audioDirectory: audio.directory });
     assertConformanceJobActive(params.signal); return persisted;
+  } catch (error) {
+    recoveryRequired = requiresConformanceExecutionRecovery(error);
+    throw error;
   } finally {
-    const cleanups = await Promise.allSettled([
-      ...(audio ? [Promise.resolve().then(() => audio!.cleanup())] : []),
-      ...(materialized ? [Promise.resolve().then(() => materialized!.cleanup())] : []),
-    ]);
-    if (cleanups.some((result) => result.status === "rejected")) throw new Error("AUDIO_EVIDENCE_PIPELINE_CLEANUP_FAILED");
+    if (!recoveryRequired) {
+      const cleanups = await Promise.allSettled([
+        ...(audio ? [Promise.resolve().then(() => audio!.cleanup())] : []),
+        ...(materialized ? [Promise.resolve().then(() => materialized!.cleanup())] : []),
+      ]);
+      if (cleanups.some((result) => result.status === "rejected")) throw new Error("AUDIO_EVIDENCE_PIPELINE_CLEANUP_FAILED");
+    }
   }
 }

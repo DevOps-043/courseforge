@@ -1,7 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$NodePath)
 $ErrorActionPreference = 'Stop'
 if (-not ('Courseforge.ControlledRender.OwnedRenderJob' -as [type])) {
-  Add-Type -Path (Join-Path $PSScriptRoot 'OwnedRenderJob.cs')
+  Add-Type -Path @((Join-Path $PSScriptRoot 'OwnedRenderJob.cs'), (Join-Path $PSScriptRoot 'OwnedRenderAccess.cs'), (Join-Path $PSScriptRoot 'OwnedRenderAppContainer.cs'))
 }
 $fixturePath = Join-Path $PSScriptRoot 'job-fixture.mjs'
 $taskParent = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\..\..\.tmp'))

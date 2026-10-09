@@ -1,7 +1,11 @@
 import {
   HTML_EDITING_LIMITS, htmlEditableManifestSchema, htmlEditingBindingSchema,
-  htmlEditingCommandSchema, type HtmlEditableManifest, type HtmlEditingBinding, type HtmlEditingCommand,
+  htmlEditingCommandSchema, isHtmlEditingDeclaredAttributeValue, isHtmlEditingSlotPermutation,
+  type HtmlEditableManifest, type HtmlEditingBinding, type HtmlEditingCommand,
 } from "./html-editing.contract";
+import { mergeHtmlEditingChartDataset } from "./html-editing-chart.contract";
+import { isHtmlEditingStyleRangeValue } from "./html-editing-style-range.contract";
+import { htmlEditingTextLocalesMatch } from "./html-editing-text-locale.contract";
 
 export type HtmlEditingRejectionCode = "INVALID_JSON" | "PAYLOAD_LIMIT" | "INVALID_MANIFEST"
   | "INVALID_COMMAND" | "STALE_BINDING" | "UNKNOWN_ELEMENT" | "PROPERTY_NOT_DECLARED"
@@ -15,7 +19,14 @@ export class HtmlEditingValidationError extends Error {
   }
 }
 
-const OPERATION_PROPERTY = { SET_TEXT: "TEXT", SET_IMAGE: "IMAGE", SET_THEME: "THEME" } as const;
+const OPERATION_PROPERTY = { SET_TEXT: "TEXT", SET_IMAGE: "IMAGE", SET_THEME: "THEME",
+  SET_ATTRIBUTE: "ATTRIBUTE", SET_VISIBILITY: "VISIBILITY", SET_SLOT_ORDER: "SLOTS", SET_CHART_DATA: "CHART", SET_STYLE_RANGE: "RANGE_TOKEN" } as const;
+
+export function validateHtmlEditingAttributeValue(element: Extract<HtmlEditableManifest["elements"][number], { kind: "ATTRIBUTE" }>, value: string) {
+  if (!isHtmlEditingDeclaredAttributeValue(element, value)) {
+    throw new HtmlEditingValidationError("VALUE_NOT_DECLARED");
+  }
+}
 
 export function decodeHtmlEditingBoundedJson(encoded: string, maxBytes: number): unknown {
   if (typeof encoded !== "string") throw new HtmlEditingValidationError("INVALID_JSON");
@@ -60,7 +71,7 @@ export function validateHtmlEditingCommand(params: {
   for (const override of parsed.data.overrides) {
     const element = elements.get(override.elementId);
     if (!element) throw new HtmlEditingValidationError("UNKNOWN_ELEMENT");
-    const property = override.operation === "RESET" ? override.property : OPERATION_PROPERTY[override.operation];
+    const property = override.operation === "RESET" ? override.property === "ALL" ? element.kind : override.property : OPERATION_PROPERTY[override.operation];
     if (element.kind !== property) throw new HtmlEditingValidationError("PROPERTY_NOT_DECLARED");
     const key = `${override.elementId}:${property}`;
     if (touched.has(key)) throw new HtmlEditingValidationError("DUPLICATE_OVERRIDE");
@@ -69,6 +80,8 @@ export function validateHtmlEditingCommand(params: {
       if (Array.from(override.value).length > element.maxCharacters || (!element.multiline && /[\r\n\u2028\u2029]/u.test(override.value))) {
         throw new HtmlEditingValidationError("VALUE_NOT_DECLARED");
       }
+      if (element.localePolicy ? !override.locale || !element.localePolicy.allowedLocales.some(locale => htmlEditingTextLocalesMatch(locale, override.locale!))
+        : override.locale !== undefined) throw new HtmlEditingValidationError("VALUE_NOT_DECLARED");
     } else if (override.operation === "SET_IMAGE" && element.kind === "IMAGE") {
       if (!element.allowedAssetIds.includes(override.assetId) || !element.allowedFits.includes(override.fit)) {
         throw new HtmlEditingValidationError("VALUE_NOT_DECLARED");
@@ -78,6 +91,17 @@ export function validateHtmlEditingCommand(params: {
       if (element.tokenId !== override.tokenId || !element.allowedChoiceIds.includes(override.choiceId)) {
         throw new HtmlEditingValidationError("VALUE_NOT_DECLARED");
       }
+    } else if (override.operation === "SET_ATTRIBUTE" && element.kind === "ATTRIBUTE") {
+      if (override.attributeName !== element.attributeName) throw new HtmlEditingValidationError("PROPERTY_NOT_DECLARED");
+      validateHtmlEditingAttributeValue(element, override.value);
+    } else if (override.operation === "SET_SLOT_ORDER" && element.kind === "SLOTS") {
+      if (!isHtmlEditingSlotPermutation(element.itemIds, override.itemIds)) throw new HtmlEditingValidationError("VALUE_NOT_DECLARED");
+    } else if (override.operation === "SET_CHART_DATA" && element.kind === "CHART") {
+      try { mergeHtmlEditingChartDataset(element.chart, override.dataset); }
+      catch { throw new HtmlEditingValidationError("VALUE_NOT_DECLARED"); }
+    } else if (override.operation === "SET_STYLE_RANGE" && element.kind === "RANGE_TOKEN") {
+      if (element.tokenId !== override.tokenId || !isHtmlEditingStyleRangeValue(element.range, override.value))
+        throw new HtmlEditingValidationError("VALUE_NOT_DECLARED");
     }
   }
   return parsed.data;

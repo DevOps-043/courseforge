@@ -26,6 +26,7 @@ test("full pipeline receives materialized paths, explicit SDR and no inherited a
     assert.equal(job.config.hdrMode, "force-sdr"); assert.equal(job.config.videoFrameFormat, "png");
     assert.equal(job.config.producerConfig.concurrency, 1); assert.equal(job.config.producerConfig.forceScreenshot, true);
     assert.equal(job.config.producerConfig.enableBrowserPool, false); assert.equal(job.config.producerConfig.staticFrameDedup, false);
+    assert.equal(job.config.producerConfig.enableStreamingEncode, false);
     job.config.logger.error("private diagnostic");
   });
   assert.deepEqual(await renderMaterializedProducer(input, f), {policy: "MATERIALIZED_FULL_PRODUCER_SDR_V1",
@@ -73,4 +74,42 @@ test("missing or changed resolved capture strategy and runtime fallback cannot r
           perfSummary: {observability: {capture: changed}}});
       }}}), /PRODUCER_CAPTURE_MISMATCH/);
   }
+});
+
+test("operator observation uses extension only, preserving candidate scope and final capture audit", async () => {
+  const input = request();
+  const hooks = {onSession() {}, onBeforeFrame() {}, onAfterFrame() {}};
+  const f = fixture();
+  let observedCalls = 0;
+  const original = f.producer.executeRenderJob;
+  f.producer.executeObservedRenderJob = async (job, directory, outputPath, progress, signal, observer) => {
+    observedCalls++;
+    assert.equal(observer, hooks);
+    await original(job, directory, outputPath, progress, signal);
+  };
+  f.producer.executeRenderJob = async () => {assert.fail("uninstrumented fallback");};
+  const result = await renderMaterializedProducer(input, {...f, observer: hooks});
+  assert.equal(observedCalls, 1);
+  assert.equal(result.scope, "CANDIDATE_VIDEO_NOT_CONFORMANCE");
+  assert.deepEqual(result.capture, auditMaterializedProducerCapture(capture));
+});
+
+test("missing extension or partial observer never starts or falls back", async () => {
+  for (const hooks of [undefined, {}, {onSession() {}}]) {
+    const f = fixture();
+    await assert.rejects(renderMaterializedProducer(request(), {...f, observer: hooks}), /OBSERVER_REQUIRED/);
+    assert.equal(f.calls(), 0);
+  }
+  await assert.rejects(renderMaterializedProducer(request(), {observer: {
+    onSession() {}, onBeforeFrame() {}, onAfterFrame() {},
+  }}), /OBSERVER_REQUIRED/);
+});
+
+test("observer execution failure produces no legacy retry or private diagnostics", async () => {
+  const f = fixture();
+  f.producer.executeObservedRenderJob = async () => {throw new Error("private observer diagnostics");};
+  await assert.rejects(renderMaterializedProducer(request(), {...f, observer: {
+    onSession() {}, onBeforeFrame() {}, onAfterFrame() {},
+  }}), {message: "CONTROLLED_RENDER_PRODUCER_FAILED"});
+  assert.equal(f.calls(), 0);
 });

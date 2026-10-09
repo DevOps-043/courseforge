@@ -6,6 +6,7 @@ import { hashCompositionDocumentInBrowser } from "../composition-recovery-journa
 import { readHtmlEditingInitializationJournal, beginHtmlEditingInitializationJournal } from "../composition-html-editing-initialization-journal.client";
 import { compositionEditorDocumentSchema } from "../composition-document.types";
 import { computeHtmlEditingOperationRequestSha256 } from "../composition-html-editing-operation-digest.server";
+import { computeHtmlEditingInitializationRequestSha256 } from "../composition-html-editing-initialization-operation-digest.server";
 import { CompositionSaveQueue } from "../composition-save-queue";
 import { bindHtmlEditingRevisionToComposition } from "../composition-html-editing-document.server";
 import { createHtmlEditingInspectorView } from "../html-editing/html-editing-inspector.server";
@@ -92,16 +93,121 @@ function initializationFixture() {
   const f = setup(), binding = f.beforeView.manifest.binding;
   const body = { templateId: binding.templateId, templateVersion: binding.templateVersion, expectedDocumentHash: f.base.documentHash };
   const ack = { status: "CONFIRMED", created: true, version: 1, sha256: f.beforeView.revisionSha256, compositionDocumentHash: f.base.documentHash };
+  const receipt = { scope: "HTML_INITIALIZATION_RECEIPT_NOT_CURRENT_STATE_OR_RENDERED", owner: f.input.scope,
+    operationId: uuid, requestSha256: computeHtmlEditingInitializationRequestSha256(body), clipId: f.input.clipId,
+    request: body, acknowledgment: ack };
   const input = { scope: f.input.scope, signal: f.input.signal, action: { mode: "SEND" as const, clipId: f.input.clipId, body } };
   const fetcher: typeof fetch = async (url, options) => {
     f.state.requests++; assert.equal(f.queue.snapshot().status, "RUNNING");
     if (options?.method === "POST") assert.equal(readHtmlEditingInitializationJournal(f.storage, f.input.scope).status, "PENDING");
     return Response.json({ success: true, requestId: uuid, correlationId: uuid,
-      data: options?.method === "POST" ? ack : String(url).endsWith("/document") ? f.base : f.beforeView },
-    { status: options?.method === "POST" ? 201 : 200 });
+      data: options?.method === "POST" || String(url).includes("/initialize/operations/") ? { status: "RECORDED", receipt }
+        : String(url).endsWith("/document") ? f.base : f.beforeView });
   };
-  return { ...f, initializationInput: input, initialAck: ack, initialPorts: { ...f.ports, initializationEnabled: () => true, fetcher } };
+  return { ...f, initializationInput: input, initialAck: ack, initialReceipt: receipt,
+    initialPorts: { ...f.ports, initializationEnabled: () => true, fetcher } };
 }
+
+function durableInitializationPending(f: ReturnType<typeof initializationFixture>) {
+  assert.equal(beginHtmlEditingInitializationJournal(f.storage, { scope: f.input.scope, operationId: uuid,
+    clipId: f.input.clipId, createdAt: 1, request: f.initializationInput.action.body,
+    requestSha256: f.initialReceipt.requestSha256 }), true);
+}
+
+test("initial NOT_FOUND receipt keeps exact pending intent without current reads, POST or deletion", async () => {
+  const f = initializationFixture(); durableInitializationPending(f);
+  const before = [...f.entries.entries()]; let calls = 0;
+  const host = new CompositionHtmlEditorialNativeHost({ ...f.initialPorts, fetcher: async (url, options) => {
+    calls++; assert.equal(options?.method, "GET"); assert.ok(String(url).includes("/initialize/operations/"));
+    return Response.json({ success: true, requestId: uuid, correlationId: uuid, data: { status: "NOT_FOUND" } });
+  } });
+  await assert.rejects(host.initialize({ scope: f.input.scope, signal: f.input.signal,
+    action: { mode: "RECOVER", operationId: uuid } }), /ACK_REQUIRED/);
+  assert.equal(calls, 1); assert.deepEqual([...f.entries.entries()], before); assert.equal(host.isBlocked(), true);
+});
+
+test("initial receipt lookup owner drift and cancellation cannot record a late acknowledgment", async () => {
+  for (const failure of ["owner", "abort"] as const) {
+    const f = initializationFixture(); durableInitializationPending(f);
+    const before = [...f.entries.entries()]; let deliver!: () => void;
+    const waiting = new Promise<void>(resolve => { deliver = resolve; });
+    let called!: () => void;
+    const started = new Promise<void>(resolve => { called = resolve; });
+    const host = new CompositionHtmlEditorialNativeHost({ ...f.initialPorts, fetcher: async (url, options) => {
+      called(); await waiting; return f.initialPorts.fetcher(url, options);
+    } });
+    const controller = new AbortController();
+    const request = host.initialize({ scope: f.input.scope, signal: controller.signal, action: { mode: "RECOVER", operationId: uuid } });
+    const rejection = assert.rejects(request);
+    await started;
+    if (failure === "owner") f.state.scope = { ...f.input.scope, actorId: other };
+    else controller.abort();
+    deliver(); await rejection;
+    assert.deepEqual([...f.entries.entries()], before); assert.equal(host.isBusy(), false); assert.equal(f.state.adoptCount, 0);
+  }
+});
+
+test("initial recovery rejects forged persisted digest before network and unavailable receipts never erase intent", async () => {
+  for (const failure of ["digest", "denied", "foreign"] as const) {
+    const f = initializationFixture(); durableInitializationPending(f);
+    if (failure === "digest") {
+      const key = [...f.entries.keys()][0]!;
+      f.entries.set(key, JSON.stringify({ ...JSON.parse(f.entries.get(key)!), requestSha256: "e".repeat(64) }));
+    }
+    const before = [...f.entries.entries()]; let calls = 0;
+    const host = new CompositionHtmlEditorialNativeHost({ ...f.initialPorts, fetcher: async () => {
+      calls++;
+      return failure === "denied" ? new Response(null, { status: 403 }) : Response.json({ success: true,
+        requestId: uuid, correlationId: uuid, data: { status: "RECORDED", receipt: {
+          ...f.initialReceipt, owner: { ...f.input.scope, actorId: other } } } });
+    } });
+    await assert.rejects(host.initialize({ scope: f.input.scope, signal: f.input.signal, action: { mode: "RECOVER", operationId: uuid } }));
+    assert.equal(calls, failure === "digest" ? 0 : 1); assert.deepEqual([...f.entries.entries()], before);
+    assert.equal(host.isBlocked(), true); assert.equal(f.state.adoptCount, 0);
+  }
+});
+
+test("initial historical closure verifies durable causality after clip removal or source replacement without inspector or adoption", async () => {
+  for (const change of ["removed", "replaced"] as const) {
+    const f = initializationFixture(); durableInitializationPending(f);
+    const document = compositionEditorDocumentSchema.parse({ ...f.base.document, sourceInsertionMode: "MANUAL",
+      clips: change === "removed" ? [] : f.base.document.clips.map(clip => clip.source.type === "DECK_SLIDE"
+        ? { ...clip, source: { ...clip.source, html: "<div>Replacement HTML</div>" } } : clip) });
+    const loaded = { document, documentHash: await hashCompositionDocumentInBrowser(document), version: 8 };
+    f.state.payload = loaded; let calls = 0;
+    const host = new CompositionHtmlEditorialNativeHost({ ...f.initialPorts, enabled: () => false, initializationEnabled: () => false,
+      fetcher: async (url, options) => {
+        calls++; assert.equal(options?.method, "GET");
+        assert.ok(String(url).includes("/initialize/operations/") || String(url).endsWith("/document"));
+        return Response.json({ success: true, requestId: uuid, correlationId: uuid,
+          data: String(url).includes("/initialize/operations/") ? { status: "RECORDED", receipt: f.initialReceipt } : loaded });
+      } });
+    const view = await host.initialize({ scope: f.input.scope, signal: f.input.signal,
+      action: { mode: "RECOVER", operationId: uuid, historicalOnly: true } });
+    assert.equal(view, null); assert.equal(calls, 2); assert.equal(f.state.payload, loaded); assert.equal(f.state.adoptCount, 0);
+    assert.equal(host.initializationTracking(f.input.scope).status, "EMPTY"); assert.equal(host.isBlocked(), false);
+  }
+});
+
+test("initial historical closure cannot use legacy intent or stale loaded native document", async () => {
+  for (const failure of ["legacy", "stale"] as const) {
+    const f = initializationFixture();
+    assert.equal(beginHtmlEditingInitializationJournal(f.storage, { scope: f.input.scope, operationId: uuid,
+      clipId: f.input.clipId, request: f.initializationInput.action.body, createdAt: 1,
+      ...(failure === "stale" ? { requestSha256: f.initialReceipt.requestSha256 } : {}) }), true);
+    let calls = 0;
+    const host = new CompositionHtmlEditorialNativeHost({ ...f.initialPorts, fetcher: async (url, options) => {
+      calls++;
+      if (String(url).endsWith("/document")) return Response.json({ success: true, requestId: uuid, correlationId: uuid,
+        data: { ...f.base, version: 8 } });
+      return f.initialPorts.fetcher(url, options);
+    } });
+    await assert.rejects(host.initialize({ scope: f.input.scope, signal: f.input.signal,
+      action: { mode: "RECOVER", operationId: uuid, historicalOnly: true } }), failure === "legacy" ? /ACK_REQUIRED/ : /REFRESH_REQUIRED/);
+    assert.equal(calls, failure === "legacy" ? 0 : 2); assert.equal(f.state.adoptCount, 0);
+    assert.equal(host.initializationTracking(f.input.scope).status, "PENDING"); assert.equal(host.isBlocked(), true);
+  }
+});
 
 test("native initialization tracks before single POST, verifies two GETs and leaves document/history untouched", async () => {
   const f = initializationFixture(), host = new CompositionHtmlEditorialNativeHost(f.initialPorts);
@@ -123,17 +229,20 @@ test("initialization admission rejects disabled flag, conflicting work, editoria
   }
 });
 
-test("lost initialization response freezes subsequent native/editorial writes across reload even with flags disabled", async () => {
+test("lost durable initialization freezes writes across reload then recovers by receipt GET with writes disabled", async () => {
   const f = initializationFixture(); let calls = 0;
   const host = new CompositionHtmlEditorialNativeHost({ ...f.initialPorts, fetcher: async () => { calls++; throw new Error("lost"); } });
   await assert.rejects(host.initialize(f.initializationInput), /OUTCOME_UNKNOWN/);
   assert.equal(host.isBlocked(), true); assert.equal(calls, 1);
   const reloaded = new CompositionHtmlEditorialNativeHost({ ...f.initialPorts, enabled: () => false, initializationEnabled: () => false });
   assert.equal(reloaded.isBlocked(), true);
-  await assert.rejects(reloaded.initialize({ scope: f.input.scope, signal: f.input.signal, action: { mode: "RECOVER", operationId: uuid } }), /ACK_REQUIRED/);
   await assert.rejects(reloaded.execute(f.input), /NOT_READY/);
   await assert.rejects(reloaded.recover({ scope: f.input.scope, operationId: uuid, signal: f.input.signal }), /NOT_READY/);
   assert.equal(f.state.requests, 0); assert.equal(reloaded.initializationTracking(f.input.scope).status, "PENDING");
+  const view = await reloaded.initialize({ scope: f.input.scope, signal: f.input.signal, action: { mode: "RECOVER", operationId: uuid } });
+  assert.deepEqual(view, f.beforeView); assert.equal(f.state.requests, 3);
+  assert.equal(reloaded.initializationTracking(f.input.scope).status, "EMPTY"); assert.equal(reloaded.isBlocked(), false);
+  assert.equal(f.state.adoptCount, 0);
 });
 
 test("initial ACK survives failed refresh and explicit recovery performs only two GETs with writes disabled", async () => {

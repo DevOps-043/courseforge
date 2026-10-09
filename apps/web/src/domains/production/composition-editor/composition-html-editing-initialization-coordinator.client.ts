@@ -7,11 +7,12 @@ import { readHtmlEditingNativePayload, type HtmlEditingNativePayload } from "./c
 import { consultHtmlEditingInspector } from "./composition-html-editing-http.client";
 import { hashCompositionDocumentInBrowser } from "./composition-recovery-journal";
 import { boundedWait } from "./composition-html-editing-dispatch.client";
-import { sendHtmlEditingInitialization } from "./composition-html-editing-initialization-http.client";
+import { computeHtmlEditingInitializationRequestSha256InBrowser, sendHtmlEditingInitializationOperation,
+  consultHtmlEditingInitializationOperation } from "./composition-html-editing-initialization-operation.client";
 import { htmlEditingInitializationRequestSchema, HTML_EDITING_INITIALIZATION_HTTP_POLICY,
   type HtmlEditingInitializationRequest } from "./composition-html-editing-initialization-http.contract";
 import { beginHtmlEditingInitializationJournal, readHtmlEditingInitializationJournal,
-  acknowledgeHtmlEditingInitializationJournal, closeVerifiedHtmlEditingInitializationJournal,
+  recordHtmlEditingInitializationJournalReceipt, closeVerifiedHtmlEditingInitializationJournal,
   type HtmlEditingInitializationJournalEntry } from "./composition-html-editing-initialization-journal.client";
 
 export class HtmlEditingInitializationCoordinatorError extends Error {
@@ -21,9 +22,9 @@ export class HtmlEditingInitializationCoordinatorError extends Error {
   }
 }
 export type HtmlEditingInitializationAction = { mode: "SEND"; clipId: string; body: HtmlEditingInitializationRequest }
-  | { mode: "RECOVER"; operationId: string };
+  | { mode: "RECOVER"; operationId: string; historicalOnly?: boolean };
 
-/** Registration leaves native source/document untouched. A direct ACK plus fresh
+/** Registration leaves native source/document untouched. An exact operation receipt plus fresh
  * authorized native/inspector reads are required to close tracking. Unknown
  * outcomes cannot be inferred from matching content; recovery never POSTs. */
 export async function coordinateHtmlEditingInitialization(input: {
@@ -31,7 +32,7 @@ export async function coordinateHtmlEditingInitialization(input: {
   storage: HtmlSnapshotLocatorStorage | null; lock: HtmlSnapshotPublicationLock | null;
   reserveNative: <T>(task: () => Promise<T>) => Promise<T>; isCurrent: () => boolean;
   signal: AbortSignal; fetcher?: typeof fetch; createOperationId?: () => string;
-}): Promise<HtmlEditingInspectorView> {
+}): Promise<HtmlEditingInspectorView | null> {
   let dispatched = false, confirmed = false;
   try {
     const scope = htmlSnapshotLocatorScopeSchema.parse(input.scope);
@@ -40,6 +41,7 @@ export async function coordinateHtmlEditingInitialization(input: {
     return await boundedWait(() => input.lock!.runExclusive(scope, () => input.reserveNative(async () => {
       const guard = () => { signal.throwIfAborted(); if (!input.isCurrent()) throw new HtmlEditingInitializationCoordinatorError("TRACKING_CHANGED"); };
       guard();
+      const historicalOnly = input.action.mode === "RECOVER" && input.action.historicalOnly === true;
       let entry: HtmlEditingInitializationJournalEntry;
       if (input.action.mode === "SEND") {
         const body = htmlEditingInitializationRequestSchema.parse(input.action.body);
@@ -52,29 +54,61 @@ export async function coordinateHtmlEditingInitialization(input: {
           || input.loaded.document.htmlEditing?.items.some(item => item.clipId === clipId)) throw new HtmlEditingInitializationCoordinatorError("NOT_READY");
         guard();
         const operationId = z.string().uuid().parse((input.createOperationId ?? (() => crypto.randomUUID()))());
-        if (!beginHtmlEditingInitializationJournal(input.storage, { scope, operationId, clipId, request: body, createdAt: Date.now() })) {
+        const requestSha256 = await computeHtmlEditingInitializationRequestSha256InBrowser(body);
+        guard();
+        if (!beginHtmlEditingInitializationJournal(input.storage, { scope, operationId, clipId, request: body, requestSha256, createdAt: Date.now() })) {
           throw new HtmlEditingInitializationCoordinatorError("NOT_READY");
         }
         const pending = readHtmlEditingInitializationJournal(input.storage, scope);
         if (pending.status !== "PENDING" || pending.entry.operationId !== operationId) throw new HtmlEditingInitializationCoordinatorError("TRACKING_CHANGED");
         entry = pending.entry; guard();
         dispatched = true;
-        const ack = await boundedWait(() => sendHtmlEditingInitialization({ scope, clipId, body, signal, fetcher: input.fetcher }), signal);
+        const receipt = await boundedWait(() => sendHtmlEditingInitializationOperation({ scope, clipId, body,
+          operationId, requestSha256, signal, fetcher: input.fetcher }), signal);
         guard();
-        if (!acknowledgeHtmlEditingInitializationJournal(input.storage, scope, entry, ack)) throw new HtmlEditingInitializationCoordinatorError("TRACKING_CHANGED");
+        if (!recordHtmlEditingInitializationJournalReceipt(input.storage, scope, entry, receipt)) throw new HtmlEditingInitializationCoordinatorError("TRACKING_CHANGED");
         const acknowledged = readHtmlEditingInitializationJournal(input.storage, scope);
         if (acknowledged.status !== "PENDING" || acknowledged.entry.operationId !== operationId
-          || JSON.stringify(acknowledged.entry.acknowledgment) !== JSON.stringify(ack)) throw new HtmlEditingInitializationCoordinatorError("TRACKING_CHANGED");
+          || JSON.stringify(acknowledged.entry.acknowledgment) !== JSON.stringify(receipt.acknowledgment)) throw new HtmlEditingInitializationCoordinatorError("TRACKING_CHANGED");
         entry = acknowledged.entry;
       } else {
         const operationId = z.string().uuid().parse(input.action.operationId);
         const pending = readHtmlEditingInitializationJournal(input.storage, scope);
         if (pending.status !== "PENDING" || pending.entry.operationId !== operationId) throw new HtmlEditingInitializationCoordinatorError("TRACKING_CHANGED");
         entry = pending.entry;
+        if (historicalOnly && !entry.requestSha256) throw new HtmlEditingInitializationCoordinatorError("ACK_REQUIRED");
+        if ((!entry.acknowledgment || historicalOnly) && entry.requestSha256) {
+          if (await computeHtmlEditingInitializationRequestSha256InBrowser(entry.request) !== entry.requestSha256)
+            throw new HtmlEditingInitializationCoordinatorError("UNVERIFIED");
+          guard();
+          const result = await boundedWait(() => consultHtmlEditingInitializationOperation({ scope, clipId: entry.clipId,
+            operationId, requestSha256: entry.requestSha256!, signal, fetcher: input.fetcher }), signal);
+          guard();
+          if (result.status !== "RECORDED") throw new HtmlEditingInitializationCoordinatorError("ACK_REQUIRED");
+          if (!recordHtmlEditingInitializationJournalReceipt(input.storage, scope, entry, result.receipt))
+            throw new HtmlEditingInitializationCoordinatorError("TRACKING_CHANGED");
+          const acknowledged = readHtmlEditingInitializationJournal(input.storage, scope);
+          if (acknowledged.status !== "PENDING" || acknowledged.entry.operationId !== operationId
+            || JSON.stringify(acknowledged.entry.acknowledgment) !== JSON.stringify(result.receipt.acknowledgment))
+            throw new HtmlEditingInitializationCoordinatorError("TRACKING_CHANGED");
+          entry = acknowledged.entry;
+        }
       }
       if (!entry.acknowledgment) throw new HtmlEditingInitializationCoordinatorError("ACK_REQUIRED");
       confirmed = true; guard();
       const payload = await boundedWait(() => readHtmlEditingNativePayload(scope, signal, input.fetcher), signal);
+      if (historicalOnly) {
+        if (payload.documentHash !== input.loaded.documentHash || payload.version !== input.loaded.version
+          || await hashCompositionDocumentInBrowser(input.loaded.document) !== input.loaded.documentHash)
+          throw new HtmlEditingInitializationCoordinatorError("REFRESH_REQUIRED");
+        if (await hashCompositionDocumentInBrowser(payload.document) !== payload.documentHash)
+          throw new HtmlEditingInitializationCoordinatorError("UNVERIFIED");
+        guard();
+        if (!closeVerifiedHtmlEditingInitializationJournal(input.storage, scope, entry))
+          throw new HtmlEditingInitializationCoordinatorError("TRACKING_CHANGED");
+        // Confirms this historical registration only, not current editable fields.
+        return null;
+      }
       const view = await boundedWait(() => consultHtmlEditingInspector({ scope: { organizationId: scope.organizationId,
         documentId: scope.draftId, clipId: entry.clipId }, signal, fetcher: input.fetcher }), signal);
       const binding = view.manifest.binding, clip = payload.document.clips.find(item => item.id === entry.clipId);

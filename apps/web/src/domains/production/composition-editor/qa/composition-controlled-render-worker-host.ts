@@ -6,6 +6,7 @@ import {createMaterializedControlledRenderer} from "./composition-materialized-s
 import {controlledRenderQueueClaimSchema,type ControlledRenderQueueClaim} from "./composition-controlled-render-worker-contract";
 import {createControlledHtmlEditingAuthorityReader} from "./composition-controlled-html-authority.service";
 import {createOwnedControlledExecutor, type ControlledOwnedExecutorConfiguration} from "./composition-controlled-owned-executor";
+import {CompositionConformanceRenderReservationService} from "./composition-conformance-render-reservation.service";
 
 type RendererConfiguration = Parameters<typeof createMaterializedControlledRenderer>[0];
 
@@ -15,7 +16,12 @@ export function createControlledRenderWorkerHost(input:{supabase:SupabaseClient<
   resolveSigningKey:(issuer:Pick<ControlledRenderQueueClaim,"organizationId"|"supervisorId"|"keyId">) => KeyObject|Promise<KeyObject>;
   renderStorage:Pick<RendererConfiguration["storage"],"outputParentDirectory"|"animationRuntimeSha256">;
   dependencyInventory:NonNullable<RendererConfiguration["dependencyInventory"]>;
-  ownedExecutor:ControlledOwnedExecutorConfiguration;fetchImpl?:typeof fetch;clock?:() => number}) {
+  ownedExecutor:ControlledOwnedExecutorConfiguration;fetchImpl?:typeof fetch;clock?:() => number;
+  deferConformanceReservation?: boolean}) {
+  if (input.deferConformanceReservation !== undefined && typeof input.deferConformanceReservation !== "boolean")
+    throw new Error("CONTROLLED_RENDER_RESERVATION_CONFIGURATION_INVALID");
+  const reservations = input.deferConformanceReservation === true
+    ? new CompositionConformanceRenderReservationService(input.supabase) : undefined;
   let execute:ReturnType<typeof createOwnedControlledExecutor> | undefined;
   return async (raw:ControlledRenderQueueClaim) => {
     const claim = controlledRenderQueueClaimSchema.parse(raw);
@@ -30,6 +36,7 @@ export function createControlledRenderWorkerHost(input:{supabase:SupabaseClient<
       readHtmlEditingAuthority:createControlledHtmlEditingAuthorityReader({supabase:input.supabase,claim})},
       dependencyInventory:input.dependencyInventory,execute});
     return {checkpoints:input.checkpoints,supervisor:new CompositionRenderSupervisorService(input.supabase,input.supabaseUrl,
-      privateKey,renderer,input.fetchImpl,input.clock,claim.leaseToken)};
+      privateKey,renderer,input.fetchImpl,input.clock,claim.leaseToken,
+      reservations ? (checkpoint, signal) => reservations.defer(checkpoint, signal) : undefined)};
   };
 }

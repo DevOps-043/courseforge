@@ -1,4 +1,5 @@
 import { loadAptaSources } from "./materials-source-context";
+import { readSyllabusWithOrigin } from "../../../src/domains/syllabus/services/syllabus-workflow-read";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   ComponentType,
@@ -73,10 +74,20 @@ export async function loadMaterialsGenerationContext(
       .select("generation_metadata")
       .eq("id", artifactId)
       .single(),
-    supabase.from("syllabus").select("route").eq("artifact_id", artifactId).single(),
+    readSyllabusWithOrigin(supabase, artifactId, "route,state"),
   ]);
   if (artifactResult.error) throw artifactResult.error;
   if (syllabusResult.error) throw syllabusResult.error;
+  if (!syllabusResult.data) throw new Error("Syllabus not found");
+  if (syllabusResult.data.input_mode === "PROVIDED_SYLLABUS") {
+    const { data: dependencies, error } = await supabase.from("instructional_plans").select("syllabus_content_version").eq("artifact_id", artifactId).single();
+    const { data: curation, error: curationError } = await supabase.from("curation").select("syllabus_content_version").eq("artifact_id", artifactId).single();
+    if (error) throw error;
+    if (curationError) throw curationError;
+    if (syllabusResult.data.state !== "STEP_APPROVED" || dependencies?.syllabus_content_version !== syllabusResult.data.content_version || curation?.syllabus_content_version !== syllabusResult.data.content_version) {
+      throw new Error("El plan o las fuentes no corresponden al temario aprobado vigente.");
+    }
+  }
   return {
     artifactId,
     lessonPlans,

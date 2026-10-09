@@ -15,16 +15,19 @@ function sameIdentity(left: ReturnType<typeof identity>, right: ReturnType<typeo
 }
 
 /** Hashes a bounded regular file through one handle and rejects replacement or mutation during reading. */
-export async function pinConformanceFile(path: string, maximumBytes: number, allowEmpty = false): Promise<ConformanceFilePin> {
+export async function pinConformanceFile(path: string, maximumBytes: number, allowEmpty = false, signal?: AbortSignal): Promise<ConformanceFilePin> {
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0 || typeof allowEmpty !== "boolean") throw new Error("CONFORMANCE_FILE_LIMIT_INVALID");
-  try {return await readRegularFilePin(path, maximumBytes, allowEmpty);}
+  signal?.throwIfAborted();
+  try {return await readRegularFilePin(path, maximumBytes, allowEmpty, signal);}
   catch (error) {
+    signal?.throwIfAborted();
     if (error instanceof Error && /^CONFORMANCE_FILE_[A-Z_]+$/.test(error.message)) throw error;
     throw new Error("CONFORMANCE_FILE_READ_FAILED");
   }
 }
 
-async function readRegularFilePin(path: string, maximumBytes: number, allowEmpty: boolean): Promise<ConformanceFilePin> {
+async function readRegularFilePin(path: string, maximumBytes: number, allowEmpty: boolean, signal?: AbortSignal): Promise<ConformanceFilePin> {
+  signal?.throwIfAborted();
   const before = await lstat(path);
   if (!before.isFile() || before.isSymbolicLink() || before.size < (allowEmpty ? 0 : 1) || before.size > maximumBytes)
     throw new Error("CONFORMANCE_FILE_INVALID");
@@ -34,11 +37,13 @@ async function readRegularFilePin(path: string, maximumBytes: number, allowEmpty
     if (!opened.isFile() || !sameIdentity(identity(before), identity(opened))) throw new Error("CONFORMANCE_FILE_INTEGRITY_MISMATCH");
     let sizeBytes = 0; const digest = createHash("sha256");
     for await (const chunk of handle.createReadStream({autoClose: false})) {
+      signal?.throwIfAborted();
       sizeBytes += (chunk as Buffer).length;
       if (sizeBytes > before.size || sizeBytes > maximumBytes) throw new Error("CONFORMANCE_FILE_INTEGRITY_MISMATCH");
       digest.update(chunk as Buffer);
     }
     const [handleAfter, pathAfter] = await Promise.all([handle.stat(), lstat(path)]);
+    signal?.throwIfAborted();
     if (sizeBytes !== before.size || !pathAfter.isFile() || pathAfter.isSymbolicLink()
       || !sameIdentity(identity(before), identity(handleAfter)) || !sameIdentity(identity(before), identity(pathAfter)))
       throw new Error("CONFORMANCE_FILE_INTEGRITY_MISMATCH");
@@ -47,7 +52,7 @@ async function readRegularFilePin(path: string, maximumBytes: number, allowEmpty
 }
 
 /** Must be called after all measurements and before releasing a report bound to this file. */
-export async function assertConformanceFileUnchanged(path: string, pin: ConformanceFilePin, maximumBytes: number, allowEmpty = false) {
-  const after = await pinConformanceFile(path, maximumBytes, allowEmpty);
+export async function assertConformanceFileUnchanged(path: string, pin: ConformanceFilePin, maximumBytes: number, allowEmpty = false, signal?: AbortSignal) {
+  const after = await pinConformanceFile(path, maximumBytes, allowEmpty, signal);
   if (after.sha256 !== pin.sha256 || !sameIdentity(pin, after)) throw new Error("CONFORMANCE_FILE_INTEGRITY_MISMATCH");
 }

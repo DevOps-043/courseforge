@@ -1,3 +1,5 @@
+import type { AudioSourceMimeType } from "./audio-source-contract";
+
 export const AUDIO_PROCESSING_PROFILE_IDS = [
   "voice-course-v1",
   "voice-clean-neural-dfn3-v1",
@@ -44,7 +46,7 @@ export interface AudioProcessingProfile {
 export interface AudioProcessingSource {
   assetId: string;
   checksum: string;
-  mimeType: "audio/mpeg" | "audio/mp3" | "audio/wav" | "audio/x-wav";
+  mimeType: AudioSourceMimeType;
   storageBucket: string;
   storagePath: string;
 }

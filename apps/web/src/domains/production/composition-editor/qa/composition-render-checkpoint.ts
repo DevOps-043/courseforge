@@ -5,6 +5,7 @@ import {COMPOSITION_EVENT_PLAN_MAX_BATCHES} from "../composition-conformance-bat
 import {compositionConformanceContractSchema} from "../composition-preview-render-conformance";
 import {renderSupervisorReceiptSchema} from "../composition-render-supervisor-receipt";
 import {buildControlledSupervisorBinding} from "./composition-render-supervisor-binding";
+import {controlledReferenceSelectionSchema, bindControlledReferenceSelection} from "./composition-controlled-reference-selection";
 
 export const CONTROLLED_RENDER_CHECKPOINT_POLICY = {version:1, maximumBytes:20 * 1024 ** 2} as const;
 const uuid = z.string().uuid().transform(value => value.toLowerCase());
@@ -17,12 +18,14 @@ const singleInput = z.object({contract:compositionConformanceContractSchema,obse
 const eventInput = z.object({document:compositionEditorDocumentSchema,parentContract:compositionConformanceContractSchema,
   observation:z.unknown(),videoSha256:hash,batches:z.array(z.object({contract:compositionConformanceContractSchema,
     seekRepeatability:z.unknown().optional(),nativeEvidence:z.unknown().optional()}).strict()).min(1).max(COMPOSITION_EVENT_PLAN_MAX_BATCHES)}).strict();
-const checkpointSchema = z.object({version:z.literal(CONTROLLED_RENDER_CHECKPOINT_POLICY.version),
-  scope:renderCheckpointScopeSchema,leaseToken:uuid,supervisorReceipt:renderSupervisorReceiptSchema,
-  videoPath:z.string().min(1).max(4096).refine(isAbsolute),artifacts:z.discriminatedUnion("kind",[
+export const controlledCheckpointArtifactsSchema = z.discriminatedUnion("kind",[
     z.object({kind:z.literal("SINGLE_CONTRACT"),input:singleInput}).strict(),
     z.object({kind:z.literal("EVENT_BATCH_SET"),input:eventInput}).strict(),
-  ])}).strict();
+  ]);
+const checkpointSchema = z.object({version:z.literal(CONTROLLED_RENDER_CHECKPOINT_POLICY.version),
+  scope:renderCheckpointScopeSchema,leaseToken:uuid,supervisorReceipt:renderSupervisorReceiptSchema,
+  referenceSelection:controlledReferenceSelectionSchema.optional(),
+  videoPath:z.string().min(1).max(4096).refine(isAbsolute),artifacts:controlledCheckpointArtifactsSchema}).strict();
 export type ControlledRenderCheckpoint = z.output<typeof checkpointSchema>;
 
 /** Validates local recovery evidence; the authority service still verifies signature, revocation and ledger. */
@@ -40,6 +43,12 @@ export function parseControlledRenderCheckpoint(raw: unknown, expectedScope: Ren
     const derived = buildControlledSupervisorBinding({...signed,contract},checkpoint.artifacts,
       {sha256:signed.videoSha256,sizeBytes:signed.sizeBytes});
     if (JSON.stringify(derived) !== JSON.stringify(signed)) throw new Error();
+    if (checkpoint.referenceSelection) {
+      const selected = bindControlledReferenceSelection({organizationId:signed.organizationId,
+        revisionId:signed.revisionId,executionId:signed.executionId,documentHash:signed.documentHash,
+        projectHash:signed.projectHash,contract},checkpoint.referenceSelection.references);
+      if (JSON.stringify(selected) !== JSON.stringify(checkpoint.referenceSelection)) throw new Error();
+    }
     return checkpoint;
   } catch {throw new Error("RENDER_SUPERVISOR_CHECKPOINT_INVALID");}
 }

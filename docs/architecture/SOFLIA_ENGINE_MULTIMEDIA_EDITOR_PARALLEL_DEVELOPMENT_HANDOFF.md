@@ -13,13 +13,20 @@ el núcleo que seguimos desarrollando y con integración posterior verificable.
 - [Registro de requisitos](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_ROADMAP_REQUIREMENTS_TRACKER.md): R01–R30; crédito de cierre no significa porcentaje de código.
 - [Cierre CAP-027](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md): prioridad y decisiones pendientes actuales.
 
-Base inspeccionada: rama `staging`, HEAD `7e16e8c350b1b8c5453875bc26e67be4ab5b03b1`,
-con cambios locales y archivos nuevos sin seguimiento. **HEAD por sí solo no contiene este avance**.
-También hay cambios locales en otros frentes (por ejemplo narrativa): sus autores/reservas
-deben confirmarse, no tratarlos como archivos libres para este acuerdo.
-Antes de iniciar el trabajo paralelo, el responsable debe entregar una base acordada que incluya
-los cambios relevantes y los archivos nuevos. No copiar secretos, `.env`, outputs, `node_modules`
-ni credenciales. No usar reset/stash/limpieza para preparar el traspaso sin autorización.
+Base local revalidada: commit `96a191b9dfb4dc1bf8060e364816bb5079a1e273`
+(`feat: endurecer conformidad preview-render y documentar desarrollo paralelo`). El árbol estaba
+limpio al iniciar esta comprobación. Se verificaron como versionados la hoja de traspaso,
+config del build operativo, productor/colector materializados, host Windows y contratos/planificador
+de thumbnails. Esta base sustituye la advertencia del corte anterior sobre HEAD `7e16e8c...`
+incompleto; las dependencias y recursos del operador siguen siendo una instalación aparte.
+
+**Commit local disponible no significa commit publicado en GitHub**: el fallo de conectividad
+reportado impide asumir que un clone/fetch del compañero lo contiene. Confirmar que su checkout
+resuelve este SHA antes de iniciar el paquete. Este documento actualizado constituye un cambio
+posterior al commit base y debe acompañar el traspaso. Los autores/reservas de otros frentes
+(por ejemplo narrativa) deben confirmarse, no tratarlos como archivos libres para este acuerdo.
+No copiar secretos, `.env`, outputs, `node_modules` ni credenciales. No usar reset/stash/limpieza
+para preparar el traspaso sin autorización.
 Este documento no crea rama, commit, PR, envío a otra persona ni despliegue.
 
 ## 2. Estado de las siete prioridades
@@ -144,8 +151,9 @@ Ninguna reserva concede ownership permanente de todos los archivos del directori
 
 ## 8. Base, entregas e integración
 
-1. Confirmar colaborador, paquete, alcance y archivos reservados. Acordar commit/base que incluya
-   el trabajo local relevante; no comenzar desde HEAD incompleto ni desde copias divergentes del directorio.
+1. Confirmar colaborador, paquete, alcance y archivos reservados. Usar el commit base de §1
+   o un sucesor acordado; comprobar que existe en el checkout del compañero y que contiene los
+   archivos del paquete. No comenzar desde un clone remoto desactualizado ni copias divergentes.
 2. Rama/checkout independiente para el compañero. Trabajar por entregas pequeñas sobre la misma
    base acordada, sin compartir un directorio mutable ni hacer rebase/merge durante cambios del otro.
 3. Revisar primero el contrato; después implementación. Dependencias hacia el dominio, nunca
@@ -179,7 +187,7 @@ No renombrar ni borrar migraciones del otro desarrollador.
 | Responsable compañero | Pendiente de nombre |
 | Perfil requerido / alternativa | CAP-022 productor requiere backend/media/jobs/Supabase; si su foco es frontend, comenzar por catálogo UX CAP-029 aislado |
 | Primer paquete | CAP-022, T022-1→T022-2; ampliar a T022-3 tras aceptar contratos |
-| Base reproducible | Pendiente de consolidar cambios locales relevantes |
+| Base reproducible | Commit local 96a191b9dfb4dc1bf8060e364816bb5079a1e273 disponible; entrega/acceso remoto y aceptación pendientes |
 | Reserva de archivos | Propuesta en §§5 y 7; requiere aceptación |
 | Responsable integración | Equipo actual |
 | Segundo paquete | CAP-025 acotado o catálogo UX CAP-029; elegir después del primero |

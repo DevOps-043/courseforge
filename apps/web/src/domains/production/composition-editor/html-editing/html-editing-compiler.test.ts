@@ -93,6 +93,8 @@ test("rejects executable HTML, external resources and unsupported CSS/SVG", () =
     '<img src="https://evil.invalid/a.png">', '<style>@import "https://evil.invalid/style.css";</style>',
     '<style>p{background:url(https://evil.invalid/a.png)}</style>', '<svg><animate attributeName="href" /></svg>',
     '<svg><foreignObject><div>Bad</div></foreignObject></svg>', '<img srcset="https://evil.invalid/a.png 1x">',
+    '<style>@keyframes spin{to{opacity:0}}#title{animation:spin 1s infinite}</style>',
+    '<span style="transition:opacity 1s">Bad</span>', '<style>#title:hover{display:none}</style>',
   ]) rejects(() => compileHtmlEditingFragment(fixture(source + addition)), "INVALID_SOURCE");
 });
 
@@ -116,6 +118,8 @@ test("rejects missing materialization, remote maps and undeclared late overrides
 test("bounds source bytes and parsed DOM element count", () => {
   rejects(() => compileHtmlEditingFragment(fixture(source + "é".repeat(HTML_EDITING_LIMITS.sourceBytes / 2))), "PAYLOAD_LIMIT");
   rejects(() => compileHtmlEditingFragment(fixture(source + "<span></span>".repeat(HTML_EDITING_LIMITS.sourceElements))), "PAYLOAD_LIMIT");
+  rejects(() => compileHtmlEditingFragment(fixture(source + "<div>".repeat(HTML_EDITING_LIMITS.sourceDepth + 1)
+    + "</div>".repeat(HTML_EDITING_LIMITS.sourceDepth + 1))), "PAYLOAD_LIMIT");
 });
 
 test("permits static local SVG references while preserving unrelated source attributes", () => {

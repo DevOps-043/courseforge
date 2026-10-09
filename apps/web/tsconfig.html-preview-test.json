@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.hyperframes-test.json",
+  "compilerOptions": {
+    "outDir": ".tmp/html-preview-tests"
+  },
+  "include": [
+    "src/domains/production/composition-editor/hyperframes-core-color-grading.d.ts",
+    "src/domains/production/composition-editor/composition-html-editing-preview*.ts",
+    "src/domains/production/composition-editor/http/composition-html-editing-preview*-handler.server.ts",
+    "src/domains/production/composition-editor/__tests__/composition-html-editing-preview*.test.ts",
+    "src/app/api/production/hyperframes/drafts/*/html-preview/**/*.ts"
+  ]
+}

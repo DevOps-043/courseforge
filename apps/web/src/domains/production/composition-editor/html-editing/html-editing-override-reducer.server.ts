@@ -7,6 +7,7 @@ import {
   validateHtmlEditingCommand,
 } from "./html-editing-validation";
 import { verifyHtmlEditableManifestContent } from "./html-editing-manifest-digest.server";
+import { readHtmlEditingChartDataset } from "./html-editing-chart.contract";
 
 function validateSnapshotOverrides(
   state: HtmlEditingOverrideState, manifest: HtmlEditableManifest, grantedAssetIds: readonly string[],
@@ -54,6 +55,18 @@ export function reduceHtmlEditingOverrides(params: {
   const nextByElement = new Map<string, HtmlEditingSetOverride>(priorByElement);
   for (const override of command.overrides) {
     if (override.operation === "RESET") nextByElement.delete(override.elementId);
+    else if (override.operation === "SET_SLOT_ORDER" && manifest.elements.some(element => element.kind === "SLOTS"
+      && element.elementId === override.elementId && JSON.stringify(element.itemIds) === JSON.stringify(override.itemIds))) {
+      nextByElement.delete(override.elementId);
+    }
+    else if (override.operation === "SET_CHART_DATA" && manifest.elements.some(element => element.kind === "CHART"
+      && element.elementId === override.elementId && JSON.stringify(readHtmlEditingChartDataset(element.chart)) === JSON.stringify(override.dataset))) {
+      nextByElement.delete(override.elementId);
+    }
+    else if (override.operation === "SET_STYLE_RANGE" && manifest.elements.some(element => element.kind === "RANGE_TOKEN"
+      && element.elementId === override.elementId && element.range.defaultValue === override.value)) {
+      nextByElement.delete(override.elementId);
+    }
     else nextByElement.set(override.elementId, override);
   }
   const nextState: HtmlEditingOverrideState = {

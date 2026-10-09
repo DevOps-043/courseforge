@@ -9,7 +9,9 @@ import {
   AudioProcessingJobError,
   createAudioProcessingJob,
   createAudioProcessingJobRequestSchema,
+  resolveAudioProcessingSource,
 } from "@/domains/production/audio-processing/audio-processing-job.service";
+import { getAudioSourceCapability } from "@/domains/production/audio-processing/audio-source-policy";
 import { PRODUCTION_JOB_TYPES, PRODUCTION_PROVIDERS } from "@/domains/production/types/production.types";
 import { createClient } from "@/utils/supabase/server";
 
@@ -34,11 +36,14 @@ export async function POST(request: Request) {
     const authorized = await getAuthorizedMaterialComponentAdmin(parsed.data.componentId);
     if (!authorized) return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado.", requestId, status: 404 });
     const context = await resolveProductionComponentContext({ componentId: parsed.data.componentId, supabase: authorized.admin });
-    const job = await createAudioProcessingJob({ componentContext: context, createdBy: user.userId, sourceAssetId: parsed.data.sourceAssetId, supabase: authorized.admin });
+    if (context.organizationId !== tenant.organizationId) return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado.", requestId, status: 404 });
+    const job = await createAudioProcessingJob({ componentContext: context, createdBy: user.userId, sourceAssetId: parsed.data.sourceAssetId, retryFailed: parsed.data.retryFailed, supabase: authorized.admin });
+    logger.info("production.audio_processing.requested", { jobId: job.id, sourceAssetId: parsed.data.sourceAssetId, status: job.status });
     return apiSuccessResponse({ data: { jobId: job.id, profileId: parsed.data.profileId, reused: job.status !== "PENDING", status: job.status } }, { requestId, status: 202 });
   } catch (error) {
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Solicitud de audio inválida.", requestId, status: 400 });
     if (error instanceof AudioProcessingJobError) {
+      logger.warn("production.audio_processing.source_rejected", { reason: error.code });
       const status = error.code === "AUDIO_SOURCE_NOT_FOUND" ? 404 : error.code === "AUDIO_SOURCE_TOO_LARGE" ? 413 : error.code === "AUDIO_TENANT_UNRESOLVED" ? 409 : 400;
       return apiErrorResponse({ code: status === 404 ? API_ERROR_CODE.resourceNotFound : status === 409 ? API_ERROR_CODE.conflict : status === 413 ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest, message: error.message, requestId, status });
     }
@@ -61,28 +66,36 @@ export async function GET(request: Request) {
     if (!tenant || !(await canReviewContent(user.userId, tenant))) return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para consultar trabajos de audio.", requestId, status: 403 });
     const authorized = await getAuthorizedMaterialComponentAdmin(parsed.data.componentId);
     if (!authorized) return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado.", requestId, status: 404 });
-    let query = authorized.admin.from("production_jobs").select("id, status, provider_error, created_at, updated_at, output_snapshot").eq("material_component_id", parsed.data.componentId).eq("job_type", PRODUCTION_JOB_TYPES.AUDIO_PROCESSING).eq("provider", PRODUCTION_PROVIDERS.FFMPEG).contains("input_snapshot", { source: { assetId: parsed.data.sourceAssetId } }).order("created_at", { ascending: false }).limit(1);
+    const source = await resolveAudioProcessingSource({ componentId: parsed.data.componentId, organizationId: tenant.organizationId,
+      sourceAssetId: parsed.data.sourceAssetId, supabase: authorized.admin });
+    const capability = getAudioSourceCapability(source);
+    let query = authorized.admin.from("production_jobs").select("id, status, provider_error, created_at, updated_at, output_snapshot").eq("organization_id", tenant.organizationId).eq("material_component_id", parsed.data.componentId).eq("job_type", PRODUCTION_JOB_TYPES.AUDIO_PROCESSING).eq("provider", PRODUCTION_PROVIDERS.FFMPEG).contains("input_snapshot", { source: { assetId: source.id } }).order("created_at", { ascending: false }).limit(1);
     if (parsed.data.jobId) query = query.eq("id", parsed.data.jobId);
     const { data, error } = await query.maybeSingle();
     if (error) throw error;
     const outputAssetId = data?.output_snapshot && typeof data.output_snapshot === "object"
       ? (data.output_snapshot as { asset_id?: unknown }).asset_id
       : null;
-    let processedAudio: { assetId: string; publicUrl: string | null } | null = null;
+    let processedAudio: { assetId: string; publicUrl: string | null; durationSeconds: number | null } | null = null;
     if (typeof outputAssetId === "string") {
       const { data: asset, error: assetError } = await authorized.admin
         .from("production_assets")
-        .select("id, public_url")
+        .select("id, public_url, duration_seconds, duration_milliseconds")
         .eq("id", outputAssetId)
         .eq("organization_id", tenant.organizationId)
         .eq("material_component_id", parsed.data.componentId)
         .eq("asset_type", "PROCESSED_AUDIO")
+        .neq("qa_status", "ARCHIVED")
         .maybeSingle();
       if (assetError) throw assetError;
-      if (asset) processedAudio = { assetId: asset.id, publicUrl: asset.public_url };
+      if (asset) processedAudio = { assetId: asset.id, publicUrl: asset.public_url,
+        durationSeconds: asset.duration_milliseconds ? asset.duration_milliseconds / 1000 : asset.duration_seconds };
     }
-    return apiSuccessResponse({ data: { job: data || null, processedAudio, status: data?.status || "NOT_REQUESTED" } }, { requestId });
+    return apiSuccessResponse({ data: { capability, source: { assetId: source.id, publicUrl: source.public_url || null,
+      durationSeconds: source.duration_milliseconds ? source.duration_milliseconds / 1000 : source.duration_seconds || null },
+      job: data || null, processedAudio, status: data?.status || "NOT_REQUESTED" } }, { requestId, headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
+    if (error instanceof AudioProcessingJobError) return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: error.message, requestId, status: 404 });
     logger.error("production.audio_processing.query_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo consultar el trabajo de audio.", requestId, retryable: true, status: 500 });
   }

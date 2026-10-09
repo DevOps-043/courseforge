@@ -15,13 +15,13 @@ type Result = Awaited<ReturnType<ControlledMaterializedExecutor>>;
 
 /** The host must own the process tree before returning this synchronous handle.
  * A STOPPED response is a port obligation, not independently authenticated OS evidence. */
-export type ControlledOwnedExecution = {
-  completion: Promise<Result>;
+export type ControlledOwnedExecution<TResult = Result> = {
+  completion: Promise<TResult>;
   stopAndConfirm: () => Promise<unknown>;
 };
-export type ControlledOwnedExecutorConfiguration = {
+export type ControlledOwnedExecutorConfiguration<TResult = Result, TWorkspace extends {directory: string} = Workspace> = {
   fence?: ControlledExecutionFence;
-  start: (descriptor: Descriptor, workspace: Workspace, signal: AbortSignal) => ControlledOwnedExecution;
+  start: (descriptor: Descriptor, workspace: TWorkspace, signal: AbortSignal) => ControlledOwnedExecution<TResult>;
   timeoutMilliseconds?: number;
   stopMilliseconds?: number;
 };
@@ -29,6 +29,13 @@ export type ControlledOwnedExecutorConfiguration = {
 /** Never publish an output or release ownership merely because its root promise settled. */
 export function createOwnedControlledExecutor(configuration: ControlledOwnedExecutorConfiguration):
   ControlledMaterializedExecutor & {isQuarantined: () => boolean} {
+  return createOwnedControlledOperation(configuration);
+}
+
+/** Shared ownership for render and subsequent measurement jobs. No fabricated render result required. */
+export function createOwnedControlledOperation<TResult, TWorkspace extends {directory: string} = Workspace>(configuration: ControlledOwnedExecutorConfiguration<TResult, TWorkspace>):
+  ((descriptor: Descriptor, workspace: TWorkspace, signal?: AbortSignal,
+    controls?: Parameters<ControlledMaterializedExecutor>[3]) => Promise<TResult>) & {isQuarantined: () => boolean} {
   const timeout = configuration.timeoutMilliseconds ?? CONTROLLED_RENDER_DEADLINE_POLICY.maximumMilliseconds;
   const stopMilliseconds = configuration.stopMilliseconds ?? CONTROLLED_EXECUTOR_OWNERSHIP_POLICY.maximumStopMilliseconds;
   if (typeof configuration.start !== "function" || !Number.isSafeInteger(stopMilliseconds)
@@ -37,11 +44,12 @@ export function createOwnedControlledExecutor(configuration: ControlledOwnedExec
     || timeout > CONTROLLED_RENDER_DEADLINE_POLICY.maximumMilliseconds)
     throw new Error("CONTROLLED_RENDER_EXECUTOR_CONFIGURATION_INVALID");
   let quarantined = false;
-  const execute: ControlledMaterializedExecutor = async (descriptor, workspace, signal) => {
+  const execute = async (descriptor: Descriptor, workspace: TWorkspace, signal?: AbortSignal,
+    controls?: Parameters<ControlledMaterializedExecutor>[3]): Promise<TResult> => {
     if (quarantined) throw new Error(CONTROLLED_EXECUTOR_OWNERSHIP_POLICY.terminationUnconfirmedCode);
     const deadline = createControlledRenderDeadline(timeout, signal);
-    let execution: ControlledOwnedExecution | undefined;
-    let result: Result | undefined;
+    let execution: ControlledOwnedExecution<TResult> | undefined;
+    let result: TResult | undefined;
     let workError: unknown;
     let failed = false;
     let startAttempted = false;
@@ -55,6 +63,8 @@ export function createOwnedControlledExecutor(configuration: ControlledOwnedExec
           throw new Error("CONTROLLED_RENDER_EXECUTION_FENCE_ACQUIRE_UNCONFIRMED");
         }
       }
+      deadline.remainingMilliseconds();
+      if (controls) await deadline.run(() => controls.verifyMeasurementFiles());
       deadline.remainingMilliseconds();
       // Reserve ownership synchronously. An async start could yield a handle after cancellation.
       startAttempted = true;
@@ -78,6 +88,7 @@ export function createOwnedControlledExecutor(configuration: ControlledOwnedExec
       if (failed) throw safeWorkError(workError);
       deadline.remainingMilliseconds();
       if (!result) throw new Error("CONTROLLED_RENDER_EXECUTOR_RESULT_INVALID");
+      if (controls) await deadline.run(() => controls.verifyMeasurementFiles());
       return result;
     } catch (error) {
       // A cancelled acquisition that completed before start may safely release its own fence.
@@ -99,7 +110,7 @@ export function createOwnedControlledExecutor(configuration: ControlledOwnedExec
   return Object.assign(execute, {isQuarantined: () => quarantined});
 }
 
-async function confirmStop(execution: ControlledOwnedExecution, executionId: string, timeout: number) {
+async function confirmStop(execution: Pick<ControlledOwnedExecution, "stopAndConfirm">, executionId: string, timeout: number) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const stopped = await Promise.race([

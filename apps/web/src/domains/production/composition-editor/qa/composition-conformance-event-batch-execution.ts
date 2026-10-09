@@ -17,6 +17,7 @@ export const eventBatchMeasurementIdentitySchema = z.object({
   organizationId: z.string().uuid(), revisionId: z.string().uuid(), projectHash: hashSchema, videoSha256: hashSchema,
   documentHash: hashSchema, parentContractSha256: hashSchema, batchContractSha256: hashSchema,
   batch: eventCheckpointBatchSchema,
+  visualReferenceSha256: hashSchema.optional(),
 }).strict();
 export type EventBatchMeasurementIdentity = z.infer<typeof eventBatchMeasurementIdentitySchema>;
 export const eventBatchMeasurementPacketSchema = z.object({
@@ -43,6 +44,7 @@ export const eventBatchExecutionSummarySchema = z.object({
   measuredBatchCount: z.number().int().positive().max(COMPOSITION_EVENT_PLAN_MAX_BATCHES), resumedBatchCount: z.number().int().nonnegative().max(COMPOSITION_EVENT_PLAN_MAX_BATCHES),
   requiredCheckpointCount: z.number().int().positive().max(COMPOSITION_EVENT_PLAN_MAX_CHECKPOINTS), measuredCheckpointCount: z.number().int().nonnegative().max(COMPOSITION_EVENT_PLAN_MAX_CHECKPOINTS),
   batches: z.array(z.object({batchIndex: z.number().int().nonnegative(), packetSha256: hashSchema,
+    visualReferenceSha256: hashSchema.optional(),
     status: z.enum(["PASS", "FAIL", "INCOMPLETE"]), measuredCheckpointCount: z.number().int().nonnegative().max(COMPOSITION_CONFORMANCE_MAX_CHECKPOINTS),
     visualMetrics: eventVisualMetricsSchema.optional()}).strict()).min(1).max(COMPOSITION_EVENT_PLAN_MAX_BATCHES),
 }).strict().superRefine((summary, context) => {
@@ -112,6 +114,7 @@ export async function executeCompositionEventCheckpointBatches(input: {
   document: CompositionEditorDocument; parentContract: CompositionConformanceContract;
   organizationId: string; revisionId: string; projectHash: string; videoSha256: string;
   signal?: AbortSignal;
+  visualReferenceChecksums?: string[];
 }, adapters: EventBatchMeasurementAdapters) {
   const signal = input.signal;
   const assertActive = () => {if (signal?.aborted) throw new Error("CONFORMANCE_EVENT_EXECUTION_ABORTED");};
@@ -120,17 +123,20 @@ export async function executeCompositionEventCheckpointBatches(input: {
     projectHash: hashSchema, videoSha256: hashSchema}).strict().parse({organizationId: input.organizationId,
     revisionId: input.revisionId, projectHash: input.projectHash, videoSha256: input.videoSha256});
   const prepared = prepareCompositionEventBatchContracts(input);
+  const visualReferences = input.visualReferenceChecksums === undefined ? undefined
+    : z.array(hashSchema).length(prepared.batchCount).parse(input.visualReferenceChecksums);
   const locateDiagnostic = prepareEventDiagnosticLocations(input.document);
   const {parentContractSha256, planSha256, documentHash} = prepared;
   let measuredCheckpointCount = 0, resumedBatchCount = 0;
   let affectedBatchCount = 0;
   const diagnostics: EventBatchDiagnostic[] = [];
-  const batches: Array<{batchIndex: number; packetSha256: string; status: "PASS" | "FAIL" | "INCOMPLETE"; measuredCheckpointCount: number; visualMetrics: EventVisualMetrics}> = [];
+  const batches: Array<{batchIndex: number; packetSha256: string; visualReferenceSha256?: string; status: "PASS" | "FAIL" | "INCOMPLETE"; measuredCheckpointCount: number; visualMetrics: EventVisualMetrics}> = [];
   for (let batchIndex = 0; batchIndex < prepared.batchCount; batchIndex++) {
     assertActive();
     const {contract, batchContractSha256} = prepared.select(batchIndex);
     const identity = eventBatchMeasurementIdentitySchema.parse({...executionScope, documentHash, parentContractSha256,
-      batchContractSha256, batch: contract.schemaVersion === 4 ? contract.checkpointBatch : undefined});
+      batchContractSha256, batch: contract.schemaVersion === 4 ? contract.checkpointBatch : undefined,
+      ...(visualReferences ? {visualReferenceSha256: visualReferences[batchIndex]} : {})});
     const validate = (raw: unknown) => {
       const packet = eventBatchMeasurementPacketSchema.parse(raw);
       if (sha256(packet.identity) !== sha256(identity)) throw new Error("CONFORMANCE_EVENT_EXECUTION_BATCH_IDENTITY_MISMATCH");
@@ -169,6 +175,7 @@ export async function executeCompositionEventCheckpointBatches(input: {
     }
     measuredCheckpointCount += evaluated.checkedCheckpointCount;
     batches.push({batchIndex, packetSha256: sha256(packet), status, measuredCheckpointCount: evaluated.checkedCheckpointCount,
+      ...(identity.visualReferenceSha256 ? {visualReferenceSha256: identity.visualReferenceSha256} : {}),
       visualMetrics: eventVisualMetricsFromReport(evaluated, contract)});
   }
   const status = batches.some((batch) => batch.status === "FAIL") ? "FAIL" as const

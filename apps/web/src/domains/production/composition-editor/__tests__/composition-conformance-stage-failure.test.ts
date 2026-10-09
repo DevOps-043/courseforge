@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { z } from "zod";
 import { ConformanceStageFailure, conformanceExecutionStageSchema, recordConformanceCleanupFailure,
-  wrapConformanceStageFailure } from "../qa/composition-conformance-stage-failure";
+  wrapConformanceStageFailure, requiresConformanceExecutionRecovery } from "../qa/composition-conformance-stage-failure";
 import { classifyConformanceJobFailure } from "../qa/composition-conformance-job-worker";
 
 test("every failed boundary produces a SQL-compatible code without retaining private messages or causes", () => {
@@ -32,4 +32,19 @@ test("cleanup failure retains the primary failed boundary and nested wrappers do
   assert.equal(combined.retryable, false);
   assert.equal(combined.errorCode, "CONFORMANCE_JOB_PREVIEW_REFERENCE_WITH_CLEANUP_REJECTED");
   assert.equal(recordConformanceCleanupFailure().stage, "RESOURCE_CLEANUP");
+});
+
+test("uncertain process ownership survives sanitization and cleanup without permitting retries", () => {
+  for (const code of ["CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED", "CONTROLLED_RENDER_EXECUTION_FENCE_ALREADY_RESERVED"]) {
+    const primary = wrapConformanceStageFailure("RENDER_COMPARISON", new Error(code));
+    for (const failure of [primary, recordConformanceCleanupFailure(primary)]) {
+      assert.equal(requiresConformanceExecutionRecovery(failure), true);
+      assert.equal(failure.retryable, false);
+      assert.equal(classifyConformanceJobFailure(failure).retryable, false);
+      assert.match(failure.errorCode, /RECOVERY_REQUIRED$/);
+      assert.equal(wrapConformanceStageFailure("REPORT_VALIDATION", failure), failure);
+      assert.equal("cause" in failure, false);
+    }
+  }
+  assert.equal(requiresConformanceExecutionRecovery(new Error("private reason")), false);
 });

@@ -412,6 +412,17 @@ test("interruption preserves earlier partitions and restart measures only the mi
   assert.equal(state.measured.filter((index) => index === 0).length, 1);
 });
 
+test("selected references bind every packet and cannot resume a packet from another capture", async () => {
+  const state = fixture(), prepared = prepareCompositionEventBatchContracts(state.input);
+  const visualReferenceChecksums = Array.from({length: prepared.batchCount}, () => "c".repeat(64));
+  const first = await executeCompositionEventCheckpointBatches({...state.input, visualReferenceChecksums}, state.adapters);
+  assert.ok(first.batches.every(batch => batch.visualReferenceSha256 === "c".repeat(64)));
+  assert.equal((await executeCompositionEventCheckpointBatches({...state.input, visualReferenceChecksums}, state.adapters)).resumedBatchCount,
+    prepared.batchCount);
+  await assert.rejects(executeCompositionEventCheckpointBatches({...state.input,
+    visualReferenceChecksums: visualReferenceChecksums.map(() => "d".repeat(64))}, state.adapters), /IDENTITY_MISMATCH/);
+});
+
 test("composed adapters capture, measure, persist and resume every partition in exact scope", async () => {
   const state = fixture(), prepared = prepareCompositionEventBatchContracts(state.input), root = prepared.select(0).contract;
   if (root.schemaVersion !== 4) throw new Error("Expected v4");
@@ -420,13 +431,21 @@ test("composed adapters capture, measure, persist and resume every partition in 
     documentHash: prepared.documentHash, parentContractSha256: prepared.parentContractSha256,
     batchContractSha256: prepared.parentContractSha256, batch: root.checkpointBatch});
   const captured: number[] = [];
+  const processPorts = {} as never, signal = new AbortController().signal;
   const dependencies = {
     prepareVisual: async (params) => {
       captured.push(params.eventBatchIndex!);
       return {organizationId: params.organizationId, revisionId: params.revisionId,
         projectHash: state.input.projectHash, documentHash: prepared.documentHash, checksum: "c".repeat(64)} as never;
     },
-    measure: async (params) => state.adapters.measureBatch(params) as Promise<EventBatchMeasurementPacket>,
+    measure: async (params) => {
+      assert.equal(params.comparison.processPorts, processPorts);
+      assert.equal(params.comparison.signal, signal);
+      assert.equal(params.comparison.renderReceiptPath, `receipt-${params.identity.batch.batchIndex}`);
+      assert.equal(params.comparison.expectedContractSha256, params.identity.batchContractSha256);
+      assert.equal(params.comparison.expectedRenderReceiptSha256, "a".repeat(64));
+      return state.adapters.measureBatch(params) as Promise<EventBatchMeasurementPacket>;
+    },
     readPacket: async (params) => state.adapters.readBatch(params.identity as never) as never,
     persistPacket: async (params) => {
       assert.equal(params.visualChecksum, "c".repeat(64));
@@ -434,7 +453,11 @@ test("composed adapters capture, measure, persist and resume every partition in 
     },
   } satisfies NonNullable<Parameters<typeof createPersistedCompositionEventBatchAdapters>[1]>;
   const params = {supabase: {} as never, supabaseUrl: "https://controlled.supabase.co", rootIdentity,
-    outputParentDirectory: "owned-directory", videoPath: "bound-video", renderReceiptPath: "bound-receipt"};
+    outputParentDirectory: "owned-directory", videoPath: "bound-video", renderReceiptPath: "bound-receipt", processPorts, signal,
+    resolveRenderReceipt: (contractSha256: string, batchIndex: number) => {
+      assert.equal(contractSha256, prepared.select(batchIndex).batchContractSha256);
+      return {path: `receipt-${batchIndex}`, sha256: "a".repeat(64)};
+    }};
   const adapters = createPersistedCompositionEventBatchAdapters(params, dependencies);
   const first = await executeCompositionEventCheckpointBatches(state.input, adapters);
   assert.equal(first.status, "PASS"); assert.equal(captured.length, prepared.batchCount);
@@ -451,6 +474,12 @@ test("composed adapters capture, measure, persist and resume every partition in 
   await assert.rejects(adapters.measureBatch({identity, contract: changedContract}), /CONTRACT_MISMATCH/);
   assert.equal(captured.length, prepared.batchCount);
   const controller = new AbortController(), prepareVisual = dependencies.prepareVisual;
+  const exactChecksums = Array.from({length: prepared.batchCount}, () => "c".repeat(64));
+  const exact = createPersistedCompositionEventBatchAdapters({...params, visualReferenceChecksums: exactChecksums}, dependencies);
+  await exact.measureBatch({identity: {...identity, visualReferenceSha256: "c".repeat(64)}, contract: selected});
+  assert.equal(captured.length, prepared.batchCount, "reserved route must not capture a new preview");
+  await assert.rejects(exact.measureBatch({identity: {...identity, visualReferenceSha256: "d".repeat(64)}, contract: selected}),
+    /REFERENCE_SELECTION_MISMATCH/);
   const cancelling = createPersistedCompositionEventBatchAdapters({...params, signal: controller.signal}, {...dependencies,
     prepareVisual: async (input) => {const visual = await prepareVisual(input); controller.abort("private reason"); return visual;}});
   const measuredBefore = state.measured.length;
@@ -459,7 +488,7 @@ test("composed adapters capture, measure, persist and resume every partition in 
 });
 
 test("authorized event entrypoint binds snapshot source, executes all batches and cleans source on success or failure", async () => {
-  for (const failure of [undefined, "source", "authorization", "execution"] as const) {
+  for (const failure of [undefined, "source", "authorization", "execution", "ownership"] as const) {
     const state = fixture(); let cleanup = 0, executions = 0;
     const manifest = {conformance_contract: state.input.parentContract,
       conformance_event_batch_authorization: buildCompositionEventBatchAuthorization(state.input)};
@@ -475,6 +504,7 @@ test("authorized event entrypoint binds snapshot source, executes all batches an
       readSource: async () => ({document: state.input.document, contract: state.input.parentContract}) as never,
       createAdapters: () => state.adapters,
       execute: async (params, adapters) => {executions++; if (failure === "execution") throw new Error("controlled execution");
+        if (failure === "ownership") throw new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED");
         return executeCompositionEventCheckpointBatches(params, adapters);},
     } satisfies NonNullable<Parameters<typeof executePersistedCompositionEventBatches>[1]>;
     const execute = () => executePersistedCompositionEventBatches({supabase: supabase as never, supabaseUrl: "https://controlled.supabase.co",
@@ -482,7 +512,7 @@ test("authorized event entrypoint binds snapshot source, executes all batches an
       documentHash: state.input.parentContract.documentHash, videoSha256: state.input.videoSha256,
       outputParentDirectory: "owned-directory", videoPath: "bound-video", renderReceiptPath: "receipt"}, dependencies);
     if (failure) await assert.rejects(execute()); else assert.equal((await execute())?.status, "PASS");
-    assert.equal(cleanup, 1); assert.equal(executions, failure === "source" || failure === "authorization" ? 0 : 1);
+    assert.equal(cleanup, failure === "ownership" ? 0 : 1); assert.equal(executions, failure === "source" || failure === "authorization" ? 0 : 1);
   }
 });
 

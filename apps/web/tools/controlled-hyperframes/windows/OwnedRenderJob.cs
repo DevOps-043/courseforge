@@ -8,8 +8,8 @@ using System.Threading;
 using Microsoft.Win32.SafeHandles;
 
 namespace Courseforge.ControlledRender {
-  // Job membership/resource control only. Not a filesystem/network/security-token sandbox.
-  public sealed class OwnedRenderJob : IDisposable {
+  // Owned resources and optional privilege reduction; not a filesystem/network sandbox.
+  public sealed partial class OwnedRenderJob : IDisposable {
     // Console's synchronized reader may implement ReadLineAsync synchronously.
     // Own an explicit background reader so the supervisor can still observe the root/deadline.
     public static System.Threading.Tasks.Task<string> ReadControlLine(int maximumCharacters) {
@@ -28,6 +28,11 @@ namespace Courseforge.ControlledRender {
     private const uint Suspended = 0x00000004, UnicodeEnvironment = 0x00000400, NoWindow = 0x08000000;
     private const uint KillOnClose = 0x00002000, ActiveProcessLimit = 0x00000008, JobTimeLimit = 0x00000004;
     private const uint ProcessMemoryLimit = 0x00000100, JobMemoryLimit = 0x00000200;
+    private const int CpuRateControlClass = 15;
+    private const uint CpuRateEnable = 0x1, CpuRateHardCap = 0x4;
+    private const uint TokenAssignDuplicateQuery = 0x000B, DisableMaximumPrivilege = 0x1, LuaToken = 0x4;
+    private const int TokenPrivilegesClass = 3, TokenElevationClass = 20, TokenHasRestrictionsClass = 21;
+    private const int TokenRestrictedSidsClass = 11;
     private const int ExtendedLimitClass = 9, AccountingClass = 1, CleanupPollMilliseconds = 10;
     private const uint WaitTimeout = 258, WaitFailed = 0xffffffff;
     private JobHandle job;
@@ -40,6 +45,7 @@ namespace Courseforge.ControlledRender {
       public UIntPtr Affinity; public uint PriorityClass, SchedulingClass;
     }
     [StructLayout(LayoutKind.Sequential)] private struct IoCounters { public ulong A, B, C, D, E, F; }
+    [StructLayout(LayoutKind.Sequential)] private struct CpuRateControl { public uint Flags, Rate; }
     [StructLayout(LayoutKind.Sequential)] private struct ExtendedLimits {
       public BasicLimits Basic; public IoCounters Io;
       public UIntPtr ProcessMemory, JobMemory, PeakProcessMemory, PeakJobMemory;
@@ -64,8 +70,102 @@ namespace Courseforge.ControlledRender {
       public ProcessHandle(IntPtr value) : base(true) { SetHandle(value); }
       protected override bool ReleaseHandle() { return CloseHandle(handle); }
     }
+    private sealed class TokenHandle : SafeHandleZeroOrMinusOneIsInvalid {
+      public TokenHandle() : base(true) {}
+      protected override bool ReleaseHandle() { return CloseHandle(handle); }
+    }
+    [StructLayout(LayoutKind.Sequential)] private struct Luid { public uint Low; public int High; }
+    [StructLayout(LayoutKind.Sequential)] private struct SidAndAttributes { public IntPtr Sid; public uint Attributes; }
+    [StructLayout(LayoutKind.Sequential)] private struct SingleTokenGroup { public uint Count; public SidAndAttributes Group; }
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)] private static extern bool ConvertStringSidToSid(string text, out IntPtr sid);
+    [DllImport("advapi32.dll")] private static extern bool IsValidSid(IntPtr sid);
+    [DllImport("advapi32.dll")] private static extern bool EqualSid(IntPtr first, IntPtr second);
+    [DllImport("kernel32.dll")] private static extern IntPtr LocalFree(IntPtr memory);
+    [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentProcess();
+    [DllImport("advapi32.dll", SetLastError = true)] private static extern bool OpenProcessToken(IntPtr process, uint access, out TokenHandle token);
+    [DllImport("advapi32.dll", SetLastError = true)] private static extern bool CreateRestrictedToken(TokenHandle existing, uint flags,
+      uint disableCount, IntPtr disable, uint deleteCount, IntPtr delete, uint restrictedCount, IntPtr restricted, out TokenHandle token);
+    [DllImport("advapi32.dll", SetLastError = true)] private static extern bool GetTokenInformation(TokenHandle token, int kind, IntPtr buffer, uint size, out uint returned);
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)] private static extern bool LookupPrivilegeValue(string system, string name, out Luid value);
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)] private static extern bool CreateProcessAsUser(TokenHandle token,
+      string application, StringBuilder command, IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles,
+      uint flags, IntPtr environment, string directory, ref Startup startup, out ProcessInformation information);
+
+    private static int ReadTokenScalar(TokenHandle token, int kind) {
+      IntPtr buffer = Marshal.AllocHGlobal(4);
+      try {
+        uint returned;
+        if (!GetTokenInformation(token, kind, buffer, 4, out returned) || returned != 4) throw Failure("TOKEN_VERIFY_FAILED");
+        return Marshal.ReadInt32(buffer);
+      } finally {Marshal.FreeHGlobal(buffer);}
+    }
+    private static void VerifyRestrictingSid(TokenHandle token, IntPtr expectedSid) {
+      const uint MaximumTokenBytes = 65536;
+      IntPtr buffer = Marshal.AllocHGlobal((int)MaximumTokenBytes);
+      try {
+        uint returned;
+        int groupOffset = (int)Marshal.OffsetOf(typeof(SingleTokenGroup), "Group");
+        if (!GetTokenInformation(token, TokenRestrictedSidsClass, buffer, MaximumTokenBytes, out returned)
+          || returned < groupOffset + Marshal.SizeOf(typeof(SidAndAttributes)) || returned > MaximumTokenBytes
+          || Marshal.ReadInt32(buffer) != 1) throw Failure("RESTRICTING_SID_VERIFY_FAILED");
+        var observed = (SidAndAttributes)Marshal.PtrToStructure(IntPtr.Add(buffer, groupOffset), typeof(SidAndAttributes));
+        // Bound the kernel-returned SID pointer before passing it back to an API.
+        long offset = observed.Sid.ToInt64() - buffer.ToInt64();
+        if (offset < groupOffset + Marshal.SizeOf(typeof(SidAndAttributes)) || offset > returned - 8)
+          throw Failure("RESTRICTING_SID_VERIFY_FAILED");
+        int subAuthorities = Marshal.ReadByte(observed.Sid, 1);
+        if (subAuthorities > 15 || offset + 8 + subAuthorities * 4 > returned
+          || !IsValidSid(observed.Sid) || !EqualSid(observed.Sid, expectedSid)) throw Failure("RESTRICTING_SID_VERIFY_FAILED");
+      } finally {Marshal.FreeHGlobal(buffer);}
+    }
+    private static TokenHandle CreateReducedToken(string restrictingSid) {
+      IntPtr sid = IntPtr.Zero, sidArray = IntPtr.Zero;
+      try {
+        if (restrictingSid != null) {
+          if (!System.Text.RegularExpressions.Regex.IsMatch(restrictingSid, @"\AS-1-15-3-1024(?:-(?:0|[1-9][0-9]{0,9})){8}\z"))
+            throw Failure("RESTRICTING_SID_INVALID");
+          foreach (var part in restrictingSid.Substring(14).Split('-')) {
+            uint number; if (!UInt32.TryParse(part, out number)) throw Failure("RESTRICTING_SID_INVALID");
+          }
+          if (!ConvertStringSidToSid(restrictingSid, out sid) || !IsValidSid(sid)) throw Failure("RESTRICTING_SID_INVALID");
+          sidArray = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(SidAndAttributes)));
+          Marshal.StructureToPtr(new SidAndAttributes {Sid = sid, Attributes = 0}, sidArray, false);
+        }
+        TokenHandle original;
+        if (!OpenProcessToken(GetCurrentProcess(), TokenAssignDuplicateQuery, out original)) throw Failure("TOKEN_OPEN_FAILED");
+        using (original) {
+          TokenHandle reduced;
+          // DISABLE_MAX_PRIVILEGE | LUA_TOKEN. Never SANDBOX_INERT; AppLocker remains enforced.
+          if (!CreateRestrictedToken(original, DisableMaximumPrivilege | LuaToken, 0, IntPtr.Zero, 0, IntPtr.Zero,
+            restrictingSid == null ? 0U : 1U, sidArray, out reduced))
+            throw Failure("TOKEN_REDUCE_FAILED");
+          try {
+            if (ReadTokenScalar(reduced, TokenElevationClass) != 0 || ReadTokenScalar(reduced, TokenHasRestrictionsClass) == 0) throw Failure("TOKEN_VERIFY_FAILED");
+            if (restrictingSid != null) VerifyRestrictingSid(reduced, sid);
+            const uint MaximumTokenBytes = 65536;
+            IntPtr buffer = Marshal.AllocHGlobal((int)MaximumTokenBytes);
+            try {
+              uint returned;
+              if (!GetTokenInformation(reduced, TokenPrivilegesClass, buffer, MaximumTokenBytes, out returned) || returned < 4 || returned > MaximumTokenBytes)
+                throw Failure("TOKEN_VERIFY_FAILED");
+              int count = Marshal.ReadInt32(buffer);
+              if (count < 0 || count > 1 || returned < 4 + count * 12) throw Failure("TOKEN_PRIVILEGES_NOT_REDUCED");
+              if (count == 1) {
+                Luid traversal;
+                if (!LookupPrivilegeValue(null, "SeChangeNotifyPrivilege", out traversal)
+                  || (uint)Marshal.ReadInt32(buffer, 4) != traversal.Low || Marshal.ReadInt32(buffer, 8) != traversal.High)
+                  throw Failure("TOKEN_PRIVILEGES_NOT_REDUCED");
+              }
+            } finally {Marshal.FreeHGlobal(buffer);}
+            return reduced;
+          } catch {reduced.Dispose(); throw;}
+        }
+      } finally {if (sidArray != IntPtr.Zero) Marshal.FreeHGlobal(sidArray); if (sid != IntPtr.Zero) LocalFree(sid);}
+    }
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] private static extern JobHandle CreateJobObject(IntPtr attributes, string name);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetInformationJobObject(JobHandle job, int kind, ref ExtendedLimits limits, uint length);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetInformationJobObject(JobHandle job, int kind, ref CpuRateControl limits, uint length);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool QueryInformationJobObject(JobHandle job, int kind, out CpuRateControl limits, uint length, IntPtr returnedLength);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool QueryInformationJobObject(JobHandle job, int kind, out Accounting accounting, uint length, IntPtr returnedLength);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool QueryInformationJobObject(JobHandle job, int kind, out ExtendedLimits limits, uint length, IntPtr returnedLength);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool QueryInformationJobObject(JobHandle job, int kind, IntPtr buffer, uint length, IntPtr returnedLength);
@@ -110,9 +210,61 @@ namespace Courseforge.ControlledRender {
     }
     public static OwnedRenderJob Start(string executable, string[] arguments, string directory,
       IDictionary<string, string> environment, uint maximumProcesses, ulong processMemoryBytes, ulong jobMemoryBytes, uint userCpuSeconds) {
+      return StartCore(executable, arguments, directory, environment, maximumProcesses, processMemoryBytes, jobMemoryBytes, userCpuSeconds, 0, null, null, null, null);
+    }
+    public static OwnedRenderJob StartWithCpuRate(string executable, string[] arguments, string directory,
+      IDictionary<string, string> environment, uint maximumProcesses, ulong processMemoryBytes, ulong jobMemoryBytes,
+      uint userCpuSeconds, uint cpuRatePercent) {
+      if (cpuRatePercent < 1 || cpuRatePercent > 100) throw Failure("CPU_RATE_INVALID");
+      return StartCore(executable, arguments, directory, environment, maximumProcesses, processMemoryBytes, jobMemoryBytes, userCpuSeconds, cpuRatePercent, null, null, null, null);
+    }
+    public static OwnedRenderJob StartReduced(string executable, string[] arguments, string directory,
+      IDictionary<string, string> environment, uint maximumProcesses, ulong processMemoryBytes, ulong jobMemoryBytes,
+      uint userCpuSeconds, uint cpuRatePercent, string desktop) {
+      if (cpuRatePercent < 1 || cpuRatePercent > 100 || desktop == null
+        || !System.Text.RegularExpressions.Regex.IsMatch(desktop, @"\A[a-zA-Z0-9_-]{1,80}\\[a-zA-Z0-9_-]{1,80}\z")
+        || String.Equals(desktop.Substring(desktop.IndexOf('\\') + 1), "default", StringComparison.OrdinalIgnoreCase))
+        throw Failure("REDUCED_TOKEN_POLICY_INVALID");
+      return StartCore(executable, arguments, directory, environment, maximumProcesses, processMemoryBytes, jobMemoryBytes, userCpuSeconds, cpuRatePercent, desktop, null, null, null);
+    }
+    public static OwnedRenderJob StartWithRestrictingSid(string executable, string[] arguments, string directory,
+      IDictionary<string, string> environment, uint maximumProcesses, ulong processMemoryBytes, ulong jobMemoryBytes,
+      uint userCpuSeconds, uint cpuRatePercent, string desktop, string restrictingSid) {
+      if (restrictingSid == null || cpuRatePercent < 1 || cpuRatePercent > 100 || desktop == null
+        || !System.Text.RegularExpressions.Regex.IsMatch(desktop, @"\A[a-zA-Z0-9_-]{1,80}\\[a-zA-Z0-9_-]{1,80}\z")
+        || String.Equals(desktop.Substring(desktop.IndexOf('\\') + 1), "default", StringComparison.OrdinalIgnoreCase))
+        throw Failure("REDUCED_TOKEN_POLICY_INVALID");
+      return StartCore(executable, arguments, directory, environment, maximumProcesses, processMemoryBytes, jobMemoryBytes, userCpuSeconds, cpuRatePercent, desktop, restrictingSid, null, null);
+    }
+    public static OwnedRenderJob StartWithAclPreflight(string executable, string[] arguments, string directory,
+      IDictionary<string, string> environment, uint maximumProcesses, ulong processMemoryBytes, ulong jobMemoryBytes,
+      uint userCpuSeconds, uint cpuRatePercent, string desktop, string restrictingSid, string[] readOnlyPaths, string[] deniedPaths) {
+      if (restrictingSid == null || readOnlyPaths == null || deniedPaths == null || cpuRatePercent < 1 || cpuRatePercent > 100
+        || desktop == null || !System.Text.RegularExpressions.Regex.IsMatch(desktop, @"\A[a-zA-Z0-9_-]{1,80}\\[a-zA-Z0-9_-]{1,80}\z")
+        || String.Equals(desktop.Substring(desktop.IndexOf('\\') + 1), "default", StringComparison.OrdinalIgnoreCase))
+        throw Failure("ACL_PREFLIGHT_POLICY_INVALID");
+      return StartCore(executable, arguments, directory, environment, maximumProcesses, processMemoryBytes, jobMemoryBytes,
+        userCpuSeconds, cpuRatePercent, desktop, restrictingSid, readOnlyPaths, deniedPaths);
+    }
+    public static OwnedRenderJob StartWithAclTreePreflight(string executable, string[] arguments, string directory,
+      IDictionary<string, string> environment, uint maximumProcesses, ulong processMemoryBytes, ulong jobMemoryBytes,
+      uint userCpuSeconds, uint cpuRatePercent, string desktop, string restrictingSid, string[] readOnlyPaths, string[] deniedPaths,
+      uint maximumEntries, uint maximumDepth, uint timeoutMilliseconds) {
+      if (restrictingSid == null || readOnlyPaths == null || deniedPaths == null || cpuRatePercent < 1 || cpuRatePercent > 100
+        || desktop == null || !System.Text.RegularExpressions.Regex.IsMatch(desktop, @"\A[a-zA-Z0-9_-]{1,80}\\[a-zA-Z0-9_-]{1,80}\z")
+        || String.Equals(desktop.Substring(desktop.IndexOf('\\') + 1), "default", StringComparison.OrdinalIgnoreCase))
+        throw Failure("ACL_PREFLIGHT_POLICY_INVALID");
+      return StartCore(executable, arguments, directory, environment, maximumProcesses, processMemoryBytes, jobMemoryBytes,
+        userCpuSeconds, cpuRatePercent, desktop, restrictingSid, readOnlyPaths, deniedPaths,
+        new AclTreeAudit(maximumEntries, maximumDepth, timeoutMilliseconds));
+    }
+    private static OwnedRenderJob StartCore(string executable, string[] arguments, string directory,
+      IDictionary<string, string> environment, uint maximumProcesses, ulong processMemoryBytes, ulong jobMemoryBytes,
+      uint userCpuSeconds, uint cpuRatePercent, string desktop, string restrictingSid, string[] readOnlyPaths, string[] deniedPaths,
+      AclTreeAudit treeAudit = null, string appContainerSid = null) {
       if (Environment.OSVersion.Platform != PlatformID.Win32NT || IntPtr.Size != 8) throw Failure("PLATFORM_UNSUPPORTED");
       if (Marshal.SizeOf(typeof(BasicLimits)) != 64 || Marshal.SizeOf(typeof(ExtendedLimits)) != 144
-        || Marshal.SizeOf(typeof(Accounting)) != 48 || Marshal.SizeOf(typeof(Startup)) != 104)
+        || Marshal.SizeOf(typeof(Accounting)) != 48 || Marshal.SizeOf(typeof(Startup)) != 104 || Marshal.SizeOf(typeof(CpuRateControl)) != 8)
         throw Failure("ABI_INVALID");
       if (maximumProcesses < 1 || maximumProcesses > 64 || processMemoryBytes < 64UL * 1024 * 1024
         || processMemoryBytes > jobMemoryBytes || jobMemoryBytes > 4UL * 1024 * 1024 * 1024 || userCpuSeconds < 1 || userCpuSeconds > 600)
@@ -127,6 +279,14 @@ namespace Courseforge.ControlledRender {
       foreach (var argument in arguments) command.Append(' ').Append(Quote(argument));
       if (command.Length >= 32767) throw Failure("ARGUMENT_INVALID");
       string environmentBlock = EnvironmentBlock(environment);
+      if (desktop != null) {
+        foreach (var name in new [] {"TEMP", "TMP", "TMPDIR"}) {
+          string temporaryDirectory;
+          if (!environment.TryGetValue(name, out temporaryDirectory)
+            || !String.Equals(temporaryDirectory, directory, StringComparison.OrdinalIgnoreCase))
+            throw Failure("OWNED_TEMP_DIRECTORY_REQUIRED");
+        }
+      }
       var owned = new OwnedRenderJob(); IntPtr environmentPointer = IntPtr.Zero, thread = IntPtr.Zero;
       try {
         // Unnamed, non-inheritable handle; no breakaway flags and no PID-based cleanup.
@@ -144,17 +304,39 @@ namespace Courseforge.ControlledRender {
           || observedLimits.Basic.JobTime != limits.Basic.JobTime
           || observedLimits.ProcessMemory.ToUInt64() != processMemoryBytes || observedLimits.JobMemory.ToUInt64() != jobMemoryBytes)
           throw Failure("LIMIT_READBACK_MISMATCH");
+        if (cpuRatePercent != 0) {
+          var cpu = new CpuRateControl(); cpu.Flags = CpuRateEnable | CpuRateHardCap; cpu.Rate = cpuRatePercent * 100;
+          if (!SetInformationJobObject(owned.job, CpuRateControlClass, ref cpu, (uint)Marshal.SizeOf(typeof(CpuRateControl))))
+            throw Failure("CPU_RATE_CONFIGURE_FAILED");
+          CpuRateControl observedCpu;
+          if (!QueryInformationJobObject(owned.job, CpuRateControlClass, out observedCpu,
+            (uint)Marshal.SizeOf(typeof(CpuRateControl)), IntPtr.Zero)) throw Failure("CPU_RATE_READBACK_FAILED");
+          if (observedCpu.Flags != cpu.Flags || observedCpu.Rate != cpu.Rate) throw Failure("CPU_RATE_READBACK_MISMATCH");
+        }
         environmentPointer = Marshal.StringToHGlobalUni(environmentBlock);
         var startup = new Startup(); startup.Size = (uint)Marshal.SizeOf(typeof(Startup)); ProcessInformation information;
-        if (!CreateProcess(Path.GetFullPath(executable), command, IntPtr.Zero, IntPtr.Zero, false,
-          Suspended | UnicodeEnvironment | NoWindow, environmentPointer, Path.GetFullPath(directory), ref startup, out information))
-          throw Failure("PROCESS_CREATE_FAILED");
+        if (desktop != null) {
+          startup.Desktop = desktop;
+          using (var reduced = CreateReducedToken(restrictingSid)) {
+            if (readOnlyPaths != null && appContainerSid == null) VerifyFileAccessPreflight(reduced, directory, executable, readOnlyPaths, deniedPaths, treeAudit);
+            if (appContainerSid != null) information = CreateAppContainerChild(reduced, Path.GetFullPath(executable), command,
+              Path.GetFullPath(directory), environmentPointer, startup, appContainerSid);
+            else if (!CreateProcessAsUser(reduced, Path.GetFullPath(executable), command, IntPtr.Zero, IntPtr.Zero, false,
+              Suspended | UnicodeEnvironment | NoWindow, environmentPointer, Path.GetFullPath(directory), ref startup, out information))
+              throw Failure("REDUCED_PROCESS_CREATE_FAILED");
+          }
+        } else {
+          if (!CreateProcess(Path.GetFullPath(executable), command, IntPtr.Zero, IntPtr.Zero, false,
+            Suspended | UnicodeEnvironment | NoWindow, environmentPointer, Path.GetFullPath(directory), ref startup, out information))
+            throw Failure("PROCESS_CREATE_FAILED");
+        }
         owned.process = new ProcessHandle(information.Process); thread = information.Thread; owned.ProcessId = information.ProcessId;
         if (!AssignProcessToJobObject(owned.job, owned.process)) {
           if (!TerminateProcess(owned.process, 1) || WaitForSingleObject(owned.process, 5000) != 0)
             throw Failure("UNASSIGNED_PROCESS_CLEANUP_FAILED");
           throw Failure("JOB_ASSIGN_FAILED");
         }
+        if (appContainerSid != null) VerifyAppContainerChild(owned.process, appContainerSid, directory, executable, readOnlyPaths, deniedPaths, treeAudit);
         if (ResumeThread(thread) == UInt32.MaxValue) throw Failure("PROCESS_RESUME_FAILED");
         return owned;
       } catch {owned.Dispose(); throw;}

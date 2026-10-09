@@ -2,11 +2,13 @@ import { z } from "zod";
 import { htmlEditingBindingSchema } from "./html-editing/html-editing.contract";
 import { htmlSnapshotLocatorScopeSchema, type HtmlSnapshotLocatorScope, type HtmlSnapshotLocatorStorage } from "./composition-html-snapshot-locator.client";
 import { htmlEditingInitializationRequestSchema, htmlEditingInitializationAcknowledgmentSchema } from "./composition-html-editing-initialization-http.contract";
+import { htmlEditingInitializationOperationReceiptSchema } from "./composition-html-editing-initialization-operation.contract";
 
 const maximumJournalBytes = 4096;
 const entrySchema = z.object({ schemaVersion: z.literal(1), scope: htmlSnapshotLocatorScopeSchema, operationId: z.string().uuid(),
   clipId: htmlEditingBindingSchema.shape.clipId, createdAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-  request: htmlEditingInitializationRequestSchema, acknowledgment: htmlEditingInitializationAcknowledgmentSchema.optional() }).strict()
+  request: htmlEditingInitializationRequestSchema, requestSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  acknowledgment: htmlEditingInitializationAcknowledgmentSchema.optional() }).strict()
   .refine(entry => !entry.acknowledgment || entry.acknowledgment.compositionDocumentHash === entry.request.expectedDocumentHash);
 export type HtmlEditingInitializationJournalEntry = z.infer<typeof entrySchema>;
 export type HtmlEditingInitializationJournalState = { status: "EMPTY" } | { status: "UNAVAILABLE" }
@@ -58,6 +60,19 @@ export function acknowledgeHtmlEditingInitializationJournal(storage: HtmlSnapsho
     if (expected.acknowledgment && JSON.stringify(expected.acknowledgment) !== JSON.stringify(next.acknowledgment)) return false;
     const encoded = encodedEntry(next); storage.setItem(key(scope), encoded);
     return storage.getItem(key(scope)) === encoded;
+  } catch { return false; }
+}
+/** Receipt was verified by the bounded operation client. Compare exact persisted
+ * identity and request again before recording its historical acknowledgment.
+ * Legacy intents have no server operation identity and cannot use this path. */
+export function recordHtmlEditingInitializationJournalReceipt(storage: HtmlSnapshotLocatorStorage | null,
+  scope: HtmlSnapshotLocatorScope, expectedEntry: HtmlEditingInitializationJournalEntry, receiptInput: unknown): boolean {
+  try {
+    const expected = entrySchema.parse(expectedEntry), receipt = htmlEditingInitializationOperationReceiptSchema.parse(receiptInput);
+    if (!expected.requestSha256 || receipt.owner.actorId !== scope.actorId || receipt.owner.organizationId !== scope.organizationId
+      || receipt.owner.draftId !== scope.draftId || receipt.clipId !== expected.clipId || receipt.operationId !== expected.operationId
+      || receipt.requestSha256 !== expected.requestSha256 || JSON.stringify(receipt.request) !== JSON.stringify(expected.request)) return false;
+    return acknowledgeHtmlEditingInitializationJournal(storage, scope, expected, receipt.acknowledgment);
   } catch { return false; }
 }
 /** Caller verifies authorized initial inspector/source/template plus loaded native

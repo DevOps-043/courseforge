@@ -1,4 +1,5 @@
 import { readStandaloneHtmlLibrary, hasCanonicalHtmlSource } from "../standalone/standalone-timeline-library.service";
+import { isRelatedAudioProcessingReplacement, type AudioReplacementRecord } from "../audio-processing/audio-replacement-policy";
 import { preservesCompositionHtmlRevisionReferences } from "./composition-html-editing-reference-policy";
 import { randomUUID } from "node:crypto";
 import { hashCompositionDocument } from "./composition-document-hash";
@@ -163,7 +164,7 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
   }
   const current = await getCurrentCompositionDocument(params);
   if (current.documentHash !== params.expectedDocumentHash) throw new CompositionDocumentConflictError(current);
-  await assertReferencedAssetsBelongToDraft(params);
+  await assertReferencedAssetsBelongToDraft({ ...params, currentDocument: current.document });
   if (current.document.sourceInsertionMode === "MANUAL") {
     const addedHtml = params.patch.operations.flatMap((operation) => operation.type === "clip.add" && operation.clip.source.type === "DECK_SLIDE" ? [operation.clip] : []);
     if (addedHtml.length) {
@@ -282,6 +283,7 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
 
 /** Prevents add, replace and restore from referencing assets outside this draft. */
 async function assertReferencedAssetsBelongToDraft(params: {
+  currentDocument: CompositionEditorDocument;
   draftId: string;
   organizationId: string;
   patch: CompositionEditorPatchRequest;
@@ -322,10 +324,16 @@ async function assertReferencedAssetsBelongToDraft(params: {
     return [];
   }))];
   if (assetIds.length === 0 && brandingAssetIds.length === 0 && soundEffectAssetIds.length === 0) return;
+  const sourceIds = params.patch.operations.flatMap((operation) => {
+    if (operation.type !== "clip.replace-source") return [];
+    const source = params.currentDocument.clips.find((clip) => clip.id === operation.clipId)?.source;
+    return source?.type === "PRODUCTION_ASSET" ? [source.productionAssetId] : [];
+  });
+  const linkLookupIds = [...new Set([...assetIds, ...sourceIds])];
 
   const [{ data, error }, { data: branding, error: brandingError }, linkedSoundEffectIds] = await Promise.all([
     assetIds.length > 0
-      ? params.supabase.from("video_composition_draft_assets").select("production_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("production_asset_id", assetIds)
+      ? params.supabase.from("video_composition_draft_assets").select("production_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).in("production_asset_id", linkLookupIds)
       : Promise.resolve({ data: [], error: null }),
     brandingAssetIds.length > 0
       ? params.supabase.from("video_composition_draft_branding").select("intro_asset_id, outro_asset_id").eq("draft_id", params.draftId).eq("organization_id", params.organizationId).maybeSingle()
@@ -340,26 +348,33 @@ async function assertReferencedAssetsBelongToDraft(params: {
   if (error) throw error;
   if (brandingError) throw brandingError;
   const linkedIds = new Set((data || []).map((row: { production_asset_id: string }) => row.production_asset_id));
-  if (assetIds.some((assetId) => !linkedIds.has(assetId))) {
-    throw new CompositionDocumentError("El asset seleccionado no está vinculado a este borrador.");
-  }
   const replacements = params.patch.operations.filter((operation) => operation.type === "clip.replace-source");
   if (replacements.length > 0) {
-    const replacementIds = [...new Set(replacements.map((operation) => operation.productionAssetId))];
+    const replacementIds = [...new Set(replacements.flatMap((operation) => {
+      const source = params.currentDocument.clips.find((clip) => clip.id === operation.clipId)?.source;
+      return [operation.productionAssetId, ...(source?.type === "PRODUCTION_ASSET" ? [source.productionAssetId] : [])];
+    }))];
     const { data: registry, error: registryError } = await params.supabase.from("production_assets")
-      .select("id, checksum, file_size_bytes, mime_type, duration_milliseconds, duration_seconds, metadata, qa_status, storage_bucket, storage_path")
+      .select("id, asset_type, provider, material_component_id, checksum, file_size_bytes, mime_type, duration_milliseconds, duration_seconds, metadata, qa_status, storage_bucket, storage_path")
       .eq("organization_id", params.organizationId)
       .in("id", replacementIds);
     if (registryError) throw registryError;
     const byId = new Map((registry || []).map((row: { id: string }) => [row.id, row]));
     const validatedAssets = new Map<string, CompositionReplacementAssetRecord>();
     for (const operation of replacements) {
+      delete operation.audioProcessingPreviousAssetId;
       const asset = byId.get(operation.productionAssetId) as (CompositionReplacementAssetRecord & {
         duration_milliseconds: number | null;
         duration_seconds: number | null;
       }) | undefined;
       if (!asset || !isUsableCompositionReplacementAsset(asset)) {
         throw new CompositionDocumentError("El medio de reemplazo no está disponible.", 422);
+      }
+      const currentSource = params.currentDocument.clips.find((clip) => clip.id === operation.clipId)?.source;
+      const currentAsset = currentSource?.type === "PRODUCTION_ASSET" ? byId.get(currentSource.productionAssetId) : null;
+      if (currentSource?.type === "PRODUCTION_ASSET" && linkedIds.has(currentSource.productionAssetId) && currentAsset
+        && isRelatedAudioProcessingReplacement(currentAsset as AudioReplacementRecord, asset as unknown as AudioReplacementRecord)) {
+        operation.audioProcessingPreviousAssetId = currentSource.productionAssetId;
       }
       validatedAssets.set(operation.productionAssetId, asset);
       // Never trust media metadata submitted by the browser: normalize from
@@ -373,6 +388,17 @@ async function assertReferencedAssetsBelongToDraft(params: {
       operation.hasAudio = typeof metadata.has_audio === "boolean" ? metadata.has_audio : undefined;
       operation.sourceWidth = typeof metadata.source_width === "number" ? metadata.source_width : undefined;
       operation.sourceHeight = typeof metadata.source_height === "number" ? metadata.source_height : undefined;
+      if (!linkedIds.has(operation.productionAssetId) && operation.audioProcessingPreviousAssetId) {
+        const { error: linkError } = await params.supabase.from("video_composition_draft_assets").upsert({
+          draft_id: params.draftId, organization_id: params.organizationId, production_asset_id: operation.productionAssetId,
+          role: "VOICE", source_reference: "PRODUCTION_MEDIA",
+        }, { onConflict: "draft_id,production_asset_id" });
+        if (linkError) throw linkError;
+        linkedIds.add(operation.productionAssetId);
+      }
+    }
+    if (assetIds.some((assetId) => !linkedIds.has(assetId))) {
+      throw new CompositionDocumentError("El asset seleccionado no está vinculado a este borrador.");
     }
     // Check only replacement candidates, not every existing clip. This also
     // permits relinking a clip whose previous object has disappeared.
@@ -390,6 +416,9 @@ async function assertReferencedAssetsBelongToDraft(params: {
         throw new CompositionDocumentError("El archivo de reemplazo no coincide con el registro de medios.", 422);
       }
     }
+  }
+  if (assetIds.some((assetId) => !linkedIds.has(assetId))) {
+    throw new CompositionDocumentError("El asset seleccionado no está vinculado a este borrador.");
   }
   const linkedBrandingIds = new Set([branding?.intro_asset_id, branding?.outro_asset_id].filter((id): id is string => typeof id === "string"));
   if (brandingAssetIds.some((assetId) => !linkedBrandingIds.has(assetId))) {

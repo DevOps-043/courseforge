@@ -4,6 +4,11 @@ import { verifyHtmlEditingRevision, type HtmlEditingRevisionAuthority } from "./
 import { HtmlEditingRevisionError, htmlEditingRevisionSchema, HTML_EDITING_REVISION_POLICY } from "./html-editing-revision.contract";
 import { htmlEditingBindingSchema } from "./html-editing.contract";
 import { decodeHtmlEditingBoundedJson } from "./html-editing-validation";
+import { readHtmlEditingVisibilityDefault } from "./html-editing-visibility.server";
+import { readHtmlEditingSlotDefaults } from "./html-editing-slots.server";
+import { readHtmlEditingChartDefault } from "./html-editing-chart.server";
+import { readHtmlEditingStyleRangeDefault } from "./html-editing-style-range.server";
+import { readHtmlEditingTextLocaleDefault } from "./html-editing-text-locale.server";
 
 /** Integrity is checked using declared resources so revoked overrides remain
  * inspectable/removable. Current grants are projected separately, not bypassed.
@@ -24,10 +29,23 @@ export function createHtmlEditingInspectorView(input: HtmlEditingRevisionAuthori
   if (input.grantedAssetIds.some(id => !declaredAssets.has(id))) throw new HtmlEditingRevisionError("INVALID_REVISION");
   const source = load(revision.sourceHtml, {}, false);
   const defaults: HtmlEditingInspectorView["defaults"] = revision.manifest.elements.map(element => {
-    const node = source(`#${element.elementId}`);
-    if (element.kind === "TEXT") return { kind: "TEXT", elementId: element.elementId, value: node.text() };
+    const node = source(`#${element.targetElementId ?? element.elementId}`);
+    if (element.kind === "TEXT") {
+      const locale = readHtmlEditingTextLocaleDefault(node, element);
+      return { kind: "TEXT", elementId: element.elementId, value: node.text(), ...(locale ? { locale } : {}) };
+    }
     if (element.kind === "THEME") return { kind: "THEME", elementId: element.elementId,
       choiceId: node.attr("data-courseforge-theme-choice") ?? null };
+    if (element.kind === "ATTRIBUTE") return { kind: "ATTRIBUTE", elementId: element.elementId,
+      attributeName: element.attributeName, value: node.attr(element.attributeName) ?? null };
+    if (element.kind === "VISIBILITY") return { kind: "VISIBILITY", elementId: element.elementId,
+      visible: readHtmlEditingVisibilityDefault(node, element) };
+    if (element.kind === "SLOTS") return { kind: "SLOTS", elementId: element.elementId,
+      itemIds: readHtmlEditingSlotDefaults(node, element) };
+    if (element.kind === "CHART") return { kind: "CHART", elementId: element.elementId,
+      dataset: readHtmlEditingChartDefault(node, element) };
+    if (element.kind === "RANGE_TOKEN") return { kind: "RANGE_TOKEN", elementId: element.elementId,
+      value: readHtmlEditingStyleRangeDefault(node, element) };
     const path = node.attr("src");
     const assetId = path === undefined ? null : element.allowedAssetIds.find(id => input.imageSources.get(id) === path) ?? null;
     const fit = node.css("object-fit")?.trim().toUpperCase();

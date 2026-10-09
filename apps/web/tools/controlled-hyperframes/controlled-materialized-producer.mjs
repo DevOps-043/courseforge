@@ -20,6 +20,12 @@ export async function renderMaterializedProducer(request, ports = {}) {
     || Array.isArray(producerConfig) || !isAbsolute(producerConfig.chromePath ?? ""))
     throw new Error("CONTROLLED_RENDER_PRODUCER_INPUT_INVALID");
   if (!(signal instanceof AbortSignal)) throw new Error("CONTROLLED_RENDER_PRODUCER_SIGNAL_REQUIRED");
+  // An observed execution requires an operator-supplied, admitted extension and all hooks.
+  // Never import the uninstrumented SDK as a fallback when observation is requested.
+  const observed = Object.hasOwn(ports, "observer");
+  if (observed && (!ports.producer || typeof ports.producer.executeObservedRenderJob !== "function"
+    || !ports.observer || !["onSession", "onBeforeFrame", "onAfterFrame"].every(key => typeof ports.observer[key] === "function")))
+    throw new Error("CONTROLLED_RENDER_PRODUCER_OBSERVER_REQUIRED");
   signal.throwIfAborted();
   // No env-based resolution or SDK import until the host has admitted the request.
   const config = {
@@ -28,6 +34,7 @@ export async function renderMaterializedProducer(request, ports = {}) {
     useGpu: false, debug: false, strictness: "strict", videoFrameFormat: "png", hdrMode: "force-sdr",
     entryFile: relative(directory, entryPath), logger: silentLogger,
     producerConfig: {...structuredClone(producerConfig), concurrency: 1, enableBrowserPool: false,
+      enableStreamingEncode: false,
       disableGpu: true, browserGpuMode: "software", forceScreenshot: true, useDrawElement: false,
       enableDrawElementWorkerEncode: false, staticFrameDedup: false},
   };
@@ -35,7 +42,8 @@ export async function renderMaterializedProducer(request, ports = {}) {
     const producer = ports.producer ?? await import("@hyperframes/producer");
     signal.throwIfAborted();
     const job = producer.createRenderJob(config);
-    await producer.executeRenderJob(job, directory, outputPath, undefined, signal);
+    if (observed) await producer.executeObservedRenderJob(job, directory, outputPath, undefined, signal, ports.observer);
+    else await producer.executeRenderJob(job, directory, outputPath, undefined, signal);
     signal.throwIfAborted();
     if (job.status !== "complete" || job.outcome !== "completed" || !Array.isArray(job.warnings)
       || job.warnings.length !== 0 || job.outputPath !== outputPath)

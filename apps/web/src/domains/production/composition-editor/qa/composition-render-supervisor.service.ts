@@ -9,13 +9,14 @@ import {CONTROLLED_RENDER_STORAGE} from "./composition-controlled-render-storage
 import {RENDER_SUPERVISOR_RECEIPT_POLICY} from "../composition-render-supervisor-receipt";
 import {createControlledRenderDeadline, CONTROLLED_RENDER_DEADLINE_POLICY} from "./composition-controlled-render-deadline";
 import {CONTROLLED_RENDER_CHECKPOINT_POLICY,parseControlledRenderCheckpoint,type ControlledRenderCheckpoint,type RenderCheckpointScope} from "./composition-render-checkpoint";
+import type {ControlledReferenceSelection} from "./composition-controlled-reference-selection";
 
 type IssueInput = Parameters<CompositionRenderAuthorityService["issue"]>[0];
 type Context = Awaited<ReturnType<CompositionRenderAuthorityService["issue"]>>;
 export type ControlledSupervisorRenderer = (descriptor: {
   organizationId: string; revisionId: string;
   executionId: string; documentHash: string; projectHash: string; contract: Context["contract"];
-}, signal?: AbortSignal) => Promise<{videoPath: string; artifacts: ControlledSupervisorArtifacts}>;
+}, signal?: AbortSignal) => Promise<{videoPath: string; artifacts: ControlledSupervisorArtifacts; referenceSelection?: ControlledReferenceSelection}>;
 
 /** Host coordinator, not an isolated renderer. Caller must supply an operator-owned renderer adapter. */
 export class CompositionRenderSupervisorService {
@@ -23,7 +24,8 @@ export class CompositionRenderSupervisorService {
   private readonly uploader: CompositionControlledRenderUploadService;
   constructor(supabase: SupabaseClient<any, any, any>, projectUrl: string, private readonly privateKey: KeyObject,
     private readonly render: ControlledSupervisorRenderer, fetchImpl: typeof fetch = fetch,
-    private readonly clock: () => number = Date.now,workerLeaseToken?:string) {
+    private readonly clock: () => number = Date.now,workerLeaseToken?:string,
+    private readonly deferConformanceReservation?: (checkpoint: ControlledRenderCheckpoint, signal?: AbortSignal) => Promise<unknown>) {
     this.authority = new CompositionRenderAuthorityService(supabase, clock,workerLeaseToken);
     this.uploader = new CompositionControlledRenderUploadService(supabase, projectUrl, fetchImpl, clock,workerLeaseToken);
   }
@@ -65,9 +67,12 @@ export class CompositionRenderSupervisorService {
       budget.remainingMilliseconds();
       const recovery = {scope: {organizationId: context.organizationId, requestId: context.requestId, executionId: context.executionId,
         revisionId: context.revisionId, productionJobId: context.productionJobId}, videoPath: produced.videoPath, artifacts: produced.artifacts};
+      let checkpoint: ControlledRenderCheckpoint | undefined;
+      if (this.deferConformanceReservation && (!persistCheckpoint || !produced.referenceSelection))
+        throw new Error("RENDER_SUPERVISOR_CHECKPOINT_RESERVATION_REQUIRED");
       if (persistCheckpoint) {
-        const checkpoint = parseControlledRenderCheckpoint({version:CONTROLLED_RENDER_CHECKPOINT_POLICY.version,...recovery,leaseToken:context.leaseToken,
-          supervisorReceipt:receipt},recovery.scope);
+        checkpoint = parseControlledRenderCheckpoint({version:CONTROLLED_RENDER_CHECKPOINT_POLICY.version,...recovery,leaseToken:context.leaseToken,
+          supervisorReceipt:receipt,...(produced.referenceSelection ? {referenceSelection:produced.referenceSelection} : {})},recovery.scope);
         try {await persistCheckpoint(checkpoint);} catch {throw new Error("RENDER_SUPERVISOR_CHECKPOINT_WRITE_FAILED");}
         budget.remainingMilliseconds(); signal?.throwIfAborted();
         await assertConformanceFileUnchanged(produced.videoPath,output,CONTROLLED_RENDER_STORAGE.maximumVideoBytes);
@@ -77,11 +82,14 @@ export class CompositionRenderSupervisorService {
         videoPath: produced.videoPath, artifacts: produced.artifacts});}
       catch {
         // An ACK may be lost after consumption. Reconcile ledger; never blindly render or consume again.
-        await this.authority.recover(recovery);
+        const recovered = await this.authority.recover(recovery);
+        if (recovered.provenance.receiptSha256 !== createHash("sha256").update(JSON.stringify(receipt)).digest("hex"))
+          throw new Error("RENDER_SUPERVISOR_CHECKPOINT_RECEIPT_MISMATCH");
       }
       admitted = true;
       budget.dispose();
       signal?.throwIfAborted();
+      if (this.deferConformanceReservation) await this.publishDeferredReservation(checkpoint!, signal);
       return await this.uploader.uploadAndFinalize({...recovery, signal});
     } catch (error) {
       // Do not cancel an uncertain/consumed admission or erase the output needed to resume its upload.
@@ -97,6 +105,7 @@ export class CompositionRenderSupervisorService {
 
   /** Retry upload/finalization of a consumed output without issuing a new challenge or calling the renderer. */
   resume(input: Parameters<CompositionControlledRenderUploadService["uploadAndFinalize"]>[0]) {
+    if (this.deferConformanceReservation) return Promise.reject(new Error("RENDER_SUPERVISOR_CHECKPOINT_RESERVATION_REQUIRED"));
     return this.uploader.uploadAndFinalize(input);
   }
 
@@ -104,18 +113,35 @@ export class CompositionRenderSupervisorService {
   async resumeCheckpoint(raw:unknown,expectedScope:RenderCheckpointScope,signal?:AbortSignal) {
     signal?.throwIfAborted();
     const checkpoint = parseControlledRenderCheckpoint(raw,expectedScope);
+    if (this.deferConformanceReservation && !checkpoint.referenceSelection)
+      throw new Error("RENDER_SUPERVISOR_CHECKPOINT_RESERVATION_REQUIRED");
     const recovery = {scope:checkpoint.scope,videoPath:checkpoint.videoPath,artifacts:checkpoint.artifacts};
+    let recovered: Awaited<ReturnType<CompositionRenderAuthorityService["recover"]>> | undefined;
     try {
-      await this.authority.admit({scope:{organizationId:checkpoint.scope.organizationId,requestId:checkpoint.scope.requestId,
-        executionId:checkpoint.scope.executionId,leaseToken:checkpoint.leaseToken},supervisorReceipt:checkpoint.supervisorReceipt,
-        videoPath:checkpoint.videoPath,artifacts:checkpoint.artifacts});
-    } catch {
-      // Expired/live read or lost ACK cannot justify a new render: only a verified CONSUMED ledger can recover.
-      const recovered = await this.authority.recover(recovery);
-      if (recovered.provenance.receiptSha256 !== createHash("sha256").update(JSON.stringify(checkpoint.supervisorReceipt)).digest("hex"))
-        throw new Error("RENDER_SUPERVISOR_CHECKPOINT_RECEIPT_MISMATCH");
+      recovered = await this.authority.recover(recovery);
+    } catch (error) {
+      // Only absent/unavailable history permits checking the original live challenge.
+      // A foreign, changed or revoked consumed record cannot become a fresh admission.
+      if (!(error instanceof Error) || error.message !== "RENDER_AUTHORITY_RECOVERY_UNAVAILABLE") throw error;
+      signal?.throwIfAborted();
+      try {
+        await this.authority.admit({scope:{organizationId:checkpoint.scope.organizationId,requestId:checkpoint.scope.requestId,
+          executionId:checkpoint.scope.executionId,leaseToken:checkpoint.leaseToken},supervisorReceipt:checkpoint.supervisorReceipt,
+          videoPath:checkpoint.videoPath,artifacts:checkpoint.artifacts});
+      } catch {recovered = await this.authority.recover(recovery);}
     }
+    if (recovered && recovered.provenance.receiptSha256 !== createHash("sha256").update(JSON.stringify(checkpoint.supervisorReceipt)).digest("hex"))
+      throw new Error("RENDER_SUPERVISOR_CHECKPOINT_RECEIPT_MISMATCH");
     signal?.throwIfAborted();
+    if (this.deferConformanceReservation) await this.publishDeferredReservation(checkpoint, signal);
     return this.uploader.uploadAndFinalize({...recovery,signal});
+  }
+
+  private async publishDeferredReservation(checkpoint: ControlledRenderCheckpoint, signal?: AbortSignal) {
+    try {
+      if (!checkpoint.referenceSelection) throw new Error();
+      await this.deferConformanceReservation!(structuredClone(checkpoint), signal);
+      signal?.throwIfAborted();
+    } catch {throw new Error("RENDER_SUPERVISOR_CHECKPOINT_RESERVATION_UNCONFIRMED");}
   }
 }

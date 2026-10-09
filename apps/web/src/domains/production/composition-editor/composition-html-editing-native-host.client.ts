@@ -11,7 +11,7 @@ import { coordinateHtmlEditingInitialization, type HtmlEditingInitializationActi
 
 export interface CompositionHtmlEditorialHost {
   initializationTracking?: (scope: HtmlSnapshotLocatorScope) => HtmlEditingInitializationJournalState;
-  initialize?: (input: { scope: HtmlSnapshotLocatorScope; action: HtmlEditingInitializationAction; signal: AbortSignal }) => Promise<HtmlEditingInspectorView>;
+  initialize?: (input: { scope: HtmlSnapshotLocatorScope; action: HtmlEditingInitializationAction; signal: AbortSignal }) => Promise<HtmlEditingInspectorView | null>;
   tracking?: (scope: HtmlSnapshotLocatorScope) => HtmlEditingJournalState;
   recover?: (input: { scope: HtmlSnapshotLocatorScope; operationId: string; signal: AbortSignal; historicalOnly?: boolean }) => Promise<void>;
   execute(input: { scope: HtmlSnapshotLocatorScope; clipId: string; body: HtmlEditingMutationRequest;

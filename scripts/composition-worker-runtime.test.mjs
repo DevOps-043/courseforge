@@ -13,10 +13,19 @@ test("operational entries load without starting a worker, decoder or producer", 
   for (const [file, exportName] of [
     ["composition-conformance-job-worker", "processConformanceJob"],
     ["composition-conformance-job-execution", "executeConformanceJob"],
+    ["composition-reserved-conformance-worker-host", "createReservedConformanceWorkerHost"],
+    ["composition-conformance-render-reservation.service", "CompositionConformanceRenderReservationService"],
+    ["composition-windows-reserved-conformance-ports", "createWindowsReservedConformancePortResolver"],
+    ["composition-windows-conformance-host-configuration", "loadWindowsConformanceHostConfiguration"],
     ["composition-controlled-render-worker-host", "createControlledRenderWorkerHost"],
     ["composition-windows-render-worker-host", "createWindowsControlledRenderWorkerHost"],
+    ["composition-windows-comparison-process-ports", "createWindowsComparisonProcessPorts"],
+    ["composition-controlled-reference-measurement", "measureControlledConformanceReferences"],
+    ["composition-controlled-reference-selection", "createControlledReferenceSelectionResolver"],
     ["composition-exported-video-conformance", "compareExportedVideoWithPreview"],
     ["composition-conformance-file-integrity", "pinConformanceFile"],
+    ["composition-original-session-font-capture", "startOriginalSessionFontCapture"],
+    ["composition-borrowed-producer-cdp", "borrowProducerCdpChannel"],
   ]) assert.equal(typeof require(join(qa, `${file}.js`))[exportName], "function", file);
 });
 
@@ -50,6 +59,15 @@ test("operational consumers use the production build with no test-build fallback
     assert.match(source, /dist\/composition-worker/);
     assert.doesNotMatch(source, /hyperframes-tests/);
   }
+});
+
+test("fixed reference measurer import does not launch jobs and requires explicit operator authority", async () => {
+  const {createMaterializedProducerReferenceBridgeConfiguration} = await import("../apps/web/tools/controlled-hyperframes/materialized-reference-measurer.mjs");
+  assert.throws(() => createMaterializedProducerReferenceBridgeConfiguration({}), /CONFIGURATION_REQUIRED/);
+  assert.throws(() => createMaterializedProducerReferenceBridgeConfiguration({operatorConfiguration: {}, supabase: {},
+    resolveReferences: () => [], measurementFence: {}, measure: () => {}}), /CONFIGURATION_REQUIRED/);
+  assert.throws(() => createMaterializedProducerReferenceBridgeConfiguration({operatorConfiguration: {}, supabase: {},
+    resolveReferences: () => [], measurementFence: {}, dependencyInventory: {manifest: {files: []}, roots: {}}}), /INVENTORY_REQUIRED/);
 });
 
 test("compiler preserves native dynamic import for the ESM-only SDK subpath", async () => {

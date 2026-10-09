@@ -2,8 +2,18 @@ import { readPersistedAudioConformanceEvidence } from "./composition-audio-evide
 import { compareVideoWithPersistedVisualReference } from "./composition-persisted-reference-comparison";
 import { evaluatePlaybackAudioWitness } from "./composition-playback-audio-gate";
 import {assertConformanceJobActive} from "./composition-conformance-job-lease";
+import {requiresConformanceExecutionRecovery} from "./composition-conformance-stage-failure";
 
 const defaultDependencies = { readAudio: readPersistedAudioConformanceEvidence, compare: compareVideoWithPersistedVisualReference };
+
+/** Explicit silent route. Never reads or generates an audio reference; durable V1 still cannot store it. */
+export async function compareVideoWithPersistedSilentReference(
+  params: Omit<Parameters<typeof compareVideoWithPersistedVisualReference>[0],
+    "audioReferencePath" | "audioReferenceMetadataPath" | "audioExpectation">,
+  compare: typeof compareVideoWithPersistedVisualReference = compareVideoWithPersistedVisualReference,
+) {
+  return compare({...params, audioExpectation: "NOT_REQUIRED"});
+}
 /** Reads an exact visual/audio pair. Video integrity is a separate prerequisite; audio remains a source-derived model. */
 export async function compareVideoWithPersistedConformanceReferences(
   params: Omit<Parameters<typeof compareVideoWithPersistedVisualReference>[0], "audioReferencePath" | "audioReferenceMetadataPath">
@@ -11,8 +21,12 @@ export async function compareVideoWithPersistedConformanceReferences(
 ) {
   assertConformanceJobActive(params.signal);
   const audio = await dependencies.readAudio({ ...params, visualChecksum: params.checksum, checksum: params.audioChecksum });
+  let recoveryRequired = false;
   try {
     assertConformanceJobActive(params.signal);
+    if (audio.receipt.visualChecksum !== params.checksum || audio.receipt.organizationId !== params.organizationId
+      || audio.receipt.revisionId !== params.revisionId)
+      throw new Error("AUDIO_EVIDENCE_COMPARISON_REVISION_MISMATCH");
     const result = await dependencies.compare({ ...params, audioReferencePath: audio.audioReferencePath,
       audioReferenceMetadataPath: audio.audioReferenceMetadataPath });
     assertConformanceJobActive(params.signal);
@@ -31,7 +45,12 @@ export async function compareVideoWithPersistedConformanceReferences(
       : result.report.status === "INCOMPLETE" || audioPlayback?.status === "INCOMPLETE" ? "INCOMPLETE" as const : "PASS" as const;
     return { ...result, report: {...result.report, status, ...(audioPlayback ? {audioPlayback} : {})}, audioReference: { checksum: audio.checksum, receipt: audio.receipt,
       provenance: audio.receipt.schemaVersion === 3 ? "SCOPED_WORKER_PLAYBACK_AUDIO_EVIDENCE" as const : "SCOPED_WORKER_SOURCE_AUDIO_EVIDENCE" as const } };
+  } catch (error) {
+    recoveryRequired = requiresConformanceExecutionRecovery(error);
+    throw error;
   } finally {
-    try { await audio.cleanup(); } catch { throw new Error("AUDIO_EVIDENCE_COMPARISON_CLEANUP_FAILED"); }
+    if (!recoveryRequired) {
+      try { await audio.cleanup(); } catch { throw new Error("AUDIO_EVIDENCE_COMPARISON_CLEANUP_FAILED"); }
+    }
   }
 }

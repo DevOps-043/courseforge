@@ -354,6 +354,7 @@ export function SyllabusModuleCard({
                               </span>
                             </div>
                           )}
+                          {lesson.topics?.length ? <ul className="list-disc pl-5">{lesson.topics.map((topic, topicIndex) => <li key={topicIndex}>{topic}</li>)}</ul> : null}
                         </div>
                       </>
                     )}

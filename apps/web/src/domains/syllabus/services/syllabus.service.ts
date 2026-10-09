@@ -7,7 +7,7 @@ import {
   SyllabusValidationReport,
   TemarioEsp02,
 } from "../types/syllabus.types";
-import { runAllValidations } from "../validators/syllabus.validators";
+import { validateSyllabusForMode } from "../validators/syllabus-validation-policy";
 import { fillMissingLessonDurationEstimates } from "../lib/lesson-duration-estimator";
 import type { SyllabusSourceDocument } from "../syllabus-source-documents";
 
@@ -229,10 +229,10 @@ class SyllabusService {
    * Ejecuta validaciones sobre un temario (logica local pura).
    */
   validateTemario(
-    temario: Pick<TemarioEsp02, "modules">,
+    temario: Pick<TemarioEsp02, "modules" | "input_mode" | "source_summary">,
     objetivos: string[] = [],
   ) {
-    return runAllValidations(temario.modules, objetivos);
+    return validateSyllabusForMode(temario.modules, objetivos, temario.input_mode, temario.source_summary?.import_baseline);
   }
 }
 

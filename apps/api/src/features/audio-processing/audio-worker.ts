@@ -6,6 +6,9 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { AUDIO_SOURCE_MIME_TYPES, MAX_AUDIO_SOURCE_BYTES, resolveAudioStorageSource } from "./audio-source-contract";
+import { AudioProcessingTerminalError, AudioProcessingRetryableError } from "./audio-worker-errors";
+import { probeAudioSource } from "./audio-source-probe";
 import { AudioLoudnessQualityError, buildLoudnessAnalysisArgs, parseLoudnessAnalysis, requirePassingAudioLoudness, type AudioLoudnessAnalysis } from "./audio-analysis";
 import {
   AUDIO_WAVEFORM_SAMPLE_RATE_HZ,
@@ -20,14 +23,15 @@ import {
 } from "./worker-capabilities";
 
 const execFileAsync = promisify(execFile);
-const MAX_INPUT_BYTES = 50 * 1024 * 1024;
+const MAX_INPUT_BYTES = MAX_AUDIO_SOURCE_BYTES;
 const FFMPEG_TIMEOUT_MS = 7 * 60 * 1000;
 const AUDIO_PROCESSING_LEASE_SECONDS = 3600;
+const MAX_AUTOMATIC_AUDIO_ATTEMPTS = 3;
 const MAX_WAVEFORM_PCM_BYTES = 64 * 1024 * 1024;
 const MAX_WAVEFORM_JSON_BYTES = 8 * 1024 * 1024;
-const ALLOWED_SOURCE_BUCKETS = new Set(["production-assets", "production-render-sources", "sound-effect-assets"]);
 
 const claimedJobSchema = z.object({
+  audio_processing_attempts: z.number().int().nonnegative().optional(),
   artifact_id: z.string().uuid(),
   audio_processing_lease_token: z.string().uuid(),
   id: z.string().uuid(),
@@ -36,7 +40,7 @@ const claimedJobSchema = z.object({
     source: z.object({
       assetId: z.string().uuid(),
       checksum: z.string().regex(/^[a-f0-9]{64}$/),
-      mimeType: z.enum(["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav"]),
+      mimeType: z.enum(AUDIO_SOURCE_MIME_TYPES),
       storageBucket: z.string().min(1).max(100),
       storagePath: z.string().min(1).max(2_000),
     }).strict(),
@@ -51,14 +55,22 @@ export async function processClaimedAudioJob(params: {
   supabase: SupabaseClient<any, any, any>;
   supportedProfiles: readonly string[];
 }) {
-  const job = claimedJobSchema.parse(params.job);
+  const parsedJob = claimedJobSchema.safeParse(params.job);
+  if (!parsedJob.success) {
+    const identity = z.object({ id: z.string().uuid(), audio_processing_lease_token: z.string().uuid() }).passthrough().safeParse(params.job);
+    if (identity.success) await params.supabase.rpc("fail_audio_processing_job", {
+      p_job_id: identity.data.id, p_lease_token: identity.data.audio_processing_lease_token,
+      p_error_message: "AUDIO_PROCESSING_INPUT_INVALID", p_retryable: false, p_retry_after_seconds: 15,
+    });
+    throw new AudioProcessingTerminalError("AUDIO_PROCESSING_INPUT_INVALID");
+  }
+  const job = parsedJob.data;
   let workDirectory: string | null = null;
   try {
     assertSupportedAudioProfile(job.input_snapshot.profile.id, params.supportedProfiles);
     const profilePolicy = resolveWorkerAudioProfilePolicy(job.input_snapshot.profile.id);
-    if (!ALLOWED_SOURCE_BUCKETS.has(job.input_snapshot.source.storageBucket)) {
-      throw new AudioProcessingTerminalError("AUDIO_SOURCE_BUCKET_NOT_ALLOWED");
-    }
+    try { resolveAudioStorageSource(job.input_snapshot.source.storageBucket, job.input_snapshot.source.storagePath); }
+    catch (error) { throw new AudioProcessingTerminalError(error instanceof Error ? error.message : "AUDIO_SOURCE_STORAGE_INVALID"); }
 
     workDirectory = await mkdtemp(join(tmpdir(), "courseforge-audio-"));
     const inputPath = join(workDirectory, "source.input");
@@ -67,6 +79,7 @@ export async function processClaimedAudioJob(params: {
     const waveformPcmPath = join(workDirectory, "waveform.pcm");
     const sourceBytes = await downloadVerifiedSource(params.supabase, job);
     await writeFile(inputPath, sourceBytes, { mode: 0o600 });
+    await probeAudioSource(inputPath);
 
     await execFileAsync("ffmpeg", buildNormalizeToWavArgs(inputPath, normalizedWavPath), {
       maxBuffer: 64 * 1024,
@@ -89,7 +102,9 @@ export async function processClaimedAudioJob(params: {
       throw new AudioProcessingTerminalError("AUDIO_OUTPUT_SIZE_INVALID");
     }
     const outputBytes = await readFile(outputPath);
-    const durationSeconds = await probeDuration(outputPath);
+    // AAC containers can report padded duration; retain the decoded PCM duration
+    // that the narration actually occupies on the timeline.
+    const durationSeconds = await probeDuration(normalizedWavPath);
     const checksum = sha256(outputBytes);
     const loudnessAnalysis = await analyzeLoudness(outputPath, profilePolicy);
     requirePassingAudioLoudness(loudnessAnalysis);
@@ -109,11 +124,11 @@ export async function processClaimedAudioJob(params: {
     const publicUrl = params.supabase.storage.from("production-assets").getPublicUrl(storagePath).data.publicUrl;
     const { error: completeError } = await params.supabase.rpc("complete_audio_processing_job", {
       p_checksum: checksum,
-      p_duration_seconds: durationSeconds,
+      p_duration_seconds: Math.ceil(durationSeconds),
       p_file_size_bytes: outputBytes.byteLength,
       p_job_id: job.id,
       p_lease_token: job.audio_processing_lease_token,
-      p_metadata: buildOutputMetadata(job, loudnessAnalysis, waveformManifest),
+      p_metadata: buildOutputMetadata(job, loudnessAnalysis, waveformManifest, durationSeconds),
       p_mime_type: "audio/mp4",
       p_output_snapshot: {
         audio_analysis: loudnessAnalysis,
@@ -154,7 +169,7 @@ export async function processAudioProcessingBatch(
 export function buildFfmpegArgs(inputPath: string, outputPath: string, policy: WorkerAudioProfilePolicy) {
   const { compressor, highPassFrequencyHz, limiterPeak, loudness } = policy;
   return [
-    "-hide_banner", "-nostdin", "-v", "error", "-xerror", "-i", inputPath,
+    "-hide_banner", "-nostdin", "-v", "error", "-xerror", "-protocol_whitelist", "file,pipe", "-i", inputPath,
     "-map", "0:a:0", "-vn",
     "-af", [
       `highpass=f=${highPassFrequencyHz}`,
@@ -168,7 +183,7 @@ export function buildFfmpegArgs(inputPath: string, outputPath: string, policy: W
 
 export function buildNormalizeToWavArgs(inputPath: string, outputPath: string) {
   return [
-    "-hide_banner", "-nostdin", "-v", "error", "-xerror", "-i", inputPath,
+    "-hide_banner", "-nostdin", "-v", "error", "-xerror", "-protocol_whitelist", "file,pipe", "-i", inputPath,
     "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "48000", "-c:a", "pcm_s16le", "-y", outputPath,
   ];
 }
@@ -206,6 +221,7 @@ function buildOutputMetadata(
   job: ClaimedJob,
   loudnessAnalysis: AudioLoudnessAnalysis,
   waveformManifest: AudioWaveformManifest,
+  durationSeconds: number,
 ) {
   return {
     ...(job.input_snapshot.profile.id === "voice-clean-neural-dfn3-v1" ? {
@@ -214,6 +230,8 @@ function buildOutputMetadata(
       delay_compensated: true,
     } : {}),
     audio_analysis: loudnessAnalysis,
+    duration_milliseconds: Math.round(durationSeconds * 1000),
+    has_audio: true,
     profile_id: job.input_snapshot.profile.id,
     profile_version: 1,
     source_asset_id: job.input_snapshot.source.assetId,
@@ -285,8 +303,10 @@ function requiredEnvironment(name: string) {
 
 async function downloadVerifiedSource(supabase: SupabaseClient<any, any, any>, job: ClaimedJob) {
   const source = job.input_snapshot.source;
-  const { data, error } = await supabase.storage.from(source.storageBucket).download(source.storagePath);
+  const storage = resolveAudioStorageSource(source.storageBucket, source.storagePath);
+  const { data, error } = await supabase.storage.from(storage.storageBucket).download(storage.storagePath);
   if (error || !data) throw new AudioProcessingRetryableError("AUDIO_SOURCE_DOWNLOAD_FAILED");
+  if (data.size <= 0 || data.size > MAX_INPUT_BYTES) throw new AudioProcessingTerminalError("AUDIO_SOURCE_SIZE_INVALID");
   const bytes = Buffer.from(await data.arrayBuffer());
   if (bytes.byteLength === 0 || bytes.byteLength > MAX_INPUT_BYTES) throw new AudioProcessingTerminalError("AUDIO_SOURCE_SIZE_INVALID");
   if (sha256(bytes) !== source.checksum) throw new AudioProcessingTerminalError("AUDIO_SOURCE_CHECKSUM_MISMATCH");
@@ -297,13 +317,13 @@ async function probeDuration(outputPath: string) {
   const { stdout } = await execFileAsync("ffprobe", [
     "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", outputPath,
   ], { maxBuffer: 8 * 1024, timeout: 30_000, windowsHide: true });
-  const duration = Math.ceil(Number(stdout.trim()));
-  if (!Number.isSafeInteger(duration) || duration <= 0) throw new AudioProcessingTerminalError("AUDIO_OUTPUT_DURATION_INVALID");
+  const duration = Number(stdout.trim());
+  if (!Number.isFinite(duration) || duration <= 0) throw new AudioProcessingTerminalError("AUDIO_OUTPUT_DURATION_INVALID");
   return duration;
 }
 
 async function failJob(supabase: SupabaseClient<any, any, any>, job: ClaimedJob, error: unknown) {
-  const retryable = error instanceof AudioProcessingRetryableError;
+  const retryable = error instanceof AudioProcessingRetryableError && (job.audio_processing_attempts ?? 1) < MAX_AUTOMATIC_AUDIO_ATTEMPTS;
   await supabase.rpc("fail_audio_processing_job", {
     p_error_message: safeErrorCode(error),
     p_job_id: job.id,
@@ -322,6 +342,3 @@ function safeErrorCode(error: unknown) {
 function sha256(bytes: Buffer) {
   return createHash("sha256").update(bytes).digest("hex");
 }
-
-class AudioProcessingTerminalError extends Error {}
-class AudioProcessingRetryableError extends Error {}

@@ -6,8 +6,13 @@ import {requiresControlledExecutorIntervention} from "./composition-controlled-e
 
 type Workspace = Awaited<ReturnType<typeof materializeControlledRenderRevision>>;
 export type ControlledMaterializedExecutor = (descriptor: Parameters<ControlledSupervisorRenderer>[0],
-  workspace: Pick<Workspace,"directory" | "entryPath" | "receipt">,
-  signal?: AbortSignal) => ReturnType<ControlledSupervisorRenderer>;
+  workspace: Pick<Workspace,"directory" | "entryPath" | "receipt"> & {
+    /** Supplied by authorized materialization; absent legacy workspaces cannot measure fonts. */
+    measurementPlan?: Awaited<ReturnType<Workspace["readMeasurementPlan"]>>;
+    measurementPlanReference?: Workspace["measurementPlanReference"];
+  },
+  signal?: AbortSignal,
+  controls?: {verifyMeasurementFiles: Workspace["assertUnchanged"]}) => ReturnType<ControlledSupervisorRenderer>;
 
 /** Connects authorized materialization to the host coordinator. Does not supply or simulate OS isolation. */
 export function createMaterializedControlledRenderer(input: {
@@ -27,8 +32,11 @@ export function createMaterializedControlledRenderer(input: {
     try {
       await dependencies?.assertUnchanged();
       signal?.throwIfAborted();
+      const measurementPlan = await workspace.readMeasurementPlan();
       const result = await input.execute(structuredClone(descriptor),{directory:workspace.directory,entryPath:workspace.entryPath,
-        receipt:structuredClone(workspace.receipt)},signal);
+        receipt:structuredClone(workspace.receipt), measurementPlan,
+        measurementPlanReference: structuredClone(workspace.measurementPlanReference)},signal,
+        {verifyMeasurementFiles: workspace.assertUnchanged});
       signal?.throwIfAborted();
       const outputRelative = relative(workspace.directory,result.videoPath);
       const insideInputDirectory = outputRelative === "" || (!isAbsolute(outputRelative)

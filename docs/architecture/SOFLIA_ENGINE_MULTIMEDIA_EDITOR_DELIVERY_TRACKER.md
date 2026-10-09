@@ -1,5 +1,208 @@
 # Hoja de seguimiento — siete capacidades prioritarias del editor multimedia
 
+## Estado actual autoritativo (2026-10-08)
+
+Corte vigente: **CAP-027 ~91% (rúbrica 91.15%), siete ~98.74%, sin incremento**. Entrega diferida
+checkpoint consumido→outbox→reserva del job futuro conectada opt-in/default off; resume usa primero
+historia y no vuelve a consumir si ya está disponible. 56/56 dirigidas/builds pasan. SQL preparado
+NO aplicado ni probado en PostgreSQL; no activación/QA formal. Seis CAP-004/009/010/017/023/026100%
+registradas cada una/QA pendiente. Plan CAP-027 y entrega de render documentan carrera, garantías
+y pendientes; todos los cortes inferiores históricos. No cierre operativo R04.
+
+Corte vigente: **CAP-027 ~91% (rúbrica 91.15%), siete ~98.74%, sin incremento**. Ruta AppContainer
+V5 operatoria implementada: capacidades vacías, hijo suspendido, token real/SID/IL/ACL verificados
+en código antes de resume. No activación/provisión ni evidencia física de red/loopback/SDK.
+159/159 dirigidas +5/5 checks administrados; ambos compiladores TS y C#/parseo PS pasan.
+Seis CAP-004/009/010/017/023/026100% registradas cada una/QA pendiente. Detalle y límites en
+plan CAP-027 y frontera Windows; todos los cortes inferiores históricos, sin cierre R04.
+
+Corte vigente: **CAP-027 ~91% (rúbrica 91.15%), siete ~98.74% estimado, sin incremento**.
+Defensa HTTP conectada antes de navegación/captura de la página SDK original: origen/puerto
+exactos, GET/HEAD sin cuerpo, rechazo persistente, límites y cleanup sin reabrir Fetch.
+No equivale a aislamiento de red Windows ni cubre otros targets/procesos/WS/WebRTC/DNS.
+20/20 checks guard/transformation +13/13 integración simulada, no QA
+formal ni navegador físico. Seis CAP-004/009/010/017/023/026100% registradas/QA pendiente cada
+una. Todos los cortes siguientes son históricos; no créditos nuevos por número de pruebas.
+
+Corte actual autoritativo: **CAP-02791.15% estimado parcial (~91.2%); siete~98.74%**. Auditoría
+ACL V4 de descendientes readonly/denied con límites compartidos, reparse rejection y reenumeración;
+identidad93→94/peso15%, +0.15pp.165/165 dirigidas +5/5 managed budget checks y compilaciones pasan;
+no AccessCheck/kernel/ACL físicas, inmutabilidad o red segura acreditados. Seis CAP-004/009/010/017/
+023/026100% implementación registrada individual, QA pendiente. No flags, QA formal, migraciones,
+ACL modificadas o despliegue. Detalle/evidencia en plan CAP-027; todos los cortes inferiores históricos.
+
+Corte actual autoritativo: **CAP-02791.0% estimado parcial; siete~98.71%**. Preflight AccessCheck
+de objetos declarados sobre clon del token reducido, antes de CreateProcessAsUser; readonly/denied
+comprueban derechos individuales sin modificar ACL. Helper separado requerido en inventario.
+Identidad92→93/peso15%, +0.15pp;163/163 dirigidas y compilaciones pasan. No auditoría de árboles/
+TOCTOU/enforcement físico ni aislamiento de red acreditados. CAP-004/009/010/017/023/026100% cada
+una implementación registrada, QA pendiente. No activación, QA formal, migraciones/despliegue.
+Todos los cortes inferiores históricos; detalles y límites en plan CAP-027.
+
+Corte actual: **CAP-02790.85% parcial conservado; siete~98.69% estimado**. TEMP/TMP/TMPDIR
+fijados al directorio propio de cada operación en bridge/decoder, guard nativo antes de crear Job;
+no herencia de TEMP del supervisor.136/136 dirigidas y compilaciones pasan. Sin nuevo crédito
+ponderado por prerequisito del mismo bloque; ACL/red no cerrados ni enforcement físico acreditado.
+Seis CAP-004/009/010/017/023/026100% implementación registrada cada una, QA pendiente. Sin flags,
+QA formal, migraciones, cambios ACL o despliegue. Detalle en plan; todos los cortes inferiores históricos.
+
+Último corte autoritativo: **CAP-02790.85% estimado parcial (~90.9%), siete~98.69%**. SID restrictor
+de capacidad explicitado/pinneado y readback exacto antes de CreateProcessAsUser; identidad91→92,
+peso15%, +0.15pp.135/135 dirigidas, ambas compilaciones TS/C# y parse PowerShell pasan. Sin ACL
+provisionadas, enforcement físico o red aislada acreditados. CAP-004/009/010/017/023/026100% cada
+una implementación registrada, QA pendiente. No activación/migración/despliegue/QA formal. Detalle
+en plan CAP-027. TODOS los párrafos inferiores son históricos aunque mantengan «Último corte».
+
+Último corte: **CAP-02790.70% estimado parcial (~90.7%); siete~98.67%**. Identidad91/peso15%,
++0.15pp por token LUA de privilegios reducidos explícitoV3, verificación y CreateProcessAsUser sin
+fallback; no aislamiento ACL/red ni enforcement físico acreditado.132/132 dirigidas y build operativo/
+C# pasan; PowerShell parsea. Recompilación habitual tests falla CAP-029 ajeno TS2339
+maximumSvgNumericTokens; preservado. CAP-004/009/010/017/023/026100% cada una implementación registrada/
+QA pendiente. Sin activación, QA formal, migraciones ni despliegue. Detalle/evidencia en plan CAP-027.
+El párrafo siguiente conserva el corte anterior, no es el porcentaje actual.
+
+CAP-027 **90.55% estimado parcial (~90.6%)**; media siete **~98.65%**. CAP-004/009/010/017/023/026:
+100% implementación registrada cada una, QA pendiente. Bootstrap reservado Windows conectado al
+runner con JSON estricto fijado por hash y sin fallback; proveedor de mediciones independiente del
+workspace del productor. Cuotas operatorias V2 + hard cap CPU nativo/readback antes de crear proceso;
+identidad/ejecutor89→90, peso15%, +0.15pp CAP.121/121 dirigidas, compilaciones TS/C# y parse PowerShell
+pasan; procesos simulados/checks estáticos no demuestran enforcement físico. No aislamiento OS acreditado,
+activación, migraciones aplicadas ni QA formal. Evidencia, provisión y limitaciones en plan CAP-027.
+Los cortes inferiores son históricos y no sustituyen este estado aunque digan «vigente».
+
+**Corte vigente2026-10-08 reserva por job: CAP-02790.1% parcial; siete~98.59% estimado.**
+Servicio y host programático recuperan artefactos/referencias exactos sin ruta local del productor,
+verifican autoridad consumida y conservan hash de reserva en reporte. Migración privada preparada
+vincula registro/lease/cierre; NO aplicada/ejecutada DB.147/147 dirigidas y ambas compilaciones pasan.
+Identidad85→87 (peso15%, +0.30pp CAP). Seis CAP-004/009/010/017/023/026100% implementación registrada/
+QA pendiente individual. Aún bootstrap/proveedor Windows, aislamiento real y recuperación cross-host/
+DB/ACK, corpus/color/A-V/procedencia y QA. Sin activación ni despliegue; detalle en plan CAP-027.
+
+**Corte vigente2026-10-08 durableV2: CAP-02789.8% parcial; siete~98.54% estimado.**
+Sin pista audio admite reporteV2 con selección/autoridad consumida y worker opt-in default off;
+V1 audible conserva obligaciones.132/132 dirigidas, build operativo y compilación habitual tests
+pasan. Audio92→94, peso15%, +0.30pp CAP. SQL preparado con precondiciones, NO aplicado/ejecutado.
+CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual. Siguen
+provisión/reserva/recuperación distribuida, Windows efectivo, corpus/color/A-V/procedencia y QA;
+validación DB/operación/lotesV2 pendiente. Detalles y límites en plan CAP-027. No activación.
+
+**Corte vigente2026-10-08 silencio explícito: CAP-02789.5% parcial conservado; siete98.5%.**
+Comparador scoped dispone de ruta sin pista audio, ligada a expectativa congelada explícita y
+sin inventar métricas. Reporte durableV1/SQL aún no admiten esa rama; worker mantiene bloqueo.
+Seis capacidades restantes100% implementación registrada/QA pendiente individual. Detalles,
+validación y limitación TS6133 ajena a CAP-027 en plan de cierre. Sin activación ni migración.
+
+**Corte vigente2026-10-08 puente exacto: CAP-02789.5% estimado parcial; siete98.5%.**
+Factory entrega selección medida al supervisor/checkpoint; worker la recupera con scope host
+explícito y conserva verificación de autoridad consumida, sin recapturar referencias.74/74
+dirigidas y ambas compilaciones pasan. Identidad/ejecutor83→85 (peso15%, +0.30pp CAP).
+CAP-004/009/010/017/023/026100% implementación registrada individual/QA pendiente.
+Pendientes: silencio durable, bootstrap/reserva distribuida, aislamiento Windows, corpus/color/
+A-V/procedencia y QA. No activación productiva ni migración aplicada. Detalle en plan CAP-027.
+
+**Corte actual2026-10-08 selección exacta: CAP-02789.2% estimado parcial conservado; siete~98.5%.**
+Worker reservado no recaptura preview/audio raíz; checkpoints/reportes conservan checksums y
+paquetes de lotes distinguen referencia visual para impedir reanudación cruzada.127/127 dirigidas
+y builds pasan. Migración seleccionada preparada con precondiciones, NO aplicada/ejecutada en DB.
+Falta silencio durableV1 (rechazado explícitamente), provisión factory→checkpoint→claim, reserva
+distribuida, Windows efectivo y corpus/color/A-V/procedencia/QA. Seis CAP-004/009/010/017/023/026100%
+implementación registrada/QA pendiente individual. Sin cierre nuevo ni activación/migración aplicada.
+[Detalle y límites](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**Corte actual2026-10-08: CAP-02789.2% estimado parcial; siete~98.5%.** Admisión consumida
+verificada en worker opt-in, receipts nativos raíz/lotes ligados por contrato y bytes, relectura de
+revocación y binding explícito durable no equivalente a conformidad.130/130 dirigidas/builds pasan;
+DB/decoder/browser simulados, firma/hash/evaluador/files reales. Identidad81→83, peso15% (+0.30 pp),
+otros bloques sin cambio. Bootstrap/reservas durables, Windows efectivo, corpus/color/A-V/procedencia
+y QA pendientes. Seis CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una.
+Sin cierre R04, migración, flags, vendor ni cambios de CAP-022/025/029.
+[Detalle y límites](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+## Corte actual CAP-027: coordinación durable y recuperación (2026-10-08)
+
+Puertos host propagados a comparación raíz/lotes y presupuesto común; cierre incierto conserva
+inputs y fallo sanitizado no reintentable. Runner deja de reclamar jobs ante recuperación, incluso
+si se pierde lease o ACK. No bootstrap productivo configurado, receipt nativo autenticado integrado,
+aislamiento Windows probado ni recuperación distribuida completa.124/124 dirigidas y builds pasan,
+sin QA formal/decoder/browser/Win32/BD reales. CAP-02788.9% estimado parcial conservado; media siete98.4%.
+CAP-004/009/010/017/023/026100% implementación registrada, QA pendiente cada una. No cierre nuevo,
+migración/rollout/vendor ni cambios de CAP-022/025/029. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**Vigente2026-10-08 factory integrado: CAP-02788.9% estimado parcial; media siete~98.4%.** Factory
+single silencioso verificado desde collector hasta lector ZIP y comparador/SSIM/gates reales,
+diagnóstico y retorno/rechazo de artifacts; DB/probe/decode simulados. Identidad79→81 (peso15%,
++0.30 pp) por integración existente ahora comprobada, no por cantidad de tests. Otros bloques sin
+crédito nuevo. CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual.
+Sin cierre adicional ni QA físico. Faltan aislamiento Windows y autoridad/persistencia/corpus/color/A-V.
+[Evidencia y límites](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**Vigente2026-10-08 reserva y cobertura: CAP-02788.6% estimado parcial; media siete~98.4%.**
+Selección exacta inmutable conectada al host/factory, medidor validado con pares preview/audio y todos
+los lotes derivados. Identidad/ejecutor77→79 (peso15%, +0.30 pp). Lectores/procesos simulados;
+archivos/hash/PNG reales. No se acredita recorrido físico completo, persistencia durable, sandbox OS
+ni QA. CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual.
+Sin cierre nuevo/flags/migraciones/rollout. [Rúbrica y pendientes](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**Continuación2026-10-08: CAP-02788.3% parcial conservado; media siete~98.3%.** Núcleo de medición
+de referencias autorizadas y conexión opt-in al productor observado implementados. Parent-stop espera
+el colector independiente, o conserva fence/cuarentena. Comparador completo usa puertos Windows;
+diagnóstico local no firmado conserva FAIL/INCOMPLETE. Falta validar factory integral, audio/lotes y
+selección de referencias del host; no se otorga crédito nuevo por construcción aislada. Seis restantes
+CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual. Sin activación,
+render físico, QA formal ni migraciones. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**Corte vigente2026-10-08: CAP-02788.3% estimado parcial; media siete~98.3%.** Puertos comparador UTF-8/PCM usan driver/spool acotados y job Windows propio por operación, fence dedicado, cierre confirmado antes del consumo, pins/inventario y cuarentena/retención ante cierre incierto. Identidad/ejecutor75→77 (peso15%, +0.30 pp); resto sin crédito nuevo. CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una. Transporte implementado; medidor completo y aislamiento efectivo/color/A-V/corpus/procedencia siguen pendientes, no solo QA. Tests con archivos/fence reales y procesos simulados; sin render físico/QA formal/migración/rollout. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**Estimación vigente revisada (2026-10-07): CAP-027 ~88% parcial; siete prioridades ~98.3%.** Revisión acumulada sustituye85.80/97.97 como cifras vigentes, no modifica el historial ni acredita avance nuevo en esta respuesta. Misma rúbrica/pesos: identidad69→75, tiempo/repetibilidad92→95, fuentes/codecs/SDR65→75; restantes estimaciones sin cambio. Crédito por conexión original bootstrap/observadores/recibos/colector y stages, no por número de tests ni ejecución física. CAP-004/009/010/017/023/026100% implementación registrada, QA pendiente individual; no nueva auditoría exhaustiva de esas seis.10/10 dirigidas actuales pasan con multimedia simulada; QA/OS/DB/render reales pendientes. Cierre roadmap7/30, implementación global no determinada. [Rúbrica, evidencia y límites](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 bootstrap-SDR2026-10-07: integración launch→plan/config/inventario→observer/frames→encode/ensamblaje→observación/receipt→colector pasa silent/AAC y rechaza drift real del fixture. FPS racional SDK y streaming bypass corregidos. Launch SDR exige instalación observada/plan V3; legacy/V2 rechazados.38/38 dirigidas y build operativo pasan, binarios/CDP simulados; sin activar producción. CAP-02785.80% parcial; CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una; media97.97%. Color/A-V/corpus/procedencia/aislamiento Windows siguen funcionalmente pendientes. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 silent-remux2026-10-07: conservación de payload/extradata/timestamps y perfil SDR sin audio permite contenedor distinto, vinculada al adaptador/bootstrap/observación sin declarar mux AAC.41/41 dirigidas y builds pasan; binarios simulados, archivos/PNG reales. Gate SDR aún cerrado hasta integración bootstrap V3 completa/admisión; color/A-V/corpus/procedencia/sandbox y QA pendientes. CAP-02785.80% parcial; CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual; media97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 adaptador-SDR2026-10-07: bootstrap conecta puertos V4 con archivo forward/encoder/probe/mux operativos y ensambla ejecución desde resultados vinculados. Ejecutor espera cierre hijo directo y conserva temporales ante fallo; no acredita descendientes/aislamiento. Gate SDR todavía cerrado: falta verificación de remux silent sin audio e integración bootstrap SDR completa. CAP-02785.80% parcial; CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual; media97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 puerto-encode2026-10-07: recetaV4 permite codificación host y verificación después del ensamblaje original/before cleanup; job/signal/frames/callbacks vinculados, audio SDK intacto.35/35 dirigidas pasan, con VM y binarios simulados. Bootstrap todavía no conecta encoder SDR ni resultados; gate SDR/mux permanece cerrado. CAP-02785.80% parcial; CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una; media97.97%. Nuevos hashes necesitan aprobación de operador. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 archivo-forward2026-10-07: secuencia privada acotada desde buffers originales SDK, escritura exclusiva/secuencial, copia previa al await y rechecks de fuentes/PNG. Observer/bootstrap conectados condicionalmente;33/33 dirigidas y builds pasan. No habilita SDR: admisión todavía rechaza conversión/mux hasta integrar resultados reales. CAP-02785.80% parcial; CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una; media97.97%. Sin crédito adicional hasta cerrar un bloque ponderado. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 ejecución-original2026-10-07: pins medidos de inventario+CDP original+hash video conectados a receipt V3/colector/puente, con rechazo de contradicciones y sin copiar expectativas.75/75 dirigidas y builds pasan, archivos/PNG reales y runtime/media simulados. Conversión SDR/mux explícitos siguen sin conectar al productor materializado; no es solo QA. CAP-02785.80% parcial, seis CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual; media97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 RGBA-original2026-10-07: recetaV3 ofrece recaptura screenshot SDK con preparación/restore originales; recorder incremental compara RGBA forward/reverse y produce reportes por contrato. Receipt/colector V3 y puente conectan reportes originales/rechazan conflictos, sin promover a conformidad global.77/77 dirigidas/build operativo/compilación conjunta pasan; PNG/bytes reales, SDK/CDP/media simulados, sin render/QA formal/instalación. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual; media97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 eventos-nativos2026-10-07: todas las particiones observan sesión original con forward global/reverse global; receipt V3 y colector exigen cobertura propia por hijo. Puente conecta EVENT_BATCH_SET sin relabelar padre ni degradar a contrato único. Build operativo/compilación conjunta y44/44 dirigidas pasan; tres nuevas, CDP/SDK/media simulados, sin render físico/QA formal. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media97.97%. Bloque previo `detach` resuelto en desarrollo paralelo sin editarlo aquí. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+Revalidación final consumo2026-10-07:59/59 dirigidas pasan sobre código emitido; build operativo final y compilación conjunta bloqueados por el mismo error `detach` de CAP-029 paralelo. El build operativo inicial sí pasó. No se declara compilación final verde ni prueba física de render.
+
+CAP-027 consumo2026-10-07: geometría nativa sin fuentes personalizadas llega al comparador; fuentes obligatorias solo según bindings congelados. Puente conecta testigo original a SINGLE_CONTRACT con identidad completa y rechazo de conflictos. EVENT_BATCH_SET requiere cobertura propia; no se relabela evidencia padre. Build operativo pasó; compilación conjunta bloqueada por error `detach` de CAP-029 paralelo. CAP-02785.80% parcial, seis CAP restantes100% implementación registrada/QA pendiente individual, media97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 nativo2026-10-07: orquestador conectado a bootstrapV3 lee checkpoints originales y compara texto/glifos en reverse con leaseSDKV2; restaura frame, no seek manual/página alterna. Receipt nativo ligado a plan/request/contrato/vídeo, colectorV3 obligatorio y puente entrega clones al medidor/recheck. Scope OBSERVED_UNATTESTED, no PASS/attestation/color/A-V. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%; no cierre operativo completo. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+Validación nativa52/52 dirigidas (20 native/fonts,24 recipe/collector/bridge,8 loader/bootstrap), cinco nuevas. Build operativo inicial pasó; compilación conjunta final detectó cuatro errores transitorios CAP-029 HTML compiler/inspector y se avisó al responsable sin tocar esos archivos. Test emitido actual del observer fijo20/20 directo, sin reclamar compile verde. SDK/CDP/medios/DOM simulados, filesystem/hash reales, sin QA formal/render/DB.
+
+CAP-027 seek2026-10-07: recetaV2 entrega after-frame lease de prepareFrameForCapture original SDK y restaura posición capturada; scope no-conformidad, nuevas recetas/pins requieren aprobación, sin cambiar vendor ni instalación.34/34 dirigidas pasan (VM/SDK/medios simulados, paquete/hash/filesystem reales). Pendiente orquestar geometry/fonts forward/reverse. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 abort2026-10-07: pin/recheck admite signal y cancela entre chunks/archivos; cierre de handles, compatibilidad legacy, sin fingir cancelación de I/O nativo o STOPPED. Build operativo y15/15 dirigidas pasan; dos nuevas, sin QA formal/render. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%. Pendiente medición original integrada. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 transporte2026-10-07: archivo de plan nativo exclusivo pinneado y requestV3 hash/tamaño/execution, nombre fijo; bootstrap valida schemas/bindings/archivos/fonts y recheck antes/después SDK, sin inferir desde HTML ni promover a evidencia. V1/V2 conservados. Pendiente conectar a observer/capturas/seeks originales. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%; sin cierre ponderado por transporte aislado. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+Validación del transporte: **45/45** dirigidas y compilaciones pasan; tres nuevas. Lectura real de plan/ZIP/hash/pins y regresiones de bootstrap, SDK/CDP/media simulados. Controles realpath/enlaces de temporales propios fuera del sandbox; sin render/QA formal/migración/deploy.
+
+CAP-027 plan2026-10-07: materialización conserva documento/contrato/fonts/pins nativos autorizados, revalida antes de lectura y entrega copias al ejecutor; verificador host separado del workspace serializable. No reconstruye plan desde HTML ni acredita captura. Pendiente transporte autenticado al bootstrap y seeks/geometry/fonts originales. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%; sin aumento por infraestructura incompleta. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+Validación de ese corte **37/37** dirigidas y compilaciones pasan; executor revalida bajo deadline antes de start y después de STOPPED. Cuatro pruebas nuevas; filesystem/ZIP reales, red/procesos/SDK/media simulados. Sin QA formal/render/rollout/DB/migración.
+
+CAP-027 fuentes2026-10-07: adapter CDP original prestado sin detach/close SDK ni listeners ajenos, cleanup/abort/error latched/cuotas; fábrica reutiliza capturador fuentes/glifos y exige reverse verification completo antes de finish. **24/24** dirigidas (15 fuentes+9 adapter/runtime), CDP/events/fonts/geometry simulados; build operativo y compilación pruebas pasan, sin render/QA formal/migración/deploy. Fábrica aún no conectada al bootstrap: faltan plan completo autorizado y seeks/geometry originales, no se atribuye prueba física a llamadas reverse. CAP-02785.80% estimado parcial, seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 colector2026-10-07: V2 exige registro original pinneado y ligado a request/execution/CDP/frameCount/hash+size vídeo, schema/quota/UTF8; puente valida antes de measure y recheck después, clones no mutan pins privados. **56/56** dirigidas filesystem/hash/admisión reales y SDK/CDP/medición simulados, vídeo no-media; sin QA formal/render/migración/deploy. Registro no equivale a fonts/color/pixel/A-V/attestation; mediciones completas y sandbox Windows pendientes. CAP-02785.80% estimado parcial, seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 bootstrap2026-10-06: puente selecciona entry observado fijo con configuración del operador declarada/pin SHA, fuera del job; requestV2 vincula digest execution y rechaza fallback legacy. Observer fijo de CDP original/version+digest de frames, registro separado ligado a candidato, sin promoverlo a conformance/fonts/color/supervisor artifact. **48/48** dirigidas con filesystem/hash reales y SDK/CDP/arranque simulados; sin render/QA formal/migración/deploy. Colector/medición completa/aislamiento Windows pendientes; CAP-02785.80% estimado parcial, seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 admisión2026-10-06: loader usa inventario operativo existente antes de importar paquete observado, liga producer y binarios a roles, rechecks de import/ejecución; port host-only del driver rechaza instalación parcial/conflictos sin fallback. CLI/bridge todavía no suministra instalación observada; bootstrap/medición/sandbox Windows pendientes. **41/41** dirigidas, filesystem/crypto/admisión reales, SDK/import/binaries simulados; sin QA formal/render/migración/deploy. CAP-02785.80% estimado parcial, seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 packaging2026-10-06: copia paquete completo fuera de node_modules, entry instrumentado+runtime, manifest determinista/pins de salida y fragmento para inventario existente; verificación requiere digest externo aprobado, sin auto-admisión ni instalación/driver activado. **28/28** dirigidas, dos builds reales idénticos/vendor intacto y rechazo drift/overwrite/enlaces/aliases; EPERM del sandbox resuelto repitiendo en temporales propios fuera. No SDK/render/QA formal/migración/deploy. CAP-02785.80% estimado parcial sin crédito de integración todavía; seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 decisión2026-10-06: usuario confirma Windows restringido y autoriza extensión versionada del productor completo, sin node_modules/deploy/QA formal. Receta fijada a0.7.106+SHA/tamaño, hooks de sesión CDP original/seek/screenshot, runtime aislado por job con fallo latched y adapter observado sin fallback; preserva pipeline, driver no activado. **20/20** pruebas dirigidas (bundle real transformado/sintaxis y SDK/captura simulados). Pendiente packaging/inventario de dist completo/runtime, medir sesión original efectiva y sandbox Windows. CAP-02785.80% estimado parcial, seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
 Coordinación 2026-10-06: [traspaso y desarrollo paralelo](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_PARALLEL_DEVELOPMENT_HANDOFF.md) documenta estado, pendientes, CAP-027 reservado al equipo actual y paquetes propuestos para compañero (primero CAP-022, después CAP-025 acotado o catálogo UX CAP-029), reservas de archivos y gates de integración. Sin asignación ejecutada, commit/base consolidada, rama/PR/envío/deploy/QA/migración. Porcentajes sin cambio: CAP-02785.80% estimado, seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%, no implementación global.
 
 CAP-027 supresión nativa2026-10-06: ya no cambia color/currentColor junto con text-fill, evitando contaminar máscaras con fondos/bordes. Rechaza IDs ambiguos/SVG/root sobre cuota y drift de CSS no suprimido/texto/hijos/geometría con snapshots acotados; restauración PNG existente se conserva. **39/39** dirigidas, cuatro nuevas, DOM/CDP simulados y píxeles PNG reales; sin navegador/render/QA formal/migración. CAP-02785.80% estimado sin crédito por corregir garantía ya contabilizada; seis CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%. Integración real/aislamiento/CDP productor original siguen pendientes. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).

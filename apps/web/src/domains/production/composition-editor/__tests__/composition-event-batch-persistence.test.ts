@@ -36,13 +36,13 @@ function fixture() {
     return {error: null, data: {id: input.revisionId, organization_id: input.organizationId, project_hash: input.projectHash, manifest}};
   }};}, async rpc(name: string, params: Record<string, unknown>) {
     calls.push(name); const key = JSON.stringify(params.p_identity);
-    if (name === "record_hyperframes_event_batch_measurement") {
+    if (name === "record_hyperframes_event_batch_measurement" || name === "record_hyperframes_selected_event_batch_measurement") {
       assert.equal(params.p_visual_sha256, "c".repeat(64));
       const next = {packetSha256: String(params.p_packet_sha256), packet: structuredClone(params.p_packet) as EventBatchMeasurementPacket};
       if (recordFailure || (records.has(key) && JSON.stringify(records.get(key)) !== JSON.stringify(next))) return {error: {code: "conflict"}, data: null};
       records.set(key, next); return {error: null, data: next.packetSha256};
     }
-    assert.equal(name, "read_hyperframes_event_batch_measurement");
+    assert.ok(name === "read_hyperframes_event_batch_measurement" || name === "read_hyperframes_selected_event_batch_measurement");
     return {error: readFailure ? {code: "unavailable"} : null, data: structuredClone(records.get(key) ?? null)};
   }};
   return {input, packet, manifest, records, calls, supabase: database as never,
@@ -64,6 +64,28 @@ test("private packets round-trip and coordinator resumes without measuring again
   assert.equal(resumed.resumedBatchCount, 1); assert.equal(measurements, 1);
   assert.deepEqual(first.batches, resumed.batches);
   await adapters.persistBatch(state.packet); assert.equal(state.records.size, 1);
+});
+
+test("exact visual checksum partitions immutable packet identity and selects fenced RPCs", async () => {
+  const state = fixture(), packet = structuredClone(state.packet);
+  packet.identity.visualReferenceSha256 = "c".repeat(64);
+  await persistCompositionEventBatchMeasurement({supabase: state.supabase, packet, visualChecksum: "c".repeat(64)});
+  assert.ok(await readCompositionEventBatchMeasurement({supabase: state.supabase, identity: packet.identity}));
+  assert.equal(await readCompositionEventBatchMeasurement({supabase: state.supabase,
+    identity: {...packet.identity, visualReferenceSha256: "d".repeat(64)}}), null);
+  assert.deepEqual(state.calls, ["record_hyperframes_selected_event_batch_measurement",
+    "read_hyperframes_selected_event_batch_measurement", "read_hyperframes_selected_event_batch_measurement"]);
+  await assert.rejects(persistCompositionEventBatchMeasurement({supabase: state.supabase, packet,
+    visualChecksum: "d".repeat(64)}), /REFERENCE_MISMATCH/);
+});
+
+test("selected-reference migration restricts checksums and preserves installed finalization gates", async () => {
+  const sql = await readFile("supabase/migrations/20261008190000_bind_selected_event_measurements.sql", "utf8");
+  assert.match(sql, /e\.identity = p_identity AND e\.visual_sha256 = p_identity->>'visualReferenceSha256'/);
+  assert.match(sql, /record_hyperframes_event_batch_measurement\(p_identity, p_packet, p_packet_sha256, p_visual_sha256\)/);
+  assert.match(sql, /pg_get_functiondef/);
+  assert.match(sql, /MIGRATION_PRECONDITION_INVALID/);
+  assert.doesNotMatch(sql, /DELETE FROM|TRUNCATE|DO UPDATE/);
 });
 
 test("another MP4 gets no matching packet; a read error is not a missing record", async () => {

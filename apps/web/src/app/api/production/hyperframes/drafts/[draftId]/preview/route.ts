@@ -27,6 +27,7 @@ import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/oper
 import { isCompositionDocumentHash, parseCompositionPreviewGeneration } from "@/domains/production/composition-editor/composition-preview-comparison";
 import { buildCompositionPreviewFailureBridge } from "@/domains/production/composition-editor/composition-preview-failure-bridge";
 import type { CompositionPreviewLoadErrorCode } from "@/domains/production/composition-editor/composition-preview-protocol";
+import { buildCompositionHtmlEditingPreviewCsp, HtmlEditingPreviewCspError } from "@/domains/production/composition-editor/composition-html-editing-preview-csp.server";
 
 interface RouteContext { params: Promise<{ draftId: string }>; }
 
@@ -101,6 +102,8 @@ export async function GET(request: Request, context: RouteContext) {
       previewGeneration,
     });
     const compileMs = elapsedMilliseconds(compileStartedAt);
+    const editableContentSecurityPolicy = current.document.htmlEditing?.items.length
+      ? buildCompositionHtmlEditingPreviewCsp(previewHtml) : null;
     const timings = {
       assetsMs,
       authorizationMs,
@@ -121,15 +124,19 @@ export async function GET(request: Request, context: RouteContext) {
     return new NextResponse(previewHtml, {
       headers: {
         "Cache-Control": "private, no-store",
-        "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src https: data:; media-src 'self' https: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'",
+        "Content-Security-Policy": editableContentSecurityPolicy ?? "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src https: data:; media-src 'self' https: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'",
         "Content-Type": "text/html; charset=utf-8",
         "Server-Timing": formatServerTimingHeader(timings),
         "X-Correlation-Id": correlationId,
         "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
         "x-request-id": requestId,
       },
     });
   } catch (error) {
+    if (error instanceof HtmlEditingPreviewCspError) return previewFailureResponse({ bridgeCode: "COMPILATION_FAILED",
+      code: API_ERROR_CODE.invalidRequest, documentHash: failureBridgeHash, message: "La política de aislamiento del HTML editable fue rechazada.",
+      previewGeneration, requestId, retryable: false, status: 422 });
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de borrador inválido.", requestId, status: 400 });
     if (error instanceof CompositionDocumentError || error instanceof CompositionPreviewCompilerError || error instanceof CompositionFontAssetError) {
       const status = error.status;

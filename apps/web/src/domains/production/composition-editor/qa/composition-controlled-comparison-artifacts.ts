@@ -2,7 +2,7 @@ import {compositionConformanceContractSchema} from "../composition-preview-rende
 import {evaluateControlledRenderExecution} from "../composition-render-execution-contract";
 import {exportedVideoReceiptSchema} from "./composition-exported-video-conformance";
 import {bindControlledSeekRepeatability} from "./composition-controlled-seek-binding";
-import {bindControlledRendererFontWitness} from "./composition-controlled-font-witness";
+import {bindControlledRendererNativeEvidence} from "./composition-controlled-native-binding";
 
 /** Produces comparator inputs only. Local observations never grant job provenance or isolation. */
 export function buildControlledComparisonArtifacts(input: {
@@ -19,7 +19,7 @@ export function buildControlledComparisonArtifacts(input: {
   const seekRepeatability = bindControlledSeekRepeatability(contract, input.seekRepeatability);
   if (contract.renderExecution.seekRepeatabilityPolicy && !seekRepeatability)
     throw new Error("CONTROLLED_RENDER_COMPARISON_SEEK_REQUIRED");
-  const native = bindControlledRendererFontWitness(contract, input.nativeEvidence, input.videoSha256);
+  const native = bindControlledRendererNativeEvidence(contract, input.nativeEvidence, input.videoSha256);
   if (contract.fontUsageContract?.bindings.length && !native)
     throw new Error("CONTROLLED_RENDER_COMPARISON_FONT_REQUIRED");
   const receipt = exportedVideoReceiptSchema.parse({documentHash: input.documentHash,

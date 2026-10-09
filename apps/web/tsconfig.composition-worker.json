@@ -17,11 +17,26 @@
   "include": [
     "src/domains/production/composition-editor/qa/composition-conformance-job-worker.ts",
     "src/domains/production/composition-editor/qa/composition-conformance-job-execution.ts",
+    "src/domains/production/composition-editor/qa/composition-reserved-conformance-worker-host.ts",
+    "src/domains/production/composition-editor/qa/composition-windows-reserved-conformance-ports.ts",
+    "src/domains/production/composition-editor/qa/composition-windows-conformance-host-configuration.ts",
     "src/domains/production/composition-editor/qa/composition-controlled-render-worker-host.ts",
     "src/domains/production/composition-editor/qa/composition-windows-render-worker-host.ts",
     "src/domains/production/composition-editor/qa/composition-exported-video-conformance.ts",
+    "src/domains/production/composition-editor/qa/composition-owned-measurement-contract.ts",
+    "src/domains/production/composition-editor/qa/composition-windows-comparison-process-ports.ts",
+    "src/domains/production/composition-editor/qa/composition-controlled-reference-measurement.ts",
     "src/domains/production/composition-editor/qa/composition-conformance-file-integrity.ts",
-    "src/domains/production/composition-editor/qa/composition-controlled-render-storage-policy.ts"
+    "src/domains/production/composition-editor/qa/composition-controlled-render-storage-policy.ts",
+    "src/domains/production/composition-editor/qa/composition-original-session-font-capture.ts",
+    "src/domains/production/composition-editor/qa/composition-original-session-native-capture.ts",
+    "src/domains/production/composition-editor/qa/composition-original-session-event-native-capture.ts",
+    "src/domains/production/composition-editor/qa/composition-controlled-event-native-binding.ts",
+    "src/domains/production/composition-editor/qa/composition-original-session-seek-capture.ts",
+    "src/domains/production/composition-editor/qa/composition-original-execution-binding.ts",
+    "src/domains/production/composition-editor/qa/composition-original-session-frame-archive.ts",
+    "src/domains/production/composition-editor/qa/composition-sdr-frame-encoder.ts",
+    "src/domains/production/composition-editor/qa/composition-sdr-mux-verification.ts"
   ],
   "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "src/app/**"]
 }

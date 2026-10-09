@@ -17,7 +17,8 @@ export function createWindowsControlledRenderWorkerHost(input:
   }));
   // The adapter may not launch a bridge/helper outside the operator's verified trees.
   for (const path of [input.jobBridge.powerShellPath, input.jobBridge.bridgeScriptPath,
-    join(dirname(input.jobBridge.bridgeScriptPath), "OwnedRenderJob.cs")]) {
+    join(dirname(input.jobBridge.bridgeScriptPath), "OwnedRenderJob.cs"), join(dirname(input.jobBridge.bridgeScriptPath), "OwnedRenderAccess.cs"),
+    join(dirname(input.jobBridge.bridgeScriptPath), "OwnedRenderAppContainer.cs")]) {
     if (!declaredPaths.has(path)) throw new Error("CONTROLLED_RENDER_WINDOWS_BRIDGE_INVENTORY_REQUIRED");
   }
   const jobBridge: WindowsJobBridgeConfiguration = {...input.jobBridge, prepareLaunch: (descriptor, workspace) => {

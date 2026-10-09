@@ -1,5 +1,81 @@
 # CAP-029: declarative contract foundation (not enabled)
 
+## 2026-10-08: full-node reset staging
+
+The fields UI now explicitly prepares the original of every declared field on a
+multi-field physical target. `stageHtmlEditingTargetReset` replaces staged edits
+for that node, retains unrelated drafts and produces one ordinary bounded batch
+of typed field RESETs. No target selector/authority is sent. No publication until
+Save batch; default image grants and aggregate budgets reject the entire staging
+operation before replacing local state. Existing individual RESET/ALL semantics,
+server CAS, durable tracking and history remain unchanged. Real mounted UI and
+authenticated DB/browser behavior still require QA.
+
+## 2026-10-08: explicitly declared multi-field DOM targets
+
+Manifest fields can optionally declare `targetElementId`. Without it, the DOM
+target remains `elementId`, preserving previous declarations and their digests.
+With it, multiple independent fields may edit distinct properties of one physical
+node. The compiler and inspector resolve targets from trusted declarations only;
+commands still identify fields and reject client selectors/target overrides.
+
+Conflicting physical sinks are rejected (same text/chart content, same attribute,
+same range CSS property, locale text vs lang/dir). State, defaults, staging and
+history remain keyed by field, while the DOM marker keeps the physical ID. Source
+is immutable; field RESET leaves unrelated fields untouched. `RESET ALL` retains
+its field scope, not a promise to reset the entire multi-field physical node.
+Full-node reset UX/batching needs explicit closure against OP028. Older strict
+clients cannot consume newly enrolled target declarations: coordinate template
+version/consumer deployment; do not rewrite installed manifests in place.
+
+## 2026-10-08: frozen compilation profile and output pins
+
+New frozen bundles are `courseforge-html-editable-snapshot-bundle-v2` (schema2).
+They include the exact compiler/geometry/isolation profile and SHA256 of every
+derived clip fragment. Authorized restore and offline content verification reject
+foreign profiles or any output drift before consuming fragments. Offline checking
+still is not authorization. Grants and delivery URLs are never frozen as authority.
+
+V1 archives now fail explicitly with `COMPILATION_VERSION_MISMATCH`, not implicit
+recompilation. Keep their bytes/receipts for audit/rollback. Before deployment,
+inventory existing V1: continued historical rendering requires a separately pinned
+authorized legacy executor or an explicit new publication after visual review.
+This patch does not implement a legacy executor or authorize republication. No
+automatic Storage rewrite, migrations, flags or installation. The profile pin
+protects frozen snapshots; live revision/template provenance remains an audit item.
+
+## 2026-10-08: static geometry and compiler-owned CSS isolation
+
+Current editable fragments pass `html-editing-geometry.server.ts` during static
+admission and `html-editing-isolation.server.ts` after typed overrides. The shared
+compiler produces a per-clip scope, rewrites each qualified selector subject, puts
+supported pseudo-elements outside `:is()`, namespaces CSS layers and wraps the
+derived fragment in a protected layout/paint containment box. Original source and
+editorial revision bytes are not rewritten. No independent preview renderer.
+
+Static length fields use bounded explicit units; pixel font sizes avoid nested
+relative amplification. SVG viewports/known shape coordinates are independently
+bounded. Source-owned fixed/sticky positioning, transforms/perspective/backdrop,
+indirect geometry, font shorthand, document-root selectors, CSS nesting, nested
+layers and unsupported pseudo-elements fail explicitly, requiring template review.
+These are admission rules, not complete CSS interpretation or GPU/raster budgets.
+
+This changes derived HTML/checksums and can reject previously admitted templates.
+Existing frozen compiled checksums require versioned reconciliation before rollout;
+do not switch a stored render to a newly compiled version silently. The constants
+identify the new derivation, but do not alone implement persisted renderer-version
+negotiation. The source remains available for rollback and manual visual comparison.
+
+DOM selector tests prove that generated selectors do not select host/other-clip
+elements. They do not prove browser cascade, layout, clipping, CSP enforcement,
+codec/font behavior or preview/render pixel parity. Those remain QA obligations;
+remaining geometry sinks and version/provenance flow are also implementation audit
+items, not excused as manual QA. See the current CAP029 completion plan in
+`docs/architecture/SOFLIA_ENGINE_CAP029_COMPLETION_PLAN.md` at repository root.
+
+The companion's catalogue UX, CAP022/025/027 and global trackers are not changed.
+No flags, operator templates, migrations or deployments are activated by this cut.
+
 2026-10-06 durable initialization service/HTTP wired: shared legacy/durable current
 source/anchor/catalog/grants preparation; registerOperation derives request digest,
 reads authorized receipt first, returns exact historical result without current

@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { createReadStream } from "node:fs";
 import { lstat, mkdtemp, rm, rmdir, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
+import {pinConformanceFile} from "./composition-conformance-file-integrity";
 import sharp from "sharp";
 import { createCorpusStereoAudio } from "./composition-conformance-corpus-assets";
 import { extractDecodedCorpusPcm, measureVideoCorpusDecodedAudio } from "./composition-video-corpus-audio-evidence";
@@ -39,20 +39,13 @@ const decodeAudio: CorpusAudioDecoder = async (binary, videoPath, signal) => {
   return extractDecodedCorpusPcm(Buffer.from(stdout));
 };
 
-async function hashRegularFile(path: string, maximumBytes: number) {
-  const file = await lstat(path);
-  if (!file.isFile() || file.isSymbolicLink() || file.size <= 0 || file.size > maximumBytes)
-    throw new Error("CONFORMANCE_CORPUS_FILE_INVALID");
-  const digest = createHash("sha256"); let sizeBytes = 0;
-  for await (const chunk of createReadStream(path)) {
-    sizeBytes += (chunk as Buffer).length;
-    if (sizeBytes > maximumBytes) throw new Error("CONFORMANCE_CORPUS_FILE_LIMIT");
-    digest.update(chunk as Buffer);
+async function hashRegularFile(path: string, maximumBytes: number, signal?: AbortSignal) {
+  try {return await pinConformanceFile(path, maximumBytes, false, signal);}
+  catch (error) {
+    if (signal?.aborted) throw new Error("CONFORMANCE_CORPUS_ABORTED");
+    throw new Error(error instanceof Error && error.message === "CONFORMANCE_FILE_INTEGRITY_MISMATCH"
+      ? "CONFORMANCE_CORPUS_FILE_CHANGED" : "CONFORMANCE_CORPUS_FILE_INVALID");
   }
-  const after = await lstat(path);
-  if (!after.isFile() || after.isSymbolicLink() || after.size !== sizeBytes || file.size !== sizeBytes
-    || after.mtimeMs !== file.mtimeMs || after.ino !== file.ino) throw new Error("CONFORMANCE_CORPUS_FILE_CHANGED");
-  return {sha256: digest.digest("hex"), sizeBytes};
 }
 
 /** Explicit local fixture generation only: never a gate PASS or provider attestation. */
@@ -68,7 +61,7 @@ decode: CorpusFrameDecoder = decodeFrame, decodeAudioTrack: CorpusAudioDecoder =
   if (!parent.isDirectory() || parent.isSymbolicLink()) throw new Error("CONFORMANCE_CORPUS_DIRECTORY_INVALID");
   const assertActive = () => {if (signal?.aborted) throw new Error("CONFORMANCE_CORPUS_ABORTED");};
   assertActive();
-  const [encoderBefore, probeBefore] = await Promise.all([hashRegularFile(ffmpegPath, MAX_EXECUTABLE_BYTES), hashRegularFile(ffprobePath, MAX_EXECUTABLE_BYTES)]);
+  const [encoderBefore, probeBefore] = await Promise.all([hashRegularFile(ffmpegPath, MAX_EXECUTABLE_BYTES, signal), hashRegularFile(ffprobePath, MAX_EXECUTABLE_BYTES, signal)]);
   const directory = await mkdtemp(join(outputParentDirectory, "composition-video-corpus-"));
   const audioPath = join(directory, "source.wav"), videoPath = join(directory, "source.mp4"), receiptPath = join(directory, "source-receipt.json");
   let completed = false;
@@ -76,6 +69,8 @@ decode: CorpusFrameDecoder = decodeFrame, decodeAudioTrack: CorpusAudioDecoder =
   try {
     const audio = createCorpusStereoAudio("VOICE");
     await writeFile(audioPath, audio.bytes, {flag: "wx", mode: 0o600});
+    const audioBefore = await hashRegularFile(audioPath, audio.bytes.length, signal);
+    if (audioBefore.sha256 !== audio.checksum) throw new Error("CONFORMANCE_CORPUS_INTEGRITY_CHANGED");
     assertActive();
     const generatedFrameCount = await writeFrames(directory, fps, signal);
     if (generatedFrameCount !== FRAME_SOURCE_DURATION_SECONDS * fps) throw new Error("CONFORMANCE_CORPUS_FRAME_COUNT_INVALID");
@@ -86,7 +81,7 @@ decode: CorpusFrameDecoder = decodeFrame, decodeAudioTrack: CorpusAudioDecoder =
     for (let frameIndex = 0; frameIndex < generatedFrameCount; frameIndex++)
       await rm(videoCorpusFramePath(directory, frameIndex), {force: true});
     stage = "STREAM_PROBE";
-    const before = await hashRegularFile(videoPath, MAX_VIDEO_BYTES);
+    const before = await hashRegularFile(videoPath, MAX_VIDEO_BYTES, signal);
     const {stdout} = await execute(ffprobePath, ["-v", "error", "-protocol_whitelist", "file,pipe", "-show_entries",
       "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate,sample_rate,channels", "-of", "json", videoPath],
       {timeout: 30_000, maxBuffer: PROCESS_OUTPUT_LIMIT, windowsHide: true, encoding: "utf8", signal});
@@ -126,10 +121,10 @@ decode: CorpusFrameDecoder = decodeFrame, decodeAudioTrack: CorpusAudioDecoder =
     const decodedAudio = measureVideoCorpusDecodedAudio(audio.bytes, await decodeAudioTrack(ffmpegPath, videoPath, signal));
     assertActive();
     stage = "INTEGRITY";
-    const [after, encoderAfter, probeAfter, audioAfter] = await Promise.all([hashRegularFile(videoPath, MAX_VIDEO_BYTES),
-      hashRegularFile(ffmpegPath, MAX_EXECUTABLE_BYTES), hashRegularFile(ffprobePath, MAX_EXECUTABLE_BYTES), hashRegularFile(audioPath, audio.bytes.length)]);
-    if (JSON.stringify(before) !== JSON.stringify(after) || encoderBefore.sha256 !== encoderAfter.sha256
-      || probeBefore.sha256 !== probeAfter.sha256 || audioAfter.sha256 !== audio.checksum)
+    const [after, encoderAfter, probeAfter, audioAfter] = await Promise.all([hashRegularFile(videoPath, MAX_VIDEO_BYTES, signal),
+      hashRegularFile(ffmpegPath, MAX_EXECUTABLE_BYTES, signal), hashRegularFile(ffprobePath, MAX_EXECUTABLE_BYTES, signal), hashRegularFile(audioPath, audio.bytes.length, signal)]);
+    if (JSON.stringify(before) !== JSON.stringify(after) || JSON.stringify(encoderBefore) !== JSON.stringify(encoderAfter)
+      || JSON.stringify(probeBefore) !== JSON.stringify(probeAfter) || JSON.stringify(audioBefore) !== JSON.stringify(audioAfter))
       throw new Error("CONFORMANCE_CORPUS_INTEGRITY_CHANGED");
     const source: VideoCorpusSource = {id: "27000000-0000-4000-8000-000000000004", checksum: before.sha256,
       sizeBytes: before.sizeBytes, durationSeconds: VIDEO_CORPUS_SOURCE_DURATION_SECONDS, fps, width: 1920, height: 1080, hasAudio: true, mimeType: "video/mp4"};

@@ -144,6 +144,9 @@ export async function generateSyllabusJson(params: {
     }
     if (telemetry) await recordGeminiUsage({ ...telemetry, model, response, startedAt });
 
+    if (response.candidates?.some(candidate => candidate.finishReason === "MAX_TOKENS")) {
+      throw new Error(`TRUNCATED_SYLLABUS_RESPONSE: ${model} alcanzo el limite de salida antes de completar el JSON.`);
+    }
     return response.text || "";
   }
 

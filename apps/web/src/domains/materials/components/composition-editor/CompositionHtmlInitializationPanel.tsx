@@ -23,10 +23,12 @@ export function CompositionHtmlInitializationPanel({ scope, target, host }: {
     const controller = new AbortController(); requestRef.current = controller; setBusy(true); setMessage(null);
     try {
       await host.initialize({ scope, action, signal: controller.signal });
-      if (!controller.signal.aborted) setMessage("Inicialización confirmada y verificada. Consulta los campos HTML; no cambió el documento ni se creó historial de undo o render.");
+      if (!controller.signal.aborted) setMessage(action.mode === "RECOVER" && action.historicalOnly
+        ? "Registro histórico confirmado por recibo autorizado. No se restauró ni adoptó su revisión; consulta el estado actual antes de editar."
+        : "Inicialización confirmada y verificada. Consulta los campos HTML; no cambió el documento ni se creó historial de undo o render.");
     } catch (error) {
       if (!controller.signal.aborted) setMessage(error instanceof HtmlEditingInitializationCoordinatorError && error.code === "ACK_REQUIRED"
-        ? "Falta confirmación directa. Una consulta no prueba este intento: conserva el seguimiento y no repitas el envío."
+        ? "No hay un recibo durable confirmado para este intento. Conserva el seguimiento y no repitas el envío; una lectura del estado actual no demuestra su resultado."
         : "No se pudo completar la verificación. Conserva el seguimiento y recarga explícitamente la composición; no repitas la inicialización pendiente.");
     } finally {
       if (requestRef.current === controller) {
@@ -48,10 +50,19 @@ export function CompositionHtmlInitializationPanel({ scope, target, host }: {
     {tracking.status === "PENDING" && <>
       <p>Intento {tracking.entry.operationId} · clip {tracking.entry.clipId}.</p>
       <p>{tracking.entry.acknowledgment
-        ? "Confirmación directa guardada. Recarga la composición y verifica el cierre sin reenviar."
-        : "Resultado desconocido. Conserva este intento; no reenvíes ni borres el seguimiento. Una lectura actual no prueba esta inicialización."}</p>
-      <button type="button" disabled={busy || !tracking.entry.acknowledgment || !host.initialize}
+        ? "Confirmación guardada. Recarga la composición y verifica el cierre sin reenviar."
+        : tracking.entry.requestSha256
+          ? "Resultado desconocido. Consulta el recibo durable de esta operación sin reenviar ni borrar el seguimiento."
+          : "Intento legacy sin identidad durable. Conserva el seguimiento; una lectura actual no prueba esta inicialización."}</p>
+      <button type="button" disabled={busy || (!tracking.entry.acknowledgment && !tracking.entry.requestSha256) || !host.initialize}
         onClick={() => void run({ mode: "RECOVER", operationId: tracking.entry.operationId })}>Verificar confirmación inicial sin reenviar</button>
+      {tracking.entry.requestSha256 && <>
+        <p>Si el documento ya cambió, puedes confirmar solo el registro histórico. Esto no restaura campos ni confirma el estado editable actual.</p>
+        <button type="button" disabled={busy || !host.initialize}
+          onClick={() => void run({ mode: "RECOVER", operationId: tracking.entry.operationId, historicalOnly: true })}>
+          Confirmar solo el registro histórico sin restaurar
+        </button>
+      </>}
     </>}
     {target && initializationEnabled && tracking.status === "EMPTY" && <form onSubmit={event => { event.preventDefault(); submit(); }} className="space-y-2">
       <p>Usa una plantilla instalada compatible con el HTML guardado. El servidor verifica permisos y compatibilidad; este formulario no instala ni activa plantillas.</p>

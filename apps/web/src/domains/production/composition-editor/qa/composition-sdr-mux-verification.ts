@@ -3,7 +3,7 @@ import {promisify} from "node:util";
 import {createHash} from "node:crypto";
 import {performance} from "node:perf_hooks";
 import {z} from "zod";
-import {SDR_AUDIO_MUX_POLICY, SDR_FRAME_CONVERSION_POLICY, sdrFrameCaptureProfileSchema} from "../composition-sdr-conversion-policy";
+import {SDR_AUDIO_MUX_POLICY, SDR_SILENT_ASSEMBLY_POLICY, SDR_FRAME_CONVERSION_POLICY, sdrFrameCaptureProfileSchema} from "../composition-sdr-conversion-policy";
 import {pinConformanceFile, assertConformanceFileUnchanged} from "./composition-conformance-file-integrity";
 import {assertConformanceJobActive} from "./composition-conformance-job-lease";
 import {createControlledProcessEnvironment} from "./composition-controlled-process-environment";
@@ -34,11 +34,13 @@ type ProbeExecutor = (binary: string, args: string[], options: {timeout: number;
   windowsHide: boolean; signal?: AbortSignal; env: NodeJS.ProcessEnv}) => Promise<{stdout: string}>;
 const executeFile = promisify(execFile);
 
-/** Verify the SDK-muxed file before the driver emits its receipt. Never repairs or relabels it. */
-export async function verifySdrAudioMuxOutput(input: {silentVideoPath: string; silentVideoSha256: string;
+type CopiedVideoInput = {silentVideoPath: string; silentVideoSha256: string;
   videoPath: string; videoSha256: string; ffprobePath: string; ffprobeSha256: string;
   profile: {width: number; height: number; fps: number; frameCount: number}; timeoutMilliseconds: number;
-  signal?: AbortSignal}, execute: ProbeExecutor = executeFile) {
+  signal?: AbortSignal};
+
+/** Same packet/timing checks for both SDK assembly branches; audio obligations never inferred. */
+async function verifyCopiedSdrVideo(input: CopiedVideoInput, execute: ProbeExecutor, hasAudio: boolean) {
   assertConformanceJobActive(input.signal);
   const profile = sdrFrameCaptureProfileSchema.parse({...input.profile, captureProfile: SDR_FRAME_CONVERSION_POLICY.captureProfile});
   if (!Number.isSafeInteger(input.timeoutMilliseconds) || input.timeoutMilliseconds < 1 || input.timeoutMilliseconds > 600000
@@ -51,9 +53,9 @@ export async function verifySdrAudioMuxOutput(input: {silentVideoPath: string; s
     if (duration <= 0) throw new Error("SDR_MUX_VERIFICATION_TIMEOUT");
     return Math.max(1, Math.floor(duration));
   };
-  const silent = await pinConformanceFile(input.silentVideoPath, 2 * 1024 ** 3);
-  const output = await pinConformanceFile(input.videoPath, 2 * 1024 ** 3);
-  const probe = await pinConformanceFile(input.ffprobePath, 1024 ** 3);
+  const silent = await pinConformanceFile(input.silentVideoPath, 2 * 1024 ** 3, false, input.signal);
+  const output = await pinConformanceFile(input.videoPath, 2 * 1024 ** 3, false, input.signal);
+  const probe = await pinConformanceFile(input.ffprobePath, 1024 ** 3, false, input.signal);
   if (silent.sha256 !== input.silentVideoSha256 || output.sha256 !== input.videoSha256 || probe.sha256 !== input.ffprobeSha256)
     throw new Error("SDR_MUX_VERIFICATION_HASH_MISMATCH");
   const run = async (args: string[], maxBuffer: number) => {
@@ -68,7 +70,7 @@ export async function verifySdrAudioMuxOutput(input: {silentVideoPath: string; s
   try {
     if (Buffer.byteLength(metadata) > 65536) throw new Error();
     const parsed = JSON.parse(metadata) as {streams: Array<Record<string, unknown>>; format: unknown};
-    assertSdrCheckpointStreamProfile(parsed, SDR_AUDIO_MUX_POLICY,
+    assertSdrCheckpointStreamProfile(parsed, hasAudio ? SDR_AUDIO_MUX_POLICY : undefined,
       {durationSeconds: profile.frameCount / profile.fps, frameDurationSeconds: 1 / profile.fps});
     const videos = parsed.streams.filter(stream => stream.codec_type === "video").map(stream => {
       const {duration: _streamDuration, ...countedVideoFields} = stream; return countedVideoFields;
@@ -88,9 +90,22 @@ export async function verifySdrAudioMuxOutput(input: {silentVideoPath: string; s
   if (timingHashes[0] !== timingHashes[1]) throw new Error("SDR_MUX_VIDEO_TIMING_CHANGED");
   for (const [path, pin, maximum] of [[input.silentVideoPath, silent, 2 * 1024 ** 3],
     [input.videoPath, output, 2 * 1024 ** 3], [input.ffprobePath, probe, 1024 ** 3]] as const)
-    await assertConformanceFileUnchanged(path, pin, maximum);
+    await assertConformanceFileUnchanged(path, pin, maximum, false, input.signal);
   remaining();
-  return {policy: SDR_AUDIO_MUX_POLICY, scope: "LOCAL_PROBED_VIDEO_PAYLOADS_NOT_SYNC_OR_RENDER_ATTESTATION" as const,
+  return {
     silentVideoSha256: silent.sha256, videoSha256: output.sha256, probeSha256: probe.sha256,
     videoPayloadSha256: hashes[0]!, videoTimingSha256: timingHashes[0]!, frameCount: profile.frameCount, outputProfile};
+}
+
+/** Verify SDK AAC mux before receipt, without repairs or relabeling. */
+export async function verifySdrAudioMuxOutput(input: CopiedVideoInput, execute: ProbeExecutor = executeFile) {
+  return {...await verifyCopiedSdrVideo(input, execute, true), policy: SDR_AUDIO_MUX_POLICY,
+    scope: "LOCAL_PROBED_VIDEO_PAYLOADS_NOT_SYNC_OR_RENDER_ATTESTATION" as const};
+}
+
+/** A changed MP4 container is acceptable only with unchanged video payloads AND timing,
+ * counted SDR profile, no audio/extra streams, and rechecked bytes on both sides. */
+export async function verifySdrSilentAssemblyOutput(input: CopiedVideoInput, execute: ProbeExecutor = executeFile) {
+  return {...await verifyCopiedSdrVideo(input, execute, false), policy: SDR_SILENT_ASSEMBLY_POLICY,
+    scope: "LOCAL_PROBED_SILENT_VIDEO_COPY_NOT_RENDER_ATTESTATION" as const};
 }

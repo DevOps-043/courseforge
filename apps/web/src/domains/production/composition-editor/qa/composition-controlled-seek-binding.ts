@@ -20,3 +20,16 @@ export function bindControlledSeekRepeatability(contractInput: unknown, reportIn
     throw new Error("CONFORMANCE_RENDER_SEEK_BINDING_INVALID");
   return report;
 }
+
+/** Original-source report wins only when independently bound; conflicting measurer output is an error. */
+export function attachControlledOriginalSeekReport(contract: unknown, original: unknown, supplied: unknown) {
+  const bound = bindControlledSeekRepeatability(contract, original);
+  const parsed = compositionConformanceContractSchema.parse(contract);
+  if (parsed.schemaVersion === 4 && parsed.renderExecution?.seekRepeatabilityPolicy && !bound)
+    throw new Error("CONTROLLED_RENDER_ORIGINAL_SEEK_REQUIRED");
+  if (supplied !== undefined) {
+    const measured = bindControlledSeekRepeatability(contract, supplied);
+    if (JSON.stringify(measured) !== JSON.stringify(bound)) throw new Error("CONTROLLED_RENDER_ORIGINAL_SEEK_CONFLICT");
+  }
+  return bound;
+}

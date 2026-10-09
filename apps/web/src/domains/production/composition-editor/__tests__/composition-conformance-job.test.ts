@@ -51,6 +51,22 @@ test("durable execution MATCH preserves pending attestation and rejects wrong bi
       policy: "CONTROLLED_FILES_AND_BROWSER_SESSION_V1", scope: "FILE_AND_CDP_MATCH_NOT_ISOLATION_OR_JOB_ATTESTATION",
       status: "MATCH", documentHash, videoSha256: digest, reason: "RENDER_EXECUTION_ATTESTATION_PENDING", mismatches: []}};
   assert.equal(durableConformanceReportSchema.safeParse(pending).success, true);
+  pending.renderEvidence = {scope: "CONSUMED_SUPERVISOR_ISSUER_OUTPUT_NOT_ISOLATION_OR_CONFORMANCE",
+    supervisorReceiptSha256: visualHash, binding: {organizationId: claim.organization_id, requestId: claim.request_id,
+      revisionId: claim.revision_id, productionJobId: identifier(81), executionId: identifier(82), attempt: 1,
+      challengeSha256: digest, artifactKind: "SINGLE_CONTRACT", documentHash, projectHash: digest,
+      contractSha256: visualHash, observationSha256: audioHash, comparisonReceiptSha256: digest,
+      videoSha256: digest, sizeBytes: integrity.sizeBytes}};
+  assert.deepEqual(durableConformanceReportSchema.parse(pending).renderEvidence, pending.renderEvidence);
+  for (const mutation of ["tenant", "request", "revision", "size", "missing-execution"] as const) {
+    const changed = structuredClone(pending);
+    if (mutation === "tenant") changed.renderEvidence!.binding.organizationId = identifier(99);
+    if (mutation === "request") changed.renderEvidence!.binding.requestId = identifier(99);
+    if (mutation === "revision") changed.renderEvidence!.binding.revisionId = identifier(99);
+    if (mutation === "size") changed.renderEvidence!.binding.sizeBytes++;
+    if (mutation === "missing-execution") delete changed.comparison.visual!.renderExecution;
+    assert.equal(durableConformanceReportSchema.safeParse(changed).success, false, mutation);
+  }
   for (const mutation of ["document", "video", "reason", "pass", "mismatch"] as const) {
     const changed = structuredClone(pending);
     const visual = changed.comparison.visual!;
@@ -432,6 +448,72 @@ function executionFixture(options: { changeRemote?: boolean; wrongReference?: bo
   } as unknown as NonNullable<Parameters<typeof executeConformanceJob>[2]>;
   return { params, adapters, evidence, calls, directory: () => ownedDirectory };
 }
+
+test("durable execution forwards operator process ports and its budget signal to root and events", async () => {
+  const state = executionFixture(), ports = {} as never;
+  const originalCompare = state.evidence.compare;
+  let comparisonSignal: AbortSignal | undefined, eventsCalled = false;
+  state.evidence.compare = async (input) => {
+    assert.equal(input.processPorts, ports);
+    comparisonSignal = input.signal;
+    assert.ok(comparisonSignal);
+    return originalCompare(input);
+  };
+  state.evidence.events = async (input) => {
+    eventsCalled = true;
+    assert.equal(input.processPorts, ports);
+    assert.equal(input.signal, comparisonSignal);
+    return null;
+  };
+  await executeConformanceJob({...state.params, processPorts: ports}, state.adapters, state.evidence);
+  assert.equal(eventsCalled, true);
+  await assert.rejects(access(state.directory()), /ENOENT/);
+});
+
+test("uncertain native closure retains job inputs even after cancellation and rejects automatic retry", async () => {
+  const state = executionFixture(), cancellation = new AbortController();
+  state.evidence.compare = async () => {
+    cancellation.abort();
+    throw new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED");
+  };
+  try {
+    await assert.rejects(executeConformanceJob({...state.params, signal: cancellation.signal}, state.adapters, state.evidence),
+      error => error instanceof ConformanceStageFailure && error.recoveryRequired && !error.retryable
+        && error.stage === "RENDER_COMPARISON" && error.errorCode.endsWith("RECOVERY_REQUIRED"));
+    await access(join(state.directory(), "final.mp4"));
+    await access(join(state.directory(), "receipt.json"));
+    assert.equal(state.calls.includes("recheck"), false);
+  } finally {
+    // This fixture never starts a native process; release only the two known test-owned files.
+    if (state.directory()) {
+      await rm(join(state.directory(), "final.mp4"), {force: true});
+      await rm(join(state.directory(), "receipt.json"), {force: true});
+      await rmdir(state.directory());
+    }
+  }
+});
+
+test("queue finalization records uncertain ownership as nonretryable without a report", async () => {
+  const state = queue();
+  const result = await processConformanceJob(state.supabase, async () => {
+    throw new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED");
+  });
+  assert.equal(result.status, "FAILED_ATTEMPT");
+  assert.equal("recoveryRequired" in result && result.recoveryRequired, true);
+  const finish = state.calls.at(-1)!;
+  assert.equal(finish.args.p_report, null);
+  assert.equal(finish.args.p_retryable, false);
+  assert.equal(finish.args.p_error_code, "CONFORMANCE_JOB_EXECUTION_RECOVERY_REQUIRED");
+});
+
+test("lost finalization acknowledgement cannot hide process recovery or cause a second write", async () => {
+  const state = queue({finishError: true});
+  await assert.rejects(processConformanceJob(state.supabase, async () => {
+    throw new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED");
+  }), error => error instanceof Error && classifyConformanceJobFailure(error).retryable === false
+    && classifyConformanceJobFailure(error).code.endsWith("RECOVERY_REQUIRED"));
+  assert.equal(state.calls.length, 2);
+});
 
 test("whole execution budget accumulates across stages, cancels once and prevents the next stage", async () => {
   const state = executionFixture(); let milliseconds = 0; const signals: AbortSignal[] = [];

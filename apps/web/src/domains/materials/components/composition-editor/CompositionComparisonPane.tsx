@@ -11,9 +11,10 @@ interface CompositionComparisonPaneProps {
   previewUrl: string;
   loading?: boolean;
   interactive?: boolean;
+  onFrameLoad?: () => void;
 }
 
-export function CompositionComparisonPane({ canvasHeight, canvasWidth, frameRef, label, description, previewUrl, loading = false, interactive = false }: CompositionComparisonPaneProps) {
+export function CompositionComparisonPane({ canvasHeight, canvasWidth, frameRef, label, description, previewUrl, loading = false, interactive = false, onFrameLoad }: CompositionComparisonPaneProps) {
   const frameStyle = {
     "--composition-aspect-ratio": canvasWidth / canvasHeight,
     aspectRatio: `${canvasWidth} / ${canvasHeight}`,
@@ -32,6 +33,7 @@ export function CompositionComparisonPane({ canvasHeight, canvasWidth, frameRef,
           ref={frameRef}
           title={label}
           src={previewUrl}
+          onLoad={onFrameLoad}
           sandbox="allow-scripts"
           allow="autoplay"
           className={styles.comparisonFrame}

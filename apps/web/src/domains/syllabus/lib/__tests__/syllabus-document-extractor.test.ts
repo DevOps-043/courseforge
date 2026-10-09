@@ -57,3 +57,12 @@ test("makes attached documents the primary generation context", () => {
     /requiere al menos un documento/,
   );
 });
+
+test("rejects oversized extracted text instead of silently dropping syllabus topics", async () => {
+  await assert.rejects(extractSyllabusSourceDocument(new File(["a".repeat(40_001)], "temario.txt", { type: "text/plain" })), /no se importará un temario parcial/);
+});
+
+test("rejects binary and invalid UTF-8 masquerading as text", async () => {
+  await assert.rejects(extractSyllabusSourceDocument(new File([new Uint8Array([255, 255])], "temario.txt", { type: "text/plain" })), /UTF-8/);
+  await assert.rejects(extractSyllabusSourceDocument(new File(["Documento".repeat(20) + "\0"], "temario.txt", { type: "text/plain" })), /binarios/);
+});

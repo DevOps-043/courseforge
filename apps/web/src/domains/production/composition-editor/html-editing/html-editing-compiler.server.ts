@@ -1,14 +1,21 @@
 import { createHash } from "node:crypto";
-import { load } from "cheerio";
 import type { Element } from "domhandler";
 import {
   HTML_EDITING_LIMITS, htmlEditingOverrideStateSchema, type HtmlEditingBinding,
 } from "./html-editing.contract";
 import {
   decodeHtmlEditingBoundedJson, htmlEditingBindingsMatch, HtmlEditingValidationError, validateHtmlEditingCommand,
+  validateHtmlEditingAttributeValue,
 } from "./html-editing-validation";
 import { verifyHtmlEditableManifestContent } from "./html-editing-manifest-digest.server";
 import { createLocalHtmlResourceValidator } from "./html-local-resource-policy.server";
+import { parseHtmlEditingStaticSource } from "./html-editing-static-source.server";
+import { readHtmlEditingVisibilityDefault, applyHtmlEditingVisibility } from "./html-editing-visibility.server";
+import { readHtmlEditingSlotDefaults, applyHtmlEditingSlotOrder } from "./html-editing-slots.server";
+import { readHtmlEditingChartDefault, renderHtmlEditingChart } from "./html-editing-chart.server";
+import { readHtmlEditingStyleRangeDefault, applyHtmlEditingStyleRange } from "./html-editing-style-range.server";
+import { readHtmlEditingTextLocaleDefault } from "./html-editing-text-locale.server";
+import { HTML_EDITING_SCOPE_ATTRIBUTE, isolateHtmlEditingFragment } from "./html-editing-isolation.server";
 
 const staticTags = new Set([
   "div", "section", "article", "main", "header", "footer", "aside", "p", "span", "strong", "em", "b", "i",
@@ -74,16 +81,17 @@ export function compileHtmlEditingFragment(params: {
   }
   // Prior defaults may be revoked and replaced, but no revoked resource may
   // survive in the final output, including a default resurrected by RESET.
+  const fragment = parseHtmlEditingStaticSource(params.sourceHtml);
   assertLocalResources(params.sourceHtml, knownFiles);
-  const fragment = load(params.sourceHtml, {}, false);
   const allElements = fragment("*");
   if (allElements.length > HTML_EDITING_LIMITS.sourceElements) throw new HtmlEditingValidationError("PAYLOAD_LIMIT");
   const byId = new Map<string, Element>();
-  const declaredIds = new Set(manifest.elements.map(element => element.elementId));
+  const declaredIds = new Set(manifest.elements.map(element => element.targetElementId ?? element.elementId));
   allElements.each((_index, element) => {
     if (element.type !== "tag" && element.type !== "style" && element.type !== "script") throw new HtmlEditingValidationError("INVALID_SOURCE");
     if (!staticTags.has(element.name.toLowerCase())) throw new HtmlEditingValidationError("INVALID_SOURCE");
     const node = fragment(element);
+    if (node.attr(HTML_EDITING_SCOPE_ATTRIBUTE) !== undefined) throw new HtmlEditingValidationError("INVALID_SOURCE");
     const id = node.attr("id");
     if (id !== undefined) {
       if (!id || byId.has(id)) throw new HtmlEditingValidationError("INVALID_SOURCE");
@@ -95,7 +103,8 @@ export function compileHtmlEditingFragment(params: {
     }
   });
   for (const declaration of manifest.elements) {
-    const element = byId.get(declaration.elementId);
+    const targetId = declaration.targetElementId ?? declaration.elementId;
+    const element = byId.get(targetId);
     if (!element) throw new HtmlEditingValidationError("UNKNOWN_ELEMENT");
     const node = fragment(element);
     if (declaration.kind === "TEXT" && (node.children().length || ["style", "img"].includes(element.name.toLowerCase()))) {
@@ -116,21 +125,59 @@ export function compileHtmlEditingFragment(params: {
         throw new HtmlEditingValidationError("INVALID_SOURCE");
       }
     }
-    node.attr(editableAttribute, declaration.elementId);
+    if (declaration.kind === "ATTRIBUTE") {
+      const original = node.attr(declaration.attributeName);
+      if (original !== undefined) validateHtmlEditingAttributeValue(declaration, original);
+    }
+    if (declaration.kind === "VISIBILITY") readHtmlEditingVisibilityDefault(node, declaration);
+    if (declaration.kind === "SLOTS") readHtmlEditingSlotDefaults(node, declaration);
+    if (declaration.kind === "RANGE_TOKEN") readHtmlEditingStyleRangeDefault(node, declaration);
+    if (declaration.kind === "TEXT") readHtmlEditingTextLocaleDefault(node, declaration);
+    if (declaration.kind === "CHART") {
+      readHtmlEditingChartDefault(node, declaration);
+      if (node.find("*").toArray().some(child => child.attribs.id && declaredIds.has(child.attribs.id)))
+        throw new HtmlEditingValidationError("INVALID_SOURCE");
+    }
+    node.attr(editableAttribute, targetId);
   }
   for (const override of parsed.data.overrides) {
-    const node = fragment(byId.get(override.elementId)!);
-    if (override.operation === "SET_TEXT") node.text(override.value);
+    const field = manifest.elements.find(element => element.elementId === override.elementId)!;
+    const node = fragment(byId.get(field.targetElementId ?? field.elementId)!);
+    if (override.operation === "SET_TEXT") {
+      node.text(override.value);
+      if (override.locale) node.attr("lang", override.locale.language).attr("dir", override.locale.direction);
+    }
     else if (override.operation === "SET_IMAGE") {
       const path = params.imageSources.get(override.assetId);
       if (!path) throw new HtmlEditingValidationError("ASSET_SOURCE_MISSING");
       node.attr("src", path).css("object-fit", override.fit.toLowerCase());
-    } else {
+    } else if (override.operation === "SET_THEME") {
       node.attr(themeTokenAttribute, override.tokenId).attr(themeChoiceAttribute, override.choiceId);
+    } else if (override.operation === "SET_ATTRIBUTE") {
+      node.attr(override.attributeName, override.value);
+    } else if (override.operation === "SET_VISIBILITY") {
+      const declaration = manifest.elements.find(element => element.elementId === override.elementId);
+      if (declaration?.kind !== "VISIBILITY") throw new HtmlEditingValidationError("PROPERTY_NOT_DECLARED");
+      applyHtmlEditingVisibility(node, declaration, override.visible);
+    } else if (override.operation === "SET_SLOT_ORDER") {
+      const declaration = manifest.elements.find(element => element.elementId === override.elementId);
+      if (declaration?.kind !== "SLOTS") throw new HtmlEditingValidationError("PROPERTY_NOT_DECLARED");
+      applyHtmlEditingSlotOrder(node, declaration, override.itemIds);
+    } else if (override.operation === "SET_CHART_DATA") {
+      const declaration = manifest.elements.find(element => element.elementId === override.elementId);
+      if (declaration?.kind !== "CHART") throw new HtmlEditingValidationError("PROPERTY_NOT_DECLARED");
+      node.html(renderHtmlEditingChart(declaration, override.dataset));
+    } else {
+      const declaration = manifest.elements.find(element => element.elementId === override.elementId);
+      if (declaration?.kind !== "RANGE_TOKEN") throw new HtmlEditingValidationError("PROPERTY_NOT_DECLARED");
+      applyHtmlEditingStyleRange(node, declaration, override.value);
     }
   }
-  const html = fragment.html();
+  const html = isolateHtmlEditingFragment(fragment, manifest.binding);
   assertTextBudget(html, HTML_EDITING_LIMITS.compiledBytes);
+  // Typed generated content must obey the same aggregate DOM/CSS budgets as
+  // imported source; many individually bounded charts can still exceed them.
+  parseHtmlEditingStaticSource(html);
   const usedFiles = assertLocalResources(html, grantedFiles);
   const usedAssetIds = [...params.imageSources].filter(([, path]) => usedFiles.has(path)).map(([assetId]) => assetId).sort();
   return { html, sourceSha256, compiledSha256: digest(html), instrumentedElementIds: manifest.elements.map(element => element.elementId), usedAssetIds };
