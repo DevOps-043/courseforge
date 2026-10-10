@@ -799,6 +799,7 @@
 .previewTools {
   display: flex;
   min-width: 0;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.38rem;
   overflow: visible;
@@ -807,6 +808,7 @@
 .previewUtilities {
   display: flex;
   min-width: 0;
+  flex-wrap: wrap;
   flex: 0 0 auto;
   align-items: center;
   justify-content: flex-end;
@@ -875,6 +877,17 @@
   color: var(--studio-muted);
   background: transparent;
   text-align: left;
+}
+
+.anchoredPopover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-width: calc(100vw - 1rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Position uses measured bounds; transforms would shift those bounds. */
+  animation: none;
 }
 
 .toolMenuItem:hover,
@@ -2233,6 +2246,21 @@
 }
 
 @container (max-width: 50rem) {
+  .previewToolbar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .previewTools {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+  }
+
+  .previewUtilities {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
   .previewIdentity {
     min-width: auto;
   }

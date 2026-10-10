@@ -39,6 +39,7 @@
     "qa:composition-preview": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/generate-composition-preview-fixture.js",
     "qa:composition-preview-runtime": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/generate-composition-preview-fixture.js && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-preview-runtime-smoke.js",
     "qa:composition-command-palette": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-command-palette-smoke.js",
+    "qa:composition-toolbar-layout": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-toolbar-layout-smoke.js",
     "qa:composition-waveform": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-waveform-smoke.js",
     "qa:composition-media-replacement": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-media-replacement-smoke.js",
     "qa:composition-conformance": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-preview-render-conformance.js",
