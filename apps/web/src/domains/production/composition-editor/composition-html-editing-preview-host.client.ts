@@ -1,11 +1,12 @@
 import { HtmlEditingPreviewChannel } from "./composition-html-editing-preview-channel.client";
-import { htmlEditingPreviewSessionSchema, parseHtmlEditingPreviewPacket, type HtmlEditingPreviewSession } from "./composition-html-editing-preview-channel.contract";
+import { htmlEditingPreviewSessionSchema, parseHtmlEditingPreviewPacket, sameHtmlEditingPreviewSession, type HtmlEditingPreviewSession } from "./composition-html-editing-preview-channel.contract";
 import { createCompositionPreviewParentCommand, type CompositionPreviewIframeMessage, type CompositionPreviewParentCommandInput } from "./composition-preview-protocol";
 import { createHtmlPreviewRenewalWireReceiver, sendHtmlPreviewRenewalWire } from "./composition-html-editing-preview-renewal-wire.client";
 import { createHtmlPreviewRenewalController } from "./composition-html-editing-preview-renewal-controller.client";
 import type { HtmlPreviewResourceRenewal } from "./composition-html-editing-preview-renewal.contract";
 import type { consultHtmlPreviewResourceRenewal } from "./composition-html-editing-preview-renewal.client";
 import { buildHtmlEditingPreviewPageUrl } from "./composition-html-editing-preview-url";
+import type { HtmlPreviewCandidateSelector } from "./composition-html-editing-preview-candidate.contract";
 export { buildHtmlEditingPreviewPageUrl, isHtmlEditingPreviewPageUrl } from "./composition-html-editing-preview-url";
 
 export const HTML_PREVIEW_HOST_POLICY = Object.freeze({ maximumQueuedCommands: 64, commandIntervalMs: 50, connectionTimeoutMs: 10_000 });
@@ -17,7 +18,7 @@ export function createHtmlEditingPreviewHost(input: {
   session: HtmlEditingPreviewSession; onEvent: (message: CompositionPreviewIframeMessage) => void;
   onFailure: () => void; createPorts?: () => MessageChannel; isCurrentOwner?: () => boolean;
   subscribeOwner?: (onChange: () => void) => (() => void);
-  resources?: { documentId: string; audience: string; revisionId?: string; consult?: typeof consultHtmlPreviewResourceRenewal };
+  resources?: { documentId: string; audience: string; revisionId?: string; candidate?: HtmlPreviewCandidateSelector; consult?: typeof consultHtmlPreviewResourceRenewal };
   onRuntimeSignal?: () => void;
 }) {
   const session = htmlEditingPreviewSessionSchema.parse(input.session);
@@ -25,8 +26,9 @@ export function createHtmlEditingPreviewHost(input: {
   const createPorts = input.createPorts ?? (() => new MessageChannel());
   const isCurrentOwner = input.isCurrentOwner ?? (() => true);
   const subscribeOwner = input.subscribeOwner;
-  const resources = input.resources ? { ...input.resources } : undefined;
-  if (resources?.revisionId !== undefined) buildHtmlEditingPreviewPageUrl(resources.documentId, session, resources.revisionId);
+  const resources = input.resources ? { ...input.resources, candidate: input.resources.candidate ? {...input.resources.candidate} : undefined } : undefined;
+  if (resources && (resources.revisionId !== undefined || resources.candidate))
+    buildHtmlEditingPreviewPageUrl(resources.documentId, session, resources.revisionId, resources.candidate);
   const onRuntimeSignal = input.onRuntimeSignal;
   let resourceSignalObserved = false;
   const lifetime = new AbortController();
@@ -60,6 +62,7 @@ export function createHtmlEditingPreviewHost(input: {
     onFailure: fail, onCommit: async (initial, signal) => {
       signal.throwIfAborted(); if (disposed || renewalController || !isCurrentOwner()) throw new Error("HTML_PREVIEW_OWNER_CHANGED");
       renewalController = createHtmlPreviewRenewalController({ documentId: resources.documentId, audience: resources.audience, session, revisionId: resources.revisionId,
+        candidate: resources.candidate,
         signal: lifetime.signal, isCurrentOwner, consult: resources.consult, onFailure: fail,
         apply: (renewal, applySignal) => new Promise<void>((resolve, reject) => {
           if (disposed || applySignal.aborted || pendingResourceUpdate) { reject(new Error("HTML_PREVIEW_RESOURCE_TRANSFER_UNAVAILABLE")); return; }
@@ -114,6 +117,7 @@ export function createHtmlEditingPreviewHost(input: {
       return true;
     },
     dispose,
+    matchesSession: (candidate: HtmlEditingPreviewSession) => sameHtmlEditingPreviewSession(session, candidate),
     getState: () => ({ connected, disposed, queued: queue.length }),
   };
 }

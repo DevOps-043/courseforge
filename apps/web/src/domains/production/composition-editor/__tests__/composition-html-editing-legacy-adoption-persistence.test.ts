@@ -12,6 +12,7 @@ import { SupabaseHtmlLegacyAdoptionRepository } from "../composition-html-editin
 import { htmlLegacyAdoptionCandidateSchema, htmlLegacyAdoptionReceiptSchema,
   type HtmlLegacyAdoptionCandidate, type HtmlLegacyAdoptionReceipt } from "../composition-html-editing-legacy-adoption.contract";
 import { computeHtmlLegacyAdoptionRequestSha256 } from "../composition-html-editing-legacy-adoption-digest.server";
+import { consultHtmlLegacyReview } from "../composition-html-editing-legacy-review.client";
 
 function fixture() {
   const native = createHtmlEditingRevisionFixture(), binding = native.authority.authoritativeBinding;
@@ -63,6 +64,51 @@ test("adoption command digest binds full ownership, clip, operation, candidate a
   for (const [key, value] of [["candidateId", uuid], ["provenanceSha256", "e".repeat(64)], ["expectedDocumentHash", "e".repeat(64)]] as const)
     assert.notEqual(computeHtmlLegacyAdoptionRequestSha256({ ...command, request: { ...command.request, [key]: value } }), expected);
   assert.throws(() => computeHtmlLegacyAdoptionRequestSha256({ ...command, sourceHtml: "untrusted" }));
+});
+
+test("authorized review independently rebuilds source and fields without writes or package disclosure", async () => {
+  const f = fixture(), command = { organizationId: uuid, documentId: uuid, clipId: f.command.clipId, actorId: uuid,
+    candidateId: other, expectedDocumentHash: f.command.request.expectedDocumentHash };
+  const view = await f.repository.readReviewedCandidate(command);
+  assert.deepEqual(f.calls.map(call => call.name), ["read_html_editing_legacy_candidate", "read_html_editing_bootstrap_context"]);
+  assert.equal(view.originalSource, f.native.current.revision.sourceHtml);
+  assert.equal(view.candidateSource, f.prepared.initialRevision.sourceHtml);
+  assert.equal(view.proposedDocumentHash, f.prepared.documentHash); assert.deepEqual(view.request, f.command.request);
+  assert.deepEqual(view.fields, f.prepared.initialRevision.manifest.elements.map(({ elementId, kind, label }) => ({ elementId, kind, label })));
+  assert.equal("encodedPilot" in view || "approval" in view || "grantedAssetIds" in view, false);
+  let calls = 0;
+  assert.deepEqual(await consultHtmlLegacyReview({ command, signal: new AbortController().signal, fetcher: async (_url, options) => {
+    calls++; assert.equal(options?.method, "GET"); assert.equal(options?.redirect, "error"); assert.equal(options?.credentials, "same-origin");
+    return Response.json({ success: true, data: view, requestId: uuid, correlationId: uuid });
+  } }), view);
+  assert.equal(calls, 1);
+});
+
+test("review rejects swapped candidate, stale native and revoked grants without any mutation", async () => {
+  for (const failure of ["candidate", "base", "grants"] as const) {
+    const f = fixture();
+    if (failure === "candidate") f.state.candidate = { ...f.candidate, candidateId: uuid };
+    else f.state.context = { ...f.context, ...(failure === "base" ? { documentHash: "e".repeat(64) } : { grantedAssetIds: [] }) };
+    await assert.rejects(f.repository.readReviewedCandidate({ organizationId: uuid, documentId: uuid, clipId: f.command.clipId,
+      actorId: uuid, candidateId: other, expectedDocumentHash: f.command.request.expectedDocumentHash }));
+    assert.equal(f.calls.some(call => !call.name.startsWith("read_")), false);
+  }
+});
+
+test("review client rejects owner, base, source and correlation substitutions", async () => {
+  const f = fixture(), command = { organizationId: uuid, documentId: uuid, clipId: f.command.clipId, actorId: uuid,
+    candidateId: other, expectedDocumentHash: f.command.request.expectedDocumentHash };
+  const view = await f.repository.readReviewedCandidate(command);
+  for (const failure of ["actor", "source", "candidate", "base", "correlation"] as const) {
+    const tampered = { ...view, ...(failure === "actor" ? { actorId: other } : failure === "source" ? { candidateSource: "<script>unsafe</script>" }
+      : failure === "candidate" ? { request: { ...view.request, candidateId: uuid } }
+        : failure === "base" ? { request: { ...view.request, expectedDocumentHash: "e".repeat(64) } } : {}) };
+    await assert.rejects(consultHtmlLegacyReview({ command, signal: new AbortController().signal,
+      fetcher: async () => Response.json({ success: true, data: tampered, requestId: uuid, correlationId: failure === "correlation" ? other : uuid }) }), /UNAVAILABLE/);
+  }
+  const abort = new AbortController(); abort.abort(); let calls = 0;
+  await assert.rejects(consultHtmlLegacyReview({ command, signal: abort.signal, fetcher: async () => { calls++; throw new Error(); } }));
+  assert.equal(calls, 0);
 });
 
 test("one adoption RPC receives independently regenerated native, revision and resource dependencies", async () => {

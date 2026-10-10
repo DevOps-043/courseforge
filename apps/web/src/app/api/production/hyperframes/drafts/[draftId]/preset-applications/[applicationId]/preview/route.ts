@@ -25,6 +25,8 @@ export async function GET(request: Request, context: RouteContext) {
       organizationId: authorization.organizationId,
       supabase: authorization.admin,
     });
+    if (document.htmlEditing?.items.length) return apiErrorResponse({code: API_ERROR_CODE.conflict,
+      message: "El HTML editable requiere el canal de preview aislado.", requestId, status: 409});
     const assetUrls = await resolveCompositionPreviewAssetUrls({
       document,
       draftId,

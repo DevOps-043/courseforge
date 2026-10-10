@@ -110,3 +110,30 @@ test("identical duplicate asset identities coalesce but oversized font sets fail
     checksumSha256: "a".repeat(64), mimeType: "font/woff2", fileSizeBytes: 4}, bytes: new Uint8Array(4)}));
   await assert.rejects(prepareCompositionHtmlEditingSnapshotArchive(fresh.input), /FONT_LIMIT/);
 });
+
+test("saved archive producer owns runtime, media, identity and font bytes before its first authorized read", async () => {
+  const f = await fixture(), bytes = Buffer.from("frozen before the first await"), original = Buffer.from(bytes);
+  const checksum = digest(bytes), documentHash = f.input.documentHash;
+  f.input.packagedFonts = [{binding: {fontAssetId: other, family: "Prepared font", checksumSha256: checksum,
+    mimeType: "font/woff2", fileSizeBytes: bytes.length}, bytes}];
+  f.state.onRead = count => {
+    if (count !== 1) return;
+    f.input.otherAssets.length = 0;
+    f.input.documentHash = "f".repeat(64);
+    f.input.animationRuntimeSha256 = "f".repeat(64);
+    bytes.fill(0);
+  };
+  const result = await prepareCompositionHtmlEditingSnapshotArchive(f.input);
+  assert.equal(result.documentHash, documentHash);
+  assert.equal(result.assets.length, 2);
+  const archive = await JSZip.loadAsync(result.archiveBytes);
+  assert.deepEqual(await archive.file(`assets/fonts/${checksum}.woff2`)!.async("nodebuffer"), original);
+});
+
+test("font capture never coerces arbitrary arrays into trusted byte buffers", async () => {
+  const f = await fixture();
+  f.input.packagedFonts = [{binding: {fontAssetId: other, family: "Invalid bytes", checksumSha256: "a".repeat(64),
+    mimeType: "font/woff2", fileSizeBytes: 4}, bytes: [0, 0, 0, 0] as unknown as Uint8Array}];
+  await assert.rejects(prepareCompositionHtmlEditingSnapshotArchive(f.input), /FONT_BYTES_MISMATCH/);
+  assert.equal(f.state.rpcReads, 0);
+});

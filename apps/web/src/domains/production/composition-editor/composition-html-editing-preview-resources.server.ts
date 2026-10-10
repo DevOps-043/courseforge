@@ -22,6 +22,7 @@ type Input = Parameters<typeof prepareCompositionHtmlEditingSnapshotImages>[0] &
 type PrivateFile = Awaited<ReturnType<typeof spoolCompositionHtmlEditingPreviewResource>>;
 
 export async function readCompositionHtmlEditingPreviewPortfolio(input: Input) {
+  if (input.candidate && input.publishedBinding) throw new HtmlEditingPreviewResourcesError();
   const snapshot = await prepareCompositionHtmlEditingSnapshotImages(input);
   const expectedPin = input.publishedBinding?.expectedFrozenBundleSha256;
   if (expectedPin !== undefined && (!/^[a-f0-9]{64}$/.test(expectedPin)

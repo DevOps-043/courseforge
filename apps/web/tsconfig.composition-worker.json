@@ -30,6 +30,7 @@
     "src/domains/production/composition-editor/qa/composition-controlled-render-storage-policy.ts",
     "src/domains/production/composition-editor/qa/composition-original-session-font-capture.ts",
     "src/domains/production/composition-editor/qa/composition-original-session-native-capture.ts",
+    "src/domains/production/composition-editor/qa/composition-html-layout-capture.ts",
     "src/domains/production/composition-editor/qa/composition-original-session-event-native-capture.ts",
     "src/domains/production/composition-editor/qa/composition-controlled-event-native-binding.ts",
     "src/domains/production/composition-editor/qa/composition-original-session-seek-capture.ts",

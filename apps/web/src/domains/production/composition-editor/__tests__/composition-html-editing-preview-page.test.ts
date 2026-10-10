@@ -49,7 +49,8 @@ test("bindings reject unknown network/local resources, variable sources and unch
 function handlerFixture(responseKind: "PAGE" | "RESOURCE_RENEWAL" = "PAGE") {
   const state = { enabled: true, actorId: uuid as string | null, role: "ADMIN" as string | null,
     tenantId: uuid, tenantUser: uuid, allowed: true, corruptRenewal: false, auth: 0, clients: 0, reads: 0, prepares: 0,
-    publishedReads: 0, publishedUnavailable: false, expectedFrozenBundleSha256: undefined as string | undefined };
+    publishedReads: 0, publishedUnavailable: false, expectedFrozenBundleSha256: undefined as string | undefined,
+    candidate: undefined as import("../composition-html-editing-preview-candidate.contract").HtmlPreviewCandidateSelector | undefined };
   const client = { rpc: () => ({ abortSignal: async () => {
     state.reads++; return { error: null, data: [{ allowed: state.allowed, reset_at: "2026-10-08T12:00:00Z" }] };
   } }) } as unknown as SupabaseClient;
@@ -67,6 +68,7 @@ function handlerFixture(responseKind: "PAGE" | "RESOURCE_RENEWAL" = "PAGE") {
     },
     prepare: async input => {
       state.prepares++;
+      state.candidate = input.candidate;
       state.expectedFrozenBundleSha256 = input.publishedBinding?.expectedFrozenBundleSha256;
       assert.equal(input.actorId, uuid); assert.equal(input.organizationId, uuid); assert.equal(input.documentId, uuid);
       assert.deepEqual(input.session, session); assert.equal(input.documentHash, session.documentHash);
@@ -161,5 +163,23 @@ test("renewal does not extend revoked user, role or tenant authorization or bypa
     assert.equal((await f.handle(new Request(f.url), { draftId: uuid })).status,
       scenario === "anonymous" ? 401 : scenario === "quota" ? 429 : 403);
     assert.equal(f.state.prepares, 0);
+  }
+});
+
+test("candidate PAGE and RENEWAL selectors reach the same authenticated issuer without publication pin substitution", async () => {
+  for (const responseKind of ["PAGE", "RESOURCE_RENEWAL"] as const) for (const key of ["proposalId", "applicationId"]) {
+    const f = handlerFixture(responseKind);
+    const response = await f.handle(new Request(`${f.url}&${key}=${uuid}`), {draftId: uuid});
+    assert.equal(response.status, 200); assert.equal(f.state.auth, 1); assert.equal(f.state.reads, 2);
+    assert.deepEqual(f.state.candidate, {kind: key === "proposalId" ? "AGENT_PROPOSAL" : "PRESET_APPLICATION", id: uuid});
+    assert.equal(f.state.publishedReads, 0);
+  }
+});
+test("ambiguous, historical-mixed and duplicate candidate selectors reject before authentication", async () => {
+  for (const query of [`proposalId=${uuid}&applicationId=${uuid}`, `proposalId=${uuid}&revisionId=${uuid}`,
+    `applicationId=${uuid}&applicationId=${uuid}`, "proposalId=invalid"]) {
+    const f = handlerFixture();
+    assert.equal((await f.handle(new Request(`${f.url}&${query}`), {draftId: uuid})).status, 400);
+    assert.equal(f.state.auth, 0); assert.equal(f.state.prepares, 0);
   }
 });

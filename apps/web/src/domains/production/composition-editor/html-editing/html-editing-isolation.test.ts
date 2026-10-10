@@ -45,7 +45,8 @@ test("derived root protects layout and paint containment without mutating author
   assert.equal(root.attr(HTML_EDITING_SCOPE_ATTRIBUTE)?.length, 64);
   const style = root.attr("style")!;
   for (const declaration of ["contain:layout paint style!important", "overflow:hidden!important",
-    "isolation:isolate!important", "position:relative!important", "width:100%!important", "height:100%!important"])
+    "isolation:isolate!important", "position:relative!important", "width:100%!important", "height:100%!important",
+    "display:block!important", "overflow-clip-margin:0px!important"])
     assert.ok(style.includes(declaration));
   assert.equal(result.dom("#title_first").attr("style"), undefined);
 });

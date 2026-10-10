@@ -2,12 +2,14 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { assertHtmlEditingPreviewParentOrigin, htmlEditingPreviewSessionSchema } from "./composition-html-editing-preview-channel.contract";
 import { HTML_PREVIEW_RENEWAL_POLICY, htmlPreviewResourceLocalPathSchema } from "./composition-html-editing-preview-renewal.contract";
+import { htmlPreviewCandidateSelectorSchema } from "./composition-html-editing-preview-candidate.contract";
 
 export const HTML_PREVIEW_CAPABILITY_POLICY = Object.freeze({ tokenBytes: 4096, keyBytes: 32, lifetimeSeconds: HTML_PREVIEW_RENEWAL_POLICY.lifetimeSeconds });
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 const claimsSchema = z.object({ format: z.literal("courseforge-html-preview-resource-v1"),
   actorId: z.string().uuid(), organizationId: z.string().uuid(), documentId: z.string().uuid(),
   session: htmlEditingPreviewSessionSchema, audience: z.string().max(512),
+  candidate: htmlPreviewCandidateSelectorSchema.optional(),
   bundleSha256: sha256, inventoryFingerprint: sha256,
   localPath: htmlPreviewResourceLocalPathSchema,
   checksum: sha256, fileSizeBytes: z.number().int().positive().max(2 * 1024 * 1024 * 1024), mimeType: z.string().max(128),

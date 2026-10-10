@@ -2,12 +2,14 @@ import { readBoundedCompositionJson } from "./composition-bounded-json-response.
 import { buildHtmlEditingPreviewPageUrl } from "./composition-html-editing-preview-url";
 import { assertHtmlEditingPreviewParentOrigin, htmlEditingPreviewSessionSchema, type HtmlEditingPreviewSession } from "./composition-html-editing-preview-channel.contract";
 import { HTML_PREVIEW_RENEWAL_POLICY, parseHtmlPreviewResourceRenewal } from "./composition-html-editing-preview-renewal.contract";
+import type { HtmlPreviewCandidateSelector } from "./composition-html-editing-preview-candidate.contract";
 
 /** One authenticated read, never retries, writes editor state or follows a
  * redirect. Caller owns scheduling and cancellation on owner/base drift. */
 export async function consultHtmlPreviewResourceRenewal(input: {
   documentId: string; session: HtmlEditingPreviewSession; audience: string;
   revisionId?: string;
+  candidate?: HtmlPreviewCandidateSelector;
   bundleSha256?: string; inventoryFingerprint?: string; signal?: AbortSignal;
   fetcher?: typeof fetch; nowSeconds?: () => number;
 }) {
@@ -16,7 +18,7 @@ export async function consultHtmlPreviewResourceRenewal(input: {
     const expected = { documentId: input.documentId, session, audience: input.audience,
       bundleSha256: input.bundleSha256, inventoryFingerprint: input.inventoryFingerprint };
     assertHtmlEditingPreviewParentOrigin(expected.audience);
-    const pageUrl = new URL(buildHtmlEditingPreviewPageUrl(expected.documentId, session, input.revisionId), expected.audience);
+    const pageUrl = new URL(buildHtmlEditingPreviewPageUrl(expected.documentId, session, input.revisionId, input.candidate), expected.audience);
     const url = `${pageUrl.pathname}/renew${pageUrl.search}`;
     const fetcher = input.fetcher ?? fetch, now = input.nowSeconds ?? (() => Math.floor(Date.now() / 1000));
     const signal = input.signal ? AbortSignal.any([input.signal, AbortSignal.timeout(HTML_PREVIEW_RENEWAL_POLICY.requestTimeoutMs)])

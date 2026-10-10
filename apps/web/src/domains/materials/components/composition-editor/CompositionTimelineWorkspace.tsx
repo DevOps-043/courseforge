@@ -21,7 +21,7 @@ interface CompositionTimelineWorkspaceProps {
   assets: CompositionStudioAsset[];
   brandingAvailability: AssemblyBrandingAvailability | null;
   currentTime: number;
-  componentId: string;
+  componentId: string | null;
   document: CompositionEditorDocument;
   durationSourceLabel: string | null;
   editingGroupId: string | null;
@@ -71,8 +71,8 @@ export function CompositionTimelineWorkspace({ assetLabels, assets, brandingAvai
         <div className={styles.durationActions}>
           <button type="button" disabled={saving} onClick={onRecalculateDuration} className={styles.durationAction}>Recalcular duración</button>
           <button type="button" disabled={saving} onClick={onOrganize} className={styles.durationAction}>Organizar timeline</button>
-          <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={onRefreshProductionAssets} className={styles.durationAction}>{refreshingProductionAssets ? "Actualizando…" : "Actualizar assets"}</button>
-          <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={onRecoverHistoricalAssets} className={styles.durationAction}>{recoveringHistoricalAssets ? "Recuperando…" : "Recuperar históricos"}</button>
+          {componentId !== null && <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={onRefreshProductionAssets} className={styles.durationAction}>{refreshingProductionAssets ? "Actualizando…" : "Actualizar assets"}</button>}
+          {componentId !== null && <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={onRecoverHistoricalAssets} className={styles.durationAction}>{recoveringHistoricalAssets ? "Recuperando…" : "Recuperar históricos"}</button>}
           {brandingAvailability && <select value={brandingAvailability.selectedOutroAssetId || ""} disabled={saving} onChange={(event) => onOutroChange(event.target.value || null)} className={styles.durationAction} aria-label="Outro de este video"><option value="">Sin outro</option>{brandingAvailability.outros.map((outro) => <option key={outro.id} value={outro.id}>{outro.name} · {(outro.duration_milliseconds / 1000).toFixed(1)} s</option>)}</select>}
         </div>
       </div>

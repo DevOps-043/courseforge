@@ -5,6 +5,7 @@ import type { CompositionHtmlEditorialHost } from "@/domains/production/composit
 import type { HtmlSnapshotLocatorScope } from "@/domains/production/composition-editor/composition-html-snapshot-locator.client";
 import { htmlEditingInitializationRequestSchema } from "@/domains/production/composition-editor/composition-html-editing-initialization-http.contract";
 import { HtmlEditingInitializationCoordinatorError, type HtmlEditingInitializationAction } from "@/domains/production/composition-editor/composition-html-editing-initialization-coordinator.client";
+import { useCompositionHtmlTemplateChoices } from "./useCompositionHtmlTemplateChoices";
 
 const initializationEnabled = process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED === "true";
 /** Installed template locator only; source/declarations/grants remain server-side.
@@ -12,8 +13,10 @@ const initializationEnabled = process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_I
 export function CompositionHtmlInitializationPanel({ scope, target, host }: {
   scope: HtmlSnapshotLocatorScope; target?: { clipId: string; documentHash: string }; host: CompositionHtmlEditorialHost;
 }) {
-  const templateInputId = useId(), versionInputId = useId();
-  const [templateId, setTemplateId] = useState(""), [templateVersion, setTemplateVersion] = useState("1");
+  const templateInputId = useId();
+  const [selectedTemplate, setSelectedTemplate] = useState("");
+  const catalog = useCompositionHtmlTemplateChoices(scope, target);
+  const choice = catalog.view?.templates.find(template => JSON.stringify([template.templateId, template.templateVersion]) === selectedTemplate);
   const [busy, setBusy] = useState(false), [message, setMessage] = useState<string | null>(null), [, refresh] = useState(0);
   const requestRef = useRef<AbortController | null>(null);
   useEffect(() => () => { requestRef.current?.abort(); }, []);
@@ -39,8 +42,10 @@ export function CompositionHtmlInitializationPanel({ scope, target, host }: {
   }
   function submit() {
     if (!target || !initializationEnabled || host.initializationTracking?.(scope).status !== "EMPTY") return;
-    const body = htmlEditingInitializationRequestSchema.safeParse({ templateId, templateVersion: Number(templateVersion), expectedDocumentHash: target.documentHash });
-    if (!body.success) { setMessage("Indica el identificador de una plantilla instalada y una versión entera válida."); return; }
+    if (!choice || catalog.busy) { setMessage("Consulta el catálogo y selecciona una plantilla instalada para este HTML guardado."); return; }
+    const body = htmlEditingInitializationRequestSchema.safeParse({ templateId: choice.templateId,
+      templateVersion: choice.templateVersion, expectedDocumentHash: target.documentHash });
+    if (!body.success) { setMessage("La selección de plantilla no es válida."); return; }
     void run({ mode: "SEND", clipId: target.clipId, body: body.data });
   }
   if (!tracking || (target ? !initializationEnabled || tracking.status !== "EMPTY" : tracking.status === "EMPTY" && !message)) return null;
@@ -65,12 +70,24 @@ export function CompositionHtmlInitializationPanel({ scope, target, host }: {
       </>}
     </>}
     {target && initializationEnabled && tracking.status === "EMPTY" && <form onSubmit={event => { event.preventDefault(); submit(); }} className="space-y-2">
-      <p>Usa una plantilla instalada compatible con el HTML guardado. El servidor verifica permisos y compatibilidad; este formulario no instala ni activa plantillas.</p>
-      <label htmlFor={templateInputId}>Identificador de plantilla instalada</label>
-      <input id={templateInputId} value={templateId} onChange={event => setTemplateId(event.target.value)} disabled={busy} required className="w-full rounded border p-1" />
-      <label htmlFor={versionInputId}>Versión de plantilla</label>
-      <input id={versionInputId} type="number" min="1" step="1" value={templateVersion} onChange={event => setTemplateVersion(event.target.value)} disabled={busy} required className="w-full rounded border p-1" />
-      <button type="submit" disabled={busy || !host.initialize}>Inicializar con guardado coordinado</button>
+      <p>Consulta plantillas instaladas que coinciden con el HTML guardado. No instala ni activa plantillas. La inicialización vuelve a verificar permisos, revocación y compatibilidad.</p>
+      <button type="button" disabled={busy || catalog.busy} onClick={() => { setSelectedTemplate(""); void catalog.consult(); }}>
+        {catalog.busy ? "Consultando catálogo…" : "Consultar plantillas instaladas"}
+      </button>
+      {catalog.error && <p role="alert">{catalog.error}</p>}
+      {catalog.view && catalog.view.templates.length === 0 && <p>No hay plantillas instaladas para este HTML guardado. No se inicializará automáticamente.</p>}
+      {catalog.view && catalog.view.templates.length > 0 && <>
+        <label htmlFor={templateInputId}>Plantilla instalada para este HTML</label>
+        <select id={templateInputId} value={choice ? selectedTemplate : ""} onChange={event => setSelectedTemplate(event.target.value)}
+          disabled={busy || catalog.busy} required className="w-full rounded border p-1">
+          <option value="">Selecciona una plantilla</option>
+          {catalog.view.templates.map(template => <option key={JSON.stringify([template.templateId, template.templateVersion])}
+            value={JSON.stringify([template.templateId, template.templateVersion])}>
+            {template.templateId} · v{template.templateVersion} · {template.fieldCount} campos
+          </option>)}
+        </select>
+      </>}
+      <button type="submit" disabled={busy || catalog.busy || !choice || !host.initialize}>Inicializar con guardado coordinado</button>
     </form>}
     <button type="button" disabled={busy} onClick={() => refresh(value => value + 1)}>Releer seguimiento inicial</button>
     {message && <p role="status">{message}</p>}

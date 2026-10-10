@@ -2,8 +2,9 @@ import { z } from "zod";
 import { HTML_EDITING_LIMITS } from "./html-editing.contract";
 import { htmlEditingTrustedTemplateSchema } from "./html-editing-bootstrap.server";
 import { decodeHtmlEditingBoundedJson } from "./html-editing-validation";
+import { HTML_TEMPLATE_CHOICES_POLICY, htmlTemplateChoiceSchema, type HtmlTemplateChoice } from "../composition-html-editing-template-choices.contract";
 
-export const HTML_EDITING_CATALOG_POLICY = Object.freeze({ maximumBytes: 4 * 1024 * 1024, maximumTemplates: 32 });
+export const HTML_EDITING_CATALOG_POLICY = Object.freeze({ maximumBytes: 4 * 1024 * 1024, maximumTemplates: HTML_TEMPLATE_CHOICES_POLICY.maximumTemplates });
 const catalogSchema = z.object({
   format: z.literal("courseforge-html-editable-catalog-v1"),
   organizationId: z.string().uuid(),
@@ -48,5 +49,19 @@ export class HtmlEditingTemplateCatalog {
       throw new HtmlEditingCatalogError("TEMPLATE_UNAVAILABLE");
     }
     return template.encodedTemplate;
+  }
+
+  /** Metadata for exact saved-source matches only. This is not registration,
+   * grant validation, durable non-revocation or permission to initialize. */
+  listSourceMatches(input: { organizationId: string; sourceSha256: string }): HtmlTemplateChoice[] {
+    if (input.organizationId !== this.#organizationId || !/^[a-f0-9]{64}$/.test(input.sourceSha256)) {
+      throw new HtmlEditingCatalogError("TEMPLATE_UNAVAILABLE");
+    }
+    return [...this.#templates.values()].filter(template => template.sourceSha256 === input.sourceSha256)
+      .map(template => {
+        const installed = htmlEditingTrustedTemplateSchema.parse(JSON.parse(template.encodedTemplate));
+        return htmlTemplateChoiceSchema.parse({ templateId: installed.templateId,
+          templateVersion: installed.templateVersion, fieldCount: installed.elements.length });
+      }).sort((first, second) => first.templateId.localeCompare(second.templateId) || first.templateVersion - second.templateVersion);
   }
 }

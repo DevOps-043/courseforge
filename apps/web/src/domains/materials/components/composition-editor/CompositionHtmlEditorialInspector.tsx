@@ -9,6 +9,7 @@ import type { HtmlSnapshotLocatorScope } from "@/domains/production/composition-
 import { useCompositionHtmlEditorialSession, type CompositionHtmlEditorialHost } from "./useCompositionHtmlEditorialSession";
 import { CompositionHtmlEditableFields } from "./CompositionHtmlEditableFields";
 import { CompositionHtmlInitializationPanel } from "./CompositionHtmlInitializationPanel";
+import { CompositionHtmlLegacyAdoptionPanel } from "./CompositionHtmlLegacyAdoptionPanel";
 
 const enabled = process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED === "true";
 const mutationsEnabled = process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_MUTATIONS_ENABLED === "true";
@@ -23,6 +24,8 @@ export function CompositionHtmlEditorialInspector({ draftId, clipId, documentHas
   if (!scope.success) return null;
   const ownerScope = { actorId: scope.data.actorId, organizationId: scope.data.organizationId, draftId: scope.data.documentId };
   return <>
+    {host && <CompositionHtmlLegacyAdoptionPanel key={`adoption:${scope.data.actorId}:${organizationId}:${draftId}:${clipId}`}
+      scope={ownerScope} target={{ clipId: scope.data.clipId, documentHash }} host={host} />}
     {host && <CompositionHtmlInitializationPanel key={`${scope.data.actorId}:${organizationId}:${draftId}:${clipId}:${documentHash}`}
       scope={ownerScope} target={{ clipId: scope.data.clipId, documentHash }} host={host} />}
     {enabled && <ScopedInspector key={`${scope.data.actorId}:${organizationId}:${draftId}:${clipId}`}

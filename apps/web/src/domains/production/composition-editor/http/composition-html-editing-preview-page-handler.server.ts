@@ -9,6 +9,7 @@ import { HTML_EDITING_PREVIEW_RESOURCE_POLICY } from "../composition-html-editin
 import type { resolveHtmlPreviewOperatorConfiguration } from "../composition-html-editing-preview-configuration.server";
 import { parseHtmlPreviewResourceRenewal } from "../composition-html-editing-preview-renewal.contract";
 import { readPublishedHtmlPreviewPin } from "../composition-html-editing-published-preview.server";
+import { readHtmlPreviewCandidateQuery } from "../composition-html-editing-preview-candidate.contract";
 
 const policy = Object.freeze({ urlBytes: 2048, windowSeconds: 60, actorRequests: 10, organizationRequests: 30, quotaResponseBytes: 1024 });
 const uuid = z.string().uuid();
@@ -38,9 +39,13 @@ export function createHtmlPreviewPageHandler(dependencies: {
       const params = z.object({ draftId: uuid }).strict().parse(rawParams), url = new URL(request.url);
       const query = [...url.searchParams.entries()];
       const revisionId = url.searchParams.has("revisionId") ? uuid.parse(url.searchParams.get("revisionId")).toLowerCase() : undefined;
-      const expectedQueryCount = revisionId ? 4 : 3;
+      let candidate;
+      try { candidate = readHtmlPreviewCandidateQuery(url.searchParams); }
+      catch { return fail(400, API_ERROR_CODE.invalidRequest, "Selector de preview no válido."); }
+      if (candidate && revisionId) return fail(400, API_ERROR_CODE.invalidRequest, "Selector de preview no válido.");
+      const expectedQueryCount = revisionId || candidate ? 4 : 3;
       if (Buffer.byteLength(request.url) > policy.urlBytes || query.length !== expectedQueryCount
-        || new Set(query.map(([key]) => key)).size !== expectedQueryCount || query.some(([key]) => !["documentHash", "r", "nonce", "revisionId"].includes(key)))
+        || new Set(query.map(([key]) => key)).size !== expectedQueryCount || query.some(([key]) => !["documentHash", "r", "nonce", "revisionId", "proposalId", "applicationId"].includes(key)))
         return fail(400, API_ERROR_CODE.invalidRequest, "Solicitud no válida.");
       const generation = url.searchParams.get("r");
       if (!generation || !/^(0|[1-9]\d*)$/.test(generation)) return fail(400, API_ERROR_CODE.invalidRequest, "Generación no válida.");
@@ -73,7 +78,7 @@ export function createHtmlPreviewPageHandler(dependencies: {
       const page = await (dependencies.prepare ?? prepareCompositionHtmlEditingPreviewPage)({ actorId: authentication.actorId,
         organizationId: tenant.organizationId, documentId: params.draftId.toLowerCase(), documentHash: session.documentHash,
         previewGeneration: session.previewGeneration, session, supabase: client, storageOrigin: config.storageOrigin,
-        parentOrigin: config.audience, runtimeWebRoot: config.runtimeWebRoot, deliveryKey: config.key, signal, publishedBinding });
+        parentOrigin: config.audience, runtimeWebRoot: config.runtimeWebRoot, deliveryKey: config.key, signal, publishedBinding, candidate });
       signal.throwIfAborted();
       if (responseKind === "RESOURCE_RENEWAL") {
         const renewal = parseHtmlPreviewResourceRenewal(page.resourceRenewal, {

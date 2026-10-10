@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prepareCompositionHtmlEditingSnapshotArchive } from "./composition-html-editing-snapshot-archive.server";
 import { htmlSnapshotIntentSchema, parseHtmlSnapshotAcknowledgment, type HtmlSnapshotOperationIdentity } from "./composition-html-editing-snapshot-publication.contract";
 
-type Preparation = Parameters<typeof prepareCompositionHtmlEditingSnapshotArchive>[0];
+type Preparation = Omit<Parameters<typeof prepareCompositionHtmlEditingSnapshotArchive>[0], "historicalRepublication">;
 type PreparedArchive = Awaited<ReturnType<typeof prepareCompositionHtmlEditingSnapshotArchive>>;
 export const HTML_EDITING_SNAPSHOT_STORAGE_BUCKET = "production-assets" as const;
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
@@ -54,6 +54,7 @@ function boundedSignal(parent: AbortSignal | undefined, timeoutMs: number) {
 export async function publishCompositionHtmlEditingSnapshot(params: Preparation & z.infer<typeof scopeSchema> & {
   ports: HtmlEditingSnapshotPublicationPorts;
 }) {
+  if ("historicalRepublication" in params) throw new Error("HTML_HISTORICAL_PUBLICATION_REQUIRES_INACTIVE_WORKFLOW");
   const scope = scopeSchema.parse({compositionId: params.compositionId,
     expectedActiveRevisionId: params.expectedActiveRevisionId, operationId: params.operationId});
   params.signal?.throwIfAborted();

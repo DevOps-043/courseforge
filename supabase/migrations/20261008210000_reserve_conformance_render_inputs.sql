@@ -56,8 +56,8 @@ BEGIN
     OR v_reservation#>>'{artifacts,kind}' IS DISTINCT FROM v_execution.artifact_kind THEN
     RAISE EXCEPTION 'CONFORMANCE_JOB_RESERVATION_BINDING_INVALID';
   END IF;
-  IF CASE WHEN v_execution.artifact_kind = 'SINGLE_CONTRACT'
-    THEN v_reservation#>'{artifacts,input,contract}' ELSE v_reservation#>'{artifacts,input,parentContract}' END
+  IF (CASE WHEN v_execution.artifact_kind = 'SINGLE_CONTRACT'
+    THEN v_reservation#>'{artifacts,input,contract}' ELSE v_reservation#>'{artifacts,input,parentContract}' END)
     IS DISTINCT FROM v_execution.contract THEN RAISE EXCEPTION 'CONFORMANCE_JOB_RESERVATION_CONTRACT_INVALID'; END IF;
   v_selection := v_reservation->'referenceSelection';
   IF v_selection->>'scope' IS DISTINCT FROM 'HOST_AUTHORIZED_EXACT_REFERENCE_SELECTION_NOT_DURABLE_ATTESTATION'

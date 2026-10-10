@@ -7,7 +7,7 @@ import type { CompositionEditorDocument } from "@/domains/production/composition
 
 const MAX_SIMULTANEOUS_READS = 3;
 
-export function useCompositionWaveforms(componentId: string, assets: CompositionStudioAsset[], document: CompositionEditorDocument) {
+export function useCompositionWaveforms(componentId: string | null, assets: CompositionStudioAsset[], document: CompositionEditorDocument) {
   const audioAssetFingerprint = document.clips.flatMap((clip) => (
     clip.kind === "AUDIO" && clip.source.type === "PRODUCTION_ASSET"
       ? [clip.source.productionAssetId]
@@ -23,6 +23,7 @@ export function useCompositionWaveforms(componentId: string, assets: Composition
     let nextIndex = 0;
     setWaveforms({});
     setFailedAssetIds([]);
+    if (componentId === null) return () => controller.abort();
     const readNext = async () => {
       while (!controller.signal.aborted && nextIndex < referenced.length) {
         const asset = referenced[nextIndex++];

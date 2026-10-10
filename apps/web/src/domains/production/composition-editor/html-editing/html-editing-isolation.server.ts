@@ -7,7 +7,7 @@ import { HTML_EDITING_COMPILATION_PROFILE } from "./html-editing-compilation-pro
 
 export const HTML_EDITING_SCOPE_ATTRIBUTE = "data-courseforge-html-scope";
 export const HTML_EDITING_ISOLATION_VERSION = HTML_EDITING_COMPILATION_PROFILE.isolationVersion;
-const outerStyle = "position:relative!important;width:100%!important;height:100%!important;contain:layout paint style!important;isolation:isolate!important;overflow:hidden!important";
+const outerStyle = "position:relative!important;display:block!important;width:100%!important;height:100%!important;contain:layout paint style!important;isolation:isolate!important;overflow:hidden!important;overflow-clip-margin:0px!important";
 const documentSelector = /(?:^|[\s>+~,(])(?:html|body)(?=[.#:\[\s>+~,)]|$)|:(?:root|scope)\b/i;
 const trailingPseudoElement = /(::?(?:before|after|first-line|first-letter|marker))$/i;
 
@@ -26,17 +26,20 @@ function scopedSelector(selector: string, scope: string): string {
   return `:where(${scope}) :is(${subject})${pseudoElement}`;
 }
 
-/** Compiler-owned derivation only. Input has already passed the static source
- * and local resource policies. This mutates a parsed working copy, never source
- * bytes or native/editorial state. Both preview and render consume the result. */
-export function isolateHtmlEditingFragment(fragment: CheerioAPI, binding: HtmlEditingBinding): string {
+/** Stable identity shared by stylesheet and fragment derivations. */
+function isolationIdentity(binding: HtmlEditingBinding) {
   const key = createHash("sha256").update(JSON.stringify([
     HTML_EDITING_ISOLATION_VERSION, binding.organizationId, binding.documentId,
     binding.clipId, binding.templateId, binding.templateVersion, binding.sourceSha256,
   ])).digest("hex");
-  const scope = `[${HTML_EDITING_SCOPE_ATTRIBUTE}="${key}"]`;
-  fragment("style").each((_index, element) => {
-    const root = postcss.parse(fragment(element).text());
+  return {key, scope: `[${HTML_EDITING_SCOPE_ATTRIBUTE}="${key}"]`};
+}
+
+/** Shared selector/layer derivation for admitted fragment and contextual CSS.
+ * Caller must first validate static CSS, complexity and resource authority. */
+export function isolateHtmlEditingStylesheet(css: string, binding: HtmlEditingBinding): string {
+  const {key, scope} = isolationIdentity(binding);
+  const root = postcss.parse(css);
     root.walkRules(rule => {
       let ancestor = rule.parent;
       while (ancestor && ancestor.type !== "root") {
@@ -60,7 +63,15 @@ export function isolateHtmlEditingFragment(fragment: CheerioAPI, binding: HtmlEd
         rule.params = names.map(name => `cf_${key}.${name}`).join(", ");
       }
     });
-    fragment(element).text(root.toString());
+  return root.toString();
+}
+
+/** Compiler-owned working copy, never immutable source/native state. Both
+ * existing compiler targets consume this exact fragment derivation. */
+export function isolateHtmlEditingFragment(fragment: CheerioAPI, binding: HtmlEditingBinding): string {
+  const {scope} = isolationIdentity(binding);
+  fragment("style").each((_index, element) => {
+    fragment(element).text(isolateHtmlEditingStylesheet(fragment(element).text(), binding));
   });
   // Source rules only match descendants, never this trusted containing box.
   // Paint/layout containment also creates the containing block for positioned

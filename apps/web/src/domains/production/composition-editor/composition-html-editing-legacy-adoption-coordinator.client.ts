@@ -26,7 +26,7 @@ const actionSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("SEND"), clipId: htmlLegacyAdoptionScopeSchema.shape.clipId, request: htmlLegacyAdoptionRequestSchema }).strict(),
   z.object({ mode: z.literal("RECOVER"), operationId: z.string().uuid(), historicalOnly: z.boolean().optional() }).strict(),
 ]);
-type Action = z.infer<typeof actionSchema>;
+export type HtmlLegacyAdoptionAction = z.infer<typeof actionSchema>;
 export type HtmlLegacyAdoptionVerifiedState = { payload: HtmlEditingNativePayload; view: HtmlEditingInspectorView | null };
 
 /** Prepared UI integration boundary. Uses the existing cooperative draft lock /
@@ -34,7 +34,7 @@ export type HtmlLegacyAdoptionVerifiedState = { payload: HtmlEditingNativePayloa
  * explicitly confirm the reviewed candidate and install the verified state before
  * journal closure. Historical-only recovery never reactivates HTML. */
 export async function coordinateHtmlLegacyAdoption(input: {
-  scope: HtmlSnapshotLocatorScope; action: Action; loaded: HtmlEditingNativePayload;
+  scope: HtmlSnapshotLocatorScope; action: HtmlLegacyAdoptionAction; loaded: HtmlEditingNativePayload;
   storage: HtmlSnapshotLocatorStorage | null; lock: HtmlSnapshotPublicationLock | null;
   reserveNative: <T>(task: () => Promise<T>) => Promise<T>; isCurrent: () => boolean;
   acceptVerified: (state: HtmlLegacyAdoptionVerifiedState, signal: AbortSignal) => Promise<void>;

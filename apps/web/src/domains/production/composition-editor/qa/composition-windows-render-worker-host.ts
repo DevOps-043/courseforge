@@ -21,7 +21,12 @@ export function createWindowsControlledRenderWorkerHost(input:
     join(dirname(input.jobBridge.bridgeScriptPath), "OwnedRenderAppContainer.cs")]) {
     if (!declaredPaths.has(path)) throw new Error("CONTROLLED_RENDER_WINDOWS_BRIDGE_INVENTORY_REQUIRED");
   }
+  // Capture the same configuration that the bridge validates/clones below.
+  // Late configuration changes cannot authorize an unbounded HTML launch.
+  const hasResourceLimits = input.jobBridge.resourceLimits !== undefined;
   const jobBridge: WindowsJobBridgeConfiguration = {...input.jobBridge, prepareLaunch: (descriptor, workspace) => {
+    if (workspace.measurementPlan?.document.htmlEditing?.items.length && !hasResourceLimits)
+      throw new Error("CONFORMANCE_HTML_PROCESS_QUOTAS_REQUIRED");
     const launch = input.jobBridge.prepareLaunch(descriptor, workspace);
     const node = inventory.manifest.roles.node;
     const expectedNodePath = resolve(inventory.roots[node.rootId], node.path);

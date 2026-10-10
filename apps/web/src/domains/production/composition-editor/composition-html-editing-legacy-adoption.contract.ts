@@ -23,6 +23,10 @@ export const htmlLegacyAdoptionCandidateSchema = htmlLegacyAdoptionScopeSchema.e
     completedReviews: z.tuple([z.literal("VISUAL_COMPARISON"), z.literal("MANIFEST_AND_ACCESSIBILITY"), z.literal("AUTHORIZED_INSTALLATION")]),
   }).strict(),
 }).strict();
+export const htmlLegacyRegistrationReadSchema = z.discriminatedUnion("status", [
+  z.object({status: z.literal("NOT_FOUND")}).strict(),
+  z.object({status: z.literal("RECORDED"), candidate: htmlLegacyAdoptionCandidateSchema, revoked: z.boolean()}).strict(),
+]);
 export const htmlLegacyAdoptionReceiptSchema = z.object({
   scope: z.literal("HTML_LEGACY_ADOPTION_RECEIPT_NOT_CURRENT_STATE_OR_RENDERED"),
   owner: z.object({ actorId: uuid, organizationId: uuid, draftId: uuid }).strict(),

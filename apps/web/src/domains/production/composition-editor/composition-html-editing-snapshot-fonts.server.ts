@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { ORGANIZATION_FONT_TABLE, ORGANIZATION_FONT_STORAGE_BUCKET } from "../fonts/organization-font.types";
 import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "./composition-document.types";
-import { assertDocumentConformanceFontBindings, conformanceFontManifestSchema, CONFORMANCE_FONT_BINDING_LIMITS } from "./composition-conformance-font-bindings";
+import { assertDocumentConformanceFontBindings, conformanceFontManifestSchema, conformanceFontManifestHash, CONFORMANCE_FONT_BINDING_LIMITS } from "./composition-conformance-font-bindings";
 import { HTML_EDITING_REPOSITORY_POLICY } from "./composition-html-editing-repository-policy";
 import { CONFORMANCE_MATERIALIZATION_LIMITS } from "./qa/composition-conformance-materialization";
 
@@ -15,6 +15,36 @@ const fontRow = z.object({id:z.string().uuid(),organization_id:z.string().uuid()
   storage_path:z.string().min(1).max(1024).refine(path => path.split("/").every(segment =>
     /^[a-zA-Z0-9_.-]+$/.test(segment) && segment !== "." && segment !== "..")),
 }).strict();
+
+async function readHtmlSnapshotFontRows(supabase: SupabaseClient, organizationId: string, ids: string[], signal: AbortSignal) {
+  signal.throwIfAborted();
+  const result = await supabase.from(ORGANIZATION_FONT_TABLE)
+    .select("id,organization_id,family,source,status,checksum_sha256,file_size_bytes,mime_type,storage_bucket,storage_path")
+    .eq("organization_id",organizationId).in("id",ids).limit(ids.length+1).abortSignal(signal);
+  signal.throwIfAborted();
+  if (result.error || Buffer.byteLength(JSON.stringify(result.data) ?? "") > HTML_EDITING_REPOSITORY_POLICY.responseBytes) throw new Error();
+  const rows = z.array(fontRow).max(ids.length).parse(result.data);
+  if (rows.length !== ids.length || new Set(rows.map(font => font.id)).size !== ids.length
+    || rows.some(font => font.organization_id !== organizationId || !ids.includes(font.id))) throw new Error();
+  return rows;
+}
+
+/** Metadata-only refresh of READY uploaded authority; no second download. The
+ * prepared local bytes stay checksum-bound. Commit still reauthorizes under SQL
+ * locks: sequential reads do not constitute an atomic permission snapshot. */
+export async function revalidateHtmlSnapshotFontAuthority(supabase: SupabaseClient, input: {
+  organizationId: string; manifest: unknown; signal: AbortSignal;
+}) {
+  try {
+    const organizationId = z.string().uuid().parse(input.organizationId), manifest = conformanceFontManifestSchema.parse(input.manifest);
+    input.signal.throwIfAborted(); if (!manifest.length) return;
+    const signal = AbortSignal.any([input.signal, AbortSignal.timeout(HTML_EDITING_REPOSITORY_POLICY.rpcTimeoutMs)]);
+    const rows = await readHtmlSnapshotFontRows(supabase, organizationId, manifest.map(font => font.fontAssetId).sort(), signal);
+    const current = rows.map(font => ({fontAssetId: font.id, family: font.family, checksumSha256: font.checksum_sha256,
+      fileSizeBytes: font.file_size_bytes, mimeType: font.mime_type}));
+    if (conformanceFontManifestHash(current) !== conformanceFontManifestHash(manifest)) throw new Error();
+  } catch {input.signal.throwIfAborted(); throw new Error("HTML_SNAPSHOT_FONTS_UNAVAILABLE_OR_FORBIDDEN");}
+}
 
 /** Trusted host configuration, never URL/credentials/bytes from a request.
  * Verifies tenant-owned READY uploaded font records before bounded Storage GET.
@@ -44,14 +74,7 @@ export function createHtmlSnapshotFontAcquirer(configuration:{supabase:SupabaseC
     const signal = params.signal ? AbortSignal.any([params.signal,timeout]) : timeout;
     try {
       const ids = [...references.keys()].sort();
-      const result = await configuration.supabase.from(ORGANIZATION_FONT_TABLE)
-        .select("id,organization_id,family,source,status,checksum_sha256,file_size_bytes,mime_type,storage_bucket,storage_path")
-        .eq("organization_id",organizationId).in("id",ids).limit(ids.length+1).abortSignal(signal);
-      signal.throwIfAborted();
-      if (result.error || Buffer.byteLength(JSON.stringify(result.data) ?? "") > HTML_EDITING_REPOSITORY_POLICY.responseBytes) throw new Error();
-      const rows = z.array(fontRow).max(ids.length).parse(result.data);
-      if (rows.length !== ids.length || new Set(rows.map(font => font.id)).size !== ids.length
-        || rows.some(font => font.organization_id !== organizationId || !references.has(font.id))) throw new Error();
+      const rows = await readHtmlSnapshotFontRows(configuration.supabase, organizationId, ids, signal);
       const manifest = assertDocumentConformanceFontBindings(document,rows.map(font => ({fontAssetId:font.id,family:font.family,
         checksumSha256:font.checksum_sha256,fileSizeBytes:font.file_size_bytes,mimeType:font.mime_type})));
       if (manifest.reduce((total,font) => total+font.fileSizeBytes,0) > CONFORMANCE_MATERIALIZATION_LIMITS.extractedBytes) throw new Error();

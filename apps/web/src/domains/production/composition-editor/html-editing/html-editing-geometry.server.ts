@@ -2,26 +2,13 @@ import { HtmlEditingValidationError } from "./html-editing-validation";
 import { assertHtmlEditingSvgPath } from "./html-editing-svg-path.server";
 import { readHtmlEditingSvgViewportBudget } from "./html-editing-svg-viewport.server";
 import { assertHtmlEditingLayoutExpansion } from "./html-editing-layout-expansion.server";
+import { HTML_EDITING_GEOMETRY_POLICY } from "./html-editing-geometry-policy";
+export { HTML_EDITING_GEOMETRY_POLICY } from "./html-editing-geometry-policy";
 
 /** Bounds for imported static geometry, not a computed-layout guarantee. Canvas
  * dimensions are independently bounded by the native document schema. CSS math,
  * custom-property indirection and viewport-dependent units cannot establish a
  * static bound here and are rejected for the properties below, not clamped. */
-export const HTML_EDITING_GEOMETRY_POLICY = Object.freeze({
-  maximumPixels: 8192,
-  maximumPercent: 1000,
-  maximumFontPixels: 512,
-  maximumLineHeight: 4,
-  maximumRelativeLength: 128,
-  maximumSvgMagnitude: 8192,
-  maximumSvgNumericTokens: 4096,
-  maximumSvgTransforms: 8,
-  maximumSvgScale: 16,
-  maximumEffectPixels: 128,
-  maximumSvgDashValues: 128,
-  maximumStrokeMiterLimit: 16,
-});
-
 const numberPattern = "[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?";
 const lengthPattern = new RegExp(`^(${numberPattern})(px|%|em|rem)?$`, "i");
 const svgNumberPattern = new RegExp(`^${numberPattern}$`);
@@ -243,12 +230,14 @@ export function composeHtmlEditingSvgTransformBudget(parent: HtmlEditingSvgTrans
 }
 
 export function readHtmlEditingSvgTransformBudget(tag: string, attributes: Readonly<Record<string, string>>,
-  parent: HtmlEditingSvgTransformBudget): HtmlEditingSvgTransformBudget {
+  parent: HtmlEditingSvgTransformBudget, cssViewport?: HtmlEditingSvgTransformBudget | null): HtmlEditingSvgTransformBudget {
   if (!svgTags.has(tag)) return parent;
   const local = attributes.transform === undefined ? HTML_EDITING_SVG_IDENTITY_BUDGET : assertSvgTransform(attributes.transform);
   let accumulated = composeHtmlEditingSvgTransformBudget(parent, local);
   if (tag === "svg") {
-    const viewport = readHtmlEditingSvgViewportBudget(attributes);
+    const authored = readHtmlEditingSvgViewportBudget(attributes);
+    const viewport = cssViewport ? {scale: Math.max(authored?.scale ?? 1, cssViewport.scale),
+      translation: Math.max(authored?.translation ?? 0, cssViewport.translation)} : authored;
     // null retains the existing authored-transform envelope, not a claim that
     // CSS/percentage/missing dimensions establish a bounded viewport mapping.
     if (viewport) accumulated = composeHtmlEditingSvgTransformBudget(accumulated, viewport);

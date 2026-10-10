@@ -20,6 +20,7 @@ export async function prepareCompositionHtmlEditingPreviewPage(input: Input) {
     for (const resource of prepared.inventory.entries) {
       const cap = issueHtmlPreviewResourceCapability({ format: "courseforge-html-preview-resource-v1", actorId: input.actorId,
         organizationId: input.organizationId, documentId: input.documentId, session: prepared.session, audience: input.parentOrigin,
+        candidate: input.candidate,
         bundleSha256: prepared.bundle.sha256, inventoryFingerprint: prepared.inventory.fingerprint,
         localPath: resource.localPath, checksum: resource.identity.checksum, fileSizeBytes: resource.identity.fileSizeBytes,
         mimeType: resource.identity.mimeType, issuedAt, expiresAt: issuedAt + HTML_PREVIEW_CAPABILITY_POLICY.lifetimeSeconds }, key);

@@ -38,6 +38,7 @@ export async function deliverCompositionHtmlEditingPreviewResource(input: {
   parseHtmlPreviewResourceRange(input.range, claims.fileSizeBytes);
   const scoped: PortfolioInput = { actorId: claims.actorId, organizationId: claims.organizationId,
     documentId: claims.documentId, documentHash: claims.session.documentHash,
+    candidate: claims.candidate,
     supabase: input.supabase, storageOrigin: input.storageOrigin, fetchResource: input.fetchResource,
     signal: input.signal ? AbortSignal.any([input.signal, AbortSignal.timeout(HTML_EDITING_PREVIEW_RESOURCE_POLICY.preparationTimeoutMs)])
       : AbortSignal.timeout(HTML_EDITING_PREVIEW_RESOURCE_POLICY.preparationTimeoutMs) };

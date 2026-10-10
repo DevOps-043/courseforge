@@ -11,10 +11,12 @@ import { HtmlEditingRevisionError } from "./html-editing/html-editing-revision.c
 import type { HtmlEditingTemplateCatalog } from "./html-editing/html-editing-template-catalog.server";
 import { computeHtmlEditingInitializationRequestSha256 } from "./composition-html-editing-initialization-operation-digest.server";
 import { htmlEditingInitializationRequestSchema } from "./composition-html-editing-initialization-http.contract";
+import { htmlTemplateChoicesViewSchema } from "./composition-html-editing-template-choices.contract";
 
 const requestSchema = htmlEditingBindingSchema.pick({ organizationId: true, documentId: true, clipId: true,
   templateId: true, templateVersion: true }).extend({ actorId: z.string().uuid(), expectedDocumentHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
 const operationRequestSchema = requestSchema.extend({ operationId: z.string().uuid() }).strict();
+const choicesRequestSchema = requestSchema.omit({ templateId: true, templateVersion: true }).strict();
 const readSchema = z.object({ organizationId: z.string().uuid(), documentId: z.string().uuid(), clipId: htmlEditingBindingSchema.shape.clipId,
   revisionId: z.string().uuid(), documentHash: z.string().regex(/^[a-f0-9]{64}$/), document: z.unknown(),
   grantedAssetIds: z.array(z.string().uuid()).max(6400).refine(ids => new Set(ids).size === ids.length),
@@ -25,6 +27,17 @@ const readSchema = z.object({ organizationId: z.string().uuid(), documentId: z.s
  * No browser endpoint, template activation, URL fetch or render is implied. */
 export class CompositionHtmlEditingBootstrapHost {
   constructor(private readonly supabase: SupabaseClient, private readonly catalog: HtmlEditingTemplateCatalog) {}
+
+  async listTemplateChoices(input: z.infer<typeof choicesRequestSchema>, signal?: AbortSignal) {
+    const request = choicesRequestSchema.safeParse(input);
+    if (!request.success) throw new HtmlEditingRevisionError("INVALID_REVISION");
+    const { context, sourceHtml, effectiveSignal } = await this.readBootstrapContext(request.data, signal);
+    const templates = this.catalog.listSourceMatches({ organizationId: request.data.organizationId,
+      sourceSha256: createHash("sha256").update(sourceHtml, "utf8").digest("hex") });
+    effectiveSignal.throwIfAborted();
+    return htmlTemplateChoicesViewSchema.parse({ documentId: context.documentId, clipId: context.clipId,
+      documentHash: context.documentHash, templates });
+  }
 
   async register(input: z.infer<typeof requestSchema>, signal?: AbortSignal) {
     const request = requestSchema.safeParse(input);
@@ -63,6 +76,25 @@ export class CompositionHtmlEditingBootstrapHost {
   }
 
   private async prepareRegistration(scope: z.infer<typeof requestSchema>, signal?: AbortSignal) {
+    const { context, sourceHtml, effectiveSignal } = await this.readBootstrapContext(scope, signal);
+    const template = htmlEditingTrustedTemplateSchema.parse(JSON.parse(this.catalog.resolve({
+      organizationId: scope.organizationId, templateId: scope.templateId, templateVersion: scope.templateVersion,
+      sourceSha256: createHash("sha256").update(sourceHtml, "utf8").digest("hex"),
+    })));
+    const declaredIds = [...new Set(template.elements.flatMap(element => element.kind === "IMAGE" ? element.allowedAssetIds : []))];
+    const currentGrants = new Set(context.grantedAssetIds);
+    effectiveSignal.throwIfAborted();
+    return {
+      actorId: scope.actorId, scope: { organizationId: scope.organizationId, documentId: scope.documentId, clipId: scope.clipId },
+      authoritativeAnchor: { organizationId: scope.organizationId, documentId: scope.documentId, clipId: scope.clipId,
+        revisionId: context.revisionId, documentSha256: context.documentHash },
+      sourceHtml, grantedAssetIds: declaredIds.filter(id => currentGrants.has(id)),
+      imageSources: new Map(declaredIds.map(id => [id, `conformance-media/${id}`])),
+      catalog: this.catalog, templateId: scope.templateId, templateVersion: scope.templateVersion, signal,
+    };
+  }
+
+  private async readBootstrapContext(scope: z.infer<typeof choicesRequestSchema>, signal?: AbortSignal) {
     const effectiveSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(HTML_EDITING_REPOSITORY_POLICY.rpcTimeoutMs)])
       : AbortSignal.timeout(HTML_EDITING_REPOSITORY_POLICY.rpcTimeoutMs);
     let payload: unknown;
@@ -91,20 +123,7 @@ export class CompositionHtmlEditingBootstrapHost {
       || document.data.htmlEditing?.items.some(item => item.clipId === scope.clipId)) throw new HtmlEditingRevisionError("REVISION_CONFLICT");
     const sourceHtml = clip.source.html;
     if (Buffer.byteLength(sourceHtml, "utf8") > HTML_EDITING_LIMITS.sourceBytes) throw new HtmlEditingRevisionError("INVALID_REVISION");
-    const template = htmlEditingTrustedTemplateSchema.parse(JSON.parse(this.catalog.resolve({
-      organizationId: scope.organizationId, templateId: scope.templateId, templateVersion: scope.templateVersion,
-      sourceSha256: createHash("sha256").update(sourceHtml, "utf8").digest("hex"),
-    })));
-    const declaredIds = [...new Set(template.elements.flatMap(element => element.kind === "IMAGE" ? element.allowedAssetIds : []))];
-    const currentGrants = new Set(context.grantedAssetIds);
     effectiveSignal.throwIfAborted();
-    return {
-      actorId: scope.actorId, scope: { organizationId: scope.organizationId, documentId: scope.documentId, clipId: scope.clipId },
-      authoritativeAnchor: { organizationId: scope.organizationId, documentId: scope.documentId, clipId: scope.clipId,
-        revisionId: context.revisionId, documentSha256: context.documentHash },
-      sourceHtml, grantedAssetIds: declaredIds.filter(id => currentGrants.has(id)),
-      imageSources: new Map(declaredIds.map(id => [id, `conformance-media/${id}`])),
-      catalog: this.catalog, templateId: scope.templateId, templateVersion: scope.templateVersion, signal,
-    };
+    return { context, sourceHtml, effectiveSignal };
   }
 }

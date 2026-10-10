@@ -1,8 +1,9 @@
 # CAP029 — integración transaccional del piloto legado
 
 Estado: **reserva autorizada por el usuario el 2026-10-08**, implementación
-transaccional backend y migración preparados, pendientes de integración cliente y
-verificación en ambiente. La autorización cubre repositorio,
+transaccional backend y migración preparados, cliente de revisión/confirmación y
+recuperación conectado; operador privado y auditoría I01 de implementación completos;
+verificación en ambiente y QA pendientes. La autorización cubre repositorio,
 handlers/rutas HTML propios y preparación/numeración de migración, sin aplicarla.
 No incluye append/gateway compartido ni áreas reservadas al compañero.
 No se ejecutan SQL, instalación, flags, envío a otra conversación o deploy.
@@ -52,12 +53,14 @@ dejaría una versión publicada incompleta ante error/ACK perdido.
    resultado sin segundo commit y recarga native/inspector autorizado. No instalar
    desde selector del catálogo reservado ni permitir apply directo de este plan.
 
-## Evidencia necesaria para retirar I01
+## Evidencia y separación de implementación/ambiente
 
-Tests de contratos, errores/ACK/replay y rollback; SQL en entorno autorizado con
-concurrencia y fallo a mitad de transacción; recorrido de piloto revisado hasta
-native pointer, original histórico preservado y exact undo. QA visual/accesibilidad
-queda al tester, pero no sustituye código de commit o aprobación faltantes.
+I01 de implementación: contratos, errores/ACK/replay y recorrido conectado de
+piloto registrado hasta native pointer/recibo con original preservado. Cubierto
+por la auditoría y pruebas locales actuales. A01 requiere SQL en ambiente autorizado
+con concurrencia y fallo a mitad de transacción; A02, instalación/piloto/ACL reales;
+Q01, visual/accesibilidad/undo observados por el tester. No confundir esos resultados
+reales pendientes con código faltante, ni afirmar que fixtures certifican rollback.
 
 El plan puro no cierra I01. Preparar la migración queda dentro de la reserva
 aceptada; aplicarla, registrar templates y activar rutas/flags siguen pendientes
@@ -137,7 +140,64 @@ RECOVER historicalOnly requiere acción explícita: consulta receipt y native ac
 idéntico al cargado; no consulta inspector, instala HTML ni reactiva el candidato.
 Su resultado view=null no certifica campos editables ni paridad preview/render.
 
-Pendiente antes de ofrecer adopción: controles de revisión/confirmación, lectura
-autorizada de candidato/diff, host/global blocking y recovery center. Los otros
-workflows deben observar ocupación de adopción de forma simétrica al integrarla;
-no activar cliente solo por existir estas funciones. No duplicar catálogo reservado.
+Host y recovery center conectados: journal de adopción pendiente/corrupto bloquea
+edición, inicialización y recovery editorial; guardas revalidan durante reserva.
+Los bypass nativos y publicación observan el isBlocked existente. Recovery actual
+instala payload autorizado antes del cierre; histórico no instala ni restaura.
+Owner/payload cambiados conservan recibo y journal sin adoptar datos.
+
+El gate público de SEND requiere inspector, receipts de adopción, adopción y
+mutations explícitamente true; no se activó ninguno. Deshabilitar SEND no oculta
+seguimiento ni prohíbe intentar GET autorizado; el servidor sigue controlando
+permisos/gates de lectura. Panel con abort al desmontar, estado anunciado y
+acciones explícitas de verificación actual o histórica; no formulario de POST.
+
+## Revisión y confirmación visible
+
+GET `/drafts/{draftId}/html-editing/{clipId}/adopt/candidates/{candidateId}` con
+un único query `expectedDocumentHash`. Sesión deriva actor/tenant, rol reviewer,
+same-origin/fetch metadata, doble cuota y límites; respuesta privada no-store.
+Reutiliza RPC read candidate y bootstrap: aprobación previamente registrada,
+owner/base/anchor actuales, catálogo/grants y regeneración independiente. No
+staging, append ni registro por GET. Commit vuelve a reautorizar todos los datos.
+
+Vista acotada (4 MiB JSON; cada source 250 KiB UTF-8) expone sources antes/después,
+SHA/provenance, hash propuesto, template/version, evidencia/revisiones registradas
+y etiquetas/identidad/tipo de campos. No entrega encodedPilot, grants ni package.
+Cliente correlaciona owner/base/candidate y verifica SHA de ambos sources.
+Delta textual lineal completo con prefix/suffix y pares Unicode preservados;
+no comparación visual ni prueba de paridad por strings.
+
+Inspector permite consultar UUID aprobado y confirmar manualmente ese candidato.
+Texto React escapado en pre, sin iframe/srcDoc/innerHTML ni ejecución del source.
+No selector de catálogo paralelo. Releer/cambiar ID reinicia confirmación; cambio
+de base oculta revisión obsoleta y bloquea SEND. Key owner/clip aborta al cambiar
+contexto sin desmontar solo por el payload que adopta el propio host.
+
+Pendiente: consumers I04 restantes y coordinación con narrativa
+sin editar el frente reservado unilateralmente. No activar cliente solo por existir
+estas funciones ni duplicar catálogo reservado. QA browser/accesibilidad, DB/RLS y
+transacción reales siguen pendientes; piloto requiere instalación autorizada.
+
+## Operador concreto y cierre de implementación I01 — 2026-10-10
+
+`legacy-operator.mjs`→factory/workflow→preparador existente→handoff HMAC/readback→
+revisión humana explícita/catálogo independiente→intención durable→repositorio
+stageReviewedCandidate. READ_PREPARATION permite recuperar por UUID una preparación
+sellada contra contexto vigente. READ_REGISTRATION consulta SQL28 y coteja el
+candidato completo sin catálogo/source/compilación/adopción; conserva intención
+incluso con registro revocado/NOT_FOUND/error. No borrar/repetir ni generar UUID
+nuevo para eludir una incertidumbre. La revisión/adopción desde inspector conserva
+su confirmación/journal/commit separados y nunca importa approval del browser.
+
+Mecanismo de JWT/profile/tenant compartido con operadores histórico/reconstrucción,
+sin cambiar autorización RPC ni instalar flags/catálogo/SQL. Contrato de lectura
+de registro vive en adopción, no hace depender repositorio del workflow del CLI.
+
+39/39 pruebas dirigidas, regresión1002/1002 y9/9 de las tres entradas privadas
+aprobadas; tipado web/lint dirigidos aprobados. El recorrido cruzado usa el candidato
+recién registrado en la revisión/adopción reales y coteja pointer/source/revision
+SHA/recibo/original. RPC simulado; atomicidad DB, ACL y comparación humana/visual
+reales pendientes. I01 implementado; I02/I03/I04/I05 no se cierran con este resultado.
+[Auditoría](SOFLIA_ENGINE_CAP029_LEGACY_LINEAGE_AUDIT.md) y
+[operación privada](SOFLIA_ENGINE_CAP029_LEGACY_OPERATOR_HANDOFF.md).

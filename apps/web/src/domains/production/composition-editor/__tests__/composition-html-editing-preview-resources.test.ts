@@ -264,6 +264,42 @@ test("page issuer binds real edited HTML and fonts to exact capabilities without
   assert.deepEqual(new Uint8Array(await response.arrayBuffer()), new Uint8Array([2, 3]));
 });
 
+test("candidate page, renewal and binary delivery share the projected bundle and reauthorize current creator/status", async () => {
+  const f = await fixture(), saved = await readCompositionHtmlEditingPreviewPortfolio(f.input);
+  const proposed = structuredClone(saved.snapshot.document); proposed.clips[0].layout.opacity = 0.65;
+  const proposedHash = hashCompositionDocument(proposed), baseHash = f.input.documentHash;
+  const row = {id: other, draft_id: uuid, organization_id: uuid, created_by: uuid, status: "PENDING",
+    expires_at: "2050-01-01T00:00:00Z", base_document_hash: baseHash, proposed_document: proposed, proposed_document_hash: proposedHash};
+  const original = f.input.supabase;
+  const supabase = {...original, from: (table: string) => {
+    if (!["video_composition_preset_applications", "video_composition_draft_documents"].includes(table)) return original.from(table);
+    const query = {select() {return query;}, eq() {return query;}, order() {return query;}, limit() {return query;},
+      abortSignal: async (signal: AbortSignal) => {signal.throwIfAborted(); return {error: null,
+        data: table === "video_composition_draft_documents" ? [{document_hash: baseHash, version: 1}] : [structuredClone(row)]};}};
+    return query;
+  }} as unknown as SupabaseClient;
+  const candidate = {kind: "PRESET_APPLICATION" as const, id: other};
+  const deliveryKey = new Uint8Array(32).fill(17), audience = "https://app.example.test";
+  const input = {...f.input, supabase, candidate, documentHash: proposedHash, previewGeneration: 1,
+    runtimeWebRoot: process.cwd(), parentOrigin: audience, deliveryKey};
+  const page = await prepareCompositionHtmlEditingPreviewPage({...input, nowSeconds: () => 100});
+  const renewed = await prepareCompositionHtmlEditingPreviewPage({...input, session: page.session, nowSeconds: () => 200});
+  assert.equal(page.resourceRenewal.bundleSha256, renewed.resourceRenewal.bundleSha256);
+  assert.notEqual(page.resourceRenewal.bundleSha256, saved.snapshot.bundle.sha256);
+  assert.equal(page.session.documentHash, proposedHash); assert.equal(hashCompositionDocument(saved.snapshot.document), baseHash);
+  assert.doesNotMatch(page.contentSecurityPolicy, /unsafe-inline|allow-same-origin/);
+  const url = renewed.resourceRenewal.resources.find(resource => resource.localPath === `conformance-media/${uuid}`)!.url;
+  const cap = new URL(url).searchParams.get("cap")!;
+  assert.deepEqual(verifyHtmlPreviewResourceCapability({token: cap, key: deliveryKey, audience, documentId: uuid, nowSeconds: 200}).candidate, candidate);
+  const deliver = () => deliverCompositionHtmlEditingPreviewResource({token: cap, key: deliveryKey, audience, documentId: uuid,
+    range: null, supabase, storageOrigin: origin, fetchResource: f.input.fetchResource, consumeQuota: async () => true, nowSeconds: () => 200});
+  const delivered = await deliver(); assert.ok((await delivered.arrayBuffer()).byteLength > 0);
+  row.status = "DISMISSED"; const beforeFetches = f.state.fetches;
+  await assert.rejects(deliver(), /UNAVAILABLE/); assert.equal(f.state.fetches, beforeFetches);
+  row.status = "PENDING"; row.created_by = other;
+  await assert.rejects(prepareCompositionHtmlEditingPreviewPage({...input, session: page.session, nowSeconds: () => 250}), /UNAVAILABLE/);
+});
+
 test("joint page preparation shares delivery admission and fails before signatures under backpressure", async () => {
   const f = await fixture(), releases = Array.from({ length: 4 }, () => htmlPreviewDeliveryBudget.reserve(0));
   try {

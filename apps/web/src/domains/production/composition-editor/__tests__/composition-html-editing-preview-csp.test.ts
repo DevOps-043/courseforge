@@ -2,12 +2,25 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
 import { buildCompositionHtmlEditingPreviewCsp, HTML_EDITING_PREVIEW_CSP_POLICY } from "../composition-html-editing-preview-csp.server";
+import { HTML_COMPUTED_REFERENCE_STYLE, renderHtmlComputedLayoutRuntime } from "../composition-html-editing-layout-runtime";
 
 const script = 'window.seek = (time) => { document.body.style.opacity = String(time); };';
 const css = 'p { color: #123456; }';
 const style = 'font-size:24px;color:red';
 const hash = (value: string) => `'sha256-${createHash("sha256").update(value).digest("base64")}'`;
 const page = `<html><head><style>${css}</style></head><body><p style="${style}">Text</p><script>${script}</script></body></html>`;
+
+test("computed layout reference style is pinned from inert trusted markup without relaxing CSP", () => {
+  const fragment = `<div data-courseforge-html-scope="${"a".repeat(64)}"><div>Text</div></div>`;
+  const runtime = renderHtmlComputedLayoutRuntime(new Map([["clip", fragment]]));
+  const policy = buildCompositionHtmlEditingPreviewCsp(`<html><body>${fragment}${runtime}</body></html>`);
+  assert.ok(policy.includes(`style-src-attr 'unsafe-hashes' ${hash(HTML_COMPUTED_REFERENCE_STYLE)}`));
+  assert.equal(policy.includes("unsafe-inline"), false);
+  assert.equal(policy.includes("unsafe-eval"), false);
+  // The style in runtime script text alone would not be authorized.
+  const withoutSeed = runtime.replace(/<template>.*?<\/template>/, "");
+  assert.equal(buildCompositionHtmlEditingPreviewCsp(withoutSeed).includes(hash(HTML_COMPUTED_REFERENCE_STYLE)), false);
+});
 
 test("editable preview policy pins exact runtime and styles without broad inline or remote authority", () => {
   const policy = buildCompositionHtmlEditingPreviewCsp(page);

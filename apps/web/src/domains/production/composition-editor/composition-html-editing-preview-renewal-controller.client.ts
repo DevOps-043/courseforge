@@ -2,6 +2,7 @@ import { consultHtmlPreviewResourceRenewal } from "./composition-html-editing-pr
 import { HTML_PREVIEW_RENEWAL_POLICY, parseHtmlPreviewResourceRenewal, type HtmlPreviewResourceRenewal } from "./composition-html-editing-preview-renewal.contract";
 import type { HtmlEditingPreviewSession } from "./composition-html-editing-preview-channel.contract";
 import { buildHtmlEditingPreviewPageUrl } from "./composition-html-editing-preview-url";
+import type { HtmlPreviewCandidateSelector } from "./composition-html-editing-preview-candidate.contract";
 
 type Failure = "EXPIRED" | "OWNER_CHANGED" | "UNAVAILABLE";
 /** Owns capability lifetime, not media playback. The next lifetime is committed
@@ -10,6 +11,7 @@ type Failure = "EXPIRED" | "OWNER_CHANGED" | "UNAVAILABLE";
 export function createHtmlPreviewRenewalController(input: {
   documentId: string; session: HtmlEditingPreviewSession; audience: string;
   revisionId?: string;
+  candidate?: HtmlPreviewCandidateSelector;
   isCurrentOwner: () => boolean;
   apply: (renewal: HtmlPreviewResourceRenewal, signal: AbortSignal) => Promise<void>;
   onFailure: (reason: Failure) => void;
@@ -19,7 +21,8 @@ export function createHtmlPreviewRenewalController(input: {
   const { documentId, audience, isCurrentOwner, apply, onFailure } = input;
   const session = { ...input.session };
   const revisionId = input.revisionId;
-  if (revisionId !== undefined) buildHtmlEditingPreviewPageUrl(documentId, session, revisionId);
+  const candidate = input.candidate ? {...input.candidate} : undefined;
+  if (revisionId !== undefined || candidate) buildHtmlEditingPreviewPageUrl(documentId, session, revisionId, candidate);
   const consult = input.consult ?? consultHtmlPreviewResourceRenewal;
   const now = input.nowSeconds ?? (() => Math.floor(Date.now() / 1000));
   const monotonic = input.monotonicMilliseconds ?? (() => performance.now());
@@ -58,10 +61,10 @@ export function createHtmlPreviewRenewalController(input: {
     renewing = true;
     try {
       const previous = active!;
-      const candidate = await consult({ documentId, audience, session, revisionId, bundleSha256: previous.bundleSha256,
+      const renewed = await consult({ documentId, audience, session, revisionId, candidate, bundleSha256: previous.bundleSha256,
         inventoryFingerprint: previous.inventoryFingerprint, signal: controller.signal, nowSeconds: now });
       if (!current()) return;
-      const renewal = parseHtmlPreviewResourceRenewal(candidate, { documentId, audience, session,
+      const renewal = parseHtmlPreviewResourceRenewal(renewed, { documentId, audience, session,
         bundleSha256: previous.bundleSha256, inventoryFingerprint: previous.inventoryFingerprint });
       if (renewal.issuedAt <= previous.issuedAt || renewal.expiresAt <= previous.expiresAt
         || renewal.resources.length !== previous.resources.length

@@ -34,6 +34,7 @@ import { captureDeckTextPaintMasks } from "./composition-deck-text-paint-produce
 import { suppressedDeckTextFrameName } from "./composition-deck-text-paint-derivation";
 import {assertConformanceJobActive} from "./composition-conformance-job-lease";
 import {bindCaptureCdpCancellation} from "./composition-cdp-cancellation";
+import {assertHtmlLayoutBeforeCapture} from "./composition-html-layout-capture";
 
 const CAPTURE_LIMITS = { durationMilliseconds: 180_000, pngBytes: 20 * 1024 * 1024, totalPngBytes: 128 * 1024 * 1024, requests: 2_000,
   metadataBytes: 1024 * 1024 } as const;
@@ -224,6 +225,7 @@ export async function captureMaterializedConformancePreview(params: {
       })`);
       if (!Number.isFinite(seconds) || Math.abs(seconds - checkpoint.timeSeconds) > 0.01) throw new Error("CONFORMANCE_CAPTURE_TIME_MISMATCH");
       await verifyConformanceFontLoading(client, fonts, false);
+      await assertHtmlLayoutBeforeCapture(client, Boolean(source.document.htmlEditing?.items.length));
       const png = await captureCompositionQaScreenshot(client);
       const captured = frames.find((frame) => frame.frameIndex === checkpoint.frameIndex);
       if (contract.schemaVersion === 4 && contract.deckTextPlan) {

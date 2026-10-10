@@ -16,9 +16,11 @@ export async function createPreparedHtmlArchiveFixture() {
   const image = {id: uuid, organization_id: uuid, checksum: digest(media), file_size_bytes: media.length,
     mime_type: "image/png", storage_bucket: "production-assets", storage_path: "html/image.png", qa_status: "APPROVED"};
   const state = {rpcReads: 0, assetReads: 0, revokeOnRefresh: false, replaceOnRefresh: false,
+    onRead: undefined as ((count: number) => void) | undefined,
     onRefresh: undefined as (() => void) | undefined};
   const supabase = {rpc: () => ({abortSignal: async (signal: AbortSignal) => {
     signal.throwIfAborted(); state.rpcReads++;
+    state.onRead?.(state.rpcReads);
     if (state.rpcReads > 1) state.onRefresh?.();
     const response = structuredClone(compilation);
     if (state.revokeOnRefresh && state.rpcReads > 1) response.revisions[0]!.grantedAssetIds = [];

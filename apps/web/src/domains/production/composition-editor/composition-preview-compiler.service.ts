@@ -44,6 +44,8 @@ import {
   repairLegacyAnimatedDeckAppearanceSelectors,
 } from "../animated-deck/animated-deck-appearance.service";
 import type { CompositionCompiledFont } from "../fonts/organization-font.types";
+import { prepareCompositionHtmlEditingDeckStyles } from "./composition-html-editing-deck-styles.server";
+import { renderHtmlComputedLayoutRuntime } from "./composition-html-editing-layout-runtime";
 import { renderCompositionCanvasSnapGeometry } from "./composition-canvas-snap-geometry";
 import { resolveCompositionPreviewCanvasBounds } from "./composition-preview-viewport-geometry";
 import { renderCompositionCanvasVisibleBounds } from "./composition-canvas-visible-bounds";
@@ -136,11 +138,20 @@ export async function compileCompositionPreview(params: {
   target?: CompositionCompilationTarget;
 }) {
   let htmlEditingFragments: ReadonlyMap<string, string>;
+  let htmlEditingDeckStyles: string | null = null;
   try {
     if (params.htmlEditingCompilation && params.htmlEditingSnapshot) throw new HtmlEditingSnapshotBundleError("INVALID_BUNDLE");
     const context = params.htmlEditingSnapshot ? restoreCompositionHtmlEditingSnapshot({ ...params.htmlEditingSnapshot,
       document: params.document, documentHash: params.documentHash }) : params.htmlEditingCompilation;
     htmlEditingFragments = compileCompositionHtmlEditingFragments({ ...params, context });
+    if (htmlEditingFragments.size && context) {
+      try {
+        htmlEditingDeckStyles = prepareCompositionHtmlEditingDeckStyles({
+          document: params.document, documentHash: context.documentHash, context, assetUrls: params.assetUrls});
+      } catch {
+        throw new CompositionPreviewCompilerError("La revisión HTML requiere recursos locales y CSS contextual estático admitido y aislado en toda la composición.");
+      }
+    }
   } catch (error) {
     if (error instanceof CompositionHtmlEditingCompilationError || error instanceof HtmlEditingSnapshotBundleError) {
       throw new CompositionPreviewCompilerError(`La compilación de revisiones HTML fue rechazada: ${error.code}. No se exportará el source original.`);
@@ -187,9 +198,9 @@ export async function compileCompositionPreview(params: {
   const timelineLayout = buildCompositionTimelineLayout(document);
   const volumeAutomations = buildCompositionPlaybackVolumeAutomations(document, transitionRuntime);
   const automatedClipIds = new Set(volumeAutomations.map((automation) => automation.targetClipId));
-  const deckStyles = document.deckStyles
+  const deckStyles = htmlEditingDeckStyles ?? (document.deckStyles
     ? `${document.deckStyles.fontUrls.map((url) => `@import url(${JSON.stringify(replaceUrls(url, params.deckAssetUrls))});`).join("\n")}\n${replaceUrls(repairLegacyAnimatedDeckAppearanceSelectors(document.deckStyles.css), params.deckAssetUrls)}`
-    : "";
+    : "");
   const deckAppearance = normalizeAnimatedDeckAppearance(document.deckStyles?.appearance);
   const fontStyles = renderCompositionFontFaces(document, params.fontAssets);
   const clips = document.clips
@@ -276,8 +287,9 @@ export async function compileCompositionPreview(params: {
   </div>
   ${animationRuntime ? `<script>${animationRuntime}</script>` : '<script src="assets/gsap.min.js"></script>'}
   ${colorGradingRuntime ? `<script>${colorGradingRuntime}</script>` : ""}
+  ${renderHtmlComputedLayoutRuntime(htmlEditingFragments)}
   ${renderTimelineInitializer(document, volumeAutomations, transitionRuntime)}
-  ${isInteractivePreview ? renderInteractivePreviewController(document, params.documentHash, params.previewGeneration, audioMetersEnabled) : ""}
+  ${isInteractivePreview ? renderInteractivePreviewController(document, params.documentHash, params.previewGeneration, audioMetersEnabled, htmlEditingFragments.size > 0) : ""}
 </body>
 </html>`;
   if (htmlEditingFragments.size) {
@@ -584,7 +596,7 @@ function renderTimelineInitializer(
   </script>`;
 }
 
-function renderInteractivePreviewController(document: CompositionEditorDocument, documentHash?: string, previewGeneration?: number | null, audioMetersEnabled = false) {
+function renderInteractivePreviewController(document: CompositionEditorDocument, documentHash?: string, previewGeneration?: number | null, audioMetersEnabled = false, htmlLayoutRequired = false) {
   return `<script>
     (() => {
       const root = document.getElementById("composition-root");
@@ -637,6 +649,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
       const MEDIA_FORCED_SEEK_TOLERANCE_SECONDS = ${COMPOSITION_PREVIEW_MEDIA_CONFIG.forcedSeekToleranceSeconds};
       const MEDIA_SEEK_TOLERANCE_SECONDS = ${COMPOSITION_PREVIEW_MEDIA_CONFIG.seekToleranceSeconds};
       let initialMediaReady = false;
+      const htmlLayoutRequired = ${htmlLayoutRequired};
+      const htmlLayout = htmlLayoutRequired ? window.__courseforgeHtmlLayout : null;
+      let htmlLayoutFailureReported = false;
       let lastPrimeTime = Number.NEGATIVE_INFINITY;
       // Browser autoplay policy may reject audible media in the sandboxed iframe.
       // That is an audio-permission issue, not a transport failure: the muted
@@ -816,7 +831,26 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           try { media.load(); } catch (error) { reportMediaError(media, error); }
         });
       };
+      const admitHtmlLayout = () => {
+        if (!htmlLayoutRequired) return true;
+        try {
+          if (!htmlLayout) throw new Error("HTML_LAYOUT_RUNTIME_MISSING");
+          if (htmlLayout.getState() === "PENDING") return false;
+          htmlLayout.assert(); return true;
+        }
+        catch {
+          root?.setAttribute("data-preview-ready", "false");
+          initialMediaReady = false;
+          pause();
+          if (!htmlLayoutFailureReported) {
+            htmlLayoutFailureReported = true;
+            postParentMessage({ type: "courseforge-composition-load-error", code: "COMPILATION_FAILED", documentHash: compiledDocumentHash, previewGeneration });
+          }
+          return false;
+        }
+      };
       const announceInitialReadyIfPossible = () => {
+        if (!admitHtmlLayout()) return false;
         if (initialMediaReady) return true;
         const pending = pendingMediaAt(currentTime);
         if (pending.length > 0) {
@@ -1054,6 +1088,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
       const seek = (time, forceMediaSeek = false) => {
         cancelKeyboardTransform();
         currentTime = Math.max(0, Math.min(duration, Number(time) || 0));
+        if (!admitHtmlLayout()) return;
         timeline.seek(currentTime, false);
         seekDeterministicWaapiAnimations(currentTime);
         applyRuntimeVisibilityOverrides();
@@ -1122,6 +1157,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         seek(time, true);
       };
       function startPlaybackClock() {
+        if (!admitHtmlLayout()) return;
         void audioMeters.resume();
         if (playbackTimer) window.cancelAnimationFrame(playbackTimer);
         playbackTimer = null;
@@ -1144,6 +1180,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         postParentMessage({ type: "courseforge-composition-playback", playing: true });
       }
       const play = () => {
+        if (!admitHtmlLayout()) return;
         playRequestedAt = performance.now();
         playbackIntent = true;
         primeMediaForTime(currentTime, true);
@@ -1773,6 +1810,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
       captureDeterministicWaapiAnimations(0);
       seek(0);
       announceInitialReadyIfPossible();
+      if (htmlLayout) htmlLayout.ready.then(() => { seek(currentTime); announceInitialReadyIfPossible(); }, () => admitHtmlLayout());
       window.setTimeout(initializeColorGrading, 250);
     })();
   </script>`;

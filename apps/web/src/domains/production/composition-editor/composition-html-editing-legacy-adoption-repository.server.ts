@@ -1,31 +1,55 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
-import { z } from "zod";
-import { compositionEditorDocumentSchema } from "./composition-document.types";
-import { hashCompositionDocument } from "./composition-document.service";
+import { verifyHtmlLegacyBootstrapContext, HtmlLegacyContextError } from "./composition-html-editing-legacy-context.server";
+import { isDeepStrictEqual } from "node:util";
 import { prepareHtmlEditingLegacyAdoption } from "./composition-html-editing-legacy-adoption.server";
 import type { HtmlEditingTemplateCatalog } from "./html-editing/html-editing-template-catalog.server";
 import { HTML_LEGACY_ADOPTION_POLICY as policy, htmlLegacyAdoptionCandidateSchema,
-  htmlLegacyAdoptionCommandSchema, htmlLegacyAdoptionReadSchema, htmlLegacyAdoptionReceiptSchema,
+  htmlLegacyAdoptionCommandSchema, htmlLegacyAdoptionReadSchema, htmlLegacyAdoptionReceiptSchema, htmlLegacyRegistrationReadSchema,
   type HtmlLegacyAdoptionCandidate, type HtmlLegacyAdoptionCommand, type HtmlLegacyAdoptionReceipt,
 } from "./composition-html-editing-legacy-adoption.contract";
 import { computeHtmlLegacyAdoptionRequestSha256 } from "./composition-html-editing-legacy-adoption-digest.server";
+import { htmlLegacyReviewCommandSchema, htmlLegacyReviewViewSchema, HTML_LEGACY_REVIEW_POLICY,
+  type HtmlLegacyReviewCommand } from "./composition-html-editing-legacy-review.contract";
 
 export class HtmlLegacyAdoptionPersistenceError extends Error {
   constructor(readonly code: "INVALID_INPUT" | "CONFLICT" | "READ_UNAVAILABLE" | "COMMIT_UNCONFIRMED") {
     super(`HTML_LEGACY_ADOPTION_${code}`); this.name = "HtmlLegacyAdoptionPersistenceError";
   }
 }
-const contextSchema = z.object({ organizationId: z.string().uuid(), documentId: z.string().uuid(), clipId: z.string(),
-  revisionId: z.string().uuid(), documentHash: z.string().regex(/^[a-f0-9]{64}$/), document: z.unknown(),
-  grantedAssetIds: z.array(z.string().uuid()).max(6400).refine(ids => new Set(ids).size === ids.length),
-}).strict();
 
 /** Only a trusted host may stage a human-reviewed candidate. Browser adoption
  * submits IDs/CAS only; this adapter rereads approval, native base, catalogue and
  * grants. SQL owns atomic commit and revocation, never a compensating append. */
 export class SupabaseHtmlLegacyAdoptionRepository {
   constructor(private readonly supabase: SupabaseClient, private readonly catalog?: HtmlEditingTemplateCatalog) {}
+
+  /** Authorized review only. Rebuilds from current native/catalog/grants; never
+   * sends operator package or accepts browser approval. Commit rechecks everything. */
+  async readReviewedCandidate(input: HtmlLegacyReviewCommand, signal?: AbortSignal) {
+    const parsed = htmlLegacyReviewCommandSchema.safeParse(input);
+    if (!parsed.success) throw new HtmlLegacyAdoptionPersistenceError("INVALID_INPUT");
+    const command = parsed.data, effectiveSignal = this.signal(signal);
+    const candidate = this.parseCandidate(await this.rpc("read_html_editing_legacy_candidate", {
+      p_organization_id: command.organizationId, p_draft_id: command.documentId, p_clip_id: command.clipId,
+      p_actor_id: command.actorId, p_candidate_id: command.candidateId,
+    }, effectiveSignal, false, policy.candidateBytes));
+    if (candidate.organizationId !== command.organizationId || candidate.documentId !== command.documentId
+      || candidate.clipId !== command.clipId || candidate.candidateId !== command.candidateId
+      || candidate.expectedDocumentHash !== command.expectedDocumentHash) throw new HtmlLegacyAdoptionPersistenceError("CONFLICT");
+    const prepared = await this.prepare(candidate, command.actorId, effectiveSignal);
+    const view = htmlLegacyReviewViewSchema.parse({ scope: "REVIEWED_HTML_CANDIDATE_NOT_COMMITTED_OR_RENDERED",
+      organizationId: command.organizationId, documentId: command.documentId, clipId: command.clipId, actorId: command.actorId,
+      request: { candidateId: candidate.candidateId, provenanceSha256: prepared.provenanceSha256, expectedDocumentHash: candidate.expectedDocumentHash },
+      templateId: candidate.templateId, templateVersion: candidate.templateVersion, evidenceSha256: candidate.approval.evidenceSha256,
+      completedReviews: candidate.approval.completedReviews, originalSourceSha256: candidate.originalSourceSha256,
+      candidateSourceSha256: candidate.candidateSourceSha256, proposedDocumentHash: prepared.documentHash,
+      originalSource: prepared.originalSource, candidateSource: prepared.initialRevision.sourceHtml,
+      fields: prepared.initialRevision.manifest.elements.map(({ elementId, kind, label }) => ({ elementId, kind, label })),
+    });
+    if (Buffer.byteLength(JSON.stringify(view), "utf8") > HTML_LEGACY_REVIEW_POLICY.responseBytes) throw new HtmlLegacyAdoptionPersistenceError("READ_UNAVAILABLE");
+    effectiveSignal.throwIfAborted(); return view;
+  }
 
   async stageReviewedCandidate(input: HtmlLegacyAdoptionCandidate, signal?: AbortSignal) {
     const candidate = this.parseCandidate(input);
@@ -38,6 +62,21 @@ export class SupabaseHtmlLegacyAdoptionRepository {
     if (response !== true && response !== false) throw new HtmlLegacyAdoptionPersistenceError("COMMIT_UNCONFIRMED");
     return { recorded: true as const, created: response, candidateId: candidate.candidateId,
       provenanceSha256: prepared.provenanceSha256 };
+  }
+
+  /** Historical registration only; no recompilation, catalogue/runtime reload,
+   * fresh grants or native adoption. NOT_FOUND never authorizes a lost write retry. */
+  async readCandidateRegistration(input: HtmlLegacyAdoptionCandidate, authenticatedActorId: string, signal?: AbortSignal) {
+    const candidate = this.parseCandidate(input);
+    if (authenticatedActorId !== candidate.approval.reviewerId) throw new HtmlLegacyAdoptionPersistenceError("CONFLICT");
+    const result = htmlLegacyRegistrationReadSchema.safeParse(await this.rpc("read_html_editing_legacy_registration", {
+      p_organization_id: candidate.organizationId, p_draft_id: candidate.documentId, p_clip_id: candidate.clipId,
+      p_actor_id: authenticatedActorId, p_candidate_id: candidate.candidateId,
+    }, this.signal(signal), false, policy.candidateBytes + policy.receiptBytes));
+    if (!result.success) throw new HtmlLegacyAdoptionPersistenceError("READ_UNAVAILABLE");
+    if (result.data.status === "RECORDED" && !isDeepStrictEqual(result.data.candidate, candidate)) throw new HtmlLegacyAdoptionPersistenceError("CONFLICT");
+    return result.data.status === "NOT_FOUND" ? result.data : {status: "RECORDED" as const, revoked: result.data.revoked,
+      candidateId: candidate.candidateId, provenanceSha256: candidate.provenanceSha256, evidenceSha256: candidate.approval.evidenceSha256};
   }
 
   /** Explicit command only. Caller must persist its journal before dispatch.
@@ -85,16 +124,11 @@ export class SupabaseHtmlLegacyAdoptionRepository {
       p_organization_id: candidate.organizationId, p_draft_id: candidate.documentId, p_clip_id: candidate.clipId,
       p_actor_id: actorId, p_expected_document_hash: candidate.expectedDocumentHash,
     }, signal, false, policy.responseBytes);
-    const parsed = contextSchema.safeParse(raw);
-    if (!parsed.success) throw new HtmlLegacyAdoptionPersistenceError("READ_UNAVAILABLE");
-    const context = parsed.data;
-    if (context.organizationId !== candidate.organizationId || context.documentId !== candidate.documentId
-      || context.clipId !== candidate.clipId || context.revisionId !== candidate.revisionId
-      || context.documentHash !== candidate.expectedDocumentHash) throw new HtmlLegacyAdoptionPersistenceError("CONFLICT");
-    const document = compositionEditorDocumentSchema.safeParse(context.document);
-    if (!document.success || hashCompositionDocument(document.data) !== candidate.expectedDocumentHash)
-      throw new HtmlLegacyAdoptionPersistenceError("READ_UNAVAILABLE");
-    const result = prepareHtmlEditingLegacyAdoption({ document: document.data, expectedDocumentHash: context.documentHash,
+    let context;
+    try {context = verifyHtmlLegacyBootstrapContext(raw, {...candidate, actorId, expectedDocumentHash: candidate.expectedDocumentHash});}
+    catch (error) {throw new HtmlLegacyAdoptionPersistenceError(error instanceof HtmlLegacyContextError && error.baseChanged ? "CONFLICT" : "READ_UNAVAILABLE");}
+    if (context.revisionId !== candidate.revisionId) throw new HtmlLegacyAdoptionPersistenceError("CONFLICT");
+    const result = prepareHtmlEditingLegacyAdoption({ document: context.document, expectedDocumentHash: context.documentHash,
       anchor: { organizationId: candidate.organizationId, documentId: candidate.documentId,
         clipId: candidate.clipId, revisionId: context.revisionId },
       templateId: candidate.templateId, templateVersion: candidate.templateVersion, catalog: this.catalog,

@@ -14,7 +14,7 @@ Buenas prácticas: `../prompt_maestro.md`.
 ## Reserva de esta conversación
 
 - Inicialización durable cliente, journal, recovery y sus pruebas.
-- Panel de seguimiento inicial; no catálogo UX de plantillas reservado al compañero.
+- Panel de seguimiento inicial y catálogo UX HTML autorizado posteriormente aquí.
 - Auditoría y cierre incremental del aislamiento HTML y contratos de integración.
 - Nota propia de seguimiento para no editar simultáneamente los trackers globales.
 
@@ -22,20 +22,111 @@ No tocar CAP-022 ni los módulos asignados CAP-025. No tocar `composition-editor
 `tools/controlled-hyperframes/**` ni configuración worker de CAP-027. Cualquier
 integración que requiera esos módulos debe acordar contrato y archivos primero.
 
-## Matriz de cierre (sin porcentaje artificial)
+**Autorización posterior del usuario,2026-10-10:** completar aquí únicamente las
+integraciones HTML CAP029 de previews de propuestas/presets, comprobación de layout
+en el executor CAP027 y catálogo UX HTML no entregado. Esto sustituye la reserva
+previa solo para esos puntos, no para política/stores CAP025, CAP022, gates generales
+o el resto del worker. Antes de cada cambio delimitar los archivos consumidores y
+preservar cambios ajenos; no implica aplicar SQL, activar flags o hacer QA manual.
+
+**Autorización puntual posterior,2026-10-10:** exigir cuotas CPU/memoria existentes
+para HTML editable en composition-windows-render-worker-host.ts. Solo ese guard;
+no bridge, valores de límites, gates generales, stores CAP025 ni resto del worker.
+
+## Matriz de cierre
+
+Corte vigente I02: geometría usada/texto/SVG normalizado y contención de pintura
+conectados al runtime común; CSP conserva hashes exactos. Guard HTML autorizado
+conectado antes de prepareLaunch/spawn, sobre documento materializado y cuotas
+existentes validadas por el bridge. Tipos/lint,1074/1074 de regresión y24/24 guard/
+bridge aprobados, sin skipped. I01–I05 implementados/preparados; no se certifica
+browser, contención de kernel ni aceptación productiva por mediciones o conteos.
+[Auditoría vigente](SOFLIA_ENGINE_CAP029_GEOMETRY_AUDIT.md). Sin SQL/flags/deploy/QA.
+
+[Métrica de implementación necesaria](SOFLIA_ENGINE_CAP029_IMPLEMENTATION_METRIC.md):
+línea base inicial70%, corte2026-10-10 **100% de implementación necesaria preparada**, por entregables ponderados; QA/instalación de
+ambiente aparte. No derivada del conteo de pruebas ni comparable con CAP027.
 
 | Requisito | Evidencia existente / pendiente real | Estado |
 | --- | --- | --- |
-| R19: fuente, template/version y assets inmutables; instrumentación legada | Bootstrap y persistencia existentes; instrumentador legado offline genera candidato separado y validado, sin instalación/adopción. Falta circuito de revisión e instalación piloto autorizado y auditoría de provenance/versiones | Parcial |
-| R20: manifest, overrides/tokens, OP-021..028, gateway/OCC/undo | Las ocho familias, multifield y reset conjunto explícito conectados a contratos/compiler/inspector/staging/UI; falta auditoría final de consumidores y requisitos. Integración real/QA pendiente | Parcial |
-| R21: sanitización, CSP, iframe aislado y protocolo | Admisión estática/geometría, scoping y contención del fragmento en compilador común, CSP por hashes, recursos autorizados, canal privado y renovación conectados; falta completar auditoría y evidencia browser. No equiparar selectors/CSS emitido con aislamiento efectivo observado | Parcial |
-| R22: inspector y salida idéntica preview/render | Consumidores y snapshots existentes; comprobar integración exacta y separar validación automática de paridad visual manual | Parcial |
+| R19: fuente, template/version y assets inmutables; instrumentación legada | Inventario, operador privado/piloto/revisión/registro recuperable, adopción transaccional preparada, diff/confirmación/recovery y auditoría I01 conectados. Piloto autorizado/SQL/ACL y QA reales pendientes en A01/A02/Q01 | Implementado; ambiente/QA pendientes |
+| R20: manifest, overrides/tokens, OP-021..028, gateway/OCC/undo | Ocho familias, multifield/reset atómico, inspector→host reservado→HTTP→gateway→repository/CAS/recibos y undo/restauración forward auditados. [Auditoría de consumidores](SOFLIA_ENGINE_CAP029_EDITORIAL_CONSUMERS_AUDIT.md); DB/browser reales aparte | Implementado/preparado; ambiente/QA pendientes |
+| R21: sanitización, CSP, iframe aislado y protocolo | Admisión estática/geometría, scoping/contención y medición usada en compilador común, CSP por hashes, recursos/canal/renovación y guard HTML de cuotas existentes conectados y auditados. [Auditoría](SOFLIA_ENGINE_CAP029_GEOMETRY_AUDIT.md). No equiparar contratos con aislamiento físico observado | Implementado/preparado; ambiente/QA pendientes |
+| R22: inspector y salida idéntica preview/render | Compilador común y consumo vivo/congelado exacto auditados; ambos targets derivan los mismos fragmentos y consumen ready/assert. Transporte/background difieren, no se afirma igualdad del documento completo ni paridad de píxeles. [Auditoría](SOFLIA_ENGINE_CAP029_EDITORIAL_CONSUMERS_AUDIT.md) | Implementación compartida preparada; paridad visual/ambiente/QA pendientes |
 | Inicialización durable y recuperación sin ACK | Transporte, digest compartido, journal previo al POST y GET de recibo conectado al host; panel habilita consulta de identidad durable | Implementado; QA manual pendiente |
 | Recuperación inicial histórica con documento cambiado | Acción explícita reautoriza recibo incluso con ACK cacheado y verifica native cargado; sin inspector, restauración ni adopción | Implementado; QA manual pendiente |
-| Catálogo UX reservado al compañero | No duplicar; auditar interfaz/entrega y coordinar integración cuando esté disponible | Externo/reservado |
-| Entrega QA | [Expediente integral](SOFLIA_ENGINE_CAP029_QA_HANDOFF.md) con30 casos, prerequisites/config/rutas inspeccionados, formato de evidencia y puerta I01–I05; aún no habilitado para aceptación final | Preparado; implementación integral pendiente |
+| Catálogo UX | GET autenticado de coincidencias exactas de fuente guardada, selector de plantilla/versión/campos y envío durable existente conectados al catálogo servidor. Sin instalación ni registro automático. [Auditoría I05](SOFLIA_ENGINE_CAP029_TEMPLATE_CATALOG_UX_AUDIT.md) | Implementado; ambiente/QA pendientes |
+| Entrega QA | [Expediente integral](SOFLIA_ENGINE_CAP029_QA_HANDOFF.md) con30 casos y extensiones, prerequisites/config/rutas inspeccionados, evidencia y puerta I01–I05 completada a nivel de implementación. A01/A02 requeridos antes de ejecutar QA real | Implementación preparada para QA; ambiente y aceptación manual pendientes |
+
+## Historial de cortes — no sustituye la matriz vigente
 
 ## Corte de implementación — 2026-10-07
+
+Corte previo2026-10-10: I01/I03 implementados/preparados; I02/I04 parciales e
+I05 externo reservado pendiente. Nuevo corte I03: selección inicial contractual
+exacta de medios vigentes del tenant fuera del draft origen, referencias/metadata/
+pins/MIME/placements verificados; fonts READY existentes. Preparer/current-authority
+integrados y SQL29 preparado con conservación del camino antiguo sin selección.
+Factory→compiler→handoff→review/journal→stage/store→create aislado→recovery/opening
+probados en recorrido concreto con filesystem temporal y RPC/Storage simulados,
+pérdida de ACK/reinicio, un solo write por fase y original intacto. Auditoría I03
+actualizada; nuevo crédito25/25 de continuidad, no por número de tests ni QA.
+Regresión1012/1012, CLI9/9, tipado/lint dirigidos aprobados. No SQL/RLS/ACL/flags/
+catálogo/Storage/browser reales, revisión humana, render o QA manual ejecutados.
+Los cortes que siguen son históricos. [Auditoría](SOFLIA_ENGINE_CAP029_HISTORICAL_CONTINUITY_AUDIT.md)
+y [secuencia manual SQL1→29](SOFLIA_ENGINE_CAP029_SQL_MANUAL_ORDER.md).
+
+Corte siguiente I02: sizing CSS fijo/min-width/height/x/y podía amplificar un
+viewBox pequeño sin entrar en el envelope de atributos. Lector de alternativas
+bounded y segundo recorrido tras admisión completa incluyen CSS anterior/posterior,
+inline/contextual/conditional/layers y composición por ancestros. Sin source/native
+mutado; geometry-v9-css-viewport distingue reglas nuevas de paquetes anteriores.
+Siete casos nuevos y prueba de ambos targets concretos. No se cierra I02 ni aumenta
+≈85%: quedan relative/intrinsic/cascade/layout completo y cuotas de ejecución
+independientes. I04 requiere wiring autorizado de previews de propuestas/presets;
+I05 sigue externo. [Auditoría actual](SOFLIA_ENGINE_CAP029_GEOMETRY_AUDIT.md).
+Sin SQL adicional/aplicado, flags/deploy/catálogo activados ni QA manual.
+Evidencia final:1020/1020 regresión y32/32 dirigidas; compilación/tipado/lint aprobados.
+Reserva puntual de wiring HTML de previews de propuestas/presets solicitada al
+usuario, sin ejecutar cambios en ese frente ni contactar/reanudar el otro chat.
+
+Revalidación posterior del merge del compañero: paquetes CAP-022/CAP-025 presentes
+en Git, compilaciones dirigidas y tipado web aprobados, pruebas83/83 y50/50.
+Ambos CAP siguen parciales por integración real faltante; dos tests verdes de
+CAP-025 caracterizan brechas de ownership y fecha inválida, no las corrigen.
+La instrucción del usuario permite revisar el trabajo juntado; no asumir garantías
+durables ni liberar el catálogo UX por el merge. Sin cambio de porcentaje o SQL.
+[Revisión y flujo de integración](SOFLIA_ENGINE_CAP029_PARALLEL_DELIVERY_REVIEW.md).
+
+Nuevo bloque I02: comprobación de CSSOM/layout usado y readiness común emitidos
+por ambos targets; preview espera fuentes/imágenes y valida antes de ready/play/
+seek, con error explícito si falta/falla el runtime. Script/policy compartidos y
+geometry-v10-computed-readiness; native y fuente original preservados. No se cierra
+I02: matrices/paint/cuotas siguen pendientes. El corte siguiente conecta consumo
+de ready/assert al executor original y preview físico mediante reader CDP propio
+que no termina con checkpoints de texto. Repetición geométrica/PNG verificada sin
+cambiar ABI del SDK; seis casos nuevos y regresión1036/1036/dirigidas62/62. Tipos
+web/worker/tests y lint aprobados; browser/SDK físico sin ejecutar. Integraciones
+reservadas I02/I04/I05 ya autorizadas expresamente por el usuario para continuar.
+
+Último corte I04: implementado/preparado. Propuesta/preset almacenados se leen con
+owner/base/status/expiry actuales y fuente/referencias exactas de la base; proyección
+host-only al compilador común. Página privada, UI activa, canal, renovación y GET
+binario unidos a la misma identidad; no fallback genérico ni permisos desde DTO.
+Regresión1050/1050, dirigidas73/73 y tipos/lint aprobados. Ambiente/browser reales
+pendientes; no cambios CAP025 policy/stores/SQL. I01/I03/I04 preparados; solo I02 e
+I05 conservan implementación necesaria pendiente. Métrica≈90%±10, +5 por consumer
+cerrado, no conteos. [Auditoría I04](SOFLIA_ENGINE_CAP029_PREVIEW_CONTEXT_AUDIT.md).
+
+Último corte I05: implementado/preparado. Reutiliza catálogo instalado y lectura
+bootstrap autorizada exacta, GET protegido y metadatos mínimos; selección explícita
+en el panel existente alimenta initialize durable, sin fallback a entrada manual
+ni instalación/registro automático. Actor/tenant/draft/clip/hash fijan el resultado
+local; cambios lo ocultan y cancelan, sin reenvío. Regresión1062/1062, dirigidas29/29,
+tipado/lint aprobados. No SQL nuevo/aplicado, deploy/flags/Storage/browser reales.
+I01/I03/I04/I05 preparados; solo I02 conserva implementación necesaria pendiente.
+Métrica≈95%±10 por catálogo integrado, no conteos. Ambiente y QA separados.
+[Auditoría I05](SOFLIA_ENGINE_CAP029_TEMPLATE_CATALOG_UX_AUDIT.md).
 
 La inicialización nueva usa `/initialize/operations/{operationId}` sin fallback legacy.
 Persiste ID/digest/request antes del único POST. Valida recibo histórico por owner,
@@ -1584,12 +1675,1097 @@ humana, confirmación/diff, journal anterior al POST, recovery cliente y relectu
 native/inspector. I02/I03/I04/I05 y A01/A02/Q01 no quedan cerrados por esta entrega.
 Referencia y límites: [integración de adopción](SOFLIA_ENGINE_CAP029_LEGACY_ADOPTION_INTEGRATION.md).
 
+## Corte I01 — journal y recuperación de adopción en cliente
+
+Preimagen única conserva digest v1 entre servidor/WebCrypto; transporte acotado
+POST/GET valida intención y receipt por owner/clip/operación/request/correlación.
+POST desconocido no se repite; GET NOT_FOUND no autoriza retry ni eliminación.
+Journal metadata-only actor/tenant/draft máximo8192 bytes, verificación del digest,
+persistencia/relectura antes del envío y comparación exacta para ACK/cierre, sin
+overwrite de seguimiento ocupado/corrupto ni source/approval/grants locales.
+
+Coordinador usa lock y reserva nativa existentes. SEND bloquea ocupación de los
+journals de edición/inicialización/snapshot, valida fuente/base y conserva identidad
+antes del POST. RECOVER consulta servidor incluso con ACK local. Verifica hash/
+versión native y pointer/manifest/source/grants en inspector antes de entregar
+estado al host bajo reserva; solo cierra tras aceptación exitosa. Callback recibe
+AbortSignal y debe revalidar owner/estado inmediatamente antes de mutar UI.
+
+Modo histórico explícito verifica receipt y native idéntico al cargado, devuelve
+view=null y no consulta inspector ni reactiva el HTML adoptado. Un resultado
+histórico no afirma campos actuales/undo editorial/paridad ni permiso de escritura.
+
+**12/12** tests nuevos de transporte/journal/coordinador; regresión CAP029/contratos
+**733/733**, cero skipped; CLI offline **5/5**. Compilación de tests, tipado web y
+lint de los ocho módulos/tests afectados aprobados sin warnings; diff check con
+avisos LF/CRLF únicamente. No SQL/flags/templates/deploy ni QA/browser/HTTP/DB reales.
+
+I01 sigue parcial: controles de revisión/diff/confirmación, lectura autorizada de
+candidato, host/global blocking y recovery center visibles por integrar. Los otros
+workflows deben observar ocupación de adopción simétricamente antes de activarla.
+El catálogo UX reservado no se modifica ni se duplica. I02/I03/I04/I05 y A01/A02/Q01
+no se cierran por tests de cliente con fixtures.
+
 ## Orden siguiente
 
-1. Completar revisión/confirmación/journal/recovery cliente de I01 contra backend
-   preparado, sin tomar catálogo UX reservado ni activar instalación/flags.
+1. Conectar el coordinador de I01 con host/global blocking y recovery center;
+   completar revisión/diff/confirmación sobre candidato autorizado, sin tomar
+   catálogo UX reservado ni activar instalación/flags.
 2. Continuar auditoría R21 y consumers I04; resolver compatibilidad I03 con
    publicación histórica explícita revisada y contrato físico CAP027 existente.
 3. Integrar únicamente entregas autorizadas del catálogo reservado.
 4. Preparar gates y checklist completo para QA manual; marcar cierre solo cuando
    todos los requisitos de implementación tengan evidencia suficiente.
+
+## Corte I01 — host nativo y recuperación visible de adopción
+
+Host real conectado al coordinador bajo lock/reserva existentes. Instala payload
+native verificado antes de cerrar el journal; aceptación revalida owner, identidad
+del payload y trabajo incompatible. Recuperación histórica explícita conserva el
+payload cargado sin restaurar fuente ni revision anterior. Cambio de owner/payload
+antes de aceptación conserva el receipt y no aplica datos al editor.
+
+Seguimiento pendiente/corrupto bloquea execute, inicialización y recuperación
+editorial, independientemente del flag de nuevas adopciones. Bypass nativos y
+publicación usan el isBlocked existente. Gate público SEND requiere inspector,
+receipts de adopción, adopción y mutations; no se habilitó configuración.
+
+Recovery center incluye panel draft-level con abort al desmontar, mensajes de
+estado y verificación actual/histórica por GET, sin POST, reenvío, borrado o
+restauración implícita. No depende de mantener seleccionado el clip original.
+
+Seis tests nuevos cubren instalación, remount tras ACK perdido sin segundo POST,
+recovery con nuevos envíos deshabilitados, cierre histórico sin adoptar fuente,
+owner/payload cambiados y bloqueo cruzado ante journal pendiente/corrupto.
+Regresión CAP029/contratos **739/739**, cero skipped; CLI offline **5/5**.
+Compilación de tests, tipado web completo y lint de seis módulos/tests propios
+aprobados, sin warnings en el lint acotado; diff check sin errores (avisos LF/CRLF).
+Estos tests no prueban browser/HTTP/SQL reales.
+
+I01 permanece parcial por lectura autorizada de candidato y revisión/diff/
+confirmación. Auditar coordinación con narrativa y consumers restantes sin tocar
+reservas ajenas unilateralmente. I02/I03/I04/I05 y ambiente/QA siguen abiertos.
+No SQL, templates, flags, deploy ni QA manual realizados.
+
+Siguiente: completar el recorrido visible de candidato aprobado y confirmación,
+reutilizando provenance/repositorio y sin duplicar el catálogo UX reservado.
+
+## Corte I01 — lectura autorizada, diff y confirmación del candidato
+
+Repositorio añade readReviewedCandidate: reautoriza candidato/base/anchor, catálogo
+y grants, regenera piloto/revisión/native sin writes y entrega vista mínima sin
+encodedPilot/package/grants. Sources before/after, SHA, provenance, hash propuesto,
+template/version, evidencia/reviews y campos. Sources máximo250 KiB UTF-8 cada
+uno; JSON4 MiB para cubrir escaping, no payload ilimitado.
+
+GET propio de candidatos con sesión actor/tenant, rol reviewer, same-origin/fetch
+metadata, doble cuota, timeout y no-store. Query estricto solo expectedDocumentHash;
+no approval/source/grants HTTP. Cliente consulta una vez, valida correlación, owner,
+base, candidato y SHA de ambas fuentes, sin retry ni ejecución del HTML recibido.
+
+Inspector conecta panel UUID aprobado→consulta→diff textual→checkbox→SEND coordinado.
+Fuentes React escapadas y delta lineal completo, sin iframe/innerHTML/preview ni
+claim de paridad visual. Unicode conserva pares surrogate. Releer/cambiar ID
+reinicia confirmación; base distinta oculta revisión y no admite confirmación
+obsoleta. Key owner/clip cancela al desmontar sin abortar por la adopción del propio
+payload antes del cierre del journal. No duplica catálogo UX reservado ni permite
+que checkbox registre aprobación del operador.
+
+**10 tests nuevos** de revisión repo/client/HTTP/delta, incluida revocación de
+grants/base/candidato, source/correlación/owner intercambiados, método/origin/query/
+roles/cuotas, abort, UTF-8/extra authority y Unicode. Regresión **749/749**, cero
+skipped; inspector offline **5/5**. Compilación de tests, tipado web completo y
+lint de diez archivos afectados aprobados sin warnings; diff check sin errores
+(avisos LF/CRLF). UI tipada/conectada no significa browser/accessibility QA real.
+
+Este bloque de revisión/confirmación está implementado, pendiente de QA manual.
+CAP029 sigue parcial: auditoría integral I01, geometría efectiva I02, continuidad
+histórica I03, consumers I04 y catálogo externo I05; ambiente A01/A02 aparte.
+No aplicó SQL, instaló templates, activó flags ni desplegó. Cambios concurrentes
+ajenos (incluido BD.sql) preservados, sin atribuirlos a esta entrega.
+
+Siguiente: auditoría concreta de I01/I04 y continuidad histórica I03; no cerrar
+CAP completo por este flujo ni por el incremento del número de tests.
+
+## Corte I03 — inventario histórico autorizado y paginado
+
+`readAuthorizedHtmlSnapshotHistory` y contrato metadata-only preparados. RPC
+service-only propio reautoriza actor/tenant/draft/composition en cada página,
+sin ejecutar el compilador vigente como prerrequisito para listar historia.
+Actor/org deben venir de sesión autenticada del host; no identidad HTTP libre.
+
+Páginas de20 entradas con una fila de lookahead, keyset por revision_number e
+índice UNIQUE(composition_id,revision_number) existente. Watermark inicial excluye
+publicaciones posteriores. No es una transacción persistente entre páginas: si
+se editan/eliminan identidades de historia, reiniciar inventario, no afirmar
+exhaustividad desde un cursor arbitrario. Sin consulta N+1 por revisión.
+
+Incluye todas las revisiones de la composición autorizada, incluso registros
+sin flag snapshot o metadatos HTML inválidos/ausentes. Nunca interpreta ausencia
+de pin como ausencia de legado ni pin metadata como bytes/paridad/compatibilidad.
+Projection no expone source, manifest completo, path Storage, URLs ni grants.
+Respuesta máximo64 KiB y timeout15s; valida orden/IDs únicos, owner, cursor,
+watermark, rango, tamaño y claims de metadata, con errores seguros.
+
+Migración `20261009110000_read_html_editing_snapshot_history.sql` preparada,
+prefijo nuevo verificado sin duplicado local, sin aplicar ni tocar SQL ajeno.
+Reutiliza assert_html_editing_actor y tablas/índices existentes; sin tablas,
+compilación, signing, writes, restore o activación de publicaciones.
+Política de bundle centralizada en módulo browser/server, reexport preserva API.
+
+Siete tests añadidos de paginación/watermark/unknown legacy, owner/cursor,
+substituciones/orden/duplicados, límites/abort/errores y estructura SQL estática.
+Regresión CAP029/contratos **756/756**, cero skipped. No demuestra SQL/locks/
+autorización/concurrencia reales. Compilación de tests,
+tipado web y lint de cinco archivos propios aprobados; inspector offline5/5.
+Runtime reconstruido:391487 bytes y117 inputs fijados, sin despliegue.
+
+I03 sigue parcial: falta wiring ruta/UI de inventario, inspección autorizada de
+archive bytes y publicación/recovery del candidato revisado. No cerrar mediante
+ejecución histórica implícita, metadata o fixtures. I01/I02/I04/I05 y A01/A02/Q01
+siguen con sus pendientes existentes. Mantener reservas de CAP027/catálogo.
+
+## Corte I03 — inventario consultable desde el editor
+
+GET `/drafts/{draftId}/html-snapshot-history?compositionId={compositionId}`;
+cursor opcional requiere ceilingRevision/afterRevision juntos, decimales canónicos
+y rango válido. Actor/org derivados de sesión, rol reviewer, origen/fetch metadata,
+cuotas actor/tenant, timeout, tamaño y correlación; no authority/source/grants HTTP.
+Reutiliza RPC paginado preparado y valida owner/ceiling/order contra request.
+Namespace separado preserva consulta editorial de un clip llamado history.
+
+Seguridad de lecturas compartida con revisión de candidatos mediante factory
+propia: transport/auth/cuotas separados de comandos e integridad de cada dominio.
+No refactor del gateway/append ni cambio de auth general. Misma semántica HTTP
+de revisión y conflictos; mensajes seguros comunes, sin provider/source/log privado.
+
+Cliente bounded hace un GET por acción, valida scope/cursor/correlación y no
+acumula páginas, persiste historia o pagina/reintenta automáticamente. Panel propio
+en recovery center recibe compositionId del editor y se remonta por owner/draft/
+composition; abort al desmontar. Consulta/reinicio/siguiente explícitos, errores
+visibles y20 registros máximo. Fin de lectura no certifica archivos, compatibilidad
+ni QA; registros sin metadata siguen visibles. Sin botones render/restore/activate.
+
+Gates existentes inspector + snapshot recovery (servidor y homólogos públicos);
+sin nuevo flag ficticio, activar configuración, aplicar SQL o despliegue.
+Siguiente requisito real I03: adquisición e inspección autorizada del archive
+histórico, revisión del candidato y publicación/recovery explícitos. I03 y CAP029
+siguen parciales; quedan además I01/I02/I04/I05 y ambiente/QA según expediente.
+
+Validación del wiring: seis casos nuevos de history HTTP/client cubren identidad
+derivada de sesión, GET/no-store, cuotas, cursor canónico/pareado, gates, origin,
+abort, roles, source/payload/owner/correlación/watermark sustituidos y namespace
+sin colisión con clip history. Se añade regresión de conflictos409 versus503
+para revisión de candidatos al compartir el handler. Browser/accesibilidad y
+PostgreSQL/RLS reales siguen pendientes: UI tipada no equivale a QA manual.
+Compilación de tests, tipado web completo y lint acotado de12 archivos propios
+aprobados sin warnings. Inspector offline5/5; diff check sin errores, avisos LF/CRLF.
+Regresión CAP029/contratos **763/763**, cero skipped. No SQL/flags/templates/deploy
+ni QA manual realizados. Inventario visible implementado; continuidad histórica
+integral I03 permanece pendiente de los entregables indicados arriba.
+
+## Corte I03 — inspección de archivos conectada al inventario
+
+El inventario incorpora acción explícita GET de inspección por revisionId. No abre
+preview antiguo, extrae archivos, restaura, recompila ni republica. Cada consulta
+deriva actor/tenant de sesión y reautoriza draft actual/composition/revisión antes
+de firmar Storage y después de inspeccionar; identidad debe permanecer idéntica.
+El draft histórico reclamado también debe pertenecer al tenant/composition.
+Migración propia `20261009120000_read_html_editing_snapshot_archive.sql` preparada
+con prefijo único comprobado; sin aplicar. RPC service-only, sin tablas/índices ni
+writes, exige snapshot/pin registrado y path exacto bajo composition-snapshots.
+Registros sin metadata válida siguen visibles en inventario, no se convierten ni
+descartan como si no existiera legado. Otras familias de archivos requieren
+investigación explícita, no un path arbitrario suministrado por cliente.
+
+Transporte privado comparte lector firmado con media/fonts sin ampliar su schema
+MIME: únicamente este caso de uso admite application/zip. Hash y tamaño exactos
+del ZIP (máximo200 MiB) antes de parsear; hash independiente del bundle, UTF-8
+estricto y scope antes de diagnóstico. Solo diagnóstico/hashes salen a HTTP, no
+source, bundle, URL firmada, Storage path ni permisos de recursos.
+
+Preflight de directorio/local records antes de JSZip: máximo1024 entradas y256 MiB
+de bytes declarados, path1024bytes; registros locales contiguos, nombres/tamaños/
+descriptores coincidentes, sin duplicados/traversal/file-parent/symlink, split/SFX,
+ZIP64, cifrado ni extensiones de nombre ambiguas. STORE/DEFLATE y descriptores
+streamed admitidos. Se descomprime solo bundle (máximo16 MiB declarado y real),
+sin CRC sweep ni inflar recursos no seleccionados. No es un extractor general ni
+certifica integridad de otros miembros. Formatos fuera del perfil fallan
+explícitamente; no se eliminan entradas silenciosamente.
+Layout de registros cotejado con [especificación ZIP PKWARE](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT).
+
+Una lectura concurrente por proceso, sin cola; cuotas separadas tenant10/actor3
+por60s, timeout120s, JSON16 KiB. No promete capacidad100000 usuarios ni límites
+físicos del renderer; despliegue requiere dimensionamiento/medición de memoria
+para archive200MiB más decoder/JSON y respetar timeout del hosting. UI comprueba
+pins contra la página consultada y cancela al desmontar; deriva estado nuevo al
+reinspeccionar, sin persistencia local ni retries. V1/perfil antiguo se marcan
+requiere revisión; perfil vigente NO se promueve a permiso o paridad.
+
+I03 permanece parcial: inspección conectada no cierra preparación/revisión del
+candidato histórico ni su publicación/recovery autorizados. I01/I02/I04 siguen
+parciales, I05 externo/reservado; ambiente y QA manual siguen diferidos. No se
+modifican módulos reservados CAP027, catálogo, append/gateway ni SQL concurrente.
+
+Validación:20 casos nuevos de ZIP/inspección/RPC simulado/HTTP/client, incluyendo
+symlink, identidad y MIME/origen sustituidos, límites, revocación/metadata cambiada,
+cancelación y admisión concurrente sin cola. Regresión CAP029/contratos **783/783**,
+cero skipped; inspector offline **5/5**. Compilación conjunta y tipado web completo
+aprobados; lint acotado de14 archivos afectados sin warnings. Runtime reconstruido
+391487bytes/117inputs, sin desplegar. Diff check sin errores, avisos LF/CRLF.
+Estos tests no prueban PostgreSQL/RLS, Storage autenticado, browser/accesibilidad,
+memoria/CPU/timeout del hosting ni renderer reales. No aplicar SQL, instalar
+templates, activar flags ni declarar CAP029 completo a partir de este corte.
+
+## Corte I03 — candidato histórico revisable y modo no activo
+
+Decisión explícita del usuario: si el snapshot histórico difiere del borrador
+actual, crear una revisión histórica nueva **sin activarla ni cambiar el borrador**.
+La implementación siguiente debe preservar active_revision_id y el documento
+actual; no reutilizar el ACK de publicación normal, que exige activar la revisión.
+Este acuerdo no autoriza ejecutar SQL, registrar aprobaciones reales, subir
+archivos, activar flags o desplegar durante el desarrollo.
+
+GET `/drafts/{draftId}/html-snapshot-history/{revisionId}/review` prepara una vista
+de candidato HTML, no un archivo publicado. Reutiliza adquisición/inspección
+autorizada; callback server-owned recibe bundle privado y la identidad se vuelve
+a autorizar al terminar. Lector histórico existente selecciona documento guardado
+por hash exacto y revisiones seleccionadas por sus pointers, con grants/template
+revocation actuales. No sustituye por último documento/revisión ni usa permisos
+del archive. Revalida antes de entregar la vista; fuente/estado incompatibles con
+compiler vigente fallan, sin reescritura/ejecución del perfil anterior.
+
+Vista acotada128KiB: propietario, identidad original, perfiles original/candidato,
+hash del bundle nuevo, comparaciones por clip y pins antiguos sin equivalente.
+El bundle candidato sigue privado; no se emiten HTML, grants, paths o URL Storage.
+V1 sin pin previo se diferencia de igualdad/diferencia de pins. Ninguna igualdad
+acredita comparación visual, accesibilidad o autorización de republicación.
+Conserva las tres revisiones humanas obligatorias, sin checkbox que las registre.
+
+UI integra acción explícita tras diagnóstico V1/perfil antiguo. Una consulta por
+acción, sin retries/Storage local; valida hashes contra la inspección anterior,
+cancela al desmontar y muestra errores sin instalar estado en el editor.
+Mismos gates inspector/recovery existentes, rol reviewer, same-origin, cuotas
+separadas y admisión compartida de una lectura por proceso. No catálogo duplicado,
+nuevo renderer, acceso HTTP libre de aprobación ni cambios a append/gateway.
+
+Siguiente entregable I03: ensamblar y conservar el archivo candidato exacto para
+aprobación operator-owned; registro transaccional como revisión histórica no activa,
+recibo propio y recuperación sin POST repetido ni cambio de draft/publicación
+actual. Publicación normal exige native latest/CAS y ACK activo: no cambiar esas
+reglas para simular publicación histórica. Preparación de bundle no es aprobación
+del ZIP final, su contrato/recursos ni QA visual. I03 y CAP029 siguen parciales.
+
+Validación del corte: **7/7** casos nuevos de review server/contrato/client/HTTP.
+Incluyen V1/perfil previo, exact saved pointer, source archivado falsificado,
+grants/revisión/native cambiados durante preparación, reautorización final,
+cancelación, owner/correlación/bytes privados sustituidos y ausencia de aprobación
+HTTP. Se refuerza lector compartido: request/identidad/pin privados congelados
+para impedir mutación del callback sobre el contexto que se reautoriza.
+Regresión CAP029/contratos **790/790**, cero skipped; inspector offline **5/5**.
+Compilación conjunta y tipado web completo aprobados; lint de10 archivos propios
+afectados aprobado sin warnings. Runtime391487bytes/117inputs reconstruido sin
+deploy. Diff checks sin errores de whitespace, avisos LF/CRLF únicamente.
+No PostgreSQL/RLS, HTTP autenticado/Storage, browser/accesibilidad ni render/QA
+manual reales. No writes externos, SQL aplicado, flags/templates activados ni
+cambios en áreas reservadas. No atribuir cambios concurrentes del compañero.
+
+### Corte I03 — backend histórico sin activación (2026-10-09)
+
+Decisión explícita del usuario: crear una revisión histórica nueva sin activarla
+ni cambiar el borrador. No relajar latest/CAS ni el ACK activo de publicación normal.
+
+Preparador privado operator-owned ensambla ZIP de perfil vigente con documento
+guardado exacto, recursos/fonts autorizados y marcador de procedencia original;
+revalida el bundle antes de entregar. No aprueba, sube ni renderiza. La aprobación
+independiente identifica el hash del ZIP completo, no solo el bundle; después de
+aprobarlo no reconstruir. Repositorio conserva copia de bytes/receipt antes del
+primer await, verifica marcador y autoridad reutilizando el verificador de
+publicación normal, usa Storage create-only/readback y detecta mutación del puerto.
+El candidato inmutable vincula evidencia, reviewer y digest. No hay aprobación
+HTTP libre ni recepción de fuentes/bytes arbitrarios.
+
+Migración **preparada, no aplicada** `20261009130000_html_historical_publication.sql`:
+tablas privadas/RLS, funciones service-only, reautorización de tenant/actor/reviewer/
+original/recursos, revocación monotónica, locks draft/composición y creación de
+revisión+links+recibo en una transacción. No actualiza composición, borrador ni
+documentos nativos. Recibo vincula actor/operación/candidato/digest y declara
+`activated:false`, `draftChanged:false`. Active/draft registrados describen el
+instante del commit, no estado actual ni autoridad para renderizar. Recuperación
+solo metadata: sin compiler, upload, reactivación ni reintento automático.
+`NOT_FOUND` no autoriza repetir escritura. ACK incierto de staging puede dejar
+archivo huérfano: no borrar, compensar ni reconstruir automáticamente.
+
+Pendiente I03: handoff operator-owned de artefacto/aprobación completa, locator y
+recuperación de staging incierto, HTTP de candidato aprobado y cliente durable
+de registro/recuperación sin adoptar historia como borrador actual. Preparador
+completo requiere pruebas integradas de adquisición/fonts/authority drift y
+límites operativos de memoria/concurrencia; tests aislados del repositorio no
+lo acreditan. PostgreSQL/RLS/locks/concurrencia/rollback, Storage real y QA manual
+siguen pendientes. I03/CAP029 no se cierran por este corte.
+
+Validación del corte: **12/12** casos nuevos; regresión CAP029/contratos **802/802**,
+cero skipped; inspector offline **5/5**. Compilación conjunta, tipado web completo
+y lint de ocho archivos propios afectados aprobados, sin warnings. Diff check
+sin errores de whitespace. Pruebas con fakes y revisión estática SQL, no evidencia
+de PostgreSQL/RLS/Storage/render reales. No se aplicó SQL ni hubo writes externos.
+
+### Corte I03 — locator durable previo y recuperación del staging (2026-10-09)
+
+El repositorio ahora conserva un locator cerrado antes de subir el ZIP: scope,
+tenant/composición/draft, reviewer, candidato, digest del candidato, hash ZIP y
+hash de evidencia. El adaptador por defecto lo registra mediante RPC service-only
+con readback exacto. No contiene fuente, bytes, URLs ni credenciales. El operador
+debe conservar su identidad antes de invocar staging; no reconstruir el artefacto
+ni cambiar sus identificadores para eludir un intento incierto.
+
+Migración **preparada, no aplicada** `20261009140000_read_html_historical_staging.sql`:
+journal privado/RLS, claim inmutable por candidato y ACK `created`. Solo un claim
+nuevo permite continuar al upload; existente, discrepante, cancelado, respuesta
+sustituida o incierta lo impiden. Trigger verifica claim exacto antes del INSERT
+del candidato; no depende únicamente del adaptador TypeScript.
+
+Recovery metadata reautoriza actor/tenant/root scope y vincula owner/candidato/
+digest/ZIP/evidencia. Distingue `NOT_FOUND`, `LOCATOR_RECORDED_STAGING_UNCONFIRMED`
+y `RECORDED` con revocación conservada. No consulta compiler, Storage ni fuentes,
+no valida aprobación actual ni otorga commit authority. Locator sin candidato no
+prueba que el ZIP esté ausente: puede haber un archivo huérfano; ninguno de esos
+estados autoriza automáticamente repetir subida/POST, regenerar o compensar.
+
+Se resuelve el locator/consulta privados del corte anterior, no el handoff del
+operador, la inspección autorizada de posibles huérfanos ni el cliente HTTP durable.
+I03 sigue parcial junto con I01/I02/I04; I05 sigue externo/reservado. No aplicar SQL,
+activar gates ni intervenir áreas del compañero como parte de este avance.
+
+Validación: **20/20** casos dirigidos históricos, incluidos ocho añadidos en este
+corte; regresión CAP029/contratos **810/810**, cero skipped; inspector offline
+**5/5**. Compilación conjunta, tipado web completo y lint de los tres módulos
+TypeScript afectados aprobados. Diff check sin errores. SQL verificado solo
+estáticamente; no PostgreSQL/RLS/concurrencia/Storage/browser ni QA manual reales.
+
+### Corte I03 — HTTP y transporte de registro histórico (2026-10-09)
+
+Ruta propia `drafts/[draftId]/html-historical-publications/[operationId]`:
+POST acepta únicamente compositionId, candidateId y candidateSha256. Actor/tenant
+provienen de sesión activa y rol reviewer; no admite ZIP, HTML, aprobación, grants,
+runtime o identidad del usuario. El repositorio conserva la reautorización y
+transacción histórica no activa; no reutiliza el ACK activo de publicación normal.
+
+GET exige los mismos identificadores y digest de request ligado a tenant/actor/
+draft/composición/operación. Solo consulta el recibo; NOT_FOUND no habilita retry.
+Controles de transporte: origen same-origin (obligatorio en POST), sec-fetch-site,
+query/params cerrados sin duplicados, body incremental 1KiB/5s, URL 2KiB, cuotas
+separadas org/actor por método, respuesta acotada, no-store, timeout y errores
+seguros con correlation ID y retryable:false. Rechaza ACK activado, draft cambiado,
+owner/request/digest sustituidos o payload adicional. No hay API de aprobación.
+
+Gates existentes sin activarlos: inspector+snapshot recovery para GET; además
+snapshot publication+mutations para POST. GET sobrevive a deshabilitar escrituras.
+Aplicación SQL/Storage/flags sigue procedimiento autorizado, no este desarrollo.
+
+Cliente usa preimage compartido/browser SHA-256, una solicitud, same-origin,
+redirect:error/no-store, JSON acotado y validación de correlación/recibo. No instala
+native/publicación, no realiza upload ni retries. Su SEND es un puerto de transporte:
+**no conectarlo a UI antes del journal durable**, que sigue pendiente junto con
+lectura/proyección de candidato aprobado, confirmación explícita, coordinator y
+panel de recuperación. El registro operator-owned/locator privado anterior no
+sustituye el journal del navegador para la operación de registro final.
+
+Once casos nuevos cubren gates, identidad/rol/cuotas, origen/query/body/inyección,
+límites/ACK privado, cancelación, NOT_FOUND, digest browser-servidor y recorrido
+cliente→handler con autoridades simuladas. No es HTTP autenticado real ni prueba
+de Postgres/RLS/Storage/browser/render. I03/CAP029 siguen parciales.
+
+Resultado del corte: **11/11** nuevos casos de transporte; regresión CAP029/
+contratos **821/821**, cero skipped. Compilación conjunta y tipado web completo
+aprobados; lint de cinco archivos propios nuevos aprobado sin warnings. Checks de
+whitespace sin errores (Git avisa conversión LF/CRLF). No se reconstruyó runtime:
+no se modificaron sus fuentes en este corte. No writes externos ni SQL aplicado.
+
+### Corte I03 — candidato autorizado, journal y coordinador (2026-10-09)
+
+GET propio `drafts/[draftId]/html-historical-candidates/[candidateId]` con
+compositionId/candidateSha256: sesión/tenant/rol reviewer, origen, cuotas separadas,
+gates de lectura existentes y no-store. Repositorio lee candidato aprobado privado,
+verifica digest/propietario/documento exacto/contrato/bundle/autoridad vigente y
+repite RPC de autorización al terminar. Proyección cerrada: identidad, procedencia,
+hash ZIP, evidencia/reviewer y revisiones completadas. No HTML/bundle, recursos,
+path Storage, URLs o bytes. Es consulta de aprobación operator-owned registrada,
+no una API para aprobar ni autoridad permanente para commit.
+
+Journal browser propio guarda comando/digest/timestamp antes del único POST, con
+readback, límite8KiB y separación actor/tenant/composición/draft. Rechaza corrupción,
+scope/digest cambiado, storage inaccesible, sustitución durante awaits y overwrite.
+ACK solo se registra si coincide con operación/request/digest y semántica inactiva.
+No expiración ni borrado automático. Metadata local no es autorización del servidor.
+
+Coordinador usa lock cooperativo existente del draft, sesión/scope fence y confirmación
+explícita `confirmedHistoricalOnly:true`. SEND reconsulta candidato y exige misma
+vista aprobada, crea operación, guarda journal y hace un POST. Además liga ACK al
+ZIP/original mostrado; repositorio también valida esos pins al commit fresco.
+Ante respuesta incierta conserva journal y bloquea otro SEND. RECOVER siempre GET,
+incluso con ACK cacheado; NOT_FOUND conserva intento sin retry/cleanup. No recompila
+fuente en recovery, no instala native/undo/publicación ni reserva edición nativa:
+esta transacción solo registra historia no activa. El lock no reemplaza SQL/RLS.
+
+Pendiente inmediato: panel de consulta/confirmación/recuperación y wiring al host,
+cierre histórico explícito del journal mediante recibo reautorizado, handoff del
+operador y auditoría del preparador completo. No declarar I03 terminado por estos
+puertos sin conectarlos al producto. I01/I02/I04 y entrega externa I05 permanecen
+pendientes; flags/migraciones y QA real no se ejecutaron.
+
+Validación del corte: **16** casos añadidos (repositorio/candidato/journal/coordinador),
+regresión CAP029/contratos **837/837**, cero skipped; inspector offline **5/5**.
+Compilación conjunta y tipado web completo aprobados; lint de16 archivos propios
+históricos aprobado sin warnings. Checks de whitespace sin errores (avisos LF/CRLF).
+Sin rebuild/deploy de runtime ni migraciones aplicadas/writes externos. Fakes de
+HTTP/sesión/Storage/lock y SQL estático no prueban browser/RLS/concurrencia reales.
+
+### Corte I03 — panel integrado y cierre histórico explícito (2026-10-09)
+
+`CompositionHtmlHistoricalPublicationPanel` conectado en el recovery center del
+draft ya montado por NativeCompositionPreview. Key actor/tenant/draft/composición,
+fence de stores de sesión/organización, cancelación al desmontar y storage events
+del journal propio. No depende del clip seleccionado ni de una página del inventario.
+Un intento pendiente permanece visible aunque se deshabiliten escrituras/lecturas;
+storage inválido bloquea SEND. Web Locks ausente bloquea coordinación con explicación.
+
+Consulta ID/SHA del candidato entregados por el operador y muestra original,
+documento histórico, ZIP/bundle fijados, reviewer/evidencia y alcance de aprobación.
+Sin aprobación browser, fuentes, uploads ni activación. Confirmación explícita antes
+del SEND; coordinator reautoriza, persiste journal y registra una sola vez. Se
+reinicia confirmación al cambiar entrada, recibir storage event o completar acción.
+Errores mantienen seguimiento y no proponen reintento automático.
+
+RECOVER consulta GET incluso con ACK local. CLOSE_HISTORY requiere confirmación
+separada y GET nuevo; verifica operación/recibo, owner fence justo antes de eliminar,
+estado exacto/readback y borra solo journal local. No borra fuente, revisión,
+recibo backend ni cambia documento/undo/publicación activa. Resultado conserva
+operación/revisión/hash ZIP visibles y declara semántica del instante del commit.
+
+Migración preparada `20261009130000_html_historical_publication.sql` refuerza un solo
+commit por candidato mediante UNIQUE(org,candidate), además del hash ZIP único;
+readCandidate rechaza candidato ya registrado. Recuperación de operación existente
+continúa por su recibo. No se aplicó la migración ni se activaron flags.
+
+Quedan resueltos panel/wiring y cierre local explícito del corte anterior. I03
+todavía requiere handoff operator-owned del ZIP/aprobación, auditoría/pruebas del
+preparador completo y escenarios de datos históricos no admitidos documentados;
+no confundir esos pendientes de implementación con QA manual. I01/I02/I04 e I05
+externo/reservado siguen abiertos. No nuevos módulos QA/renderer ni catálogo ajeno.
+
+Validación: **5** casos nuevos de cierre/coordinación/wiring; regresión CAP029/
+contratos **842/842**, cero skipped; inspector **5/5**. Compilación conjunta y tipado
+web completo aprobados; lint de siete archivos propios afectados sin warnings.
+Checks de whitespace sin errores, avisos LF/CRLF. UI validada por tipado y wiring
+estructural, **no interacción React/browser ni accesibilidad observada**. No se
+añadieron dependencias de test para simular QA; PostgreSQL/RLS/concurrencia y
+Storage reales siguen sin ejecutar. Sin rebuild/deploy de runtime ni writes externos.
+
+### Corte I03 — preparador histórico completo y autoridad final (2026-10-09)
+
+Auditoría del preparador privado: captura identidad/configuración y contratos de
+runtime antes de esperar; deadline cooperativo de120s; una preparación por proceso
+compartida entre factories, sin cola y con liberación en cancelación/error. Esto no
+es un límite duro de CPU/memoria, un coordinador distribuido ni controla los artefactos
+retenidos por el operador después de retornar.
+
+Después de ensamblar y reautorizar la revisión histórica, refresca también los
+medios nativos no HTML y las fuentes uploaded/READY de la organización. La revisión
+de fuentes es metadata-only: exige misma familia/hash/tamaño/MIME del manifest
+preparado, sin segunda descarga. Los bytes iniciales siguen ligados a hash y MIME.
+Son lecturas secuenciales, no una transacción de permisos; staging/commit mantienen
+sus revalidaciones y SQL bajo locks. No cambiar fuente, borrador o revisión activa.
+
+Nueve casos de integración recorren ZIP antiguo V1/perfil anterior, documento exacto,
+medios/fuentes y ensamblador real. Incluyen captura frente a mutaciones durante awaits,
+admisión/cancelación, ZIP/origen inválidos, pérdida de grants/medios, corrupción/MIME
+de fuentes y revocación posterior al ensamblado. Los nueve pasan. Se corrigió un ID
+inválido del fixture, sin relajar validaciones del producto. Fuentes y medios son
+sintéticos: no prueban decodificación, pintura, render ni permisos reales.
+
+Siguiente implementación obligatoria de I03: handoff durable operator-owned de los
+bytes exactos para revisión/aprobación independiente y staging sin reconstrucción.
+El artefacto privado en memoria y sus tests no sustituyen ese flujo. I01/I02/I04 e
+I05 externo/reservado siguen abiertos; este corte no habilita aceptación final ni QA.
+
+Validación del corte: regresión CAP029/contratos **851/851**, cero skipped; inspector
+offline **5/5**. Compilación conjunta y tipado web completo aprobados; lint de cinco
+archivos de implementación/tests sin warnings (fixture revalidado tras corregir ID).
+Whitespace sin errores, avisos LF/CRLF. Sin rebuild del runtime, migraciones aplicadas,
+flags, aprobaciones, descargas o writes reales en Storage. HTTP autenticado, browser,
+PostgreSQL/RLS/concurrencia/rollback y render reales no ejecutados.
+
+### Corte I03 — handoff privado persistido y workflow de operador (2026-10-09)
+
+`composition-html-editing-historical-handoff.server.ts` conserva ZIP exacto, metadata
+y receipt create-only en un directorio privado del host. Archivos sincronizados y
+readback; receipt al final, sin overwrite/cleanup/reanudación de estados parciales.
+Locator liga candidate/tenant/composición/draft/SHA ZIP/SHA metadata y sello HMAC
+con clave de32bytes host-owned separada del expediente. El sello es integridad,
+no aprobación. Reads acotados, archivos regulares sin hardlinks/symlinks, rutas
+UUID/fijas bajo raíz privada resuelta. No ZIP extraction ni ejecución de contenido.
+
+`composition-html-editing-historical-operator.server.ts` conecta prepare→handoff
+y, en acción independiente, reload→staging con aprobación del ZIP completo. Staging
+no llama al preparador ni reconstruye bytes; conserva verificación actual y journal
+durable backend antes de writes. Recuperación de staging usa el puerto existente,
+sin retry. Configuración/puertos capturados y aprobación/locator copiados antes
+de esperar. El handoff puede leerse tras reiniciar con la misma clave del host.
+
+[Runbook privado](SOFLIA_ENGINE_CAP029_HISTORICAL_OPERATOR_HANDOFF.md) documenta
+configuración, ACL Windows, revisión independiente, aprobación, separación de
+locators y retención/fallos. No certifica resistencia a corte eléctrico ni carreras
+de escritores privilegiados. Falta entrypoint operativo privado con configuración,
+identidad/runtime autenticados del ambiente; **I03 permanece parcial**. No API de
+aprobación pública, flags, instalación de claves ni writes remotos en este corte.
+
+Validación: seis casos nuevos de filesystem/workflow (reinicio exacto, alteración,
+clave/scope, receipt parcial, hardlinks, cancelación y no recompilación en staging),
+regresión CAP029/contratos **857/857**, cero skipped. Compilación conjunta, tipado
+web completo y lint de tres archivos propios aprobados sin warnings. El sandbox
+deniega realpath incluso dentro del workspace (EPERM): tests filesystem/regresión
+ejecutados con escalación aprobada, solo fixtures/temporales locales, sin servicios
+externos. El inspector offline conserva el resultado previo5/5; no se modificó.
+Fakes de staging no prueban Storage/RLS/SQL ni aprobación real. No QA manual/browser,
+deploy, runtime rebuild, aplicación de migraciones o instalación de secretos.
+
+### Corte I03 — entrypoint privado autenticado (2026-10-09)
+
+CLI `tools/html-preview/historical-operator.mjs`, deshabilitado por defecto y sin
+dotenv/imports de código arbitrario. JSON de comando por path absoluto y SHA,
+UTF8/tamaño/handle controlados. PREPARE/STAGE/READ_STAGING separados, sin COMMIT,
+activación, writes de SQL/config ni retry automático. Comando estricto no admite
+actor/tenant/runtime/reviewer/credenciales del usuario. Principal HS256 Auth Bridge
+vigente con sub/exp obligatorios y organización declarada; perfil reviewer actual
+consultado en DB. RPC conserva comprobación de membresía/autoridad bajo sus locks.
+
+PREPARE toma runtime desde JSON host-owned fijado por path/SHA de configuración.
+STAGE instala reviewer autenticado y reutiliza handoff sellado sin preparar otra
+vez. Emite locator de staging antes del intento de claim durable backend para
+reconciliar ACK incierto; stdout no sustituye ese journal. READ_STAGING exige mismo
+reviewer/tenant y no prepara/sube/compila. Errores seguros sin tokens/path/stack,
+exit1 y retryable:false. Runbook actualizado con configuración y comandos reales.
+
+Entrypoint implementado, **no instalado/configurado ni ejecutado con credenciales
+reales**. I03 sigue abierto para auditoría final de cobertura de datos históricos
+no admitidos; no seguir contabilizando CLI/handoff como implementación faltante.
+I01/I02/I04/I05 y A01/A02/Q01 no cambian de estado por este entrypoint.
+
+Validación: cuatro casos nuevos del command boundary (identidad/runtime del host,
+reviewer autenticado, rechazo de inyección/scope y recovery/auth/abort). CLI **3/3**:
+apagado por defecto, JSON fijado acotado y bootstrap completo con JWT realmente
+firmado/SDK real y respuestas fetch simuladas, sin red. Se cubren token inválido y
+perfil actual insuficiente. Regresión CAP029/contratos **861/861**, cero skipped;
+compilación conjunta, tipado web completo y lint aprobados. Fixture de recovery
+corregido para usar locator de staging sin metadataSha256 local; no relajar schemas.
+Pruebas filesystem de la regresión con escalación aprobada por restricción realpath
+del sandbox. No prueba HTTP autenticado real, PostgreSQL/RLS/Storage, ACL, aprobación
+independiente, navegador ni render. Sin cambios en runtime ni writes externos.
+
+### Corte I03 — auditoría de cobertura histórica y orientación de bloqueos (2026-10-09)
+
+[Matriz de continuidad](SOFLIA_ENGINE_CAP029_HISTORICAL_CONTINUITY_AUDIT.md) distingue
+metadata ausente, formato/integridad/scope, fuente sustituida, perfiles V1/previos,
+perfil vigente, revocación, borrador distinto y ACK incierto. Nuevo módulo puro de
+orientación conectado al inventario e inspección indica salidas explícitas sin
+restaurar, corregir pins, reescribir fuente, aprobar ni instalar runtimes. Error de
+preparación ya no atribuye todos los rechazos únicamente a permisos.
+
+Hallazgo pendiente real: fuente histórica auténtica que el compilador actual no
+admite. El flujo seguro bloquea, pero eso **no completa su continuidad**. Decisión
+solicitada al usuario: reconstrucción como contenido nuevo explícitamente revisado
+o ejecutor histórico versionado (este último requiere coordinación CAP027 reservado).
+No se implementa una alternativa de menor fidelidad en silencio. Mientras se decide,
+I01/I02/I04 tienen trabajo independiente; no declarar todo el objetivo bloqueado.
+
+Validación: tres casos nuevos para todos los estados de metadata/diagnóstico y
+distinción identidad/contenido; regresión CAP029/contratos **864/864**, cero skipped.
+Compilación conjunta y tipado web completo aprobados; lint de módulos/paneles propios
+sin warnings. UI por tipado/wiring, no interacción browser. CLI3/3 e inspector5/5
+son resultados previos, no reejecutados aquí; no se modificaron. Sin writes externos,
+migraciones aplicadas, flags, renderer/ejecutor histórico ni deploy.
+
+### Decisión I03 — reconstrucción explícita de contenido no admitido (2026-10-09)
+
+El usuario eligió reconstrucción como **contenido nuevo**, con revisión independiente.
+Preservar original y borrador actual; no llamarla reproducción histórica exacta ni
+reutilizar aprobación del ZIP antiguo para una nueva fuente. Se actualizó la auditoría
+de continuidad. Implementación/integración del flujo derivado sigue pendiente; no
+instalar ejecutor histórico ni editar CAP027 reservado por esta decisión.
+
+### Corte I04 — canal del preview ligado al documento cargado (2026-10-09)
+
+Hallazgo: NativeCompositionPreview elegía canal HTML con referencias del payload
+actual, pero URL/hash pertenecían al documento cargado previamente. Durante cambios
+optimistas, propuestas o edición guardada pendiente de recarga podía cambiar el canal
+sin cambiar el hash del preview. Fallaba de forma segura en servidor, pero perdía el
+contexto mostrado y no podía tratarse como integración correcta.
+
+Captura propia `captureHtmlEditingPreviewSource` fija hash y flag HTML por valor al
+adoptar/restaurar documento, renovar medios y recargar preview. Selector puro exige
+identidad exacta: si falta o no corresponde al hash, no hay URL/fallback genérico.
+No se cambia esa base compilada después de un patch runtime con ACK; el iframe sigue
+describiendo su base original. Baseline ya conserva hash/flag/revision independientes.
+No cambios en gateway, agentes/presets, narrativa, compiler/renderer ni autoridad.
+
+I04 sigue abierto: previews de propuestas/presets no pasan contexto HTML exacto y
+requieren contrato coordinado, no copiar contexto del borrador para simular soporte.
+Esta corrección no implementa esos consumers ni prueba interacción React/browser.
+
+Validación: caso nuevo captura canal por valor, cambio posterior de referencias en
+ambos sentidos y bloqueo por hash distinto/identidad ausente. Regresión CAP029/
+contratos **865/865**, cero skipped; compilación conjunta y tipado web completo
+aprobados. Lint de selector/test sin warnings; NativeCompositionPreview reporta
+**52 warnings y cero errores** de hooks/refs del componente compartido (no se hizo
+refactor ajeno al bloque HTML). Whitespace sin errores, avisos LF/CRLF. Regresión
+filesystem con escalación aprobada por realpath; sin red ni writes externos. No
+interacción React/browser, QA formal, SQL aplicado, deploy ni cambios en runtime.
+
+### Corte I03 — preparación inicial de reconstrucción nueva (2026-10-09)
+
+Restricciones reales inspeccionadas: UNIQUE(composition_id) en drafts e índice
+parcial de composición activa por componente. getOrCreate/initialize actuales no
+son una operación de fork y pueden recuperar el original/reconciliar sus fuentes.
+[Ruta explícita](SOFLIA_ENGINE_CAP029_RECONSTRUCTION_IMPLEMENTATION.md) documenta
+creación aislada, no sustitución del componente/borrador ni archivado compensatorio.
+
+Módulo propio `composition-html-editing-historical-reconstruction.server.ts` obtiene
+procedencia reautorizada sin compilar native histórico, heredar grants ni exportar
+fuentes. Preparador puro exige scope nuevo, base/hash exactos sin pointers legados,
+plantilla instalada tenant/source-bound y admisión/grants actuales. Reutiliza bootstrap
+y binding existentes; devuelve revision1 y candidato no aprobado ni persistido.
+
+Alcance incremental actual: una diapositiva autocontenida, sin vecinos/styles globales
+no verificados. **No es el alcance final ni cierre de I03**. Multipágina/recursos,
+handoff/aprobación nuevos, transacción create-only, recuperación y uso integrado aún
+deben implementarse. Preservar restricción explícita mientras tanto, no usarla para
+declarar cumplida una capacidad más pequeña que la solicitada.
+
+Validación: cuatro casos dirigidos nuevos pasan; regresión CAP029/contratos
+**869/869**, cero skipped. Compilación conjunta, tipado web completo y lint de los
+dos módulos propios nuevos aprobados sin warnings. Tests de origen/autoridad son
+fixtures, no pruebas de datos históricos reales ni creación en DB/Storage. Regresión
+filesystem con escalación aprobada por realpath. Sin writes externos, migración nueva
+o aplicada, instalación de templates/flags, renderer/runtime o QA manual.
+
+### Corte I03 — preparación multipágina de contenido reconstruido (2026-10-09)
+
+El preparador propio reemplaza la selección única por un conjunto explícito de
+plantillas por clip. Cobertura exacta, sourceSHA/version/tenant instalados y admisión
+actual son obligatorios en cada página. Genera revisiones iniciales independientes,
+enlaza todos los pointers y revalida el conjunto contra el hash nativo final usando
+el compilador existente. IDs duplicados entre fragmentos y aliases de imágenes no
+locales se rechazan; no renombra IDs para esconder conflictos.
+
+La base original y la procedencia no mutan. Ordenar las selecciones de otra forma
+conserva el hash resultante. Nuevos tests cubren tres páginas, selección incompleta/
+extra/duplicada, plantilla/version/source incorrectos, clip nativo no admitido,
+colisión de IDs, grants revocados y aliases remotos/incorrectos; una fuente instalada
+con script también se rechaza bajo las reglas actuales.
+
+**I03 sigue parcial**: no hay todavía paquete completo reconstruido, estilos globales,
+adquisición de fonts/media nuevos, handoff/aprobación propios, creación transaccional,
+recuperación ni UI del contenido nuevo. Este corte verifica fragmentos, no wrappers
+finales ni fidelidad visual. No se modificaron módulos reservados, DB/Storage,
+config/flags, catálogo instalado o runtime. Véase la ruta de reconstrucción actualizada.
+
+Validación ejecutada: **874/874** CAP029/contratos, cero fallos/skipped; nueve casos
+dirigidos de reconstrucción incluidos. Compilación conjunta y tipado web completo
+aprobados; lint de módulo/test sin errores ni warnings. Regresión filesystem local
+con escalación por realpath, sin servicios externos. Whitespace sin errores (avisos
+LF/CRLF). QA manual, SQL/RLS/concurrencia reales y comparación visual no ejecutados.
+
+### Corte I03 — paquete reconstruido y adquisición actual de imágenes (2026-10-09)
+
+El ensamblador HTML propio separa ahora adquisición autorizada y ensamblaje. La
+ruta de snapshots guardados conserva lector exacto + refresh; una ruta privada de
+reconstrucción produce el paquete completo de contenido nuevo sin crear primero un
+draft provisional. Reutiliza preview/render, bundle, contrato, manifests, límites y
+verificador existentes, sin editar CAP027/renderer ni introducir otro motor.
+
+El adaptador concreto de diapositivas consulta enlaces actuales del draft origen y
+metadata de imágenes del tenant usando el lector compartido extraído de snapshot-
+images. Adquiere únicamente referencias efectivas; un alias mencionado como texto
+no es un grant. No utiliza grants del ZIP antiguo. Relectura de origen/catálogo/
+recursos tras compilar, conjuntos exactos e identidad fijada impiden emitir bytes
+con autoridad revocada o recursos sustituidos. Puertos son host-only, no HTTP.
+
+Se capturan configuración/runtime, identidad, contenido y fuentes antes de awaits;
+las fuentes deben ser Uint8Array reales, no arrays coaccionados. Nueva ruta cuenta
+con timeout cooperativo/admisión y conserva semántica de contenido no aprobado,
+creado ni publicado. Procedencia aún debe ligarse al handoff/aprobación propios.
+
+**I03 sigue parcial**: estilos globales, selección de recursos externos al draft
+origen, fonts/media nativos, handoff/aprobación propios, transacción create-only,
+recuperación y UI del nuevo contenido pendientes. No se descargan/decodifican imágenes
+en este paso ni se demuestra paridad visual. I01/I02/I04/I05 y reservas no se cierran.
+
+Validación: siete casos nuevos de la ruta completa/adaptador y dos regresiones
+adicionales del ensamblador guardado. **883/883** CAP029/contratos, cero fallos/skipped;
+compilación conjunta y tipado web completo aprobados. Ensamblador histórico previo
+conservó sus 18 casos dirigidos; fixtures de múltiples páginas pasan el verificador
+completo de referencia. Escalación filesystem local por realpath. Sin servicios
+externos, DB/Storage writes, instalación/config/flags, QA manual o deploy.
+
+### Corte I03 — medios, texto/captions y fuentes nativas reconstruidos (2026-10-09)
+
+El preparador separa cobertura de diapositivas de los clips nativos. Módulo propio
+valida conjunto exacto de medios/fonts, MIME por kind y colisiones de UUID entre
+tablas. Capas nativas mantienen sus contratos existentes; no bypass por flag ni
+recursos sin identidad/grant actual. El candidato contiene pointers HTML nuevos y
+metadata nativa fijada para revisión independiente.
+
+Adaptador de composición reutiliza los lectores actuales de medios del draft origen
+y fuentes READY del tenant, sin compilar contenido histórico. Configuración/origen/
+documento/bytes capturados por valor. Fonts se descargan y verifican una vez;
+refresh reautoriza metadata sobre los mismos bytes, sin caché global. Relectura
+verifica también que el conjunto nativo no cambió durante el ensamblaje.
+
+Paquete completo de tres slides + video + texto + captions con una fuente pasa el
+verificador compartido y conserva fuente embebida/contratos nativos en preview y
+render. Unlink del video se prueba sin revocar la imagen para no simular cobertura
+del lector nativo mediante un fallo anterior del lector de imágenes. Contrato puro
+cubre imagen/audio/branding/SFX y rechazo por set/MIME/UUID ambiguo.
+
+Estilos globales siguen pendientes: fragmentos aislados no consideran su efecto en
+geometría/cascada. Requiere integración CSS, no QA solamente ni permitir a ciegas
+una hoja global. Selección externa de recursos, handoff/aprobación independientes,
+create-only transaccional, recuperación y UI siguen pendientes. I03 y CAP029 activos,
+sin cierre por conteo de tests; no cambios en módulos reservados o DB/Storage.
+
+Validación: **888/888** CAP029/contratos, cero fallos/skipped; compilación conjunta,
+tipado web completo y lint de los módulos/tests modificados sin errores ni warnings.
+12 casos dirigidos de preparación +9 del paquete reconstruido. Font/media sintéticos,
+sin decode/render, paridad visual, permisos SQL/RLS reales, QA manual o deploy.
+
+### Corte I03 — handoff propio y enlace de revisión de reconstrucción (2026-10-09)
+
+Nuevo handoff conserva bytes/candidato/procedencia para reinicio, con metadata
+estricta, pins y HMAC de dominio distinto del histórico. Se comparte solo el mecanismo
+de archivos privados: UUID/nombres fijos, root resuelto, archivos regulares/nlink1,
+NOFOLLOW donde disponible, writes create-only/fsync/readback y recibo al final.
+No overwrite, cleanup ni adopción de parciales. Contrato de reconstrucción centraliza
+origen/destino, límites y revisiones requeridas, sin duplicar schemas privados.
+
+La revisión independiente se liga al candidateId, ZIP completo, metadata exacta de
+origen/destino y reviewer autenticado por el host. Aprobación histórica no aceptada.
+Carga y revisión no recompilan ni ejecutan, no reautorizan grants ni realizan writes
+externos; el resultado distingue explícitamente enlace de revisión de autoridad o
+creación. [Runbook propio](SOFLIA_ENGINE_CAP029_RECONSTRUCTION_HANDOFF.md) describe
+ACL/clave externa/retención, límites y semántica; no instala CLI/HTTP o configuración.
+
+Pendientes: persistencia de candidato/revisión, journal y transacción create-only,
+recuperación, consumidores CLI/UI, estilos globales y selección de recursos fuera
+del origen. I03 parcial y objetivo CAP029 activo. No se sustituyeron original/draft,
+componente, tablas/recibos de publicación histórica ni módulos reservados.
+
+Validación: seis casos nuevos de handoff/revisión +seis históricos dirigidos pasan;
+regresión **894/894** CAP029/contratos, cero fallos/skipped; compilación conjunta,
+tipado web completo y lint de módulos/tests modificados sin errores ni warnings.
+CLI privado **3/3** e inspector offline **5/5** repetidos y aprobados tras el refactor.
+Filesystem temporal con escalación realpath, sin servicios externos ni DB/Storage
+writes. ACL de ambiente, SQL/RLS/concurrencia, aprobación humana, render y QA manual
+no probados. No declarar CAP completo a partir de esta evidencia local.
+
+### Corte I03 — registro privado de revisión reconstruida (2026-10-09)
+
+`HtmlReconstructionReviewRepository` verifica handoff/reviewer y registra una
+atestación exacta de origen/destino, candidateId, ZIP, metadata, evidencia y las
+tres revisiones independientes. RPC de consulta reconcilia una respuesta incierta
+sin cargar archivos, compilar, subir Storage ni volver a escribir. Retirada explícita
+conserva identidad y no puede revertirse registrando de nuevo el mismo candidato.
+Schemas strict, captura antes de awaits, timeout/cancelación y respuestas exactas;
+errores de proveedor no salen como detalles internos. No crea ni activa contenido.
+
+Migración propia `20261009150000_html_reconstruction_review.sql` preparada, sin
+aplicar; prefijo libre comprobado. Tabla privada con RLS y acceso directo revocado
+incluso a service_role; RPC solo service_role. Revalida rol/membership/origen exacto
+mediante lector de archivo histórico, sin invocar el compilador de native antiguo.
+Conflictos de identidad/evidencia/reviewer no sobrescriben la revisión anterior.
+El host debe preservar el record/aprobación antes de escribir; journal operativo,
+candidato completo y transacción create-only aún pendientes. No reutiliza las
+tablas o semántica de publicación histórica ni modifica componentes reservados.
+
+Validación: **9/9** casos nuevos y regresión ampliada **903/903**, cero fallos/skipped.
+Compilación de tests, tipado web completo y lint dirigido sin errores/warnings.
+SQL inspeccionado estáticamente, no instalado/ejecutado: estos tests no acreditan
+RLS/locks/concurrencia/rollback reales, revisión humana, Storage ni browser/render.
+CLI/inspector no repetidos en este corte; evidencia anterior permanece identificada.
+
+Por solicitud del usuario se incorpora [rúbrica propia de implementación necesaria](SOFLIA_ENGINE_CAP029_IMPLEMENTATION_METRIC.md): **≈70%**, primera línea base con
+pesos explícitos, margen orientativo y QA/ambiente separados. Los nueve tests nuevos
+no añaden porcentaje por sí solos; no se cerró aún el entregable de creación nueva.
+No se añaden mejoras opcionales. I01–I04 parciales; I05 reservado/externo;
+CAP029 y su objetivo siguen activos, sin afirmar que solo falte QA.
+
+### Corte I03 — candidato y creación aislada con journal concreto (2026-10-10)
+
+Backend completo preparado de staging/candidato/create-only/receipt, sin instalar
+CLI/HTTP o configurar ambiente. Descriptor canónico resistente a reordenamiento de
+keys JSONB; registro de conformidad reutiliza la misma función pura del snapshot,
+sin otro compilador ni regenerar el ZIP aprobado. Verificador concreto relee origen,
+catálogo actual y recursos/fonts actuales, sin compilar HTML histórico o descargar
+otra vez fuentes. SQL repite autoridad de DB bajo locks, no inventa catálogo SQL.
+
+Staging conserva identidad en journal privado concreto antes del claim remoto y
+exige claim nuevo antes del único upload create-only con readback. Reautoriza antes
+de registrar candidato inmutable. Creación relee receipt primero, exige candidato
+durable y preserva intento local antes del único RPC; recuperación es lectura sin
+otro create/upload. Una admisión de staging por proceso, sin cola; fallos mantienen
+parciales y nunca los adoptan/limpian automáticamente. Journal usa HMAC propio por
+operación/fase y root privado/clave externos, UUID/nombres fijos/fsync/readback.
+
+Migraciones propias `20261010100000_html_reconstruction_candidates.sql` y
+`20261010110000_create_html_reconstruction.sql` preparadas, prefijos libres revisados,
+sin aplicar. Creación en una transacción: composición aislada sin componente ni
+active_revision, draft nuevo, documento final versión1, revisiones HTML iniciales,
+recursos/procedencia/audit y receipt. INSERTs sin UPSERT/adopción de UUIDs existentes;
+no UPDATE/DELETE del original. El lector SQL exacto comprueba únicamente el NUEVO
+documento/pointers/links antes del receipt; no ejecuta el compilador histórico.
+Manifest de revisión inicial se conserva exacto para permitir reuse en publicación
+explícita posterior; procedencia está en source_manifest y auditoría privada ligada.
+
+Validación: **20/20** tests nuevos y regresión ampliada **923/923**, cero fallos/skipped.
+CLI histórico **3/3** e inspector **5/5** repetidos; compilación conjunta, tipado web
+completo y lint dirigido aprobados sin warnings/errores. Realpath/filesystem temporal
+real con escalación; DB/Storage son fixtures. SQL revisado estáticamente: no acredita
+RLS/concurrencia/rollback/locks en PostgreSQL real, aprobación humana, decode/render,
+ACL del ambiente o QA manual. No cambios en CAP027/025/022/catálogo reservado.
+
+Rúbrica propia: **≈75%**, +5 respecto al corte anterior por el backend preparado
+completo, no por volumen de tests. I03 sigue parcial por CLI/UI/apertura y admisión
+de estilos/recursos adicionales; I01/I02/I04 e I05 externo también siguen abiertos.
+QA/instalación del ambiente separados; objetivo CAP029 activo. Próximo trabajo
+necesario: integrar el recorrido operativo de revisión/creación/apertura sin ampliar
+funciones del editor ni añadir recomendaciones opcionales.
+
+### Corte I03 — operador reconstruido conectado (2026-10-10)
+
+Implementados workflow, command boundary y factory concretos, más
+`tools/html-preview/reconstruction-operator.mjs`. Acciones independientes de
+preparación, revisión, retirada, staging y creación; consultas de recuperación
+por candidateId/operationId sin retry, compiler ni nueva subida. Actor/tenant por
+JWT Auth Bridge y rol actual; catálogo/runtime/configuración solo host-owned.
+
+Nuevo journal de review intent preserva identidad/evidencia exactas antes del RPC
+de revisión; fallo/readback/parcial impiden escritura. HMAC propio y archivos
+create-only; tres raíces privadas preexistentes físicamente disjuntas. Factory
+conecta adaptadores ya preparados de recursos/autoridad/review/store/repository,
+sin endpoint público ni archivos de adaptadores ejecutables elegidos por request.
+Confirmación explícita CREATE conserva componenteNULL y revisión no activa;
+el original no se reconcilia, modifica ni sustituye. Recovery no necesita catálogo,
+runtime, ZIP o HTML del candidato. Configuración de catálogo es snapshot del host
+por invocación, no un registro SQL linealizable; mantener procedimiento de revocación.
+
+Ocho casos nuevos de workflow/journal aprobados. Regresión **931/931**, sin fallos
+ni skipped; CLI reconstrucción **3/3** y regresión CLI histórico **3/3**. Tipado
+completo y lint dirigidos aprobados. Windows sandbox bloqueó realpath; repetición
+de pruebas locales con permiso sin debilitar checks ni contactar servicios reales.
+No aplicación SQL, Storage/DB externos, ACL instaladas o revisión visual humana.
+
+SQL manual solicitado por el usuario: [orden completo y prerrequisitos](SOFLIA_ENGINE_CAP029_SQL_MANUAL_ORDER.md).
+[Uso del operador y límites](SOFLIA_ENGINE_CAP029_RECONSTRUCTION_OPERATOR_HANDOFF.md).
+Métrica **≈75% conservada**: no acreditar el cierre de I03 todavía por CLI solo.
+Falta UI/apertura aislada, estilos globales/recursos nuevos; I01/I02/I04/I05 siguen
+según expediente. Objetivo activo, sin recomendaciones opcionales agregadas.
+
+### Corte I03 — identidad actual para apertura aislada (2026-10-10)
+
+Inspección del editor confirma que SceneBuilder, recuperación histórica, subida/
+detach-audio y varios controles exigen componentId; el nuevo contenido aislado
+tiene material_component_idNULL por diseño. No pasar el ID original/ficticio ni
+usar initialize/getOrCreate como apertura: importaría/reconciliaría fuentes ajenas.
+
+Implementada consulta metadata-only actual en módulos reconstruction-opening
+(contrato, adapter, cliente, handler y ruta propia), con seguridad GET existente,
+sesión/tenant/reviewer, cuotas y fallos seguros. RPC preparado
+`20261010120000_read_html_reconstruction_opening.sql`: índice único por tenant/draft,
+locks actuales de draft/membresía/composición, auditoría/procedencia exactas y última
+versión guardada concordante. Exige composición independiente no archivada; separa
+seedDocumentHash de currentDocumentHash/currentVersion, admite cambios posteriores
+sin tratar el receipt inicial como versión actual. Sin compiler/HTML/source/ZIP/
+Storage/initialize/escritura. No demuestra permisos para cada recurso ni ejecución;
+los readers normales del editor conservan su autoridad independiente.
+
+Siete casos nuevos aprobados (adapter/HTTP/cliente/SQL estático), regresión938/938
+sin fallos/skipped; compilación de tests, tipado web y lint dirigidos aprobados.
+SQL no aplicado, flags no activados. Pendiente montaje/control de
+editor independiente y demás I03; métrica≈75% conservada. Orden SQL propio actualizado
+con paso22 después de21, sin renumerar ni editar migraciones del compañero.
+
+### Corte I03 — montaje de editor independiente (2026-10-10)
+
+Página propia admin/assembly/reconstruction/[draftId], con tenant/actor/reviewer
+derivados en servidor y lectura de opening vigente antes de montar. Parámetro de
+path y query estrictos por separado: la query no puede sustituir el draftId del
+path. Flag existente default cerrado. No initialize/getOrCreate, importación de
+fuentes de componente, registro de candidato, creación o navegación automática.
+
+Wrapper reutiliza NativeCompositionPreview con IDs nuevos, componentIdNULL real
+y biblioteca/lessons vacíos. Compatibilidad con los consumidores string existente
+verificada por tipado. Guards puntuales de preassembly/SceneBuilder/detachAudio;
+inspector oculta procesamiento de voz/detach y timeline oculta refresh/recovery
+por componente. Hook de waveform no realiza solicitud para scopeNULL. Se conserva
+edición de timeline/native/HTML del nuevo draft por readers/saves originales;
+no se introduce editor/compiler paralelo. No modificar narrativa, gates CAP027,
+agentes/presets o catálogo reservado. El modelo de biblioteca vacía es limitación
+funcional visible de la selección de recursos pendiente, no cierre de ese requisito.
+
+CLI CREATE y READ_CREATION RECORDED emiten editorPath solo navegacional: la página
+reauthoriza estado actual. Recibo histórico no da permiso de edición/publicación.
+Cuatro tests nuevos de contrato/wiring estático aprobados; regresión942/942, sin
+fallos/skipped; CLI reconstrucción3/3/histórico3/3 repetidos. Tipado web y lint nuevos
+aprobados. Lint ampliado de cuatro componentes compartidos:0errores/61advertencias
+(incluye hooks y código del studio fuera del bloque); no declarar esos archivos
+limpios de warnings ni hacer refactor amplio ajeno al alcance. Whitespace check
+aprobado. No prueba interacción/render browser ni operaciones de DB/RLS reales.
+No SQL nuevo en este corte: último propio sigue20261010120000, paso22 del runbook.
+Métrica≈75% conservada; I03 aún parcial por revisión browser integrada, CSS global
+y selección independiente de recursos. I01/I02/I04/I05 siguen según expediente.
+
+### Corte I03/I02 — preparación de stylesheet contextual (2026-10-10)
+
+Inspección confirma que el stylesheet de deck se emite globalmente por el compiler
+compartido, mientras los fragments editables usan wrapper/scope propio. Retirar
+solamente deckStylesNULL en reconstrucción dejaría CSS sin la misma admisión de
+geometría/cascada/clock de los fragments. No hacerlo ni modificar gates CAP027.
+
+Preparador propio deck-styles verifica identidad native/revision y deriva estilos
+por los scopes existentes, sin modificar fuente/pointers/native. Misma lógica
+de aislamiento de selectors/layers extraída para ambos usos, sin una copia que
+divergiría. Parser opcional de CSS contextual comparte presupuesto agregado con
+source local. Fuentes URL/recursos CSS sin ledger, vecinos no enrolados y estilos
+root/interactive/nesting no pasan; resultado es preparación, no permiso de render.
+
+Seis casos dirigidos aprobados: scopes exactos/multipágina, bytes originales
+intactos, orden determinista, layers/pseudoelementos, límite CSS agregado, identidad
+alterada y dependencias no admitidas. No demostrar salida física por regex o hashes.
+Sigue pendiente integración de la derivación en ambos targets, ledger de recursos,
+actualización de perfil de compilación al cambiar semántica y validación de toda
+continuidad. Reconstrucción conserva rechazo globalCSS hasta completar esa puerta.
+No SQL nuevo; último propio20261010120000, paso22 del orden manual. Métrica≈75%.
+Regresión final948/948, sin fallos/skipped; tipado web y lint dirigidos aprobados.
+Comprobación whitespace aprobada. Sin DB/Storage/render/browser real ni instalación.
+
+## Integración CSS contextual estático — 2026-10-10
+
+El compilador compartido consume la derivación por binding en preview y render;
+sin HTML editable conserva el camino legacy previo. Reconstrucción admite únicamente
+CSS estático sin recursos, con presupuesto conjunto source/contexto y rechazo antes
+de adquisición asíncrona. Source/native permanecen intactos; la revisión y creación
+no recompilan el ZIP aprobado. Perfil static-fragment-v3-contextual-css evita
+reinterpretar snapshots antiguos. Geometry-v8 permanece: I02 no se declara cerrado.
+
+SQL nuevo20261010130000 (paso23) reemplaza solo la admisión de deckStyles del
+validador privado; un test compara todo su cuerpo contra la versión previa y prueba
+que autoridad/revisión/recursos permanecen iguales. No acredita ejecución PostgreSQL.
+La primera regresión encontró un cambio de mensaje público al rechazar recursos;
+corregida la frontera del compilador, sin relajar controles ni cambiar la expectativa.
+I03 aún parcial por recursos independientes/revisión operativa; métrica≈75% conservada.
+No modificaciones en áreas reservadas CAP022/025/027/catálogo ni writes externos.
+Evidencia final del corte:950/950 CAP029/contratos;56/56 persistencia/compilador
+compartido, tipado web y lint dirigidos aprobados. Cero fallos/skipped/cancelled;
+no prueba browser, render físico, aplicación SQL ni autorización del ambiente.
+
+## Biblioteca actualmente vinculada en scope independiente — 2026-10-10
+
+Hallazgo funcional: la página nueva montaba el studio con assets[] aunque la
+creación ya había enlazado recursos autorizados al nuevo borrador. Corregido con
+lector RPC service-only de metadatos, adapter/HTTP/cliente y colección paginada:
+reusa autoridad/provenance actual de apertura; links y registro tenant-scoped,
+keyset UUID/página20 con lookahead21 y el índice único existente. Sin N+1 ni
+consulta de componentes/biblioteca original, sin índice redundante.
+
+SSR carga la primera página; UI usa el selector/inserción/reemplazo existentes.
+Carga/actualización son consultas explícitas: no anexado, retry, initialización,
+Storage URLs ni snapshots nuevos. Metadata acotada y total<=250; siguientes páginas
+verifican hash/version/owner/cursor y rechazan mezcla de bases. Abort al desmontar,
+anti-solapamiento y errores seguros; fallo descarta metadata vieja sin tocar native.
+
+SQL propio20261010140000 preparado (paso24 después de23; dependencia directa22).
+18/18 pruebas dirigidas (14 nuevas), regresión964/964, tipado web y lint dirigidos
+aprobados; cero fallos/skipped/cancelled. SQL estático y montaje inspeccionado,
+no PostgreSQL ni interacción/render/browser real. No toca áreas reservadas ni
+aplica migrations/flags/ACL. Métrica≈75% conservada: recursos nuevos fuera del
+origen y revisión operativa I03 siguen siendo implementación pendiente, además
+de I01/I02/I04/I05. Este fix no reetiqueta todo lo restante como QA.
+
+## Enlace puntual de medios al nuevo borrador — 2026-10-10
+
+Consulta de UUID del tenant y confirmación de enlace conectadas en el editor
+independiente. Admisión/proyección comunes con biblioteca; recurso y base fijados;
+lock+journal antes de POST único; recibo atómico de éxito o rechazo conocido;
+recuperación y cierre por GET actual sin reenviar. No documento/versión/original/
+Storage/publicación mutados. Corrección Unicode de labels sin modificar metadata.
+SQL25→26 preparados tras24, no aplicados. No duplicación de catálogo ni CAPs ajenas.
+
+34/34 dirigidas y980/980 regresión, cero fallos/skipped/cancelled; tipado/lint
+dirigidos aprobados. No PostgreSQL/RLS/locks/browser real. Métrica≈75% conservada
+con misma rúbrica: enlace posterior no cierra preparación inicial de recursos
+independientes ni revisión operativa I03; I01/I02/I04/I05 permanecen parciales.
+Ruta mínima sin recomendaciones nuevas; ambiente/QA separados de código pendiente.
+
+## I01 — inventario actual y auditoría de integración — 2026-10-10
+
+Hallazgo: verificar un candidato por UUID no permitía inventariar las slides del
+borrador guardado desde el editor. Agregado lector autorizado de metadatos, contrato,
+HTTP/cliente y panel scoped en recovery center. FuenteSHA/bytes, existencia de
+pointer/registro y template/version/source/revocado; sin HTML/URL/grants ni ejecución.
+Página20/lookahead21, ordinal limitado500, hash+versión fijos para avanzar; cambio
+exige reinicio. Identidad actual, roles/locks/cuotas, no-store, sin retries/writes.
+SQL propio27 preparado, no aplicado; flags cerrados por defecto.
+
+Auditoría de provenance reproduce compiler/geometry/isolation + source/template/
+targets/compiled SHA desde entradas autorizadas. Hallazgo restante comprobado:
+stageReviewedCandidate del legado solo tiene callers en pruebas, no un operador
+de producto para preparación/revisión/registro. I01 sigue parcial y ese faltante
+no se mueve a QA/ambiente. No tocar agentes/presets/catálogo/CAPs reservadas.
+[Auditoría de trazabilidad](SOFLIA_ENGINE_CAP029_LEGACY_LINEAGE_AUDIT.md).
+
+Evidencia de este corte:11/11 dirigidas de contrato/repository/HTTP+cliente/SQL
+estático/montaje estructural;991/991 regresión CAP029/contratos, cero fallos/skipped/
+cancelled. Compilación de pruebas, tipado web y lint dirigido aprobados. No DB,
+RLS, locks, Storage, ejecución browser/render ni QA manual. Métrica≈75% conservada
+sin cambiar denominador ni acreditar cierre de I01 por añadir este subentregable.
+
+## I01 — operador concreto, registro recuperable y cierre de implementación — 2026-10-10
+
+Brecha anterior resuelta: `stageReviewedCandidate` tiene caller de producto en
+workflow/factory/CLI privados, con JWT/profile/tenant actuales. Source/anchor/grants
+solo del contexto nativo autorizado; PREPARE compara dos lecturas y conserva
+original/piloto/provenance íntegros en handoff HMAC/create-only/fsync/readback.
+READ_PREPARATION recupera por UUID sin sobrescribir o regenerar una revisión.
+
+STAGE_REVIEWED exige evidencia/tres revisiones y confirmación explícitas, deriva
+reviewer actual y compara catálogo independiente; guarda intención metadata-only
+sellada antes del registro único. Repositorio vuelve a verificar autoridad/base/
+catálogo/grants. READ_REGISTRATION coteja candidato completo contra intención
+sellada, incluso revocado o después de adopción, sin source/compiler/runtime/
+catálogo ni otra escritura. NOT_FOUND/error conserva seguimiento; no reenvío,
+compensación o borrado. SQL28 propio preparado, no aplicado.
+
+Auditoría integral I01: inventario→original/versiones→piloto→registro revisado→
+review/confirmación del inspector→native pointer/recibo históricos, usando módulos
+existentes. Prueba cruzada usa el piloto recién registrado en el repository real,
+valida source/pointer/hash/versiones y replay sin segundo commit; RPC simulado.
+Los pins del perfil estático no certifican browser/render físico CAP027. Política
+geométrica/cascada y consumers transversales quedan respectivamente en I02 e I04.
+
+**I01 implementado/preparado, ambiente/QA pendientes**. Métrica **≈80% (±10)**,
++5 por ese entregable completo, mismo denominador/ponderación, no número de tests.
+I02/I03/I04 parciales; I05 entrega externa reservada. No cerrar CAP029 ni el objetivo
+como «solo QA»: quedan código/integración reales. A01/A02 conservan instalación/
+SQL/RLS/locks/ACL/piloto autorizado y Q01 la revisión visual/manual del tester.
+
+Evidencia final:39/39 dirigidas (11 operador +28 legado/adopción/coordinador),
+regresión1002/1002 y CLI legado/histórico/reconstrucción9/9; compilación, tipado web
+y lint dirigidos aprobados, cero fallos/skipped/cancelled. Sin SQL/Storage/RLS/locks/
+ACL/browser/render/QA reales, sin activar flags, deploy o instalar catálogo. No
+edición de catálogo UX/CAP022/025/027 ni trackers compartidos. Autenticación común
+extraída solo entre las tres entradas privadas propias; contrato de registro en
+adopción evita dependencia repository→CLI. No dependencias nuevas.
+
+[Auditoría](SOFLIA_ENGINE_CAP029_LEGACY_LINEAGE_AUDIT.md),
+[runbook](SOFLIA_ENGINE_CAP029_LEGACY_OPERATOR_HANDOFF.md),
+[SQL completo1→28](SOFLIA_ENGINE_CAP029_SQL_MANUAL_ORDER.md).

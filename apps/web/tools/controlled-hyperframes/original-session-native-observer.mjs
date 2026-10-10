@@ -10,10 +10,12 @@ const {createOriginalSessionSeekCapture} = require(
   "./dist/composition-worker/domains/production/composition-editor/qa/composition-original-session-seek-capture.js");
 const {createOriginalSessionFrameArchive} = require(
   "./dist/composition-worker/domains/production/composition-editor/qa/composition-original-session-frame-archive.js");
+const {createOriginalSessionHtmlLayoutCapture} = require(
+  "./dist/composition-worker/domains/production/composition-editor/qa/composition-html-layout-capture.js");
 
 /** Host-fixed bridge; measurements run on the SDK's sessions, never a replacement page. */
 export function createOriginalSessionNativeObserver(measurement, signal) {
-  const captures = new WeakMap(), seeks = new WeakMap(), all = new Set();
+  const captures = new WeakMap(), seeks = new WeakMap(), layouts = new WeakMap(), all = new Set();
   const frames = measurement.plan.contract.renderExecution?.sdrConversionPolicy ? createOriginalSessionFrameArchive({
     outputDirectory: measurement.outputDirectory, contract: measurement.plan.contract, signal, verifyFiles: measurement.assertUnchanged,
   }) : undefined;
@@ -26,6 +28,8 @@ export function createOriginalSessionNativeObserver(measurement, signal) {
         document: measurement.plan.document, contract: measurement.plan.contract, fonts: measurement.plan.fonts,
         verifyFiles: measurement.assertUnchanged, signal});
       captures.set(session, capture); all.add(capture);
+      const layout = createOriginalSessionHtmlLayoutCapture({cdp, document: measurement.plan.document, signal});
+      layouts.set(session, layout); all.add(layout);
       if (measurement.plan.contract.renderExecution?.seekRepeatabilityPolicy) seeks.set(session,
         createOriginalSessionSeekCapture({document: measurement.plan.document, contract: measurement.plan.contract,
           signal, verifyFiles: measurement.assertUnchanged}));
@@ -35,14 +39,30 @@ export function createOriginalSessionNativeObserver(measurement, signal) {
       if (!capture || original && original !== capture) throw new Error("CONTROLLED_RENDER_NATIVE_SESSION_CHANGED");
       original ??= capture;
       originalSeek ??= seeks.get(session);
+      await layouts.get(session).assert();
       await capture.captureFrame(frameIndex, quantizedTime);
     },
     async onAfterFrame({session, frameIndex, quantizedTime, buffer, prepareFrame, captureFrame}) {
       const capture = captures.get(session);
       if (!capture || capture !== original) throw new Error("CONTROLLED_RENDER_NATIVE_SESSION_CHANGED");
+      const layout = layouts.get(session);
+      await layout.assert();
       await frames?.captureFrame(frameIndex, quantizedTime, buffer);
-      await capture.repeatAtLastCheckpoint(frameIndex, prepareFrame);
-      await seeks.get(session)?.captureFrame(frameIndex, quantizedTime, buffer, captureFrame);
+      const prepareChecked = layout.required ? async (index, seconds) => {
+        const prepared = await prepareFrame(index, seconds);
+        await layout.assert();
+        return prepared;
+      } : prepareFrame;
+      const captureChecked = layout.required ? async (index, seconds) => {
+        // The existing screenshot lease prepares again internally. Check both
+        // sides and discard invalid bytes before any evidence consumer reads them.
+        await prepareChecked(index, seconds);
+        const captured = await captureFrame(index, seconds);
+        await layout.assert();
+        return captured;
+      } : captureFrame;
+      await capture.repeatAtLastCheckpoint(frameIndex, prepareChecked);
+      await seeks.get(session)?.captureFrame(frameIndex, quantizedTime, buffer, captureChecked);
     },
   }, finalize() {
     if (!original) throw new Error("CONTROLLED_RENDER_NATIVE_SESSION_INCOMPLETE");

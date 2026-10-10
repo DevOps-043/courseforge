@@ -45,7 +45,7 @@ export function prepareHtmlEditingLegacyAdoption(params: {
     revision: initial.revision, revisionSha256: initial.sha256, authoritativeBinding: initial.revision.manifest.binding,
     grantedAssetIds: params.grantedAssetIds, imageSources: params.imageSources });
   return { scope: "PREPARED_LEGACY_ADOPTION_NOT_COMMITTED" as const,
-    expectedDocumentHash: params.expectedDocumentHash, originalSourceSha256: pilot.original.sha256,
+    expectedDocumentHash: params.expectedDocumentHash, originalSourceSha256: pilot.original.sha256, originalSource: clip.source.html,
     provenanceSha256: pilot.provenanceSha256, document: proposed.document, documentHash: proposed.documentHash,
     initialRevision: initial.revision, initialRevisionSha256: initial.sha256, usedAssetIds: initial.compiled.usedAssetIds,
     requiredReviews: pilot.requiredReviews };

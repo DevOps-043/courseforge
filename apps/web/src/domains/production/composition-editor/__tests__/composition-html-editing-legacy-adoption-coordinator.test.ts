@@ -8,6 +8,17 @@ import { prepareHtmlEditingLegacyAdoption } from "../composition-html-editing-le
 import { computeHtmlLegacyAdoptionRequestSha256 } from "../composition-html-editing-legacy-adoption-digest.server";
 import { coordinateHtmlLegacyAdoption } from "../composition-html-editing-legacy-adoption-coordinator.client";
 import { readHtmlLegacyAdoptionJournal } from "../composition-html-editing-legacy-adoption-journal.client";
+import { CompositionHtmlEditorialNativeHost } from "../composition-html-editing-native-host.client";
+
+function nativeHost(f: ReturnType<typeof fixture>) {
+  const state = { payload: f.loaded, scope: f.scope, enabled: true, adopted: 0, busy: [] as boolean[] };
+  const ports = { enabled: () => false, initializationEnabled: () => false, legacyAdoptionEnabled: () => state.enabled,
+    getScope: () => state.scope, getPayload: () => state.payload, getStorage: () => f.storage, getLock: () => f.input.lock,
+    reserve: f.input.reserveNative, hasConflictingWork: () => !f.state.current,
+    adopt: (payload: typeof f.loaded) => { state.payload = payload; state.adopted++; },
+    onBusyChange: (busy: boolean) => { state.busy.push(busy); }, fetcher: f.input.fetcher, createOperationId: f.input.createOperationId };
+  return { state, ports, host: new CompositionHtmlEditorialNativeHost(ports) };
+}
 
 function fixture() {
   const f = createHtmlEditingRevisionFixture(), binding = f.authority.authoritativeBinding;
@@ -126,4 +137,65 @@ test("pending/corrupt other journals, missing lock and stale base prohibit a new
   const f = fixture(); await assert.rejects(coordinateHtmlLegacyAdoption({ ...f.input, lock: null }), /NOT_READY/);
   await assert.rejects(coordinateHtmlLegacyAdoption({ ...f.input, loaded: { ...f.loaded, documentHash: "f".repeat(64) } }), /NOT_READY/);
   assert.deepEqual(f.calls, []);
+});
+
+test("native host installs verified adoption before closing journal and releases busy state", async () => {
+  const f = fixture(), h = nativeHost(f);
+  const view = await h.host.adoptLegacy({ scope: f.scope, action: f.input.action, signal: f.input.signal });
+  assert.deepEqual(view, f.state.view); assert.deepEqual(h.state.payload, f.state.payload);
+  assert.equal(h.state.adopted, 1); assert.deepEqual(h.state.busy, [true, false]);
+  assert.equal(h.host.isBlocked(), false); assert.deepEqual(f.calls, ["POST", "native", "inspector"]);
+});
+
+test("remounted native host recovers lost ACK with new writes disabled and no second POST", async () => {
+  const f = fixture(), h = nativeHost(f); f.state.lost = true;
+  await assert.rejects(h.host.adoptLegacy({ scope: f.scope, action: f.input.action, signal: f.input.signal }), /OUTCOME_UNKNOWN/);
+  h.state.enabled = false; f.state.lost = false;
+  const remounted = new CompositionHtmlEditorialNativeHost(h.ports);
+  assert.equal(remounted.isBlocked(), true); assert.equal(remounted.legacyAdoptionTracking(f.scope).status, "PENDING");
+  await assert.rejects(remounted.adoptLegacy({ scope: f.scope, action: f.input.action, signal: f.input.signal }), /NOT_READY/);
+  await remounted.adoptLegacy({ scope: f.scope, action: { mode: "RECOVER", operationId: other }, signal: f.input.signal });
+  assert.equal(h.state.adopted, 1); assert.equal(remounted.isBlocked(), false);
+  assert.deepEqual(f.calls, ["POST", "GET", "native", "inspector"]);
+});
+
+test("native historical recovery never installs or reactivates the old source", async () => {
+  const f = fixture(), h = nativeHost(f); f.state.lost = true;
+  await assert.rejects(h.host.adoptLegacy({ scope: f.scope, action: f.input.action, signal: f.input.signal }));
+  f.state.lost = false; f.state.payload = f.loaded; f.calls.length = 0; h.state.enabled = false;
+  assert.equal(await h.host.adoptLegacy({ scope: f.scope,
+    action: { mode: "RECOVER", operationId: other, historicalOnly: true }, signal: f.input.signal }), null);
+  assert.equal(h.state.payload, f.loaded); assert.equal(h.state.adopted, 0);
+  assert.equal(h.host.isBlocked(), false); assert.deepEqual(f.calls, ["GET", "native"]);
+});
+
+test("native adoption blocks corrupt other tracking and isolates owner changes", async () => {
+  const f = fixture(), h = nativeHost(f);
+  f.values.set(`courseforge:html-legacy-adoption:v1:${uuid}:${uuid}:${uuid}`, "corrupt");
+  h.state.enabled = false; assert.equal(h.host.isBlocked(), true);
+  assert.equal(h.host.legacyAdoptionTracking(f.scope).status, "UNAVAILABLE");
+  h.state.scope = { ...f.scope, actorId: other };
+  assert.equal(h.host.legacyAdoptionTracking(f.scope).status, "UNAVAILABLE");
+  assert.equal(h.host.isBlocked(), false);
+  await assert.rejects(h.host.adoptLegacy({ scope: f.scope, action: f.input.action, signal: f.input.signal }), /NOT_READY/);
+  assert.deepEqual(f.calls, []);
+});
+
+test("native host rejects owner or payload drift before acceptance and keeps the receipt", async () => {
+  for (const drift of ["owner", "payload"] as const) {
+    const f = fixture(), h = nativeHost(f);
+    const host = new CompositionHtmlEditorialNativeHost({ ...h.ports, fetcher: async (url, options) => {
+      const response = await f.input.fetcher(url, options);
+      if (f.calls.at(-1) === "inspector") {
+        if (drift === "owner") h.state.scope = { ...f.scope, actorId: other };
+        else h.state.payload = { ...f.loaded };
+      }
+      return response;
+    } });
+    await assert.rejects(host.adoptLegacy({ scope: f.scope, action: f.input.action, signal: f.input.signal }), /TRACKING_CHANGED/);
+    assert.equal(h.state.adopted, 0); assert.deepEqual(h.state.busy, [true, false]);
+    const tracking = readHtmlLegacyAdoptionJournal(f.storage, f.scope);
+    assert.equal(tracking.status, "PENDING");
+    if (tracking.status === "PENDING") assert.ok(tracking.entry.receipt);
+  }
 });

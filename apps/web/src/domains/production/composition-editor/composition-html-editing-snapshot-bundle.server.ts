@@ -10,9 +10,8 @@ import { decodeHtmlEditingBoundedJson } from "./html-editing/html-editing-valida
 import { createLocalHtmlResourceValidator } from "./html-editing/html-local-resource-policy.server";
 import { HTML_EDITING_COMPILATION_PROFILE } from "./html-editing/html-editing-compilation-profile";
 
-export const HTML_EDITING_SNAPSHOT_BUNDLE_POLICY = Object.freeze({
-  archivePath: "html-editing-revisions.json", maximumBytes: 16 * 1024 * 1024,
-});
+import { HTML_EDITING_SNAPSHOT_BUNDLE_POLICY } from "./composition-html-editing-snapshot-bundle-policy";
+export { HTML_EDITING_SNAPSHOT_BUNDLE_POLICY } from "./composition-html-editing-snapshot-bundle-policy";
 const sha256 = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
 const scopeSchema = z.object({ organizationId: z.string().uuid(), documentId: z.string().uuid() }).strict();
 const bundleSchema = z.object({

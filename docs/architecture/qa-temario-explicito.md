@@ -55,3 +55,5 @@ La regresión de temario/duración mantiene 38 casos aprobados y la política de
 Persisten: aceptación con IA real, revisión de UX/accesibilidad, revisión SQL de políticas históricas, aplicación manual de migración y piloto. Los tests de HTTP usan mocks de sesión y transporte; no equivalen a una sesión autenticada contra producción. No se ejecutó una prueba E2E nueva de SCORM.
 
 El build dentro del aislamiento de Windows falló al canonicalizar `jsc.baseUrl` por acceso denegado, antes de compilar la aplicación. Se reintentó el mismo comando fuera del aislamiento; el resultado final y el typecheck se registran en el plan.
+
+Resultado final: build aprobado fuera del aislamiento, con 97 páginas y siete avisos de filesystem en módulos de producción visual. TypeScript completo y ESLint focalizado aprobados. `npm run test:syllabus-import-flow` reúne los 39 casos nuevos y terminó con exit 0. El control de versiones de migraciones también pasó (186 archivos). Producción y la migración permanecen sin cambios; el flag local no fue habilitado.

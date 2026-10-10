@@ -505,3 +505,5 @@ Correcciones: los temarios completos se guardan sin consultar configuración IA 
 El build aislado se detuvo antes de compilar por una restricción de acceso de Windows al canonicalizar baseUrl. Se reintentó fuera del aislamiento, sin despliegue ni migración. El resultado final se añade a continuación. Detalle de casos, fronteras simuladas y limitaciones: `qa-temario-explicito.md`.
 
 E6 sigue parcial: no se acredita semántica de IA real, transporte/firma Netlify desplegados ni UX/accesibilidad completa mediante mocks. E7 sigue pendiente de aplicación manual, aceptación y piloto.
+
+Resultado final del build del 9 de octubre: aprobado fuera del aislamiento (exit 0), compilación en 10,6 minutos, comprobación de tipos en 116 segundos y 97 páginas generadas. Emitió siete avisos de tracing de filesystem en módulos de producción visual ajenos a esta continuación. El control de migraciones volvió a pasar con 186 archivos SQL.

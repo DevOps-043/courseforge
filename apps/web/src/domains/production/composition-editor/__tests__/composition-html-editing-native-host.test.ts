@@ -7,6 +7,8 @@ import { readHtmlEditingInitializationJournal, beginHtmlEditingInitializationJou
 import { compositionEditorDocumentSchema } from "../composition-document.types";
 import { computeHtmlEditingOperationRequestSha256 } from "../composition-html-editing-operation-digest.server";
 import { computeHtmlEditingInitializationRequestSha256 } from "../composition-html-editing-initialization-operation-digest.server";
+import { beginHtmlLegacyAdoptionJournal } from "../composition-html-editing-legacy-adoption-journal.client";
+import { computeHtmlLegacyAdoptionRequestSha256 } from "../composition-html-editing-legacy-adoption-digest.server";
 import { CompositionSaveQueue } from "../composition-save-queue";
 import { bindHtmlEditingRevisionToComposition } from "../composition-html-editing-document.server";
 import { createHtmlEditingInspectorView } from "../html-editing/html-editing-inspector.server";
@@ -48,6 +50,25 @@ function pending(f: ReturnType<typeof setup>, acknowledgment: unknown = f.acknow
     createdAt: 1, expected: f.acknowledgment.previous, expectedCompositionDocumentHash: f.base.documentHash }), true);
   if (acknowledgment) assert.equal(acknowledgeHtmlEditingJournal(f.storage, f.input.scope, uuid, acknowledgment), true);
 }
+
+test("pending or corrupt adoption blocks editorial execute, initialization and recovery without requests", async () => {
+  for (const corrupt of [false, true]) {
+    const f = initializationFixture();
+    if (corrupt) f.entries.set(`courseforge:html-legacy-adoption:v1:${uuid}:${uuid}:${uuid}`, "corrupt");
+    else {
+      const command = { organizationId: uuid, documentId: uuid, clipId: f.input.clipId, actorId: uuid, operationId: other,
+        request: { candidateId: other, provenanceSha256: "a".repeat(64), expectedDocumentHash: f.base.documentHash } };
+      assert.equal(await beginHtmlLegacyAdoptionJournal(f.storage, { command,
+        requestSha256: computeHtmlLegacyAdoptionRequestSha256(command), createdAt: 1 }), true);
+    }
+    const host = new CompositionHtmlEditorialNativeHost(f.initialPorts);
+    assert.equal(host.isBlocked(), true);
+    await assert.rejects(host.execute(f.input), /NOT_READY/);
+    await assert.rejects(host.initialize(f.initializationInput), /NOT_READY/);
+    await assert.rejects(host.recover({ scope: f.input.scope, operationId: uuid, signal: f.input.signal }), /NOT_READY/);
+    assert.equal(f.state.requests, 0); assert.equal(f.state.adoptCount, 0);
+  }
+});
 
 function durablePending(f: ReturnType<typeof setup>) {
   const requestSha256 = computeHtmlEditingOperationRequestSha256(f.input.body);

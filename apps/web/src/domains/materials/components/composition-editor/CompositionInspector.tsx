@@ -39,7 +39,7 @@ type PatchHandler = (
 interface CompositionInspectorProps {
   animations: CompositionAnimation[];
   clip: CompositionClip | null;
-  componentId: string;
+  componentId: string | null;
   cropModeEnabled: boolean;
   colorGradingStatus: CompositionColorGradingRuntimeStatus | null;
   onAnimationSelect: (animationId: string | null) => void;
@@ -100,7 +100,7 @@ export function CompositionInspector({ animations, clip, colorGradingStatus, com
     return <div className="space-y-3"><div className="flex items-start gap-2"><span className="rounded-md bg-violet-100 p-1.5 text-violet-700 dark:bg-violet-400/10 dark:text-violet-200"><Music2 size={16} /></span><div><p className="text-sm font-semibold text-slate-900 dark:text-white">{clip.label}</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-gray-400">Música · ajustes de audio</p></div></div><TimecodeField label="Duración (mm:ss)" value={durationSeconds} onChange={setDurationSeconds} /><VolumeSlider accentClassName="accent-violet-500" ariaLabel="Volumen de la música" disabled={saving} label="Volumen" onChange={setVolume} value={volume} /><AudioFadeControls disabled={saving} fadeInSeconds={fadeInSeconds} fadeOutSeconds={fadeOutSeconds} onFadeInChange={setFadeInSeconds} onFadeOutChange={setFadeOutSeconds} /><p className="text-[10px] leading-4 text-slate-500 dark:text-gray-400">Estos ajustes modifican la duración real del clip y el volumen base de la música. El ducking se configura por separado.</p>{validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}<button type="button" disabled={saving} onClick={() => void saveMusicChanges()} className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"><Save size={13} /> Guardar audio</button></div>;
   }
   const hasConfigurableClipAudio = compositionClipHasConfigurableAudio(clip, track ?? undefined);
-  const canDetachAudio = clip.kind === "VIDEO" && hasConfigurableClipAudio;
+  const canDetachAudio = componentId !== null && clip.kind === "VIDEO" && hasConfigurableClipAudio;
   const voiceSourceAssetId = clip.kind === "AUDIO"
     && track?.semanticRole === "VOICE"
     && clip.source.type === "PRODUCTION_ASSET"
@@ -159,7 +159,7 @@ export function CompositionInspector({ animations, clip, colorGradingStatus, com
           <AudioFadeControls disabled={audioDisabled} fadeInSeconds={fadeInSeconds} fadeOutSeconds={fadeOutSeconds} onFadeInChange={setFadeInSeconds} onFadeOutChange={setFadeOutSeconds} />
           <p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Los fades son no destructivos y se aplican en preview y render. El volumen de la pista continúa funcionando como control maestro.</p>
         </section>
-        {voiceSourceAssetId !== null && <AudioProcessingControls key={`${clip.id}:${voiceSourceAssetId}`} componentId={componentId} disabled={audioDisabled} sourceAssetId={voiceSourceAssetId} sourcePreviewUrl={sourcePreviewUrl}
+        {componentId !== null && voiceSourceAssetId !== null && <AudioProcessingControls key={`${clip.id}:${voiceSourceAssetId}`} componentId={componentId} disabled={audioDisabled} sourceAssetId={voiceSourceAssetId} sourcePreviewUrl={sourcePreviewUrl}
           onReplaceAudio={(assetId, sourceDurationSeconds) => onPatch([{ type: "clip.replace-source", clipId: clip.id,
             productionAssetId: assetId, mimeType: "audio/mp4", sourceDurationSeconds, hasAudio: true }], `Cambió el tratamiento de voz de ${clip.label} conservando sus ediciones.`)} />}
         {validationError && <p role="alert" className="rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{validationError}</p>}

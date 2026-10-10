@@ -3,7 +3,9 @@
 import { COMPOSITION_CANVAS_FORMATS, resolveCompositionCanvasFormat } from "@/domains/production/composition-editor/composition-canvas-format";
 import { createHtmlEditingPreviewSession } from "@/domains/production/composition-editor/composition-html-editing-preview-channel.contract";
 import { buildHtmlEditingPreviewPageUrl, createHtmlEditingPreviewHost, isHtmlEditingPreviewPageUrl } from "@/domains/production/composition-editor/composition-html-editing-preview-host.client";
-import { resolveHtmlEditingPublishedPreviewRevision } from "@/domains/production/composition-editor/composition-html-editing-preview-selection";
+import { captureHtmlEditingPreviewSource, resolveHtmlEditingPreviewChannel, resolveHtmlEditingPublishedPreviewRevision } from "@/domains/production/composition-editor/composition-html-editing-preview-selection";
+import {readHtmlPreviewCandidateQuery} from "@/domains/production/composition-editor/composition-html-editing-preview-candidate.contract";
+import {useCompositionHtmlCandidatePreview} from "./useCompositionHtmlCandidatePreview";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
@@ -233,7 +235,7 @@ const DURATION_SOURCE_LABELS: Record<NonNullable<CompositionEditorDocument["canv
 
 interface NativeCompositionPreviewProps {
   assets: CompositionStudioAsset[];
-  componentId: string;
+  componentId: string | null;
   compositionId: string;
   draftId: string;
   lessons: CompositionStudioLesson[];
@@ -402,6 +404,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     setPreviewRefreshKey(nextGeneration);
   }, []);
   const [previewDocumentHash, setPreviewDocumentHash] = useState<string | null>(null);
+  const [previewSourceIdentity, setPreviewSourceIdentity] = useState<ReturnType<typeof captureHtmlEditingPreviewSource> | null>(null);
   const [previewDirty, setPreviewDirty] = useState(false);
   const [comparisonActive, setComparisonActive] = useState(false);
   const [comparisonBaselineHash, setComparisonBaselineHash] = useState<string | null>(null);
@@ -456,6 +459,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const getCurrentPayload = useCallback(() => htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHostRef.current?.isBlocked() ? null : payloadRef.current, []);
   const isSaveInFlight = useCallback(() => saveInFlightRef.current || Boolean(htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHostRef.current?.isBlocked()), []);
   const adoptSavedPreviewRevision = useCallback((documentHash: string) => {
+    const source = payloadRef.current;
+    setPreviewSourceIdentity(source?.documentHash === documentHash ? captureHtmlEditingPreviewSource(source) : null);
     previewDocumentHashRef.current = documentHash;
     previewRuntimeBaseHashRef.current = documentHash;
     setPreviewDocumentHash(documentHash);
@@ -664,6 +669,10 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
       enabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_MUTATIONS_ENABLED === "true",
       durableEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_OPERATION_RECEIPTS_ENABLED === "true",
       initializationEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED === "true",
+      legacyAdoptionEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED === "true"
+        && process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_LEGACY_ADOPTION_RECEIPTS_ENABLED === "true"
+        && process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_LEGACY_ADOPTION_ENABLED === "true"
+        && process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_MUTATIONS_ENABLED === "true",
       getScope: () => {
         if (!nativeMountedRef.current) return null;
         const scope = htmlSnapshotLocatorScopeSchema.safeParse({ actorId: useAuthStore.getState().user?.id,
@@ -1181,6 +1190,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           previewDocumentHashRef.current = currentHash;
           previewRuntimeBaseHashRef.current = currentHash;
           setPreviewDocumentHash(currentHash);
+          const source = payloadRef.current;
+          setPreviewSourceIdentity(source?.documentHash === currentHash ? captureHtmlEditingPreviewSource(source) : null);
           setPreviewDirty(false);
           if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
             previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
@@ -1263,7 +1274,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const durationSourceLabel = payload?.document.canvas.durationSource
     ? DURATION_SOURCE_LABELS[payload.document.canvas.durationSource]
     : null;
-  const hasHtmlEditing = Boolean(payload?.document.htmlEditing?.items.length);
+  const previewChannel = resolveHtmlEditingPreviewChannel(previewDocumentHash, previewSourceIdentity);
+  const hasHtmlEditing = previewChannel === "HTML_EDITING";
   const htmlSavedRevisionId = resolveHtmlEditingPublishedPreviewRevision({
     documentHash: previewDocumentHash, activeRevisionId: assembly?.revisionId ?? null, snapshots: snapshotHistory,
   });
@@ -1271,7 +1283,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     ? createHtmlEditingPreviewSession(previewDocumentHash, previewRefreshKey) : null,
   [hasHtmlEditing, previewDocumentHash, previewRefreshKey]);
   const savedPreviewUrl = useMemo(() => {
-    if (!payload || !previewDocumentHash) return null;
+    if (!payload || !previewDocumentHash || previewChannel === null) return null;
     if (htmlSavedSession) return buildHtmlEditingPreviewPageUrl(draftId, htmlSavedSession, htmlSavedRevisionId);
     return buildCompositionSavedPreviewUrl({
       draftId,
@@ -1279,7 +1291,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
       refreshKey: previewRefreshKey,
       strictSyncEnabled: COMPOSITION_PREVIEW_SYNC_V2_ENABLED,
     });
-  }, [draftId, payload, previewDocumentHash, previewRefreshKey, htmlSavedSession, htmlSavedRevisionId]);
+  }, [draftId, payload, previewDocumentHash, previewRefreshKey, htmlSavedSession, htmlSavedRevisionId, previewChannel]);
   const comparisonBaselineUrl = useMemo(() => comparisonBaselineHash
     ? comparisonBaselineHasHtml
       ? buildHtmlEditingPreviewPageUrl(draftId, createHtmlEditingPreviewSession(comparisonBaselineHash, 0), comparisonBaselineHtmlRevisionId)
@@ -1287,17 +1299,18 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     : null, [comparisonBaselineHash, draftId, comparisonBaselineHasHtml, comparisonBaselineHtmlRevisionId]);
   // Pin the owner before navigation, not at load: a delayed response must not
   // acquire the identity of a user/tenant selected while the page was loading.
-  const htmlSavedOwner = useMemo(() => ({ url: savedPreviewUrl,
-    actorId: useAuthStore.getState().user?.id,
-    organizationId: useOrganizationStore.getState().activeOrganizationId }), [savedPreviewUrl]);
   const htmlBaselineOwner = useMemo(() => ({ url: comparisonBaselineUrl,
     actorId: useAuthStore.getState().user?.id,
     organizationId: useOrganizationStore.getState().activeOrganizationId }), [comparisonBaselineUrl]);
-  const previewUrl = presetPreview
+  const htmlCandidatePreview = useCompositionHtmlCandidatePreview({draftId, payload, generation: previewRefreshKey,
+    proposal: agentProposal, preset: presetPreview, onError: setPlaybackError});
+  const previewUrl = htmlCandidatePreview.active ? htmlCandidatePreview.url || "about:blank" : presetPreview
     ? `/api/production/hyperframes/drafts/${draftId}/preset-applications/${presetPreview.applicationId}/preview`
     : agentProposal
       ? `/api/production/hyperframes/drafts/${draftId}/agent-proposals/${agentProposal.proposalId}/preview`
       : savedPreviewUrl;
+  const htmlActiveOwner = useMemo(() => ({url: previewUrl, actorId: useAuthStore.getState().user?.id,
+    organizationId: useOrganizationStore.getState().activeOrganizationId}), [previewUrl]);
   const reportPreviewNavigationFailure = (syncOutcome: "PREVIEW_IFRAME_ERROR" | "PREVIEW_LOADED_NO_RUNTIME", message: string) => {
     if (!COMPOSITION_PREVIEW_SYNC_V2_ENABLED || !savedPreviewUrl || previewUrl !== savedPreviewUrl) return;
     const expectedDocumentHash = previewDocumentHashRef.current;
@@ -1315,7 +1328,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     commitTerminalPreviewFailure({ message, outcome: syncOutcome });
   };
   const onPreviewFrameLoad = () => {
-    if (savedPreviewUrl && previewUrl === savedPreviewUrl && isHtmlEditingPreviewPageUrl(savedPreviewUrl)) connectHtmlPreviewFrame(false);
+    if (previewUrl && isHtmlEditingPreviewPageUrl(previewUrl)) connectHtmlPreviewFrame(false);
     if (!COMPOSITION_PREVIEW_SYNC_V2_ENABLED || !savedPreviewUrl || previewUrl !== savedPreviewUrl
       || previewRuntimeSignalGenerationRef.current === previewGenerationRef.current) return;
     if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
@@ -1342,19 +1355,22 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   useEffect(() => () => { htmlBaselineHostRef.current?.dispose(); htmlBaselineHostRef.current = null; }, [comparisonBaselineUrl]);
   const connectHtmlPreviewFrame = (baseline: boolean) => {
     const iframe = baseline ? comparisonBaselineFrameRef.current : frameRef.current;
-    const url = baseline ? comparisonBaselineUrl : savedPreviewUrl;
+    const url = baseline ? comparisonBaselineUrl : previewUrl;
     const holder = baseline ? htmlBaselineHostRef : htmlPreviewHostRef;
     if (!iframe?.contentWindow || !url || !isHtmlEditingPreviewPageUrl(url)) return;
-    if (iframe.src !== new URL(url, window.location.origin).href) return;
-    if (holder.current?.getState().connected && !holder.current.getState().disposed) return;
+    const expectedFrameUrl = new URL(url, window.location.origin).href;
+    if (iframe.src !== expectedFrameUrl) return;
     const target = iframe.contentWindow, query = new URL(url, window.location.origin).searchParams;
-    const { actorId, organizationId } = baseline ? htmlBaselineOwner : htmlSavedOwner;
+    const session = {version: 1 as const, documentHash: query.get("documentHash")!,
+      previewGeneration: Number(query.get("r")), nonce: query.get("nonce")!};
+    if (holder.current?.getState().connected && !holder.current.getState().disposed && holder.current.matchesSession(session)) return;
+    const { actorId, organizationId } = baseline ? htmlBaselineOwner : htmlActiveOwner;
     const isCurrentOwner = () => Boolean(actorId && organizationId) && useAuthStore.getState().user?.id === actorId
-      && useOrganizationStore.getState().activeOrganizationId === organizationId;
+      && useOrganizationStore.getState().activeOrganizationId === organizationId && iframe.src === expectedFrameUrl;
     holder.current?.dispose();
-    const host = createHtmlEditingPreviewHost({ session: { version: 1, documentHash: query.get("documentHash")!,
-      previewGeneration: Number(query.get("r")), nonce: query.get("nonce")! },
-      resources: { documentId: draftId, audience: window.location.origin, revisionId: query.get("revisionId") ?? undefined },
+    const host = createHtmlEditingPreviewHost({ session,
+      resources: { documentId: draftId, audience: window.location.origin, revisionId: query.get("revisionId") ?? undefined,
+        candidate: readHtmlPreviewCandidateQuery(query) },
       onRuntimeSignal: () => {
         if (holder.current !== host || baseline) return;
         previewRuntimeSignalGenerationRef.current = Number(query.get("r"));
@@ -1368,7 +1384,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         return () => { unsubscribeAuth(); unsubscribeOrganization(); };
       },
       onEvent: message => { if (holder.current === host) htmlPortMessageRef.current?.(target, message); },
-      onFailure: () => { if (holder.current !== host) return;
+      onFailure: () => { if (holder.current !== host || iframe.src !== expectedFrameUrl) return;
         iframe.src = "about:blank";
         if (baseline) { comparisonBaselineReadyRef.current = false; setComparisonBaselineLoading(false);
           setPlaybackError("El canal de comparación HTML se cerró. Vuelve a abrir la comparación."); }
@@ -1674,6 +1690,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     previewDocumentHashRef.current = currentPayload.documentHash;
     previewRuntimeBaseHashRef.current = currentPayload.documentHash;
     setPreviewDocumentHash(currentPayload.documentHash);
+    setPreviewSourceIdentity(captureHtmlEditingPreviewSource(currentPayload));
     setPreviewDirty(false);
     if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
       previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
@@ -1996,6 +2013,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function applyNarrativePreassembly() {
+    if (componentId === null) { setSaveError("Este contenido independiente no importa ni preensambla fuentes de una lección."); return false; }
     return saveQueueRef.current!.enqueue(async () => {
       const currentPayload = payloadRef.current;
       if (!currentPayload) return false;
@@ -2037,6 +2055,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   function openSceneBuilder() {
+    if (componentId === null) { setSaveError("El contenido independiente no está vinculado a una lección para generar escenas."); return; }
     const current = new URL(window.location.href);
     const adminIndex = current.pathname.indexOf("/admin");
     const tenantPrefix = adminIndex > 0 ? current.pathname.slice(0, adminIndex) : "";
@@ -2319,6 +2338,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function detachAndInsertVideoAudio(clip: CompositionClip) {
+    if (componentId === null) { setSaveError("La separación de audio requiere una vinculación explícita a un componente."); return; }
     if (clip.kind !== "VIDEO" || clip.source.type !== "PRODUCTION_ASSET") return;
     const sourceAssetId = clip.source.productionAssetId;
     const sourceAsset = assets.find((asset) => asset.id === sourceAssetId);
@@ -3452,7 +3472,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
 
   return (
     <section className={`${styles.studio} courseforge-composition-studio`} inert={htmlEditorialBusy || narrativeExtractionHost?.busy} aria-busy={htmlEditorialBusy || narrativeExtractionHost?.busy}>
-      {htmlEditorialHostRef.current && <CompositionHtmlRecoveryCenter draftId={draftId} host={htmlEditorialHostRef.current} />}
+      {htmlEditorialHostRef.current && <CompositionHtmlRecoveryCenter draftId={draftId} compositionId={compositionId} host={htmlEditorialHostRef.current} />}
       {commandPaletteOpen && <CompositionCommandPalette items={commandPaletteItems} onClose={() => setCommandPaletteOpen(false)} onRun={runCompositionCommand} />}
       <CompositionPresetPanel
         activePreview={presetPreview}

@@ -8,8 +8,12 @@ import { htmlEditingMutationRequestSchema, type HtmlEditingMutationRequest } fro
 import type { HtmlSnapshotPublicationLock } from "./composition-html-snapshot-publication-lock.client";
 import { readHtmlEditingInitializationJournal, type HtmlEditingInitializationJournalState } from "./composition-html-editing-initialization-journal.client";
 import { coordinateHtmlEditingInitialization, type HtmlEditingInitializationAction } from "./composition-html-editing-initialization-coordinator.client";
+import { readHtmlLegacyAdoptionJournal, type HtmlLegacyAdoptionJournalState } from "./composition-html-editing-legacy-adoption-journal.client";
+import { coordinateHtmlLegacyAdoption, type HtmlLegacyAdoptionAction } from "./composition-html-editing-legacy-adoption-coordinator.client";
 
 export interface CompositionHtmlEditorialHost {
+  legacyAdoptionTracking?: (scope: HtmlSnapshotLocatorScope) => HtmlLegacyAdoptionJournalState;
+  adoptLegacy?: (input: { scope: HtmlSnapshotLocatorScope; action: HtmlLegacyAdoptionAction; signal: AbortSignal }) => Promise<HtmlEditingInspectorView | null>;
   initializationTracking?: (scope: HtmlSnapshotLocatorScope) => HtmlEditingInitializationJournalState;
   initialize?: (input: { scope: HtmlSnapshotLocatorScope; action: HtmlEditingInitializationAction; signal: AbortSignal }) => Promise<HtmlEditingInspectorView | null>;
   tracking?: (scope: HtmlSnapshotLocatorScope) => HtmlEditingJournalState;
@@ -23,6 +27,7 @@ interface NativeHostPorts {
   enabled: () => boolean;
   durableEnabled?: () => boolean;
   initializationEnabled?: () => boolean;
+  legacyAdoptionEnabled?: () => boolean;
   getScope: () => HtmlSnapshotLocatorScope | null;
   getPayload: () => HtmlEditingNativePayload | null;
   hasConflictingWork: (reserved: boolean) => boolean;
@@ -42,6 +47,40 @@ export class CompositionHtmlEditorialNativeHost implements CompositionHtmlEditor
   constructor(private readonly ports: NativeHostPorts) {}
   isBusy() { return this.active !== null; }
   abortPending() { this.active?.abort(); }
+  legacyAdoptionTracking(scope: HtmlSnapshotLocatorScope): HtmlLegacyAdoptionJournalState {
+    if (!sameScope(scope, this.ports.getScope())) return { status: "UNAVAILABLE" };
+    return readHtmlLegacyAdoptionJournal(this.ports.getStorage(), scope);
+  }
+  async adoptLegacy(input: { scope: HtmlSnapshotLocatorScope; action: HtmlLegacyAdoptionAction; signal: AbortSignal }) {
+    const scope = htmlSnapshotLocatorScopeSchema.parse(input.scope), base = this.ports.getPayload();
+    const otherTrackingEmpty = () => readHtmlEditingJournal(this.ports.getStorage(), scope).status === "EMPTY"
+      && readHtmlEditingInitializationJournal(this.ports.getStorage(), scope).status === "EMPTY"
+      && readHtmlSnapshotTrackingAvailability(this.ports.getStorage(), scope) === "EMPTY";
+    if (this.active || !base || input.signal.aborted || !sameScope(scope, this.ports.getScope())
+      || (input.action.mode === "SEND" && this.ports.legacyAdoptionEnabled?.() !== true)
+      || this.ports.hasConflictingWork(false) || !otherTrackingEmpty()) throw new Error("HTML_LEGACY_ADOPTION_NOT_READY");
+    const controller = new AbortController(); this.active = controller;
+    const signal = AbortSignal.any([controller.signal, input.signal]);
+    let adopted: HtmlEditingNativePayload | null = null;
+    const current = () => !signal.aborted && sameScope(scope, this.ports.getScope())
+      && this.ports.getPayload() === (adopted ?? base) && !this.ports.hasConflictingWork(true) && otherTrackingEmpty();
+    try {
+      this.ports.onBusyChange(true);
+      const result = await coordinateHtmlLegacyAdoption({ ...input, scope, signal, loaded: base,
+        storage: this.ports.getStorage(), lock: this.ports.getLock(), reserveNative: task => this.ports.reserve(task),
+        isCurrent: current, fetcher: this.ports.fetcher, createOperationId: this.ports.createOperationId,
+        acceptVerified: async (state, acceptanceSignal) => {
+          acceptanceSignal.throwIfAborted();
+          if (!current()) throw new Error("HTML_LEGACY_ADOPTION_TRACKING_CHANGED");
+          // Historical confirmation closes tracking only; it must not reactivate source.
+          if (state.view) { this.ports.adopt(state.payload); adopted = state.payload; }
+          if (!current()) throw new Error("HTML_LEGACY_ADOPTION_TRACKING_CHANGED");
+        } });
+      return result.view;
+    } finally {
+      if (this.active === controller) { this.active = null; this.ports.onBusyChange(false); }
+    }
+  }
   initializationTracking(scope: HtmlSnapshotLocatorScope): HtmlEditingInitializationJournalState {
     if (!sameScope(scope, this.ports.getScope())) return { status: "UNAVAILABLE" };
     return readHtmlEditingInitializationJournal(this.ports.getStorage(), scope);
@@ -51,11 +90,13 @@ export class CompositionHtmlEditorialNativeHost implements CompositionHtmlEditor
     if (this.active || !base || input.signal.aborted || !sameScope(scope, this.ports.getScope())
       || (input.action.mode === "SEND" && this.ports.initializationEnabled?.() !== true)
       || this.ports.hasConflictingWork(false) || readHtmlEditingJournal(this.ports.getStorage(), scope).status !== "EMPTY"
+      || readHtmlLegacyAdoptionJournal(this.ports.getStorage(), scope).status !== "EMPTY"
       || readHtmlSnapshotTrackingAvailability(this.ports.getStorage(), scope) !== "EMPTY") throw new Error("HTML_EDITING_INITIALIZATION_NOT_READY");
     const controller = new AbortController(); this.active = controller;
     const signal = AbortSignal.any([controller.signal, input.signal]);
     const current = () => !signal.aborted && sameScope(scope, this.ports.getScope()) && this.ports.getPayload() === base
       && !this.ports.hasConflictingWork(true) && readHtmlEditingJournal(this.ports.getStorage(), scope).status === "EMPTY"
+      && readHtmlLegacyAdoptionJournal(this.ports.getStorage(), scope).status === "EMPTY"
       && readHtmlSnapshotTrackingAvailability(this.ports.getStorage(), scope) === "EMPTY";
     try {
       this.ports.onBusyChange(true);
@@ -75,11 +116,13 @@ export class CompositionHtmlEditorialNativeHost implements CompositionHtmlEditor
     if (this.active || !base || input.signal.aborted || !sameScope(scope, this.ports.getScope())
       || this.ports.hasConflictingWork(false)
       || readHtmlEditingInitializationJournal(this.ports.getStorage(), scope).status !== "EMPTY"
+      || readHtmlLegacyAdoptionJournal(this.ports.getStorage(), scope).status !== "EMPTY"
       || readHtmlSnapshotTrackingAvailability(this.ports.getStorage(), scope) !== "EMPTY") throw new Error("HTML_EDITING_RECOVERY_NOT_READY");
     const controller = new AbortController(); this.active = controller;
     const signal = AbortSignal.any([controller.signal, input.signal]);
     const current = () => !signal.aborted && sameScope(scope, this.ports.getScope()) && this.ports.getPayload() === base
       && !this.ports.hasConflictingWork(true) && readHtmlSnapshotTrackingAvailability(this.ports.getStorage(), scope) === "EMPTY"
+      && readHtmlLegacyAdoptionJournal(this.ports.getStorage(), scope).status === "EMPTY"
       && readHtmlEditingInitializationJournal(this.ports.getStorage(), scope).status === "EMPTY";
     try {
       this.ports.onBusyChange(true);
@@ -94,9 +137,10 @@ export class CompositionHtmlEditorialNativeHost implements CompositionHtmlEditor
     if (this.active) return true;
     const scope = this.ports.getScope();
     const storage = this.ports.getStorage();
-    if (!scope || !storage) return this.ports.enabled() || this.ports.initializationEnabled?.() === true;
+    if (!scope || !storage) return this.ports.enabled() || this.ports.initializationEnabled?.() === true || this.ports.legacyAdoptionEnabled?.() === true;
     // Disabling new writes cannot erase an already persisted pending operation.
-    return readHtmlEditingJournal(storage, scope).status !== "EMPTY" || readHtmlEditingInitializationJournal(storage, scope).status !== "EMPTY";
+    return readHtmlEditingJournal(storage, scope).status !== "EMPTY" || readHtmlEditingInitializationJournal(storage, scope).status !== "EMPTY"
+      || readHtmlLegacyAdoptionJournal(storage, scope).status !== "EMPTY";
   }
   async execute(input: Parameters<CompositionHtmlEditorialHost["execute"]>[0]) {
     const scope = htmlSnapshotLocatorScopeSchema.parse(input.scope);
@@ -118,6 +162,7 @@ export class CompositionHtmlEditorialNativeHost implements CompositionHtmlEditor
     const current = () => !signal.aborted && sameScope(scope, this.ports.getScope())
       && this.ports.getPayload() === (adopted ?? base) && !this.ports.hasConflictingWork(true)
       && readHtmlSnapshotTrackingAvailability(this.ports.getStorage(), scope) === "EMPTY"
+      && readHtmlLegacyAdoptionJournal(this.ports.getStorage(), scope).status === "EMPTY"
       && readHtmlEditingInitializationJournal(this.ports.getStorage(), scope).status === "EMPTY";
     try {
       this.ports.onBusyChange(true);
