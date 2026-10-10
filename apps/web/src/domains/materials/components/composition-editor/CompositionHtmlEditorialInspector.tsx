@@ -19,9 +19,20 @@ export function CompositionHtmlEditorialInspector({ draftId, clipId, documentHas
   draftId: string; clipId: string; documentHash: string; host?: CompositionHtmlEditorialHost;
 }) {
   const actorId = useAuthStore(state => state.user?.id ?? null);
+  const authLoading = useAuthStore(state => state.isLoading);
+  const sessionError = useAuthStore(state => state.sessionError);
+  const initializeAuth = useAuthStore(state => state.initialize);
   const organizationId = useOrganizationStore(state => state.activeOrganizationId);
+  const organizationLoading = useOrganizationStore(state => !state.isLoaded || state.isSwitching);
   const scope = useMemo(() => scopeSchema.safeParse({ actorId, organizationId, documentId: draftId, clipId }), [actorId, organizationId, draftId, clipId]);
-  if (!scope.success) return null;
+  if (!scope.success) return enabled ? <section className="space-y-2 rounded border p-3 text-xs" aria-label="Inspector HTML editorial">
+    <h3>Contenido HTML editable</h3>
+    {authLoading || organizationLoading ? <p role="status">Comprobando sesión y organización…</p> : <>
+      <p role="alert">{sessionError ?? (!actorId ? "No se pudo identificar tu sesión. Vuelve a comprobarla o inicia sesión de nuevo."
+        : !organizationId ? "Selecciona una organización válida para editar HTML." : "El contexto de edición HTML no es válido.")}</p>
+      {!actorId && <button type="button" onClick={() => void initializeAuth()}>Volver a comprobar sesión</button>}
+    </>}
+  </section> : null;
   const ownerScope = { actorId: scope.data.actorId, organizationId: scope.data.organizationId, draftId: scope.data.documentId };
   return <>
     {host && <CompositionHtmlLegacyAdoptionPanel key={`adoption:${scope.data.actorId}:${organizationId}:${draftId}:${clipId}`}
