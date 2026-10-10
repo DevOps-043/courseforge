@@ -799,7 +799,6 @@
 .previewTools {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
   align-items: center;
   gap: 0.38rem;
   overflow: visible;
@@ -808,7 +807,6 @@
 .previewUtilities {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
   flex: 0 0 auto;
   align-items: center;
   justify-content: flex-end;
@@ -888,6 +886,19 @@
   overscroll-behavior: contain;
   /* Position uses measured bounds; transforms would shift those bounds. */
   animation: none;
+}
+
+.canvasFormat {
+  min-width: 0;
+  max-width: 8rem;
+  flex-shrink: 0;
+  font-size: 0.65rem;
+}
+
+.compactEditMenu,
+.compactViewMenu,
+.compactDocumentMenu {
+  display: none;
 }
 
 .toolMenuItem:hover,
@@ -2228,8 +2239,8 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-@container (max-width: 68rem) {
-  .previewTools .toolButton span,
+@container (max-width: 90rem) {
+  .previewToolbar .toolButton span,
   .previewTitle small,
   .assistantTool span,
   .publishTool span {
@@ -2246,21 +2257,6 @@
 }
 
 @container (max-width: 50rem) {
-  .previewToolbar {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .previewTools {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    width: 100%;
-  }
-
-  .previewUtilities {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
   .previewIdentity {
     min-width: auto;
   }
@@ -2278,6 +2274,30 @@
   .comparisonPane {
     max-height: none;
   }
+}
+
+@container (max-width: 68rem) {
+  .previewIdentity { display: none; }
+  .previewToolbar { grid-template-columns: minmax(0, 1fr) auto; gap: 0.3rem; }
+}
+
+@container (max-width: 60rem) {
+  .monitorControls { display: none; }
+  .compactViewMenu { display: grid; }
+}
+
+@container (max-width: 44rem) {
+  .previewToolbar .saveStatus,
+  .secondaryToolbarControl { display: none; }
+  .compactDocumentMenu { display: grid; }
+}
+
+@container (max-width: 30rem) {
+  .previewToolbar [aria-label="Edición principal"] > button:nth-child(n + 3) { display: none; }
+  .compactEditMenu { display: grid; }
+  .canvasFormat { width: 6rem; }
+  .previewTools,
+  .previewUtilities { gap: 0.2rem; }
 }
 
 @media (max-width: 80rem) {
@@ -2373,22 +2393,6 @@
   .editorGrid,
   .editorGridWithInspector {
     padding: 0.4rem;
-  }
-
-  .previewToolbar {
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-  }
-
-  .previewTools {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    width: 100%;
-  }
-
-  .previewUtilities {
-    grid-column: 2;
-    grid-row: 1;
   }
 
   .previewViewport {

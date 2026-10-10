@@ -19,7 +19,7 @@ async function main() {
     return (result.result as { value: unknown }).value;
   };
   const click = async (label: string) => {
-    await evaluate(`document.querySelector('[aria-label="${label}"]')?.click()`);
+    await evaluate(`[...document.querySelectorAll('[aria-label="${label}"]')].find(element => element.getClientRects().length)?.click()`);
     await compositionQaDelay(150);
   };
   try {
@@ -34,7 +34,8 @@ async function main() {
           const panel = document.querySelector('[data-preview]').getBoundingClientRect();
           const controls = [...document.querySelectorAll('[data-preview] button, [data-preview] select')]
             .filter(el => el.getClientRects().length).map(el => el.getBoundingClientRect());
-          return controls.length > 15 && controls.every(rect => rect.left >= panel.left && rect.right <= panel.right)
+          const toolbar = document.querySelector('[data-preview]').firstElementChild.getBoundingClientRect();
+          return toolbar.height <= 52 && controls.length >= 7 && controls.every(rect => rect.left >= panel.left && rect.right <= panel.right)
             && controls.every((rect, i) => controls.slice(i + 1).every(other =>
               Math.min(rect.right, other.right) - Math.max(rect.left, other.left) <= 1 ||
               Math.min(rect.bottom, other.bottom) - Math.max(rect.top, other.top) <= 1));
@@ -47,7 +48,8 @@ async function main() {
           return menu?.matches(':popover-open') && bounds.left >= 0 && bounds.right <= innerWidth
             && bounds.top >= 0 && bounds.bottom <= innerHeight
             && menu.contains(document.activeElement)
-            && [...menu.querySelectorAll('button')].every(button => {
+            && [...menu.querySelectorAll('button')].filter(button => button.getClientRects().length).every(button => {
+              button.scrollIntoView({block: 'nearest'});
               const rect = button.getBoundingClientRect();
               return menu.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
             });
@@ -57,6 +59,10 @@ async function main() {
         await compositionQaDelay(100);
         if (await evaluate("Boolean(document.querySelector('[role=menu]'))")) throw new Error("Escape failed to close tools");
         if (!await evaluate("document.activeElement?.getAttribute('aria-haspopup') === 'menu'")) throw new Error("Tools trigger did not recover focus");
+        if (!await evaluate("[...document.querySelectorAll('[aria-label=\"Abrir historial de edición\"]')].some(element => element.getClientRects().length)")) {
+          await evaluate("document.querySelector('[aria-haspopup=menu]').click()");
+          await compositionQaDelay(100);
+        }
         await click("Abrir historial de edición");
         if (!await evaluate("document.querySelector('[aria-label=\"Historial de edición\"]')?.matches(':popover-open')")) throw new Error("History not in top layer");
         await click("Cerrar historial");
@@ -83,7 +89,7 @@ async function main() {
     await browser.client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: 20, y: 20, button: "left", clickCount: 1 });
     await compositionQaDelay(100);
     if (await evaluate("Boolean(document.querySelector('[role=menu]'))")) throw new Error("Outside pointer failed to close tools");
-    process.stdout.write("Toolbar layout, tools visibility, keyboard dismissal and history: passed at 6 widths, with inspector open and closed.\n");
+    process.stdout.write("Single-row toolbar (<=52px), tools visibility, keyboard dismissal and history: passed at 6 widths, with inspector open and closed.\n");
   } finally { await browser.close(); }
 }
 
