@@ -8,6 +8,14 @@ import { allowHubSessionConnection } from '@/lib/server/hub-session-rate-limit';
 const headers = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 const fail = (status: number) => NextResponse.json({ success: false }, { status, headers });
 
+function hasSameOrigin(request: NextRequest): boolean {
+  const origin = request.headers.get('origin');
+  // Netlify puede reconstruir la URL interna con HTTP. Host conserva el
+  // destino público; solo admitimos su origen HTTPS, sin confiar en Forwarded.
+  return !origin || origin === request.nextUrl.origin ||
+    origin === `https://${request.headers.get('host') || request.nextUrl.host}`;
+}
+
 async function connectionInput(request: NextRequest): Promise<{ replace: boolean } | null> {
   const reader = request.body?.getReader();
   if (!reader) return null;
@@ -29,8 +37,7 @@ async function connectionInput(request: NextRequest): Promise<{ replace: boolean
 }
 
 export async function POST(request: NextRequest) {
-  const origin = request.headers.get('origin');
-  if ((origin && origin !== request.nextUrl.origin) || request.headers.get('x-pulsehub-session') !== '1') return fail(403);
+  if (!hasSameOrigin(request) || request.headers.get('x-pulsehub-session') !== '1') return fail(403);
   const match = /^Bearer ([^\s]{40,8192})$/.exec(request.headers.get('authorization') || '');
   if (!match) return fail(401);
   try {

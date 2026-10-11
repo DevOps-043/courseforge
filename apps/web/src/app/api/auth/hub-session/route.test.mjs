@@ -14,6 +14,12 @@ beforeEach(() => {
   mocks.bridge.mockResolvedValue({ id: 'hub-user' }); mocks.login.mockResolvedValue({ success: true, redirectTo: '/builder' });
 });
 describe('Conexión de Engine desde PulseHub', () => {
+  it('admite el origen HTTPS público con una URL interna HTTP y rechaza dominios parecidos', async () => {
+    const req = new NextRequest('http://127.0.0.1:3000/api/auth/hub-session', { method: 'POST', headers: { Host: 'engine.test', Origin: 'https://engine.test', 'X-PulseHub-Session': '1' }, body: '{"replace":false}' });
+    expect((await POST(req)).status).toBe(401); expect(mocks.getUser).not.toHaveBeenCalled();
+    req.headers.set('origin', 'https://engine.test.evil.test');
+    expect((await POST(req)).status).toBe(403);
+  });
   it('valida el bearer antes de conservar una cuenta existente', async () => {
     const response = await POST(request()); expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ success: true, userId: 'hub-user', preserved: true });
