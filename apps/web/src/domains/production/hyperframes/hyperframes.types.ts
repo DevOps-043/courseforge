@@ -62,6 +62,11 @@ export const hyperframesAnimatedDeckSourceSchema = z.object({
   fonts: z.array(z.object({ family: z.string().min(1).max(160), href: z.string().url() })).max(32),
   height: z.number().int().min(1).max(8_192),
   slides: z.array(z.object({
+    htmlAssetId: z.string().uuid().optional(),
+    sourceSlideIndex: z.number().int().min(0).max(1000).optional(),
+    sourceWidth: z.number().int().positive().max(8192).optional(),
+    sourceHeight: z.number().int().positive().max(8192).optional(),
+    appearance: z.enum(ANIMATED_DECK_APPEARANCES).optional(),
     animationCount: z.number().int().min(0).max(500),
     classes: z.string().min(1).max(2_000),
     html: z.string().min(1).max(100_000),
@@ -84,6 +89,7 @@ export const hyperframesRevisionManifestSchema = z
   .object({
     asset_delivery_mode: hyperframesAssetDeliveryModeSchema.optional(),
     asset_manifest: hyperframesAssetManifestSchema,
+    canvas_aspect_ratio: z.enum(["16:9", "9:16", "1:1"]).optional(),
     canvas_duration_seconds: z.number().positive().max(24 * 60 * 60).optional(),
     render_profile: hyperframesRenderProfileSchema.optional(),
   })

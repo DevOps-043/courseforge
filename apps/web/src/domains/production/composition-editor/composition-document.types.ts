@@ -30,6 +30,7 @@ export const NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT = "courseforge-composition-
 /** Supports full source media such as a 2–3 minute avatar without truncating it. */
 export { COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS } from "./composition-document.types.constants";
 export const COMPOSITION_DURATION_SOURCES = [
+  "media",
   "voice",
   "avatar_full",
   "avatar_clips",
@@ -147,6 +148,11 @@ export const compositionAudioMixSchema = z.object({
 });
 
 const deckSourceSchema = z.object({
+    htmlAssetId: z.string().uuid().optional(),
+    sourceSlideIndex: z.number().int().min(0).max(1000).optional(),
+    sourceWidth: z.number().int().positive().max(8192).optional(),
+    sourceHeight: z.number().int().positive().max(8192).optional(),
+    appearance: z.enum(ANIMATED_DECK_APPEARANCES).optional(),
   slideKey: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   classes: z.string().trim().min(1).max(2_000).default("slide active"),
   html: z.string().min(1).max(100_000),
@@ -154,6 +160,8 @@ const deckSourceSchema = z.object({
 }).strict();
 
 const deckStylesSchema = z.object({
+  sourceWidth: z.number().int().positive().max(8192).optional(),
+  sourceHeight: z.number().int().positive().max(8192).optional(),
   /** Optional only for composition documents created before deck appearances. */
   appearance: z.enum(ANIMATED_DECK_APPEARANCES).optional(),
   css: z.string().max(200_000),
@@ -294,6 +302,7 @@ export const compositionGroupSchema = z.object({
 });
 
 export const compositionEditorDocumentSchema = z.object({
+  sourceInsertionMode: z.enum(["MANUAL", "AUTOMATIC"]).optional(),
   excludedSources: z.array(z.string().min(1).max(200)).max(1000).optional(),
   narrativeScenes: z.array(compositionNarrativeSceneSchema).max(250).optional(),
   audioMix: compositionAudioMixSchema,
@@ -305,20 +314,23 @@ export const compositionEditorDocumentSchema = z.object({
     height: z.number().int().positive().max(8_192),
     width: z.number().int().positive().max(8_192),
   }).strict(),
-  clips: z.array(compositionClipSchema).min(1).max(500),
+  clips: z.array(compositionClipSchema).max(500),
   deckStyles: deckStylesSchema.nullable(),
   format: z.enum([LEGACY_COMPOSITION_DOCUMENT_FORMAT, COMPOSITION_DOCUMENT_FORMAT, NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT]),
   groups: z.array(compositionGroupSchema).max(250).optional(),
   motion: compositionMotionSchema,
   /** Optional for backward compatibility; new transition edits initialize V1. */
   transitions: compositionTransitionsSchema.optional(),
-  tracks: z.array(compositionTrackSchema).min(1).max(32),
+  tracks: z.array(compositionTrackSchema).max(32),
   variables: z.object({
     accent: z.string().regex(/^#[0-9a-f]{6}$/i),
     subtitle: z.string().max(220),
     title: z.string().min(1).max(100),
   }).strict(),
 }).strict().superRefine((document, context) => {
+  if (document.sourceInsertionMode !== "MANUAL" && (!document.clips.length || !document.tracks.length)) {
+    context.addIssue({ code: "custom", message: "La composición debe conservar al menos un clip y una pista." });
+  }
   const hasNativeText = document.clips.some((clip) => clip.kind === "TEXT" || clip.kind === "CAPTION");
   if (hasNativeText && document.format !== NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT) {
     context.addIssue({ code: "custom", message: "Las capas de texto y captions requieren el contrato courseforge-composition-v3." });

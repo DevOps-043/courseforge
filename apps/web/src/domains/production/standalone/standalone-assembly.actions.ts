@@ -13,6 +13,7 @@ import type {
   MaterialComponent,
 } from "@/domains/materials/types/materials.types";
 import { createClient } from "@/utils/supabase/server";
+import type { StandaloneMediaSummary } from "./standalone-media.types";
 
 const STANDALONE_VIDEO_COMPONENT_TYPES = new Set([
   "VIDEO_THEORETICAL",
@@ -71,6 +72,7 @@ export interface StandaloneAssemblyProjectSummary {
 }
 
 export interface StandaloneAssemblyComponentView {
+  media: StandaloneMediaSummary[];
   artifactId: string;
   component: MaterialComponent;
   lessonTitle: string;
@@ -514,6 +516,17 @@ export async function getStandaloneAssemblyProjectAction(projectId: string) {
         | null,
     );
     const component = normalizeComponent(rawComponent);
+    const { data: mediaRows, error: mediaError } = await access.admin.from("production_assets")
+      .select("id, mime_type, metadata, duration_milliseconds")
+      .eq("organization_id", access.tenant.organizationId)
+      .eq("material_component_id", component.id)
+      .contains("metadata", { standalone_media: true })
+      .neq("qa_status", "ARCHIVED").order("created_at", { ascending: true });
+    if (mediaError) throw mediaError;
+    const media: StandaloneMediaSummary[] = (mediaRows || []).map((asset) => ({
+      id: asset.id, name: String(asset.metadata?.file_name || "Archivo"), mimeType: asset.mime_type,
+      durationSeconds: asset.duration_milliseconds ? asset.duration_milliseconds / 1000 : null,
+    }));
 
     if (component.assets.final_video_url !== project.final_video_url) {
       await syncProjectFromAssets({
@@ -526,6 +539,7 @@ export async function getStandaloneAssemblyProjectAction(projectId: string) {
     return {
       success: true,
       data: {
+        media,
         artifactId: materialsRelation?.artifact_id || project.backing_artifact_id,
         component,
         lessonTitle: lessonRelation?.lesson_title || project.title,

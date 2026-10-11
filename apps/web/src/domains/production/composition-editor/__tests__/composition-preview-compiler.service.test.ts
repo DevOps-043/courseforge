@@ -20,6 +20,18 @@ import type { CompositionPreviewAssetDiagnostics } from "../composition-preview-
 
 const COLOR_GRADING_RUNTIME_FIXTURE = "window.__hfColorGradingRuntimeInstalled=true;";
 
+test("vertical canvas preserves the original HTML deck dimensions", async () => {
+  const document = createInitialCompositionDocument({ animatedDeck: {
+    css: "", fonts: [], width: 1920, height: 1080,
+    slides: [{ animationCount: 0, classes: "slide", html: "<h1>Vertical</h1>", index: 0, label: "HTML" }],
+  }, assets: [], plan: { accentColor: "#000000", durationSeconds: 5, subtitle: "", title: "Vertical" } });
+  const vertical = applyCompositionEditorPatches(document, [{ type: "composition.canvas-size", width: 1080, height: 1920 }]);
+  const html = await compileCompositionPreview({ document: vertical, assetUrls: new Map() });
+  assert.match(html, /data-width="1080" data-height="1920"/);
+  assert.match(html, /position:absolute;width:1920px;height:1080px/);
+  assert.equal(vertical.deckStyles?.sourceWidth, 1920);
+});
+
 function readColorGradingPayload(html: string, clipId: string) {
   const mediaStart = html.indexOf(`id="${clipId}-media"`);
   assert.notEqual(mediaStart, -1, `No se encontrÃ³ el medio del clip ${clipId}.`);

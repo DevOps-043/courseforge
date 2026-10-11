@@ -134,6 +134,9 @@ export class HyperframesRenderSubmissionService {
     const revisionContract = parseAndVerifyManifest(revision.manifest, assets);
     const manifest = revisionContract.assets;
     const effectiveInput = applyRevisionRenderProfile(input, revisionContract.renderProfile);
+    if (revisionContract.aspectRatio && effectiveInput.aspectRatio !== revisionContract.aspectRatio) {
+      throw new HyperframesRenderSubmissionError("El formato solicitado no coincide con el snapshot. Regenera el snapshot.", 409);
+    }
     const declaredPreflight = validateHyperframesPreflight({
       archiveSizeBytes: revision.project_archive_size_bytes,
       assets: manifest,
@@ -334,6 +337,9 @@ export class HyperframesRenderSubmissionService {
     const revisionContract = parseAndVerifyManifest(revision.manifest, assets);
     const manifest = revisionContract.assets;
     const effectiveInput = applyRevisionRenderProfile(input, revisionContract.renderProfile);
+    if (revisionContract.aspectRatio && effectiveInput.aspectRatio !== revisionContract.aspectRatio) {
+      throw new HyperframesRenderSubmissionError("El formato solicitado no coincide con el snapshot. Regenera el snapshot.", 409);
+    }
     const preflight = validateHyperframesPreflight({
       archiveSizeBytes: revision.project_archive_size_bytes,
       assets: manifest,
@@ -880,6 +886,7 @@ function parseAndVerifyManifest(rawManifest: unknown, rows: StoredRevisionAsset[
   }
   return {
     assets: manifest,
+    aspectRatio: parsedManifest.data.canvas_aspect_ratio,
     deliveryMode: parsedManifest.data.asset_delivery_mode || HYPERFRAMES_ASSET_DELIVERY_MODES.EMBEDDED,
     durationSeconds: parsedManifest.data.canvas_duration_seconds,
     renderProfile: parsedManifest.data.render_profile,

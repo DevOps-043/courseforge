@@ -8,11 +8,12 @@ export interface StandaloneAssemblyReadiness {
 
 /**
  * Mirrors the editor's duration prerequisites without initializing a draft.
- * Background music and decorative images remain valid assets, but they cannot
- * define the length of a composition by themselves.
+ * Generic registered media can initialize a draft, including still images.
+ * Historical production sources retain their existing duration prerequisites.
  */
 export function getStandaloneAssemblyReadiness(
   assets: MaterialAssets | null | undefined,
+  mediaCount = 0,
 ): StandaloneAssemblyReadiness {
   const value = assets || {};
   const avatarClips = (value.avatar_clips || []).filter((clip) => !clip.deleted);
@@ -49,9 +50,9 @@ export function getStandaloneAssemblyReadiness(
   ].filter(Boolean).length;
 
   return {
-    assetCount,
-    canOpenEditor: durationSourceCount > 0,
-    durationSourceCount,
+    assetCount: assetCount + mediaCount,
+    canOpenEditor: durationSourceCount > 0 || mediaCount > 0,
+    durationSourceCount: durationSourceCount + mediaCount,
   };
 }
 

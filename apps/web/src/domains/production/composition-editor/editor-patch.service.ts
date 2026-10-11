@@ -176,7 +176,7 @@ function assertNewDerivedClipIdentity(
 }
 
 function removeClipOrThrow(document: CompositionEditorDocument, clipId: string) {
-  if (document.clips.length === 1) {
+  if (document.clips.length === 1 && document.sourceInsertionMode !== "MANUAL") {
     throw new CompositionEditorPatchError("La composición debe conservar al menos un clip.");
   }
   const removed = document.clips.find((candidate) => candidate.id === clipId)!;
@@ -343,6 +343,8 @@ export function applyCompositionEditorPatches(
         throw new CompositionEditorPatchError("Solo una acción explícita del usuario puede restaurar una versión anterior.");
       }
       next = structuredClone(operation.document);
+      if (document.sourceInsertionMode) next.sourceInsertionMode = document.sourceInsertionMode;
+      else delete next.sourceInsertionMode;
       next.format = COMPOSITION_DOCUMENT_FORMAT;
       continue;
     }
@@ -496,6 +498,17 @@ export function applyCompositionEditorPatches(
       next.canvas.durationSeconds = operation.durationSeconds;
       next.canvas.durationMode = operation.durationMode || "USER_EDITED";
       if (operation.durationSource) next.canvas.durationSource = operation.durationSource;
+      continue;
+    }
+    if (operation.type === "composition.canvas-size") {
+      if (source !== "USER") throw new CompositionEditorPatchError("El cambio de formato requiere una acción del usuario.");
+      if (next.deckStyles) {
+        next.deckStyles.sourceWidth ??= next.canvas.width;
+        next.deckStyles.sourceHeight ??= next.canvas.height;
+      }
+      // Preserve authored geometry and animations. Reframing is an explicit edit.
+      next.canvas.width = operation.width;
+      next.canvas.height = operation.height;
       continue;
     }
 

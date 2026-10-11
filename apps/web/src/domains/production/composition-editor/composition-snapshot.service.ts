@@ -1,3 +1,4 @@
+import { resolveCompositionCanvasFormat } from "./composition-canvas-format";
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -265,6 +266,7 @@ export async function snapshotCompositionDocument(params: {
       media_binding_version: HYPERFRAMES_MEDIA_BINDING_VERSION,
       asset_manifest: manifest,
       canvas_duration_seconds: current.document.canvas.durationSeconds,
+      canvas_aspect_ratio: resolveCompositionCanvasFormat(current.document.canvas),
       draft_document_hash: current.documentHash,
       draft_document_version: current.version,
       font_manifest: fontManifest,
@@ -647,6 +649,7 @@ function readPersistedRenderProfile(manifest: Record<string, unknown>) {
 export function assertCompositionSnapshotRenderContract(
   document: Awaited<ReturnType<typeof getCurrentCompositionDocument>>["document"],
 ) {
+  if (!document.clips.length) throw new CompositionSnapshotError("Añade al menos un asset al timeline antes de exportar.", 409);
   if (document.canvas.fps !== HYPERFRAMES_DURABLE_RENDER_PROFILE.fps) {
     throw new CompositionSnapshotError(
       "El documento usa un perfil de render anterior. Recarga el editor para migrarlo a 25 FPS antes de generar el snapshot.",

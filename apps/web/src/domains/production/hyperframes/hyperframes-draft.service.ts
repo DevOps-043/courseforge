@@ -1,3 +1,4 @@
+import { loadStandaloneHtmlDecks } from "../standalone/standalone-html.service";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -178,7 +179,7 @@ export async function initializeHyperframesDraft(params: {
       sceneOrder: asset.sceneOrder,
       sourceHeight: positiveMetadataDimension(asset.metadata.source_height),
       sourceWidth: positiveMetadataDimension(asset.metadata.source_width),
-      storageBucket: "production-assets",
+      storageBucket: asset.storagePath.split("/")[0],
       storagePath: asset.storagePath,
       timelineRole: asset.timelineRole,
       timelineVariant: asset.timelineVariant,
@@ -186,7 +187,10 @@ export async function initializeHyperframesDraft(params: {
   const deckDependencyAssetIds = new Set(candidates
     .filter((asset) => asset.sourceType === "DECK_DEPENDENCY")
     .map((asset) => asset.productionAssetId));
-  const animatedDeck = extractHyperframesAnimatedDeck(component.assets);
+  const animatedDeck = await loadStandaloneHtmlDecks({
+    componentId: composition.material_component_id, organizationId: params.organizationId,
+    supabase: params.supabase, legacy: extractHyperframesAnimatedDeck(component.assets),
+  });
   // A draft can predate a re-sync. Link assets on every initialization so an
   // older draft never hides assets that are already available in Production.
   if (candidates.length > 0) {
@@ -221,7 +225,11 @@ export async function initializeHyperframesDraft(params: {
     if (staleAssetLinkError) throw staleAssetLinkError;
   }
 
+  const { data: standaloneProject, error: standaloneError } = await params.supabase.from("standalone_assembly_projects")
+    .select("id").eq("backing_component_id", composition.material_component_id).eq("organization_id", params.organizationId).maybeSingle();
+  if (standaloneError) throw standaloneError;
   const persistedDocument = await loadOrCreateInitialDocument({
+    manualSourceInsertion: Boolean(standaloneProject),
     preassemblyVersion: params.preassemblyVersion,
     narrativeScenes: buildCompositionNarrativeScenes(component.assets, buildSceneVisualCatalog(animatedDeck)),
     animatedDeck,
@@ -259,6 +267,7 @@ function positiveMetadataDimension(value: unknown) {
 }
 
 async function loadOrCreateInitialDocument(params: {
+  manualSourceInsertion?: boolean;
   preassemblyVersion?: string;
   narrativeScenes?: CompositionNarrativeScene[];
   animatedDeck: ReturnType<typeof extractHyperframesAnimatedDeck>;
@@ -282,13 +291,16 @@ async function loadOrCreateInitialDocument(params: {
       }
     }
     const operations = buildProductionAssetReconciliationOperations(
-      current.document,
+      params.manualSourceInsertion ? { ...current.document, sourceInsertionMode: "MANUAL" } : current.document,
       params.assets,
       params.deckDependencyAssetIds,
       params.animatedDeck,
       params.narrativeScenes,
       Boolean(params.preassemblyVersion),
     );
+    if (params.manualSourceInsertion && current.document.sourceInsertionMode !== "MANUAL" && operations.length === 0) {
+      operations.push({ type: "document.reconcile", document: { ...current.document, sourceInsertionMode: "MANUAL" } });
+    }
     if (operations.length === 0) {
       return { created: false, document: current.document, version: current.version };
     }
@@ -323,6 +335,7 @@ async function loadOrCreateInitialDocument(params: {
   let document;
   try {
     document = createInitialCompositionDocument({
+      ...(params.manualSourceInsertion ? { sourceInsertionMode: "MANUAL" as const } : {}),
       narrativeScenes: params.narrativeScenes,
       animatedDeck: params.animatedDeck,
       assets: params.assets,

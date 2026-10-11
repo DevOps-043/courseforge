@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -14,21 +14,12 @@ import {
   Sparkles,
   Upload,
 } from "lucide-react";
-import { ProductionAssetCard } from "@/domains/materials/components/ProductionAssetCard";
+import { StandaloneMediaLibrary } from "./StandaloneMediaLibrary";
 import { PRODUCTION_THEME } from "@/domains/materials/components/production-asset-ui";
-import {
-  generateVideoPromptsAction,
-  saveMaterialAssetsAction,
-} from "@/domains/materials/actions/production.actions";
-import type {
-  MaterialAssets,
-  StoryboardItem,
-} from "@/domains/materials/types/materials.types";
 import {
   createStandaloneAssemblyProjectAction,
   getStandaloneAssemblyProjectAction,
   listStandaloneAssemblyProjectsAction,
-  syncStandaloneAssemblyProjectAction,
   type StandaloneAssemblyComponentView,
   type StandaloneAssemblyProjectSummary,
 } from "./standalone-assembly.actions";
@@ -71,8 +62,6 @@ export function StandaloneAssemblyStudio() {
   const [creatingProject, setCreatingProject] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const pendingAssetsRef = useRef<Record<string, Partial<MaterialAssets>>>({});
-  const saveQueuesRef = useRef<Map<string, Promise<void>>>(new Map());
 
   const selectedProjectId = selectedProject?.id || null;
 
@@ -103,8 +92,8 @@ export function StandaloneAssemblyStudio() {
     [],
   );
 
-  const loadSelectedProject = useCallback(async (projectId: string) => {
-    setLoadingProject(true);
+  const loadSelectedProject = useCallback(async (projectId: string, silent = false) => {
+    if (!silent) setLoadingProject(true);
     setError(null);
     const result = await getStandaloneAssemblyProjectAction(projectId);
     if (!result.success) {
@@ -139,20 +128,9 @@ export function StandaloneAssemblyStudio() {
     const adminIndex = pathname.indexOf("/admin");
     return adminIndex >= 0 ? pathname.slice(0, adminIndex + "/admin".length) : "/admin";
   }, [pathname]);
-  const sofliaSlidesHref = useMemo(() => {
-    const componentId = componentView?.component.id;
-    if (!componentId) return undefined;
-
-    const params = new URLSearchParams({
-      componentId,
-      returnTo: pathname,
-    });
-
-    return `${adminBasePath}/slides?${params.toString()}`;
-  }, [adminBasePath, componentView?.component.id, pathname]);
   const readiness = useMemo(
-    () => getStandaloneAssemblyReadiness(componentView?.component.assets),
-    [componentView?.component.assets],
+    () => getStandaloneAssemblyReadiness(componentView?.component.assets, componentView?.media.length || 0),
+    [componentView],
   );
   const editorHref = componentView
     ? `${adminBasePath}/assembly/${componentView.project.id}/edit`
@@ -177,83 +155,6 @@ export function StandaloneAssemblyStudio() {
     setNewTitle("");
     await loadProjects(query, result.project.id);
     setCreatingProject(false);
-  };
-
-  const handleGeneratePrompts = async (
-    componentId: string,
-    storyboard: StoryboardItem[],
-  ) => {
-    const result = await generateVideoPromptsAction(componentId, storyboard);
-    if (!result.success) {
-      throw new Error(result.error || "No se pudieron generar prompts.");
-    }
-
-    return result.prompts || "";
-  };
-
-  const handleSaveAssets = async (
-    componentId: string,
-    assets: Partial<MaterialAssets>,
-  ): Promise<void> => {
-    pendingAssetsRef.current[componentId] = {
-      ...pendingAssetsRef.current[componentId],
-      ...assets,
-    };
-
-    const activeQueue = saveQueuesRef.current.get(componentId);
-    if (activeQueue) {
-      await activeQueue;
-      const followUpQueue = saveQueuesRef.current.get(componentId);
-      if (followUpQueue && followUpQueue !== activeQueue) {
-        await followUpQueue;
-        return;
-      }
-      if (pendingAssetsRef.current[componentId]) {
-        await handleSaveAssets(componentId, {});
-      }
-      return;
-    }
-
-    const projectId = componentView?.project.id;
-    const queue = (async () => {
-      while (true) {
-        let saved = false;
-        while (pendingAssetsRef.current[componentId]) {
-          const nextAssets = pendingAssetsRef.current[componentId];
-          delete pendingAssetsRef.current[componentId];
-
-          const result = await saveMaterialAssetsAction(componentId, nextAssets);
-          if (!result.success) {
-            pendingAssetsRef.current[componentId] = {
-              ...nextAssets,
-              ...pendingAssetsRef.current[componentId],
-            };
-            throw new Error(result.error || "No se pudieron guardar assets.");
-          }
-          saved = true;
-        }
-
-        if (projectId && saved) {
-          await syncStandaloneAssemblyProjectAction(projectId);
-          await loadSelectedProject(projectId);
-          await loadProjects(query, projectId);
-        }
-
-        if (!pendingAssetsRef.current[componentId]) break;
-      }
-    })().finally(() => {
-        saveQueuesRef.current.delete(componentId);
-        if (pendingAssetsRef.current[componentId]) {
-          void handleSaveAssets(componentId, {});
-        }
-      });
-
-    void queue.catch((saveError) => {
-      console.error("Error auto-saving standalone production assets:", saveError);
-      setError(saveError instanceof Error ? saveError.message : "No se pudieron guardar assets.");
-    });
-    saveQueuesRef.current.set(componentId, queue);
-    await queue;
   };
 
   return (
@@ -431,29 +332,25 @@ export function StandaloneAssemblyStudio() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-cyan-700 dark:text-cyan-300"><Upload size={14} /> Preparación de assets</p>
-                    <h3 className="mt-1 text-base font-bold text-slate-900 dark:text-white">Carga y clasifica los medios del proyecto</h3>
+                    <h3 className="mt-1 text-base font-bold text-slate-900 dark:text-white">Carga los archivos del proyecto</h3>
                     <p className="mt-1 text-xs text-slate-600 dark:text-gray-400">Cuando termines, abre el editor en la siguiente página para trabajar con preview y timeline.</p>
                   </div>
                   <span className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm dark:bg-white/10 dark:text-gray-300">{readiness.assetCount} asset(s)</span>
                 </div>
               </div>
 
-              <ProductionAssetCard
-                component={componentView.component}
-                hideGeneratedAssetTools
-                hideStoryboard
-                lessonTitle={componentView.lessonTitle}
-                onGeneratePrompts={handleGeneratePrompts}
-                onAssetChange={handleSaveAssets}
-                slideTemplatesHref={`${adminBasePath}/templates`}
-                slideTemplateStudioHref={`${adminBasePath}/slides/templates`}
-                sofliaSlidesHref={sofliaSlidesHref}
+              <StandaloneMediaLibrary
+                key={componentView.component.id}
+                componentId={componentView.component.id}
+                assets={componentView.media}
+                hasHtmlDeck={Boolean(componentView.component.assets?.slides?.animated_deck)}
+                onChanged={async () => { await loadSelectedProject(componentView.project.id, true); }}
               />
 
               <div className="engine-assembly-next">
                 <div>
                   <p className="text-sm font-bold text-slate-900 dark:text-white">Siguiente paso: edición</p>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-gray-400">{readiness.canOpenEditor ? "El proyecto ya tiene una fuente de duración válida." : "Agrega voz, avatar, B-roll con duración o un deck de slides para continuar."}</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-gray-400">{readiness.canOpenEditor ? "El proyecto ya tiene medios para editar." : "Agrega una imagen, video, audio o diapositivas HTML para continuar."}</p>
                 </div>
                 {readiness.canOpenEditor && editorHref ? (
                   <Link href={editorHref} className="engine-button engine-button--primary">Abrir editor <ArrowRight size={16} /></Link>

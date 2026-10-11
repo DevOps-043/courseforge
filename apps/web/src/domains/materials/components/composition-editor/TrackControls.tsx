@@ -16,10 +16,21 @@ interface TrackControlsProps {
 
 export function TrackControls({ disabled, displayLabel, expanded, onToggleExpanded, onUpdate, track }: TrackControlsProps) {
   const [volume, setVolume] = useState(track.volume ?? 1);
+  const [editingName, setEditingName] = useState(false);
+  const [name, setName] = useState(track.label);
+  useEffect(() => setName(track.label), [track.label]);
+  const commitName = () => {
+    const label = name.trim();
+    if (label && label !== track.label) onUpdate(track, { label }, `Renombró la pista a ${label}.`);
+    else setName(track.label);
+    setEditingName(false);
+  };
 
   useEffect(() => setVolume(track.volume ?? 1), [track.volume]);
 
-  const isAudio = track.kind === "AUDIO" || track.semanticRole === "AVATAR";
+  const isAudio = track.kind === "AUDIO" || track.semanticRole === "AVATAR" || ["media-mp4", "media-webm"].includes(track.id);
+  const formatLabel = track.kind === "DECK" ? "HTML" : track.id.startsWith("media-")
+    ? track.id.slice("media-".length).toUpperCase().replace("JPEG", "JPG").replace("MPEG", "MP3") : null;
   const commitVolume = () => {
     const storedVolume = track.volume ?? 1;
     if (Math.abs(storedVolume - volume) < 0.005) return;
@@ -33,6 +44,16 @@ export function TrackControls({ disabled, displayLabel, expanded, onToggleExpand
 
   return (
     <div className="min-w-0 pt-1">
+      {editingName ? <input
+        autoFocus aria-label="Nombre de la pista" maxLength={120} value={name}
+        disabled={disabled} className="w-full rounded border px-1 text-xs text-slate-900"
+        onChange={(event) => setName(event.target.value)} onBlur={commitName}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+          if (event.key === "Escape") { setName(track.label); setEditingName(false); }
+        }}
+      /> : <button type="button" disabled={disabled} onClick={() => setEditingName(true)}
+        className="text-[10px] text-cyan-700 dark:text-cyan-300" aria-label={`Renombrar ${track.label}`}>Renombrar</button>}
       {onToggleExpanded ? <button
         type="button"
         aria-expanded={expanded}
@@ -49,7 +70,7 @@ export function TrackControls({ disabled, displayLabel, expanded, onToggleExpand
       >
         {displayLabel || track.label}
       </span>}
-      <span className="sr-only">Capa semántica: {track.semanticRole || track.kind}</span>
+      {formatLabel && <span className="ml-1 text-[10px] text-slate-500">{formatLabel}</span>}
       <div className="mt-1 flex items-center gap-1 text-slate-500 dark:text-gray-400">
         <button
           type="button"

@@ -283,7 +283,7 @@ export async function POST(request: Request) {
         const { data, error } = await admin.storage
             .from(bucket)
             .createSignedUploadUrl(authorizedFilePath, {
-                upsert: purpose === 'curation-source-pdf' || purpose === 'assembly-branding'
+                upsert: authorizedFilePath.startsWith('media/') || purpose === 'curation-source-pdf' || purpose === 'assembly-branding'
                     ? false
                     : upsert ?? true,
             });
@@ -307,6 +307,6 @@ export async function POST(request: Request) {
 function isPrivateRenderSourcePath(filePath: string, componentId: string) {
     const [folder, fileName, ...extra] = filePath.split('/');
     return extra.length === 0
-        && new Set(['avatars', 'broll', 'music', 'voices']).has(folder || '')
+        && new Set(['avatars', 'broll', 'music', 'voices', 'media']).has(folder || '')
         && Boolean(fileName?.startsWith(`${componentId}-`));
 }

@@ -7,7 +7,7 @@ export interface CompositionDurationAsset {
   sceneClipId?: string;
   sceneOrder?: number;
   durationSeconds?: number;
-  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
+  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "MEDIA" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";
 }
 
@@ -26,13 +26,25 @@ export class CompositionDurationResolutionError extends Error {
 }
 
 /**
- * Resolves one authoritative duration without allowing unrelated media or the
- * generated plan to influence it. Only measured media durations are eligible.
+ * Preserves production duration priorities. Generic standalone media uses
+ * measured duration or a five-second initial still-image interval.
  */
 export function resolveCompositionDuration(input: {
   assets: CompositionDurationAsset[];
   slideCount: number;
 }): CompositionDurationResolution {
+  const genericAssets = input.assets.filter((asset) => asset.timelineRole === "MEDIA");
+  if (genericAssets.length > 0) {
+    const genericDuration = genericAssets.reduce((total, asset) => total + (measuredDuration(asset) || 5), 0);
+    const legacyAssets = input.assets.filter((asset) => asset.timelineRole !== "MEDIA");
+    let legacyDuration = input.slideCount * 5;
+    try {
+      legacyDuration = resolveCompositionDuration({ assets: legacyAssets, slideCount: input.slideCount }).durationSeconds;
+    } catch (error) {
+      if (!(error instanceof CompositionDurationResolutionError) || error.code !== "NO_ELIGIBLE_DURATION_SOURCE") throw error;
+    }
+    return assertSupportedDuration(Math.max(genericDuration, legacyDuration), "media");
+  }
   const sceneMedia = input.assets.filter((asset) => asset.sceneClipId && Number.isInteger(asset.sceneOrder)
     && (asset.timelineRole === "VOICE" || asset.timelineRole === "AVATAR"));
   if (sceneMedia.length && !input.assets.some((asset) => asset.timelineVariant === "FULL" && asset.timelineRole === "AVATAR")) {

@@ -12,6 +12,8 @@ export type CompositionDocumentHistoryEntry = {
 };
 
 interface CompositionPreviewToolbarProps {
+  canvas: { width: number; height: number };
+  onCanvasFormatChange: (format: "16:9" | "9:16" | "1:1") => void;
   agentProposalActive: boolean;
   currentVersion: number;
   comparisonActive: boolean;
@@ -54,13 +56,20 @@ interface CompositionPreviewToolbarProps {
   visualCropEnabled: boolean;
 }
 
-export function CompositionPreviewToolbar({ agentProposalActive, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, libraryOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenLibrary, onOpenPresets, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onZoom, previewFullscreen, previewStatusLabel, previewZoom, removalRangeStartSeconds, saveError, saving, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, visualCropEnabled }: CompositionPreviewToolbarProps) {
+export function CompositionPreviewToolbar({ canvas, onCanvasFormatChange, agentProposalActive, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, libraryOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenLibrary, onOpenPresets, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onZoom, previewFullscreen, previewStatusLabel, previewZoom, removalRangeStartSeconds, saveError, saving, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, visualCropEnabled }: CompositionPreviewToolbarProps) {
   return <div className={styles.previewToolbar}>
     <div className={styles.previewIdentity}>
       <span className={styles.previewIdentityIcon}><Clapperboard size={14} aria-hidden="true" /></span>
       <span className={styles.previewTitle}>Ensamble <small>v{currentVersion} · {formatSeconds(duration)}</small>{previewStatusLabel ? <span className={styles.pendingBadge}>{previewStatusLabel}</span> : null}</span>
     </div>
     <div className={styles.previewTools}>
+      <select aria-label="Formato del lienzo" disabled={saving || agentProposalActive}
+        title="Cambia el lienzo y conserva posiciones y animaciones. Ajusta el encuadre después."
+        value={canvas.width === canvas.height ? "1:1" : canvas.width > canvas.height ? "16:9" : "9:16"}
+        onChange={(event) => onCanvasFormatChange(event.target.value as "16:9" | "9:16" | "1:1")}
+        className="rounded border bg-transparent px-2 py-1 text-xs">
+        <option value="16:9">Horizontal · 16:9</option><option value="9:16">Vertical · 9:16</option><option value="1:1">Cuadrado · 1:1</option>
+      </select>
       <div className={styles.toolbarGroup} aria-label="Edición principal">
         <PreviewToolButton active={directEditingEnabled} label="Editar" title="Activar selección, arrastre y tiradores" onClick={onToggleDirectEditing}><MousePointer2 size={13} /></PreviewToolButton>
         <PreviewToolButton active={snapEnabled} label="Snap" title="Alinear clips, recortes y animaciones con el cursor y con otros límites temporales" onClick={onToggleSnap}><Magnet size={13} /></PreviewToolButton>

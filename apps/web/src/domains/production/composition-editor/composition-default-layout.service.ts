@@ -65,7 +65,8 @@ export function resolveDefaultCompositionMediaFit(params: {
 }): CompositionClip["mediaFit"] {
   if (params.clipKind === "AUDIO" || params.clipKind === "DECK_SLIDE") return undefined;
   if (
-    params.track.semanticRole === "AVATAR"
+    params.track.id.startsWith("media-")
+    || params.track.semanticRole === "AVATAR"
     || params.track.id === "avatar"
     || params.track.semanticRole === "BROLL"
     || params.track.id === "broll"

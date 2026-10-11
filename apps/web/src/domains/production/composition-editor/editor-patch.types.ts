@@ -167,6 +167,7 @@ const canvasDurationOperationSchema = z.object({
 
 const trackUpdateOperationSchema = z.object({
   settings: z.object({
+    label: z.string().trim().min(1).max(120).optional(),
     hidden: z.boolean().optional(),
     locked: z.boolean().optional(),
     muted: z.boolean().optional(),
@@ -174,6 +175,12 @@ const trackUpdateOperationSchema = z.object({
   }).strict().refine((settings) => Object.keys(settings).length > 0, "Debes indicar al menos un ajuste de capa."),
   trackId: editorIdSchema,
   type: z.literal("track.update"),
+}).strict();
+
+const canvasSizeOperationSchema = z.object({
+  type: z.literal("composition.canvas-size"),
+  width: z.union([z.literal(1920), z.literal(1080)]),
+  height: z.union([z.literal(1920), z.literal(1080)]),
 }).strict();
 
 const clipColorGradingOperationSchema = z.object({
@@ -336,6 +343,7 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
 ]).and(z.object({ clipId: editorIdSchema }).strict());
 
 export const compositionEditorPatchOperationSchema = z.union([
+  canvasSizeOperationSchema,
   audioMixUpdateOperationSchema,
   documentReconcileOperationSchema,
   documentRestoreOperationSchema,

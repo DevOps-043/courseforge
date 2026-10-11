@@ -64,7 +64,7 @@ export async function GET(request: Request) {
 function pathBelongsToComponent(path: string, componentId: string) {
   const [folder, fileName, ...extra] = path.split("/");
   return extra.length === 0
-    && new Set(["avatars", "broll", "music", "voices"]).has(folder || "")
+    && new Set(["avatars", "broll", "music", "voices", "media"]).has(folder || "")
     && Boolean(fileName?.startsWith(`${componentId}-`));
 }
 

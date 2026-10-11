@@ -1,3 +1,4 @@
+import { readStandaloneHtmlLibrary, hasCanonicalHtmlSource } from "../standalone/standalone-timeline-library.service";
 import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "./composition-document.types";
@@ -161,6 +162,21 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
   const current = await getCurrentCompositionDocument(params);
   if (current.documentHash !== params.expectedDocumentHash) throw new CompositionDocumentConflictError(current);
   await assertAddedAssetsBelongToDraft(params);
+  if (current.document.sourceInsertionMode === "MANUAL") {
+    const addedHtml = params.patch.operations.flatMap((operation) => operation.type === "clip.add" && operation.clip.source.type === "DECK_SLIDE" ? [operation.clip] : []);
+    if (addedHtml.length) {
+      const { data: draft, error: draftError } = await params.supabase.from("video_composition_drafts")
+        .select("composition_id").eq("id", params.draftId).eq("organization_id", params.organizationId).single();
+      if (draftError) throw draftError;
+      const { data: composition, error: compositionError } = await params.supabase.from("video_compositions")
+        .select("material_component_id").eq("id", draft.composition_id).eq("organization_id", params.organizationId).single();
+      if (compositionError) throw compositionError;
+      const library = await readStandaloneHtmlLibrary({ componentId: composition.material_component_id, organizationId: params.organizationId, supabase: params.supabase });
+      if (addedHtml.some((clip) => !hasCanonicalHtmlSource(clip, library))) {
+        throw new CompositionDocumentError("La diapositiva no corresponde a un HTML preparado de este proyecto.", 422);
+      }
+    }
+  }
 
   let nextDocument: CompositionEditorDocument;
   try {

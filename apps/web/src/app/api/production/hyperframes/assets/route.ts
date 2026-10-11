@@ -1,3 +1,4 @@
+import { readStandaloneHtmlLibrary } from "@/domains/production/standalone/standalone-timeline-library.service";
 import { z } from "zod";
 import {
   canReviewContent,
@@ -38,7 +39,8 @@ export async function GET(request: Request) {
       organizationId: tenant.organizationId,
       supabase: getServiceRoleClient(),
     });
-    return apiSuccessResponse({ data: assets }, { requestId });
+    const htmlClips = await readStandaloneHtmlLibrary({ componentId, organizationId: tenant.organizationId, supabase: getServiceRoleClient() });
+    return apiSuccessResponse({ data: assets, htmlClips }, { requestId });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Component ID inválido.", requestId, status: 400 });

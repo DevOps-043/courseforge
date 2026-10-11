@@ -1,3 +1,4 @@
+import { loadStandaloneHtmlDecks } from "../standalone/standalone-html.service";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { resolveProductionComponentContext } from "../jobs/production-jobs.service";
@@ -38,7 +39,7 @@ export interface InternalMaterialAssetReference {
   sourceHeight?: number;
   sourceWidth?: number;
   storagePath: string;
-  timelineRole: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
+  timelineRole: "AUDIO" | "AVATAR" | "BROLL" | "MEDIA" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";
 }
 
@@ -92,7 +93,7 @@ export interface HyperframesSourceAssetCandidate extends HyperframesAssetManifes
   sceneClipId?: string;
   sceneOrder?: number;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
-  timelineRole: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
+  timelineRole: "AUDIO" | "AVATAR" | "BROLL" | "MEDIA" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";
   validationErrors: string[];
 }
@@ -115,7 +116,7 @@ export function inspectHyperframesSourceAsset(input: {
   sceneOrder?: number;
   sourceType: "DECK_DEPENDENCY" | "PRODUCTION_MEDIA";
   storagePath: string | null;
-  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
+  timelineRole?: "AUDIO" | "AVATAR" | "BROLL" | "MEDIA" | "VISUAL" | "VOICE";
   timelineVariant?: "CLIP" | "FULL";
 }): HyperframesSourceAssetCandidate | null {
   if (!isSupportedHyperframesSourceMime(input.mimeType)) return null;
@@ -388,7 +389,7 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
     .single();
   if (componentError) throw componentError;
 
-  const animatedDeck = extractHyperframesAnimatedDeck(component?.assets);
+  const animatedDeck = await loadStandaloneHtmlDecks({ componentId: params.componentId, organizationId: params.organizationId, supabase: params.supabase, legacy: extractHyperframesAnimatedDeck(component?.assets) });
   let synchronized = 0;
   const skipped: string[] = [];
   for (const reference of collectInternalMaterialAssetReferences(component?.assets)) {
@@ -548,11 +549,12 @@ export async function listHyperframesSourceAssets(params: {
       assetType: asset.asset_type,
       metadata: assetMetadata,
     });
+    const isStandaloneMedia = assetMetadata.standalone_media === true;
     // Material assets are the mutable Production source of truth. Registry
     // rows are provenance and may outlive a video cleared for regeneration.
     if (!shouldExposeProductionRegistryAsset({
       assetType: asset.asset_type,
-      hasActiveReference: Boolean(reference) || isManualVoiceRegistryAsset,
+      hasActiveReference: Boolean(reference) || isManualVoiceRegistryAsset || isStandaloneMedia,
       qaStatus: asset.qa_status,
     })) return [];
     if (typeof asset.storage_path !== "string" || seenStoragePaths.has(asset.storage_path)) return [];
@@ -562,7 +564,7 @@ export async function listHyperframesSourceAssets(params: {
       durationSeconds: preciseDurationSeconds(asset.duration_milliseconds, asset.duration_seconds),
       fileSizeBytes: asset.file_size_bytes,
       hasAudio: reference?.hasAudio ?? optionalBoolean(isRecord(asset.metadata) ? asset.metadata.has_audio : undefined),
-      metadata: reference || isManualVoiceRegistryAsset ? assetMetadata : { ...assetMetadata, historical_only: true },
+      metadata: reference || isManualVoiceRegistryAsset || isStandaloneMedia ? assetMetadata : { ...assetMetadata, historical_only: true },
       mimeType: asset.mime_type,
       productionAssetId: asset.id,
       qaStatus: asset.qa_status,
@@ -575,7 +577,7 @@ export async function listHyperframesSourceAssets(params: {
       sourceType: reference?.sourceType || "PRODUCTION_MEDIA",
       storagePath: asset.storage_path,
       timelineRole: reference?.timelineRole
-        || (isAvatarRegistryAsset ? "AVATAR" : isVoiceRegistryAsset || isManualVoiceRegistryAsset ? "VOICE" : "VISUAL"),
+        || (isStandaloneMedia ? "MEDIA" : isAvatarRegistryAsset ? "AVATAR" : isVoiceRegistryAsset || isManualVoiceRegistryAsset ? "VOICE" : "VISUAL"),
       timelineVariant: reference
         ? reference.timelineVariant
         : assetMetadata.timeline_variant === "FULL" ? "FULL"

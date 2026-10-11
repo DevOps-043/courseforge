@@ -3,7 +3,7 @@ import type {
   CompositionTrack,
   CompositionTrackRole,
 } from "./composition-document.types";
-export type ProductionTimelineRole = "AUDIO" | "AVATAR" | "BROLL" | "VISUAL" | "VOICE";
+export type ProductionTimelineRole = "AUDIO" | "AVATAR" | "BROLL" | "MEDIA" | "VISUAL" | "VOICE";
 
 const TRACK_DEFINITIONS: Record<CompositionTrackRole, CompositionTrack> = {
   DECK: { hidden: false, id: "deck", kind: "DECK", label: "Diapositivas", locked: false, muted: false, order: 0, semanticRole: "DECK", volume: 1 },
@@ -31,6 +31,12 @@ export function resolveCompositionTrackRole(input: { mimeType: string; timelineR
 }
 
 export function resolveCompositionTrackDefinition(input: { mimeType: string; timelineRole?: ProductionTimelineRole }) {
+  if (input.timelineRole === "MEDIA") {
+    const format = input.mimeType.split("/")[1]?.replace(/[^a-z0-9]/gi, "-") || "media";
+    const label = ({ jpeg: "JPG", mpeg: "MP3", "x-wav": "WAV" } as Record<string, string>)[format] || format.toUpperCase();
+    return { id: `media-${format}`, kind: input.mimeType.startsWith("audio/") ? "AUDIO" : "VISUAL",
+      label, order: 50, locked: false, hidden: false, muted: false, volume: 1 } satisfies CompositionTrack;
+  }
   return getCompositionTrackDefinition(resolveCompositionTrackRole(input));
 }
 
@@ -41,6 +47,7 @@ export function normalizeCompositionTrackTopology(
 ): CompositionEditorDocument {
   const legacyTracks = new Map(document.tracks.map((track) => [track.id, track]));
   const normalizedClips = document.clips.map((clip) => {
+    if (clip.trackId.startsWith("media-")) return clip;
     if (clip.source.type === "DECK_SLIDE") return { ...clip, trackId: TRACK_DEFINITIONS.DECK.id };
     if (clip.source.type === "ASSEMBLY_BRAND_ASSET") return clip;
     if (clip.source.type === "SOUND_EFFECT_ASSET") return { ...clip, trackId: TRACK_DEFINITIONS.SFX.id };
@@ -60,6 +67,7 @@ export function normalizeCompositionTrackTopology(
         || ((definition.id === "voice" || definition.id === "music") ? legacyTracks.get("audio") : undefined);
       return stored ? {
         ...definition,
+        label: stored.label,
         hidden: stored.hidden ?? definition.hidden,
         locked: stored.locked,
         muted: stored.muted ?? definition.muted,

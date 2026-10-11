@@ -36,6 +36,7 @@ const OPERATION_STRATEGIES: Record<CompositionEditorPatchOperation["type"], Comp
   "clip.visibility": "LIVE_DOM",
   "clip.volume": "LIVE_DOM",
   "composition.canvas-duration": "LIVE_TIMELINE",
+  "composition.canvas-size": "FULL_RELOAD",
   "document.reconcile": "FULL_RELOAD",
   "document.restore": "FULL_RELOAD",
   "group.add-clips": "FULL_RELOAD",
