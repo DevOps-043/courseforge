@@ -4,7 +4,7 @@ import { createOperationalLogger } from "@/lib/server/operational-logger";
 import { createClient } from "@/utils/supabase/server";
 import { createHtmlEditingInitializationHandler } from "@/domains/production/composition-editor/http/composition-html-editing-initialization-handler.server";
 import { htmlEditingInitializationEnabled } from "@/domains/production/composition-editor/composition-html-editing-initialization-http.contract";
-import { HtmlEditingTemplateCatalog } from "@/domains/production/composition-editor/html-editing/html-editing-template-catalog.server";
+import { generatedDeckBootstrapCatalog } from "@/domains/production/composition-editor/composition-generated-deck-catalog.server";
 import { CompositionHtmlEditingBootstrapHost } from "@/domains/production/composition-editor/composition-html-editing-bootstrap-host.server";
 
 export const runtime = "nodejs";
@@ -17,8 +17,7 @@ const handle = createHtmlEditingInitializationHandler({
   },
   serviceClient: getServiceRoleClient,
   register: (client, input, signal) => {
-    // Operator-managed tenant-scoped configuration only, never request JSON/URL.
-    const catalog = new HtmlEditingTemplateCatalog(process.env.COMPOSITION_HTML_EDITING_CATALOG_JSON ?? "");
+    const catalog = generatedDeckBootstrapCatalog(client, process.env.COMPOSITION_HTML_EDITING_CATALOG_JSON ?? "");
     return new CompositionHtmlEditingBootstrapHost(client, catalog).register(input, signal);
   },
   logFailure: requestId => createOperationalLogger("production.html_editing.initialization", { correlationId: requestId })

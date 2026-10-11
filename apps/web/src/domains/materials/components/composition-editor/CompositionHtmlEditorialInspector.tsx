@@ -10,9 +10,11 @@ import { useCompositionHtmlEditorialSession, type CompositionHtmlEditorialHost }
 import { CompositionHtmlEditableFields } from "./CompositionHtmlEditableFields";
 import { CompositionHtmlInitializationPanel } from "./CompositionHtmlInitializationPanel";
 import { CompositionHtmlLegacyAdoptionPanel } from "./CompositionHtmlLegacyAdoptionPanel";
+import { CompositionHtmlPanel } from "./CompositionHtmlPanel";
 
 const enabled = process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED === "true";
 const mutationsEnabled = process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_MUTATIONS_ENABLED === "true";
+const preparationEnabled = process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED === "true";
 const scopeSchema = htmlEditingBindingSchema.pick({ organizationId: true, documentId: true, clipId: true }).extend({ actorId: z.string().uuid() });
 /** Writes require both an opt-in flag and the coordinated native host. */
 export function CompositionHtmlEditorialInspector({ draftId, clipId, documentHash, host }: {
@@ -25,36 +27,43 @@ export function CompositionHtmlEditorialInspector({ draftId, clipId, documentHas
   const organizationId = useOrganizationStore(state => state.activeOrganizationId);
   const organizationLoading = useOrganizationStore(state => !state.isLoaded || state.isSwitching);
   const scope = useMemo(() => scopeSchema.safeParse({ actorId, organizationId, documentId: draftId, clipId }), [actorId, organizationId, draftId, clipId]);
-  if (!scope.success) return enabled ? <section className="space-y-2 rounded border p-3 text-xs" aria-label="Inspector HTML editorial">
-    <h3>Contenido HTML editable</h3>
+  if (!scope.success) return enabled ? <CompositionHtmlPanel title="Contenido HTML editable" label="Inspector HTML editorial">
     {authLoading || organizationLoading ? <p role="status">Comprobando sesión y organización…</p> : <>
       <p role="alert">{sessionError ?? (!actorId ? "No se pudo identificar tu sesión. Vuelve a comprobarla o inicia sesión de nuevo."
         : !organizationId ? "Selecciona una organización válida para editar HTML." : "El contexto de edición HTML no es válido.")}</p>
       {!actorId && <button type="button" onClick={() => void initializeAuth()}>Volver a comprobar sesión</button>}
     </>}
-  </section> : null;
+  </CompositionHtmlPanel> : null;
   const ownerScope = { actorId: scope.data.actorId, organizationId: scope.data.organizationId, draftId: scope.data.documentId };
   return <>
-    {host && <CompositionHtmlLegacyAdoptionPanel key={`adoption:${scope.data.actorId}:${organizationId}:${draftId}:${clipId}`}
-      scope={ownerScope} target={{ clipId: scope.data.clipId, documentHash }} host={host} />}
-    {host && <CompositionHtmlInitializationPanel key={`${scope.data.actorId}:${organizationId}:${draftId}:${clipId}:${documentHash}`}
-      scope={ownerScope} target={{ clipId: scope.data.clipId, documentHash }} host={host} />}
     {enabled && <ScopedInspector key={`${scope.data.actorId}:${organizationId}:${draftId}:${clipId}`}
     scope={{ actorId: scope.data.actorId, organizationId: scope.data.organizationId, draftId: scope.data.documentId }}
     clipId={scope.data.clipId} documentHash={documentHash} host={mutationsEnabled ? host : undefined} />}
+    {host && <CompositionHtmlInitializationPanel key={`${scope.data.actorId}:${organizationId}:${draftId}:${clipId}:${documentHash}`}
+      scope={ownerScope} target={{ clipId: scope.data.clipId, documentHash }} host={host} />}
+    {host && <CompositionHtmlLegacyAdoptionPanel key={`adoption:${scope.data.actorId}:${organizationId}:${draftId}:${clipId}`}
+      scope={ownerScope} target={{ clipId: scope.data.clipId, documentHash }} host={host} />}
   </>;
 }
 function ScopedInspector({ scope, clipId, documentHash, host }: {
   scope: HtmlSnapshotLocatorScope; clipId: string; documentHash: string; host?: CompositionHtmlEditorialHost;
 }) {
   const { view, error, busy, consult, changeFields, restore, history } = useCompositionHtmlEditorialSession(scope, clipId, documentHash, host);
-  return <section className="space-y-2 rounded border p-3 text-xs" aria-label="Inspector HTML editorial">
-    <h3>Contenido HTML editable</h3>
-    <p>{host ? "Edición declarativa mediante guardado coordinado. No ejecuta render." : "Consulta de campos declarados. No modifica contenido ni ejecuta render."}</p>
-    <button type="button" disabled={busy} onClick={() => void consult()}>{busy ? "Consultando…" : "Consultar campos HTML"}</button>
+  return <CompositionHtmlPanel title="Contenido HTML editable" label="Inspector HTML editorial" busy={busy}
+    description={view ? (host ? "Campos disponibles para esta diapositiva. Los cambios se aplican al guardar la revisión." : "Campos disponibles en modo de solo lectura.")
+      : host ? "Cambia los textos, imágenes y opciones que esta diapositiva tenga habilitados. Primero carga sus campos editables."
+      : "Consulta los campos disponibles. La edición está deshabilitada en esta sesión."}>
+    <button type="button" data-primary="true" disabled={busy} onClick={() => void consult()}>{busy ? "Cargando campos…" : view ? "Actualizar campos HTML" : "Cargar campos editables"}</button>
     {error && <p role="alert">{error}</p>}
+    {error && !view && <p>{host && preparationEnabled
+      ? "Si esta diapositiva aún no está preparada, abre «Preparar campos HTML» debajo. Si ya lo está, revisa los permisos y la configuración de lectura."
+      : "Pide a un administrador que revise si esta diapositiva tiene campos habilitados, los permisos y la configuración de lectura."}</p>}
+    {!view && !error && <p>{host
+      ? "Después de cargar los campos: modifica un valor, pulsa «Preparar cambio» y guarda los cambios preparados. No se genera un video automáticamente."
+      : "Pulsa «Cargar campos editables» para consultar los valores y límites disponibles. Esta consulta no modifica la diapositiva."}</p>}
     {view && <>
       <p>Revisión editorial {view.revisionVersion}. Plantilla {view.manifest.binding.templateId}.</p>
+      {view.manifest.elements.length === 0 && <p role="status">Esta plantilla no declara campos editables para la diapositiva.</p>}
       {!view.usedResourcesGranted && <p role="alert">Hay recursos usados sin permiso vigente. La consulta no autoriza renderizarlos.</p>}
       {host && <>
         <div className="flex gap-2">
@@ -64,6 +73,7 @@ function ScopedInspector({ scope, clipId, documentHash, host }: {
         <CompositionHtmlEditableFields key={`${view.revisionSha256}:${view.compositionDocumentHash}`} view={view}
           busy={busy || history.status !== "READY"} onCommit={changeFields} />
       </>}
+      <details><summary>Ver valores y límites declarados ({view.manifest.elements.length})</summary>
       <ul className="max-h-80 space-y-3 overflow-auto">
         {view.manifest.elements.map(element => {
           const override = view.state.overrides.find(item => item.elementId === element.elementId);
@@ -91,7 +101,7 @@ function ScopedInspector({ scope, clipId, documentHash, host }: {
             {element.kind === "RANGE_TOKEN" && <p>Token {element.tokenId}: {element.range.minimum}–{element.range.maximum}, paso {element.range.step}.</p>}
           </li>;
         })}
-      </ul>
+      </ul></details>
     </>}
-  </section>;
+  </CompositionHtmlPanel>;
 }

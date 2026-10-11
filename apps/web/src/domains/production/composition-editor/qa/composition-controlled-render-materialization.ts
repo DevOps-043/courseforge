@@ -10,6 +10,7 @@ import {compileCompositionHtmlEditingFragments} from "../composition-html-editin
 import {assertHtmlEditingImageIdentities, type HtmlEditingImageIdentity} from "../composition-html-editing-image-identity";
 import {compileCompositionPreview, readCompositionAnimationRuntime, COMPOSITION_COMPILATION_TARGETS} from "../composition-preview-compiler.service";
 import {conformanceFontPath} from "../composition-conformance-font-bindings";
+import {compiledManifestFont} from "../composition-font-assets.service";
 import type {CompositionCompiledFont} from "../../fonts/organization-font.types";
 import type {ControlledSupervisorRenderer} from "./composition-render-supervisor.service";
 import {pinConformanceFile, assertConformanceFileUnchanged} from "./composition-conformance-file-integrity";
@@ -62,8 +63,7 @@ export async function materializeControlledRenderRevision(input: Materialization
       || digest(source.contract) !== digest(input.expected.contract)) throw new Error("CONTROLLED_RENDER_MATERIALIZATION_CONTRACT_MISMATCH");
     const fonts = source.fontManifest!;
     const fontAssets = new Map<string,CompositionCompiledFont>(fonts.map(font => [font.fontAssetId,
-      {assetId:font.fontAssetId,family:font.family,sourceUrl:conformanceFontPath(font),
-        format: font.mimeType === "font/otf" ? "opentype" : font.mimeType === "font/ttf" ? "truetype" : font.mimeType.slice(5) as "woff" | "woff2"}]));
+      compiledManifestFont(font, conformanceFontPath(font))]));
     const assetUrls = new Map(source.metadata.bindings.map(binding => [binding.assetId,binding.localPath]));
     const deckAssetUrls = new Map(source.metadata.bindings.map(binding => {
       const storedPath = binding.storagePath.startsWith(`${binding.storageBucket}/`)

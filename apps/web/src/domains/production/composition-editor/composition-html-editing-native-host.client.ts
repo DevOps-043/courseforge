@@ -10,8 +10,11 @@ import { readHtmlEditingInitializationJournal, type HtmlEditingInitializationJou
 import { coordinateHtmlEditingInitialization, type HtmlEditingInitializationAction } from "./composition-html-editing-initialization-coordinator.client";
 import { readHtmlLegacyAdoptionJournal, type HtmlLegacyAdoptionJournalState } from "./composition-html-editing-legacy-adoption-journal.client";
 import { coordinateHtmlLegacyAdoption, type HtmlLegacyAdoptionAction } from "./composition-html-editing-legacy-adoption-coordinator.client";
+import { requestHtmlInitialAnchor } from "./composition-html-initial-anchor.client";
+import { HTML_INITIAL_ANCHOR_POLICY, type HtmlInitialAnchorView } from "./composition-html-initial-anchor.contract";
 
 export interface CompositionHtmlEditorialHost {
+  initialAnchor?: (input: { scope: HtmlSnapshotLocatorScope; action: "CONSULT" | "PREPARE"; signal: AbortSignal }) => Promise<HtmlInitialAnchorView>;
   legacyAdoptionTracking?: (scope: HtmlSnapshotLocatorScope) => HtmlLegacyAdoptionJournalState;
   adoptLegacy?: (input: { scope: HtmlSnapshotLocatorScope; action: HtmlLegacyAdoptionAction; signal: AbortSignal }) => Promise<HtmlEditingInspectorView | null>;
   initializationTracking?: (scope: HtmlSnapshotLocatorScope) => HtmlEditingInitializationJournalState;
@@ -38,6 +41,7 @@ interface NativeHostPorts {
   onBusyChange: (busy: boolean) => void;
   fetcher?: typeof fetch;
   createOperationId?: () => string;
+  onAnchorAvailable?: (signal: AbortSignal, isCurrent: () => boolean) => Promise<void>;
 }
 
 /** Native UI adapter only. Permissions and CAS remain server-side. Native callers
@@ -47,6 +51,36 @@ export class CompositionHtmlEditorialNativeHost implements CompositionHtmlEditor
   constructor(private readonly ports: NativeHostPorts) {}
   isBusy() { return this.active !== null; }
   abortPending() { this.active?.abort(); }
+  async initialAnchor(input: { scope: HtmlSnapshotLocatorScope; action: "CONSULT" | "PREPARE"; signal: AbortSignal }) {
+    const scope = htmlSnapshotLocatorScopeSchema.parse(input.scope), base = this.ports.getPayload();
+    const trackingEmpty = () => readHtmlEditingJournal(this.ports.getStorage(), scope).status === "EMPTY"
+      && readHtmlEditingInitializationJournal(this.ports.getStorage(), scope).status === "EMPTY"
+      && readHtmlLegacyAdoptionJournal(this.ports.getStorage(), scope).status === "EMPTY"
+      && readHtmlSnapshotTrackingAvailability(this.ports.getStorage(), scope) === "EMPTY";
+    const lock = this.ports.getLock();
+    if (this.active || !base || !lock || this.ports.initializationEnabled?.() !== true || input.signal.aborted
+      || !sameScope(scope, this.ports.getScope()) || this.ports.hasConflictingWork(false) || !trackingEmpty())
+      throw new Error("HTML_INITIAL_ANCHOR_NOT_READY");
+    const controller = new AbortController(); this.active = controller;
+    const signal = AbortSignal.any([controller.signal, input.signal, AbortSignal.timeout(HTML_INITIAL_ANCHOR_POLICY.timeoutMs)]);
+    const isCurrent = () => !signal.aborted && sameScope(scope, this.ports.getScope()) && this.ports.getPayload() === base
+      && !this.ports.hasConflictingWork(true) && trackingEmpty();
+    const assertCurrent = () => { signal.throwIfAborted(); if (!isCurrent()) throw new Error("HTML_INITIAL_ANCHOR_NOT_READY"); };
+    try {
+      this.ports.onBusyChange(true);
+      return await lock.runExclusive(scope, () => this.ports.reserve(async () => {
+        assertCurrent();
+        const view = await requestHtmlInitialAnchor({ documentId: scope.draftId, expectedDocumentHash: base.documentHash,
+          action: input.action, signal, fetcher: this.ports.fetcher });
+        assertCurrent();
+        if (view.activeRevisionId) await this.ports.onAnchorAvailable?.(signal, isCurrent);
+        assertCurrent();
+        return view;
+      }));
+    } finally {
+      if (this.active === controller) { this.active = null; this.ports.onBusyChange(false); }
+    }
+  }
   legacyAdoptionTracking(scope: HtmlSnapshotLocatorScope): HtmlLegacyAdoptionJournalState {
     if (!sameScope(scope, this.ports.getScope())) return { status: "UNAVAILABLE" };
     return readHtmlLegacyAdoptionJournal(this.ports.getStorage(), scope);

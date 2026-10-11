@@ -1,4 +1,5 @@
 import type { CompositionEditorDocument } from "./composition-document.types";
+import { compositionFontReferences } from "./composition-font-references";
 import { hyperframesAssetManifestSchema } from "../hyperframes/hyperframes.types";
 import { assertDocumentConformanceFontBindings, conformanceFontManifestSchema } from "./composition-conformance-font-bindings";
 import { z } from "zod";
@@ -14,12 +15,11 @@ export function assertHtmlReconstructionNativeResources(document: CompositionEdi
   const byId = new Map(resources.assets.map(asset => [asset.productionAssetId, asset]));
   if (byId.size !== resources.assets.length) throw new Error("HTML_RECONSTRUCTION_NATIVE_RESOURCE_SET_MISMATCH");
   const sources = new Map<string, string>();
-  const fontIds = new Set<string>();
+  const fontIds = compositionFontReferences(document);
   for (const clip of document.clips) {
     const source = clip.source;
     if (source.type === "DECK_SLIDE") continue;
     if (source.type === "NATIVE_TEXT" || source.type === "NATIVE_CAPTIONS") {
-      if (source.style.fontAssetId) fontIds.add(source.style.fontAssetId);
       continue;
     }
     const id = source.type === "PRODUCTION_ASSET" ? source.productionAssetId

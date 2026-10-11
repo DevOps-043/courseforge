@@ -7,6 +7,7 @@ import {
   type CompositionPreviewAssetDiagnostics,
 } from "./composition-preview-performance";
 import { readReadyLinkedSoundEffectAssetIds } from "./composition-sound-effect-assets.service";
+import { compositionDeckImageAssetIds, isCompositionDeckImageAvailable } from "./composition-deck-image-aliases.server";
 
 export const COMPOSITION_PREVIEW_ASSET_URL_TTL_SECONDS = 60 * 60;
 export const COMPOSITION_PREVIEW_SIGNING_CONCURRENCY = 6;
@@ -20,9 +21,10 @@ export async function resolveCompositionPreviewAssetUrls(params: {
   organizationId: string;
   supabase: SupabaseClient<any, "public", any>;
 }) {
-  const productionAssetIds = [...new Set(params.document.clips.flatMap((clip) => (
+  const deckImageIds = compositionDeckImageAssetIds(params.document);
+  const productionAssetIds = [...new Set([...deckImageIds, ...params.document.clips.flatMap((clip) => (
     clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : []
-  )))];
+  ))])];
   const brandingAssetIds = [...new Set(params.document.clips.flatMap((clip) => (
     clip.source.type === "ASSEMBLY_BRAND_ASSET" ? [clip.source.assemblyBrandAssetId] : []
   )))];
@@ -72,7 +74,7 @@ export async function resolveCompositionPreviewAssetUrls(params: {
   const assetQueryStartedAt = performance.now();
   const [{ data: productionAssets, error: assetsError }, { data: brandingAssets, error: brandingAssetsError }, { data: soundEffectAssets, error: soundEffectAssetsError }] = await Promise.all([
     productionAssetIds.length > 0
-      ? params.supabase.from("production_assets").select("id, checksum, storage_bucket, storage_path").eq("organization_id", params.organizationId).in("id", productionAssetIds)
+      ? params.supabase.from("production_assets").select("id, checksum, storage_bucket, storage_path, mime_type, qa_status").eq("organization_id", params.organizationId).in("id", productionAssetIds)
       : Promise.resolve({ data: [], error: null }),
     brandingAssetIds.length > 0
       ? params.supabase.from("organization_assembly_assets").select("id, checksum, storage_bucket, storage_path").eq("organization_id", params.organizationId).in("status", ["APPROVED", "ARCHIVED"]).in("id", brandingAssetIds)
@@ -84,6 +86,10 @@ export async function resolveCompositionPreviewAssetUrls(params: {
   if (assetsError) throw assetsError;
   if (brandingAssetsError) throw brandingAssetsError;
   if (soundEffectAssetsError) throw soundEffectAssetsError;
+  if (deckImageIds.some(id => !productionAssets?.some(asset => asset.id === id
+    && isCompositionDeckImageAvailable(asset.mime_type, asset.qa_status)))) {
+    throw new CompositionPreviewCompilerError("Una imagen de las diapositivas ya no está disponible para este borrador.", 409);
+  }
   const assetQueryMs = elapsedMilliseconds(assetQueryStartedAt);
   const urls = new Map<string, string>();
   const storedAssets = [

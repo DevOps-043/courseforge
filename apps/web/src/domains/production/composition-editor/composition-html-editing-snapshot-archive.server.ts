@@ -2,12 +2,13 @@ import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import { z } from "zod";
 import type { CompositionCompiledFont } from "../fonts/organization-font.types";
+import { compiledManifestFont } from "./composition-font-assets.service";
 import { HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES, HYPERFRAMES_MAXIMUM_MANIFEST_ASSETS, hyperframesAssetManifestSchema, hyperframesRenderProfileSchema } from "../hyperframes/hyperframes.types";
 import { prepareCompositionHtmlEditingSnapshotImages } from "./composition-html-editing-snapshot-images.service";
 import { assertHtmlEditingImageIdentities } from "./composition-html-editing-image-identity";
 import { controlledRenderExecutionContractSchema } from "./composition-render-execution-contract";
 import { buildSnapshotConformanceContract } from "./composition-snapshot-conformance-contract";
-import { assertDocumentConformanceFontBindings, CONFORMANCE_FONT_BINDING_LIMITS, conformanceFontPath, type ConformanceFontManifest } from "./composition-conformance-font-bindings";
+import { assertDocumentConformanceFontBindings, conformanceFontManifestSchema, CONFORMANCE_FONT_BINDING_LIMITS, conformanceFontPath, type ConformanceFontManifest } from "./composition-conformance-font-bindings";
 import { buildConformanceReferenceSource } from "./composition-conformance-reference.service";
 import { writeConformanceReferenceArchive } from "./composition-conformance-reference-archive.server";
 import { compileCompositionPreview, readCompositionAnimationRuntime, COMPOSITION_COMPILATION_TARGETS } from "./composition-preview-compiler.service";
@@ -50,7 +51,7 @@ function captureArchiveOptions(input: ArchiveOptions): ArchiveOptions {
     renderProfile: structuredClone(hyperframesRenderProfileSchema.parse(input.renderProfile)),
     renderExecution: structuredClone(controlledRenderExecutionContractSchema.parse(input.renderExecution)),
     animationRuntimeSha256: z.string().regex(/^[a-f0-9]{64}$/).parse(input.animationRuntimeSha256),
-    packagedFonts: input.packagedFonts.map(font => ({binding: {...font.binding}, bytes: new Uint8Array(font.bytes)})),
+    packagedFonts: input.packagedFonts.map(font => ({binding: conformanceFontManifestSchema.element.parse(font.binding), bytes: new Uint8Array(font.bytes)})),
     deckPublicUrls: new Map(input.deckPublicUrls),
     historicalRepublication: input.historicalRepublication ? htmlHistoricalPublicationProvenanceSchema.parse(input.historicalRepublication) : undefined};
 }
@@ -126,8 +127,7 @@ export async function assembleAcquiredCompositionHtmlEditingSnapshotArchive(inpu
     if (fontTotalBytes > CONFORMANCE_MATERIALIZATION_LIMITS.extractedBytes) throw new Error("HTML_EDITING_SNAPSHOT_SOURCE_BUDGET");
     // Copy caller-owned bytes before asynchronous compilation/publication.
     fontBytes.set(path, new Uint8Array(packaged.bytes));
-    fontAssets.set(font.fontAssetId, {assetId: font.fontAssetId, family: font.family, sourceUrl: path,
-      format: font.mimeType === "font/otf" ? "opentype" : font.mimeType === "font/ttf" ? "truetype" : font.mimeType.slice(5) as "woff" | "woff2"});
+    fontAssets.set(font.fontAssetId, compiledManifestFont(font, path));
   }
   const contract = buildSnapshotConformanceContract({document: prepared.document, documentHash: params.documentHash,
     assets: assets.map(asset => ({id: asset.productionAssetId, checksum: asset.checksum})), contractVersion: 4,

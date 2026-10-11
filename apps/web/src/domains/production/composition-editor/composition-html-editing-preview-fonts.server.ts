@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { compositionFontReferences } from "./composition-font-references";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ORGANIZATION_FONT_STORAGE_BUCKET, type OrganizationFontRecord } from "../fonts/organization-font.types";
 import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "./composition-document.types";
-import { readReferencedCompositionFonts, compositionFontArchivePath, compiledCompositionFont } from "./composition-font-assets.service";
+import { readReferencedCompositionFonts, compositionFontArchivePath, compiledCompositionFont, compositionFontManifestBinding } from "./composition-font-assets.service";
 import { assertDocumentConformanceFontBindings, CONFORMANCE_FONT_BINDING_LIMITS } from "./composition-conformance-font-bindings";
 import { htmlEditingPreviewStorageIdentitySchema, readHtmlEditingPreviewStorageBytes } from "./composition-html-editing-preview-storage.server";
 
@@ -23,17 +24,14 @@ function storageIdentity(font: OrganizationFontRecord) {
 }
 
 function assertFontBindings(document: CompositionEditorDocument, fonts: OrganizationFontRecord[]) {
-  assertDocumentConformanceFontBindings(document, fonts.map(font => ({
-    fontAssetId: font.id, family: font.family, checksumSha256: font.checksumSha256,
-    fileSizeBytes: font.fileSizeBytes, mimeType: font.mimeType,
-  })));
+  assertDocumentConformanceFontBindings(document, fonts.map(compositionFontManifestBinding));
   for (const font of fonts) storageIdentity(font);
   if (fonts.reduce((total, font) => total + font.fileSizeBytes, 0) > HTML_EDITING_PREVIEW_FONT_POLICY.totalBytes) throw new Error();
 }
 
 function identityKey(font: OrganizationFontRecord) {
   return JSON.stringify([font.id, font.family, font.checksumSha256, font.fileSizeBytes,
-    font.mimeType, font.status, font.storageBucket, font.storagePath]);
+    font.mimeType, font.status, font.storageBucket, font.storagePath, font.googleFace]);
 }
 
 /** Host-only native font acquisition. The caller must first authorize the exact
@@ -46,12 +44,10 @@ export async function prepareCompositionHtmlEditingPreviewFonts(input: {
   try {
     const organizationId = z.string().uuid().parse(input.organizationId);
     const document = compositionEditorDocumentSchema.parse(input.document);
-    const referencedIds = new Set(document.clips.flatMap(clip =>
-      (clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS") && clip.source.style.fontAssetId
-        ? [clip.source.style.fontAssetId] : []));
+    const referencedIds = compositionFontReferences(document);
     if (referencedIds.size > CONFORMANCE_FONT_BINDING_LIMITS.maximumFonts) throw new Error();
     input.signal?.throwIfAborted();
-    const readerInput = { document, organizationId, supabase: input.supabase };
+    const readerInput = { document, organizationId, supabase: input.supabase, signal: input.signal };
     const fonts = await readReferencedCompositionFonts(readerInput);
     assertFontBindings(document, fonts);
     const resources = new Map<string, { bytes: Uint8Array; mimeType: string }>();

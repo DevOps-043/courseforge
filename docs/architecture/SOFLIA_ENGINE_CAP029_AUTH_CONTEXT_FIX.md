@@ -65,3 +65,43 @@ su adaptador `core/stores/authStore.ts`, la nueva ruta de sesión y el aviso del
 inspector. Pruebas incorporadas al comando existente de Auth Bridge.
 Rollback: revertir exclusivamente este cambio y desplegar de nuevo; no requiere
 rollback de datos. **SQL necesario: ninguno. Variables nuevas: ninguna.**
+
+## Ajuste frontend — claridad y estética Engine (2026-10-10)
+
+La captura posterior al deploy ya muestra los paneles HTML, pero sus controles
+carecían de una jerarquía visual propia del inspector. La edición habitual quedaba
+debajo de acciones técnicas de inicialización y adopción por UUID.
+
+Se incorpora `CompositionHtmlPanel`, exclusivamente presentacional, y un CSS
+Module local basado en tokens de Studio/Engine, con fallback, tema oscuro,
+controles de al menos 40 px y foco de teclado visible. No cambia estilos globales.
+El orden ahora es edición, preparación y adopción avanzada; las dos últimas
+secciones son desplegables. El seguimiento global de inicialización no se oculta
+en un desplegable, y la adopción con seguimiento pendiente/no disponible se abre.
+La consulta sigue siendo explícita: desplegar una sección no consulta ni escribe.
+
+Los textos explican cargar campos, preparar cambios y guardar una revisión. Los
+valores/límites técnicos quedan en un detalle opcional; errores, estados vacíos y
+falta de permisos siguen visibles. Un fallo de lectura no se diagnostica como
+falta de plantilla de forma concluyente. Los flags, autorización, CAS, recursos,
+confirmaciones y coordinadores de guardado permanecen intactos.
+
+Validación local:
+
+- `node --test scripts/test-composition-html-panel.cjs`: 6 pruebas, con render
+  React real del marco y editor escalar; servicios sustituidos, sin persistencia.
+- Auth Bridge: 29 pruebas. Inspector: 11. Catálogo de plantillas: 12. Comandos de
+  campos: 9. Total: 67/67 correctas. Las tres suites editoriales se compilan con
+  `tsc -p apps/web/tsconfig.hyperframes-test.json` y se ejecutan desde
+  `apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/__tests__/`.
+- ESLint de los cinco componentes modificados y TypeScript de esos entrypoints
+  con `next-env.d.ts` y dependencias: sin diagnósticos.
+- Vista aislada local de los componentes reales, con servicios inertes y datos
+  ficticios: panel de 300 px, temas claro/oscuro, despliegue de preparación y campo
+  de texto. Esta vista no certifica integración, guardado ni QA en staging.
+
+Tras desplegar: comprobar selección de diapositiva, foco de teclado, scroll del
+inspector, campos de cada plantilla, preparación explícita, guardado/undo y avisos
+de recuperación. Pendientes el QA integral en staging y el build completo; no se
+han ejecutado mutaciones ni se ha cambiado contenido del curso para esta revisión.
+**SQL necesario para este ajuste: ninguno. Variables nuevas: ninguna.**

@@ -1,4 +1,6 @@
 import { readFile } from "node:fs/promises";
+import { compositionFontReferenceDetails } from "./composition-font-references";
+import { googleFontFaceBindingSchema } from "../fonts/google-font-native-face.contract";
 import { dirname, resolve } from "node:path";
 import {
   COMPOSITION_COLOR_GRADING_RUNTIME_ARTIFACT,
@@ -53,6 +55,7 @@ import { renderCompositionCanvasKeyboardSelection } from "./composition-canvas-k
 import { renderCompositionCanvasFocusContinuity } from "./composition-canvas-focus-continuity";
 import { renderCompositionCanvasControlKeyboard } from "./composition-canvas-control-keyboard";
 import { renderCompositionEditorShortcutBridge } from "./composition-editor-shortcut";
+import { resolveCompositionDeckImageAliases } from "./composition-deck-image-aliases.server";
 import {
   assertCompositionHtmlEditingIdsUnique,
   assertCompositionHtmlEditingResourcesLocal,
@@ -363,7 +366,8 @@ function renderClip(
   }
   if (clip.source.type === "DECK_SLIDE") {
     const deckContainStyle = renderDeckContainStyle(clip, canvas);
-    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"${clip.source.htmlAssetId ? ` data-html-asset="${escapeAttribute(clip.source.htmlAssetId)}"` : ""} data-appearance="${clip.source.appearance || deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${htmlEditingFragment ?? replaceUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
+    const deckHtml = htmlEditingFragment ?? replaceUrls(resolveCompositionDeckImageAliases(clip.source.html, assetUrls), deckAssetUrls);
+    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"${clip.source.htmlAssetId ? ` data-html-asset="${escapeAttribute(clip.source.htmlAssetId)}"` : ""} data-appearance="${clip.source.appearance || deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${deckHtml}</section></main></div></div></div></div></section>`;
   }
   const mediaAssetId = getCompositionClipMediaAssetId(clip);
   if (!mediaAssetId) throw new CompositionPreviewCompilerError(`El clip ${clip.id} no tiene un asset multimedia válido.`);
@@ -1847,17 +1851,18 @@ function renderCompositionFontFaces(
   document: CompositionEditorDocument,
   fontAssets: Map<string, CompositionCompiledFont> | undefined,
 ) {
-  const references = new Map<string, string>();
-  for (const clip of document.clips) {
-    if (clip.source.type !== "NATIVE_TEXT" && clip.source.type !== "NATIVE_CAPTIONS") continue;
-    const { fontAssetId, fontFamily } = clip.source.style;
-    if (fontAssetId) references.set(fontAssetId, fontFamily);
-  }
-  return [...references].map(([assetId, family]) => {
+  let references: ReturnType<typeof compositionFontReferenceDetails>;
+  try { references = compositionFontReferenceDetails(document); }
+  catch { throw new CompositionPreviewCompilerError("Las referencias tipográficas de la composición no son válidas.", 409); }
+  return [...references].map(([assetId, reference]) => {
+    const family = reference.fontFamily;
     const font = fontAssets?.get(assetId);
     if (!font) throw new CompositionPreviewCompilerError(`No se resolvió la fuente personalizada ${family}.`, 409);
     if (font.family !== family) throw new CompositionPreviewCompilerError(`La fuente ${font.family} no coincide con la familia declarada ${family}.`, 409);
-    return `@font-face { font-family: '${escapeCssString(font.family)}'; src: url("${escapeCssUrl(font.sourceUrl)}") format('${font.format}'); font-display: block; }`;
+    const face = font.googleFace ? googleFontFaceBindingSchema.parse(font.googleFace) : undefined;
+    if (JSON.stringify(face) !== JSON.stringify(reference.googleFace)) throw new CompositionPreviewCompilerError("La variante tipográfica no coincide con la referencia guardada.", 409);
+    const descriptors = face ? ` font-style: ${face.style}; font-weight: ${face.weight.minimum}${face.weight.maximum === face.weight.minimum ? "" : ` ${face.weight.maximum}`};${face.unicodeRange ? ` unicode-range: ${face.unicodeRange};` : ""}` : "";
+    return `@font-face { font-family: '${escapeCssString(font.family)}'; src: url("${escapeCssUrl(font.sourceUrl)}") format('${font.format}'); font-display: block;${descriptors} }`;
   }).join("\n");
 }
 

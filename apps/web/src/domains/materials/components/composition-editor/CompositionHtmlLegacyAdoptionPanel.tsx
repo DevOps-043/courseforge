@@ -5,6 +5,8 @@ import type { CompositionHtmlEditorialHost } from "@/domains/production/composit
 import type { HtmlSnapshotLocatorScope } from "@/domains/production/composition-editor/composition-html-snapshot-locator.client";
 import { consultHtmlLegacyReview } from "@/domains/production/composition-editor/composition-html-editing-legacy-review.client";
 import { describeHtmlLegacySourceChange, htmlLegacyReviewCommandSchema, type HtmlLegacyReviewView } from "@/domains/production/composition-editor/composition-html-editing-legacy-review.contract";
+import { Wrench } from "lucide-react";
+import { CompositionHtmlPanel } from "./CompositionHtmlPanel";
 
 const reviewEnabled = process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED === "true"
   && process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_LEGACY_ADOPTION_RECEIPTS_ENABLED === "true";
@@ -59,16 +61,17 @@ export function CompositionHtmlLegacyAdoptionPanel({ scope, target, host }: {
   if (!reviewEnabled) return null;
   const tracking = host.legacyAdoptionTracking?.(scope);
   const change = view ? describeHtmlLegacySourceChange(view.originalSource, view.candidateSource) : null;
-  return <section className="space-y-2 rounded border p-3 text-xs" aria-label="Revisión de adopción HTML" aria-busy={busy}>
-    <h3>Adoptar HTML instrumentado</h3>
-    <p>Solo para un clip aún no editable y un candidato instalado y revisado por el operador. Esta consulta no aprueba ni instala plantillas.</p>
+  return <CompositionHtmlPanel title="Avanzado: adaptar HTML existente" label="Revisión de adopción HTML"
+    icon={Wrench} collapsible initiallyOpen={tracking?.status !== "EMPTY"} busy={busy}>
+    <p>Para administradores: usa un candidato instalado y revisado por el operador, únicamente si el clip todavía no es editable. No necesitas un UUID para editar campos ya habilitados.</p>
+    <p>Esta consulta no aprueba ni instala plantillas, y no cambia la diapositiva.</p>
     <form onSubmit={event => { event.preventDefault(); void review(); }}>
-      <label htmlFor={candidateInputId}>UUID del candidato aprobado</label>
+      <label htmlFor={candidateInputId}>Identificador del candidato aprobado (UUID)</label>
       <input id={candidateInputId} value={candidateId} disabled={busy} required className="w-full rounded border p-1"
         onChange={event => { setCandidateId(event.target.value); setView(null); setConfirmed(false); setMessage(null); }} />
       <button type="submit" disabled={busy || tracking?.status !== "EMPTY"}>Consultar candidato y cambios</button>
     </form>
-    {tracking?.status !== "EMPTY" && <p>Hay seguimiento pendiente o no disponible. Revisa el centro de recuperación antes de adoptar.</p>}
+    {tracking?.status !== "EMPTY" && <p role="alert">Hay seguimiento pendiente o no disponible. Revisa el centro de recuperación antes de adoptar.</p>}
     {view && change && <>
       <p>Plantilla {view.templateId} · versión {view.templateVersion} · {view.fields.length} campos declarados.</p>
       <p className="break-all">Evidencia de revisión del operador: {view.evidenceSha256}.</p>
@@ -88,10 +91,10 @@ export function CompositionHtmlLegacyAdoptionPanel({ scope, target, host }: {
       </details>
       <label htmlFor={confirmationId}><input id={confirmationId} type="checkbox" checked={confirmed} disabled={busy || !adoptionEnabled}
         onChange={event => setConfirmed(event.target.checked)} /> Revisé este candidato y confirmo su adopción en esta base documental.</label>
-      <button type="button" disabled={busy || !confirmed || !adoptionEnabled || tracking?.status !== "EMPTY" || !host.adoptLegacy}
+      <button type="button" data-primary="true" disabled={busy || !confirmed || !adoptionEnabled || tracking?.status !== "EMPTY" || !host.adoptLegacy}
         onClick={() => void adopt()}>Confirmar adopción con guardado coordinado</button>
       {!adoptionEnabled && <p>Las nuevas adopciones están deshabilitadas; la consulta no las activa.</p>}
     </>}
     {message && <p role="status">{message}</p>}
-  </section>;
+  </CompositionHtmlPanel>;
 }

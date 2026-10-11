@@ -44,10 +44,10 @@ export function CompositionHtmlEditableFields({ view, busy, onCommit }: {
     targetGroups.set(targetId, [...(targetGroups.get(targetId) ?? []), element]);
   }
   return <div className="space-y-3" aria-label="Edición de campos HTML">
-    <p>Prepara hasta {HTML_EDITING_LIMITS.commandOverrides} campos y guarda el lote en una sola revisión. Preparar no publica cambios.</p>
+    <p>Edita y pulsa «Preparar cambio». Después usa «Guardar cambios». Puedes agrupar hasta {HTML_EDITING_LIMITS.commandOverrides} campos por revisión.</p>
     <div className="flex gap-2">
-      <button type="button" disabled={locked || !drafts.length} onClick={() => void commit()}>Guardar lote ({drafts.length})</button>
-      <button type="button" disabled={locked || !drafts.length} onClick={() => updateDraft([])}>Descartar lote local</button>
+      <button type="button" data-primary="true" disabled={locked || !drafts.length} onClick={() => void commit()}>{submitting ? "Guardando…" : `Guardar cambios (${drafts.length})`}</button>
+      <button type="button" disabled={locked || !drafts.length} onClick={() => updateDraft([])}>Descartar preparados</button>
     </div>
     {error && <p role="alert">{error}</p>}
     {[...targetGroups].some(([, fields]) => fields.length > 1) && <div aria-label="Restauración de elementos completos" className="space-y-2">

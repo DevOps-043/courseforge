@@ -11,6 +11,8 @@ import { verifyConformanceReferenceSource } from "../composition-conformance-ref
 import { materializeConformanceReference } from "../qa/composition-conformance-materialization";
 
 import { createPreparedHtmlArchiveFixture as fixture } from "./composition-html-editing-snapshot-archive-fixtures";
+import { generatedGoogleDeckFontFixture } from "../../slides/__tests__/generated-google-deck-font-fixture";
+import { googleFontFaceBinding } from "../../fonts/google-font-native-face.contract";
 const digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
 
 test("prepared archive joins edited render, interactive reference, exact bundle, text contract and local asset manifest", async () => {
@@ -136,4 +138,21 @@ test("font capture never coerces arbitrary arrays into trusted byte buffers", as
     mimeType: "font/woff2", fileSizeBytes: 4}, bytes: [0, 0, 0, 0] as unknown as Uint8Array}];
   await assert.rejects(prepareCompositionHtmlEditingSnapshotArchive(f.input), /FONT_BYTES_MISMATCH/);
   assert.equal(f.state.rpcReads, 0);
+});
+
+test("Google face descriptors are owned before asynchronous reads and retained in edited archives", async () => {
+  const f = await fixture(), google = generatedGoogleDeckFontFixture();
+  const face = google.nativeState.faces[0], file = google.files[0];
+  const binding = { fontAssetId: face.id, family: face.family, ...file.file, googleFace: googleFontFaceBinding(face) };
+  // The decoded admission marker belongs to the authority reader, not the portable manifest.
+  const { embeddingCheck, ...portable } = binding;
+  assert.equal(embeddingCheck, "UNVERIFIED_COMPRESSED");
+  f.input.packagedFonts = [{ binding: portable, bytes: file.bytes }];
+  const original = structuredClone(portable);
+  f.state.onRead = count => { if (count === 1) portable.googleFace.weight.minimum = 200; };
+  const result = await prepareCompositionHtmlEditingSnapshotArchive(f.input);
+  assert.deepEqual(result.fontManifest, [original]);
+  const archive = await JSZip.loadAsync(result.archiveBytes);
+  assert.deepEqual(JSON.parse(await archive.file("font-manifest.json")!.async("string")), [original]);
+  assert.deepEqual(await archive.file(`assets/fonts/${original.checksumSha256}.woff2`)!.async("uint8array"), file.bytes);
 });

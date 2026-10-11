@@ -45,6 +45,44 @@ function setup() {
   return { input, base, candidate, beforeView, afterView, acknowledgment, ports, state, queue, storage, entries };
 }
 
+test("initial anchor runs under native queue and browser lock without adopting a document or recording undo", async () => {
+  const f = setup(); let refreshed = 0, locked = false;
+  const host: CompositionHtmlEditorialNativeHost = new CompositionHtmlEditorialNativeHost({ ...f.ports, enabled: () => false, initializationEnabled: () => true,
+    getLock: () => ({ runExclusive: async (_scope, task) => { locked = true; try { return await task(); } finally { locked = false; } } }),
+    onAnchorAvailable: async () => { refreshed++; },
+    fetcher: async (_url, options) => {
+      assert.ok(locked); assert.equal(f.queue.snapshot().status, "RUNNING"); assert.equal(host.isBusy(), true);
+      assert.equal(options?.method, "GET");
+      return Response.json({ success: true, requestId: uuid, correlationId: uuid,
+        data: { documentId: uuid, compositionId: other, documentHash: f.base.documentHash, activeRevisionId: other } });
+    } });
+  const result = await host.initialAnchor({ scope: f.input.scope, action: "CONSULT", signal: f.input.signal });
+  assert.equal(result.activeRevisionId, other); assert.equal(refreshed, 1); assert.equal(f.state.adoptCount, 0);
+  assert.equal(f.state.payload, f.base); assert.equal(host.isBusy(), false); assert.deepEqual(f.state.busy, [true, false]);
+});
+
+test("initial anchor refuses conflicts, disabled preparation and pending editorial journals before transport", async () => {
+  for (const mode of ["conflict", "disabled", "journal"] as const) {
+    const f = setup(); f.state.conflicting = mode === "conflict";
+    if (mode === "journal") pending(f);
+    const host = new CompositionHtmlEditorialNativeHost({ ...f.ports, initializationEnabled: () => mode !== "disabled" });
+    await assert.rejects(host.initialAnchor({ scope: f.input.scope, action: "PREPARE", signal: f.input.signal }), /NOT_READY/);
+    assert.equal(f.state.requests, 0); assert.equal(f.state.adoptCount, 0);
+  }
+});
+
+test("initial anchor does not refresh another owner when tenant changes during the request", async () => {
+  const f = setup(); let refreshed = 0;
+  const host = new CompositionHtmlEditorialNativeHost({ ...f.ports, initializationEnabled: () => true,
+    onAnchorAvailable: async () => { refreshed++; }, fetcher: async () => {
+      f.state.scope = { ...f.state.scope, organizationId: other };
+      return Response.json({ success: true, requestId: uuid, correlationId: uuid,
+        data: { documentId: uuid, compositionId: other, documentHash: f.base.documentHash, activeRevisionId: other } });
+    } });
+  await assert.rejects(host.initialAnchor({ scope: f.input.scope, action: "PREPARE", signal: f.input.signal }), /NOT_READY/);
+  assert.equal(refreshed, 0); assert.equal(f.state.adoptCount, 0); assert.equal(host.isBusy(), false);
+});
+
 function pending(f: ReturnType<typeof setup>, acknowledgment: unknown = f.acknowledgment) {
   assert.equal(beginHtmlEditingJournal(f.storage, { scope: f.input.scope, operationId: uuid, clipId: f.input.clipId,
     createdAt: 1, expected: f.acknowledgment.previous, expectedCompositionDocumentHash: f.base.documentHash }), true);

@@ -12,7 +12,7 @@ export function compositionSlideKey(slide: { html: string; classes: string }) {
   return narrativeFingerprint(JSON.stringify([slide.html, slide.classes]));
 }
 
-export function buildSceneVisualCatalog(deck: HyperframesAnimatedDeckSource | null): SceneVisualCatalog | null {
+export function buildSceneVisualCatalog(deck: Pick<HyperframesAnimatedDeckSource, "slides"> | null): SceneVisualCatalog | null {
   if (!deck) return null;
   const slides = deck.slides.map((slide) => ({
     key: compositionSlideKey(slide), index: slide.index, label: slide.label,

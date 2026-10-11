@@ -12,6 +12,8 @@ import { createClient } from "@/utils/supabase/server";
 import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+import { storeGeneratedCourseDeckEditorial } from "@/domains/production/slides/generation/course-deck-editorial-preparation.server";
+import { resolveProductionComponentContext } from "@/domains/production/jobs/production-jobs.service";
 
 export const runtime = "nodejs";
 
@@ -87,6 +89,19 @@ export async function PATCH(request: Request) {
     }
 
     const nextHtml = legacyDeck?.html || applyAppearanceAttribute(currentHtml, payload.appearance);
+    const preparedSpec = legacyDeck?.preparedSpec || (() => {
+      const parsed = courseDeckSpecSchema.safeParse(currentSlides.prepared_spec);
+      return parsed.success ? { ...parsed.data, appearance: payload.appearance } : currentSlides.prepared_spec;
+    })();
+    const parsedEditorialSpec = courseDeckSpecSchema.safeParse(preparedSpec);
+    const context = currentSlides.editable_deck && parsedEditorialSpec.success
+      ? await resolveProductionComponentContext({ componentId: payload.componentId, supabase: authorized.admin }) : null;
+    if (context && !context.organizationId) throw new Error("COURSE_DECK_EDITORIAL_TENANT_REQUIRED");
+    // Prepare before changing presentation bytes; a rejected resource must not
+    // leave a successfully changed HTML pointing at stale editorial material.
+    const editableDeck = context?.organizationId && parsedEditorialSpec.success
+      ? await storeGeneratedCourseDeckEditorial({ deck: parsedEditorialSpec.data, componentId: payload.componentId,
+          organizationId: context.organizationId, supabase: authorized.admin }) : null;
     const { error: uploadError } = await authorized.admin.storage
       .from(STORAGE_BUCKET)
       .upload(storagePath, nextHtml, {
@@ -97,11 +112,9 @@ export async function PATCH(request: Request) {
     if (uploadError) throw new Error(`No se pudo actualizar el HTML de slides: ${uploadError.message}`);
 
     const publicUrl = authorized.admin.storage.from(STORAGE_BUCKET).getPublicUrl(storagePath).data.publicUrl;
-    const { animated_deck: _staleAnimatedDeck, ...slidesWithoutAnimatedDeck } = currentSlides;
-    const preparedSpec = legacyDeck?.preparedSpec || (() => {
-      const parsed = courseDeckSpecSchema.safeParse(currentSlides.prepared_spec);
-      return parsed.success ? { ...parsed.data, appearance: payload.appearance } : currentSlides.prepared_spec;
-    })();
+    const slidesWithoutAnimatedDeck = { ...currentSlides };
+    delete slidesWithoutAnimatedDeck.animated_deck;
+    delete slidesWithoutAnimatedDeck.editable_deck;
     const assetsPatch: Partial<MaterialAssets> = {
       final_video_assembly_stale: true,
       production_status: "DECK_READY",
@@ -112,6 +125,9 @@ export async function PATCH(request: Request) {
         html_content_path: `${STORAGE_BUCKET}/${storagePath}`,
         html_public_url: publicUrl,
         prepared_spec: preparedSpec as Record<string, unknown>,
+        // The editorial source hash includes appearance CSS. Never retain a
+        // preparation for the previous appearance or claim it is still current.
+        editable_deck: editableDeck,
       },
       updated_at: new Date().toISOString(),
     };

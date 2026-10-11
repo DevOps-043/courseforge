@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildCompositionPreviewCsp } from "@/domains/production/composition-editor/composition-preview-csp.server";
 import { z } from "zod";
 import { getCompositionPresetPreviewDocument, CompositionPresetStoreError } from "@/domains/production/composition-editor/composition-preset-store.service";
 import { resolveCompositionPreviewAssetUrls } from "@/domains/production/composition-editor/composition-preview-assets.service";
@@ -34,7 +35,10 @@ export async function GET(request: Request, context: RouteContext) {
       supabase: authorization.admin,
     });
     const fontAssets = await resolveCompositionPreviewFonts({ document, organizationId: authorization.organizationId, supabase: authorization.admin });
-    return new NextResponse(await compileCompositionPreview({ assetUrls, document, fontAssets }), { headers: { ...COMPOSITION_PRESET_PREVIEW_HEADERS, "x-request-id": requestId } });
+    return new NextResponse(await compileCompositionPreview({ assetUrls, document, fontAssets }), { headers: {
+      ...COMPOSITION_PRESET_PREVIEW_HEADERS, "Content-Security-Policy": buildCompositionPreviewCsp(fontAssets, process.env.NEXT_PUBLIC_SUPABASE_URL),
+      "x-request-id": requestId,
+    } });
   } catch (error) {
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de preview inválido.", requestId, status: 400 });
     if (error instanceof CompositionPresetStoreError) return compositionPresetErrorResponse(error, requestId);

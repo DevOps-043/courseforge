@@ -32,6 +32,8 @@ import {
   resolveSlideAgentPromptConfig,
 } from "@/domains/production/slides/agents/slide-agent-prompt-resolver.service";
 import { renderCourseDeckHtml } from "@/domains/production/slides/render/html-deck-renderer.service";
+import { COURSE_DECK_EDITORIAL_VERSION } from "@/domains/production/slides/render/course-deck-editable-artifact.server";
+import { storeGeneratedCourseDeckEditorial } from "@/domains/production/slides/generation/course-deck-editorial-preparation.server";
 import {
   courseDeckSpecSchema,
   slideDeckGenerateInputSchema,
@@ -47,6 +49,8 @@ import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 import { ORGANIZATION_FONT_TABLE } from "@/domains/production/fonts/organization-font.types";
+import { googleFontNativePinSchema } from "@/domains/production/fonts/google-font-native-face.contract";
+import { assertCourseDeckEditorialFontReady } from "@/domains/production/slides/generation/course-deck-editorial-fonts.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -217,7 +221,9 @@ async function resolveSlideTemplateDesignSystem(params: {
       ? {
           family: asRecord(modifiers?.font)?.family as string,
           fontAssetId: typeof asRecord(modifiers?.font)?.fontAssetId === "string" ? asRecord(modifiers?.font)?.fontAssetId as string : undefined,
-          source: asRecord(modifiers?.font)?.source === "uploaded" ? "uploaded" : "google",
+          googleNativePin: asRecord(modifiers?.font)?.googleNativePin !== undefined
+            ? googleFontNativePinSchema.parse(asRecord(modifiers?.font)?.googleNativePin) : undefined,
+          source: asRecord(modifiers?.font)?.source === "uploaded" ? "uploaded" as const : "google" as const,
           cssUrl: typeof asRecord(modifiers?.font)?.cssUrl === "string" ? asRecord(modifiers?.font)?.cssUrl as string : undefined,
         }
       : undefined,
@@ -488,6 +494,7 @@ export async function runSlideDeckGeneration(params: {
     copy_synthesis: {
       signature: synthesisSignature,
       version: SLIDE_COPY_PIPELINE_VERSION,
+      editorialVersion: COURSE_DECK_EDITORIAL_VERSION,
     },
     force_regenerate: forceRegenerate,
     input,
@@ -555,6 +562,10 @@ export async function runSlideDeckGeneration(params: {
       })
       ? null
       : getPreparedDeckSpec(currentAssets, componentId);
+    // Fail before synthesis/provider calls when the selected typography has no
+    // exact native admission. Recheck again when preparing the output artifact.
+    await assertCourseDeckEditorialFontReady({ font: selectedSlideTemplate?.font ?? preparedDeckSpecCandidate?.designSystem.font,
+      organizationId: context.organizationId || "", supabase: authorizedComponent.admin });
     const preparedDeckSpec = preparedDeckSpecCandidate
       ? await resolveDeckFontForRender({
           admin: authorizedComponent.admin,
@@ -704,6 +715,9 @@ export async function runSlideDeckGeneration(params: {
     }
 
     const basePath = deckBasePath(componentId);
+    if (!context.organizationId) throw new Error("COURSE_DECK_EDITORIAL_TENANT_REQUIRED");
+    const editableDeck = await storeGeneratedCourseDeckEditorial({ deck: deckSpec,
+      organizationId: context.organizationId, componentId, supabase: authorizedComponent.admin });
     const specUpload = await uploadTextAsset({
       admin: authorizedComponent.admin,
       content: JSON.stringify(deckSpec, null, 2),
@@ -755,6 +769,7 @@ export async function runSlideDeckGeneration(params: {
         artifact_id: context.artifactId,
         asset_type: PRODUCTION_ASSET_TYPES.SLIDE_DECK_HTML,
         content: {
+          editable_deck: editableDeck,
           deck_schema_version: deckSpec.schemaVersion,
           slide_count: deckSpec.slides.length,
         },
@@ -831,6 +846,7 @@ export async function runSlideDeckGeneration(params: {
         selected_slide_template_run_id: selectedSlideTemplate?.selectedSlideTemplateRunId,
         selected_slide_template_title: selectedSlideTemplate?.title,
         prepared_spec: deckSpec as unknown as Record<string, unknown>,
+        editable_deck: editableDeck,
         spec_content_path: specUpload.storagePath,
       },
       updated_at: now,
@@ -857,6 +873,7 @@ export async function runSlideDeckGeneration(params: {
           background_visual_job_id: backgroundVisuals.jobId,
           background_visuals_generated: backgroundVisuals.generatedCount,
           html_storage_path: htmlUpload.storagePath,
+          editable_deck: editableDeck,
           copy_pipeline_version: SLIDE_COPY_PIPELINE_VERSION,
           copy_synthesis_signature: synthesisSignature,
           qa_status: qaReport.status,

@@ -63,6 +63,7 @@ export function assertPublishedHtmlPreviewPortfolio(binding: PublishedHtmlPrevie
     const path = conformanceFontPath(font), face = inventory.fonts.get(font.fontAssetId);
     const entry = inventory.entries.find(resource => resource.kind === "FONT" && resource.localPath === path);
     if (!face || face.family !== font.family || face.sourceUrl !== path || !entry
+      || !isDeepStrictEqual(face.googleFace, font.googleFace)
       || entry.identity.checksum !== font.checksumSha256 || entry.identity.fileSizeBytes !== font.fileSizeBytes
       || entry.identity.mimeType !== font.mimeType) throw new Error("HTML_PUBLISHED_PREVIEW_UNAVAILABLE");
     fontPaths.add(path);

@@ -6,6 +6,9 @@ import type { HtmlSnapshotLocatorScope } from "@/domains/production/composition-
 import { htmlEditingInitializationRequestSchema } from "@/domains/production/composition-editor/composition-html-editing-initialization-http.contract";
 import { HtmlEditingInitializationCoordinatorError, type HtmlEditingInitializationAction } from "@/domains/production/composition-editor/composition-html-editing-initialization-coordinator.client";
 import { useCompositionHtmlTemplateChoices } from "./useCompositionHtmlTemplateChoices";
+import { ListChecks } from "lucide-react";
+import { CompositionHtmlPanel } from "./CompositionHtmlPanel";
+import { CompositionHtmlInitialAnchorStep } from "./CompositionHtmlInitialAnchorStep";
 
 const initializationEnabled = process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED === "true";
 /** Installed template locator only; source/declarations/grants remain server-side.
@@ -15,6 +18,7 @@ export function CompositionHtmlInitializationPanel({ scope, target, host }: {
 }) {
   const templateInputId = useId();
   const [selectedTemplate, setSelectedTemplate] = useState("");
+  const [anchorAvailable, setAnchorAvailable] = useState(false);
   const catalog = useCompositionHtmlTemplateChoices(scope, target);
   const choice = catalog.view?.templates.find(template => JSON.stringify([template.templateId, template.templateVersion]) === selectedTemplate);
   const [busy, setBusy] = useState(false), [message, setMessage] = useState<string | null>(null), [, refresh] = useState(0);
@@ -41,7 +45,8 @@ export function CompositionHtmlInitializationPanel({ scope, target, host }: {
     }
   }
   function submit() {
-    if (!target || !initializationEnabled || host.initializationTracking?.(scope).status !== "EMPTY") return;
+    if (!target || !initializationEnabled || host.initializationTracking?.(scope).status !== "EMPTY"
+      || (host.initialAnchor && !anchorAvailable)) return;
     if (!choice || catalog.busy) { setMessage("Consulta el catálogo y selecciona una plantilla instalada para este HTML guardado."); return; }
     const body = htmlEditingInitializationRequestSchema.safeParse({ templateId: choice.templateId,
       templateVersion: choice.templateVersion, expectedDocumentHash: target.documentHash });
@@ -49,8 +54,8 @@ export function CompositionHtmlInitializationPanel({ scope, target, host }: {
     void run({ mode: "SEND", clipId: target.clipId, body: body.data });
   }
   if (!tracking || (target ? !initializationEnabled || tracking.status !== "EMPTY" : tracking.status === "EMPTY" && !message)) return null;
-  return <section className="space-y-2 rounded border p-3 text-xs" aria-label="Inicialización HTML editable">
-    <h3>{target ? "Inicializar campos HTML" : "Seguimiento de inicialización HTML"}</h3>
+  return <CompositionHtmlPanel title={target ? "Preparar campos HTML" : "Seguimiento de inicialización HTML"}
+    label="Inicialización HTML editable" icon={ListChecks} collapsible={Boolean(target)} busy={busy || catalog.busy}>
     {tracking.status === "UNAVAILABLE" && <p role="alert">Seguimiento inicial no disponible o dañado. No se borrará ni se reenviará.</p>}
     {tracking.status === "PENDING" && <>
       <p>Intento {tracking.entry.operationId} · clip {tracking.entry.clipId}.</p>
@@ -70,12 +75,16 @@ export function CompositionHtmlInitializationPanel({ scope, target, host }: {
       </>}
     </>}
     {target && initializationEnabled && tracking.status === "EMPTY" && <form onSubmit={event => { event.preventDefault(); submit(); }} className="space-y-2">
-      <p>Consulta plantillas instaladas que coinciden con el HTML guardado. No instala ni activa plantillas. La inicialización vuelve a verificar permisos, revocación y compatibilidad.</p>
-      <button type="button" disabled={busy || catalog.busy} onClick={() => { setSelectedTemplate(""); void catalog.consult(); }}>
-        {catalog.busy ? "Consultando catálogo…" : "Consultar plantillas instaladas"}
+      <CompositionHtmlInitialAnchorStep scope={scope} host={host} disabled={busy || catalog.busy}
+        onAvailabilityChange={setAnchorAvailable} />
+      <p><strong>2. Habilita los campos de la diapositiva</strong></p>
+      <p>Usa este paso si la diapositiva todavía no tiene campos editables. Busca una plantilla compatible, selecciónala y confirma la preparación.</p>
+      <p>Solo se consultan plantillas ya instaladas. No se instala ni activa ninguna; se vuelven a comprobar permisos y compatibilidad.</p>
+      <button type="button" disabled={busy || catalog.busy || Boolean(host.initialAnchor && !anchorAvailable)} onClick={() => { setSelectedTemplate(""); void catalog.consult(); }}>
+        {catalog.busy ? "Buscando plantillas…" : "Buscar plantillas compatibles"}
       </button>
       {catalog.error && <p role="alert">{catalog.error}</p>}
-      {catalog.view && catalog.view.templates.length === 0 && <p>No hay plantillas instaladas para este HTML guardado. No se inicializará automáticamente.</p>}
+      {catalog.view && catalog.view.templates.length === 0 && <p role="status">No hay una plantilla instalada compatible. Un administrador debe preparar una antes de continuar. No se modificó la diapositiva.</p>}
       {catalog.view && catalog.view.templates.length > 0 && <>
         <label htmlFor={templateInputId}>Plantilla instalada para este HTML</label>
         <select id={templateInputId} value={choice ? selectedTemplate : ""} onChange={event => setSelectedTemplate(event.target.value)}
@@ -87,9 +96,9 @@ export function CompositionHtmlInitializationPanel({ scope, target, host }: {
           </option>)}
         </select>
       </>}
-      <button type="submit" disabled={busy || catalog.busy || !choice || !host.initialize}>Inicializar con guardado coordinado</button>
+      <button type="submit" data-primary="true" disabled={busy || catalog.busy || !choice || !host.initialize || Boolean(host.initialAnchor && !anchorAvailable)}>Habilitar campos con esta plantilla</button>
     </form>}
-    <button type="button" disabled={busy} onClick={() => refresh(value => value + 1)}>Releer seguimiento inicial</button>
+    {!target && <button type="button" disabled={busy} onClick={() => refresh(value => value + 1)}>Actualizar seguimiento</button>}
     {message && <p role="status">{message}</p>}
-  </section>;
+  </CompositionHtmlPanel>;
 }

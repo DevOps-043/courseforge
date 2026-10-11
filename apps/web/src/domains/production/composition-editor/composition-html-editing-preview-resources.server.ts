@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { compositionFontReferences } from "./composition-font-references";
 import { prepareCompositionHtmlEditingSnapshotImages } from "./composition-html-editing-snapshot-images.service";
 import { readHtmlSnapshotNativeMedia } from "./composition-html-editing-snapshot-media.server";
 import { readReferencedCompositionFonts } from "./composition-font-assets.service";
@@ -28,9 +29,7 @@ export async function readCompositionHtmlEditingPreviewPortfolio(input: Input) {
   if (expectedPin !== undefined && (!/^[a-f0-9]{64}$/.test(expectedPin)
       || snapshot.bundle.sha256 !== expectedPin)) throw new HtmlEditingPreviewResourcesError();
   const native = await readHtmlSnapshotNativeMedia({ ...input, document: snapshot.document, draftId: input.documentId });
-  const fontIds = new Set(snapshot.document.clips.flatMap(clip =>
-    (clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS") && clip.source.style.fontAssetId
-      ? [clip.source.style.fontAssetId] : []));
+  const fontIds = compositionFontReferences(snapshot.document);
   if (fontIds.size > CONFORMANCE_FONT_BINDING_LIMITS.maximumFonts) throw new HtmlEditingPreviewResourcesError();
   const fonts = await readReferencedCompositionFonts({ ...input, document: snapshot.document });
   const inventory = buildCompositionHtmlEditingPreviewInventory({ document: snapshot.document, htmlImages: snapshot.imageAssets,

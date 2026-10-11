@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "./composition-document.types";
+import { compositionEditorDocumentSchema, getCompositionClipMediaAssetId, type CompositionEditorDocument } from "./composition-document.types";
 import type { HtmlHistoricalReconstructionOrigin } from "./composition-html-editing-historical-reconstruction.server";
 import { readCurrentHtmlDraftImageIdentities } from "./composition-html-editing-snapshot-images.service";
 import { readHtmlReconstructionResourceReferences } from "./composition-html-editing-reconstruction-resource-references.server";
@@ -54,8 +54,9 @@ export function createHtmlReconstructionCompositionResourceAcquirer(configuratio
     if (selection && !actorId) throw new Error("HTML_RECONSTRUCTION_SELECTED_RESOURCES_UNAVAILABLE");
     const selected = selection && actorId ? await readHtmlReconstructionSelectedResources({supabase, origin, document, selection, actorId, signal}) : undefined;
     const images = selected ?? await acquireImages({origin, document, signal});
+    const nativeIds = new Set(document.clips.map(getCompositionClipMediaAssetId).filter(id => id !== null));
     const nativeAssets = selected?.nativeAssets ?? (await readHtmlSnapshotNativeMedia({supabase, organizationId: origin.organizationId,
-      draftId: origin.draftId, document, signal})).assets;
+      draftId: origin.draftId, document, signal})).assets.filter(asset => nativeIds.has(asset.productionAssetId));
     let packagedFonts: PackagedFonts;
     if (existingFonts) {
       packagedFonts = existingFonts;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { googleFontNativePinSchema } from "../../fonts/google-font-native-face.contract";
 
 export const COURSE_DECK_SCHEMA_VERSION = "course-deck-v1";
 export const COURSE_DECK_WIDTH = 1920;
@@ -162,6 +163,10 @@ export const courseDeckDesignSystemSchema = z.object({
     family: z.string().trim().regex(/^[a-zA-Z0-9 ._-]+$/).min(1).max(120),
     fontAssetId: z.string().uuid().optional(),
     source: z.enum(["google", "uploaded"]),
+    googleNativePin: googleFontNativePinSchema.optional(),
+  }).superRefine((font, context) => {
+    if (font.googleNativePin && (font.source !== "google" || font.fontAssetId !== font.googleNativePin.fontId))
+      context.addIssue({ code: "custom", message: "COURSE_DECK_GOOGLE_FONT_PIN_MISMATCH" });
   }).optional(),
   muted: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   surface: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),

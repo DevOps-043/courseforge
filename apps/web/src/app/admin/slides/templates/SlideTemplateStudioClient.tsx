@@ -25,6 +25,8 @@ import {
 import { toast } from "sonner";
 import { EngineSelect } from "@/components/ui/EngineSelect";
 import { SOFLIA_SLIDE_TEMPLATE_BACKGROUND } from "@/domains/production/slides/templates/slide-template-theme";
+import { GoogleFontPreparationControl } from "@/domains/production/fonts/components/GoogleFontPreparationControl";
+import type { GoogleFontNativePin } from "@/domains/production/fonts/google-font-native-face.contract";
 
 type SlideLayoutId = "center" | "closing" | "data" | "framework" | "split" | "split_reverse";
 type SlideTypeId = string;
@@ -56,7 +58,7 @@ interface TemplateModifiers {
   cornerRadius: number;
   density: "compact" | "comfortable" | "spacious";
   fontPairing: "system_sans" | "editorial_serif" | "technical_mono";
-  font?: { family: string; source: "google" | "uploaded"; cssUrl?: string; fontAssetId?: string };
+  font?: { family: string; source: "google" | "uploaded"; cssUrl?: string; fontAssetId?: string; googleNativePin?: GoogleFontNativePin };
   showBrandMark: boolean;
 }
 
@@ -518,7 +520,7 @@ export function SlideTemplateStudioClient() {
       font: font
         ? font.source === "uploaded"
           ? { family: font.family, fontAssetId: font.id, source: font.source }
-          : { cssUrl: font.cssUrl, family: font.family, source: font.source }
+          : { cssUrl: font.cssUrl, family: font.family, fontAssetId: font.id, source: font.source }
         : undefined,
     }));
   }
@@ -1053,6 +1055,13 @@ export function SlideTemplateStudioClient() {
                   />
                 </label>
               </div>
+
+              {selectedOrganizationFont?.source === "google" && <GoogleFontPreparationControl key={selectedOrganizationFont.id}
+                fontId={selectedOrganizationFont.id} family={selectedOrganizationFont.family} disabled={busy} onAdmitted={pin => {
+                  setModifiers(current => current.font?.source === "google" && current.font.fontAssetId === pin.fontId
+                    ? { ...current, font: { ...current.font, googleNativePin: pin } } : current);
+                  setDirtyOverrides(current => ({ ...current, modifiers: true }));
+                }} />}
 
               <div className="block text-xs font-bold text-gray-600 dark:text-gray-300">
                 Importar fuente de empresa

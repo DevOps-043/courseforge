@@ -75,6 +75,7 @@
     "clsx": "^2.1.0",
     "dompurify": "^3.4.15",
     "framer-motion": "^12.26.2",
+    "fontkit": "2.0.4",
     "gsap": "^3.15.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",
@@ -97,6 +98,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^25.0.9",
+    "@types/fontkit": "2.0.9",
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",

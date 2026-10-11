@@ -9,6 +9,7 @@ import {
 } from "@/domains/production/composition-editor/composition-document.service";
 import { resolveCompositionPreviewAssetUrls } from "@/domains/production/composition-editor/composition-preview-assets.service";
 import { CompositionFontAssetError, resolveCompositionPreviewFonts } from "@/domains/production/composition-editor/composition-font-assets.service";
+import { buildCompositionPreviewCsp } from "@/domains/production/composition-editor/composition-preview-csp.server";
 import {
   compileCompositionPreview,
   CompositionPreviewCompilerError,
@@ -124,7 +125,7 @@ export async function GET(request: Request, context: RouteContext) {
     return new NextResponse(previewHtml, {
       headers: {
         "Cache-Control": "private, no-store",
-        "Content-Security-Policy": editableContentSecurityPolicy ?? "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src https: data:; media-src 'self' https: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'",
+        "Content-Security-Policy": editableContentSecurityPolicy ?? buildCompositionPreviewCsp(fontAssets, process.env.NEXT_PUBLIC_SUPABASE_URL),
         "Content-Type": "text/html; charset=utf-8",
         "Server-Timing": formatServerTimingHeader(timings),
         "X-Correlation-Id": correlationId,

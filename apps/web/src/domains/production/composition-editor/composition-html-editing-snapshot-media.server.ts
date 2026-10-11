@@ -3,6 +3,7 @@ import { z } from "zod";
 import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "./composition-document.types";
 import { hyperframesAssetManifestSchema, hyperframesAssetManifestItemSchema, HYPERFRAMES_MAXIMUM_MANIFEST_ASSETS } from "../hyperframes/hyperframes.types";
 import { HTML_EDITING_REPOSITORY_POLICY } from "./composition-html-editing-repository-policy";
+import { compositionDeckImageAssetIds, isCompositionDeckImageAvailable } from "./composition-deck-image-aliases.server";
 
 const uuid = z.string().uuid();
 const owner = {organization_id:uuid,draft_id:uuid};
@@ -22,6 +23,7 @@ export async function readHtmlSnapshotNativeMedia(params:{supabase:SupabaseClien
   const scope = z.object({organizationId:uuid,draftId:uuid}).parse(params);
   params.signal?.throwIfAborted();
   const document = compositionEditorDocumentSchema.parse(params.document);
+  const deckImageIds = compositionDeckImageAssetIds(document);
   const idsFor = (type:string) => [...new Set(document.clips.flatMap(clip => {
     if (type === "PRODUCTION_ASSET" && clip.source.type === type) return [clip.source.productionAssetId];
     if (type === "ASSEMBLY_BRAND_ASSET" && clip.source.type === type) return [clip.source.assemblyBrandAssetId];
@@ -29,7 +31,8 @@ export async function readHtmlSnapshotNativeMedia(params:{supabase:SupabaseClien
     return [];
   }))].sort();
   const productionIds = idsFor("PRODUCTION_ASSET"), brandingIds = idsFor("ASSEMBLY_BRAND_ASSET"), soundIds = idsFor("SOUND_EFFECT_ASSET");
-  if (productionIds.length + brandingIds.length + soundIds.length > HYPERFRAMES_MAXIMUM_MANIFEST_ASSETS)
+  const linkedProductionIds = [...new Set([...productionIds, ...deckImageIds])].sort();
+  if (linkedProductionIds.length + brandingIds.length + soundIds.length > HYPERFRAMES_MAXIMUM_MANIFEST_ASSETS)
     throw new Error("HTML_SNAPSHOT_MEDIA_LIMIT");
   const timeout = AbortSignal.timeout(HTML_EDITING_REPOSITORY_POLICY.rpcTimeoutMs);
   const signal = params.signal ? AbortSignal.any([params.signal,timeout]) : timeout;
@@ -59,7 +62,7 @@ export async function readHtmlSnapshotNativeMedia(params:{supabase:SupabaseClien
       throw new Error("HTML_SNAPSHOT_MEDIA_FORBIDDEN");
   };
   try {
-    await Promise.all([verifyLinks("video_composition_draft_assets","production_asset_id",productionIds),
+    await Promise.all([verifyLinks("video_composition_draft_assets","production_asset_id",linkedProductionIds),
       verifyLinks("video_composition_draft_sound_effect_assets","sound_effect_asset_id",soundIds)]);
     // Dependencies are still draft linked and bounded even when only one URL is used.
     const deckSource = document.clips.flatMap(clip => clip.source.type === "DECK_SLIDE" ? [clip.source.html] : []).join("\n")
@@ -71,7 +74,9 @@ export async function readHtmlSnapshotNativeMedia(params:{supabase:SupabaseClien
       .max(HYPERFRAMES_MAXIMUM_MANIFEST_ASSETS).parse(dependencyRaw);
     if (dependencies.some(link => link.organization_id !== scope.organizationId || link.draft_id !== scope.draftId)
       || new Set(dependencies.map(link => link.production_asset_id)).size !== dependencies.length) throw new Error();
-    const allProductionIds = [...new Set([...productionIds,...dependencies.map(link => link.production_asset_id)])].sort();
+    // An explicit HTML alias needs a current draft link, not a particular link
+    // classification. Editable images may already be linked as CLIP resources.
+    const allProductionIds = [...new Set([...linkedProductionIds,...dependencies.map(link => link.production_asset_id)])].sort();
     if (allProductionIds.length + brandingIds.length + soundIds.length > HYPERFRAMES_MAXIMUM_MANIFEST_ASSETS) throw new Error();
     const common = "id,organization_id,checksum,file_size_bytes,mime_type,storage_bucket,storage_path";
     const production = allProductionIds.length ? z.array(productionRow).max(allProductionIds.length).parse(await execute(
@@ -90,7 +95,8 @@ export async function readHtmlSnapshotNativeMedia(params:{supabase:SupabaseClien
       read("sound_effect_assets","id,organization_id,checksum_sha256,file_size_bytes,mime_type,storage_bucket,storage_path,status")
         .in("id",soundIds).eq("status","READY").limit(soundIds.length+1))) : [];
     assertRows(sounds,soundIds);
-    const usedProduction = production.filter(asset => productionIds.includes(asset.id) || asset.public_url && deckSource.includes(asset.public_url));
+    if (production.some(asset => deckImageIds.includes(asset.id) && !isCompositionDeckImageAvailable(asset.mime_type, asset.qa_status))) throw new Error();
+    const usedProduction = production.filter(asset => productionIds.includes(asset.id) || deckImageIds.includes(asset.id) || asset.public_url && deckSource.includes(asset.public_url));
     const deckPublicUrls = new Map<string,string>();const urlOwners = new Map<string,string>();
     for (const asset of usedProduction) if (asset.public_url && deckSource.includes(asset.public_url)) {
       if (urlOwners.has(asset.public_url) && urlOwners.get(asset.public_url) !== asset.id) throw new Error();

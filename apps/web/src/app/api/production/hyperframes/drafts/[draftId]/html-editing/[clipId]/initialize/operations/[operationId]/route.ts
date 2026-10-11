@@ -6,7 +6,7 @@ import { createHtmlEditingInitializationOperationHandler } from "@/domains/produ
 import { htmlEditingInitializationReceiptsEnabled } from "@/domains/production/composition-editor/composition-html-editing-initialization-operation-http-policy";
 import { htmlEditingInitializationEnabled } from "@/domains/production/composition-editor/composition-html-editing-initialization-http.contract";
 import { htmlEditingInspectorEnabled } from "@/domains/production/composition-editor/composition-html-editing-inspector-http-policy";
-import { HtmlEditingTemplateCatalog } from "@/domains/production/composition-editor/html-editing/html-editing-template-catalog.server";
+import { generatedDeckBootstrapCatalog } from "@/domains/production/composition-editor/composition-generated-deck-catalog.server";
 import { CompositionHtmlEditingBootstrapHost } from "@/domains/production/composition-editor/composition-html-editing-bootstrap-host.server";
 
 export const runtime = "nodejs";
@@ -21,7 +21,7 @@ const handle = createHtmlEditingInitializationOperationHandler({
   },
   serviceClient: getServiceRoleClient,
   register: (client, input, signal) => new CompositionHtmlEditingBootstrapHost(client,
-    new HtmlEditingTemplateCatalog(process.env.COMPOSITION_HTML_EDITING_CATALOG_JSON ?? "")).registerOperation(input, signal),
+    generatedDeckBootstrapCatalog(client, process.env.COMPOSITION_HTML_EDITING_CATALOG_JSON ?? "")).registerOperation(input, signal),
   logFailure: requestId => createOperationalLogger("production.html_editing.initialization_receipt", { correlationId: requestId })
     .warn("production.html_editing.initialization_receipt_unconfirmed", { reason: "SAFE_INITIALIZATION_RECEIPT_UNCONFIRMED" }),
 });

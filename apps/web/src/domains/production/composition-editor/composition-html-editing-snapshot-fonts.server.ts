@@ -1,33 +1,13 @@
 import { createHash } from "node:crypto";
+import { compositionFontReferences } from "./composition-font-references";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { ORGANIZATION_FONT_TABLE, ORGANIZATION_FONT_STORAGE_BUCKET } from "../fonts/organization-font.types";
+import { ORGANIZATION_FONT_STORAGE_BUCKET } from "../fonts/organization-font.types";
+import { readReadyCompositionFontRows } from "./composition-font-registry.server";
 import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "./composition-document.types";
 import { assertDocumentConformanceFontBindings, conformanceFontManifestSchema, conformanceFontManifestHash, CONFORMANCE_FONT_BINDING_LIMITS } from "./composition-conformance-font-bindings";
 import { HTML_EDITING_REPOSITORY_POLICY } from "./composition-html-editing-repository-policy";
 import { CONFORMANCE_MATERIALIZATION_LIMITS } from "./qa/composition-conformance-materialization";
-
-const binding = conformanceFontManifestSchema.element;
-const fontRow = z.object({id:z.string().uuid(),organization_id:z.string().uuid(),family:binding.shape.family,
-  source:z.literal("uploaded"),status:z.literal("READY"),checksum_sha256:binding.shape.checksumSha256,
-  file_size_bytes:binding.shape.fileSizeBytes,mime_type:binding.shape.mimeType,
-  storage_bucket:z.literal(ORGANIZATION_FONT_STORAGE_BUCKET),
-  storage_path:z.string().min(1).max(1024).refine(path => path.split("/").every(segment =>
-    /^[a-zA-Z0-9_.-]+$/.test(segment) && segment !== "." && segment !== "..")),
-}).strict();
-
-async function readHtmlSnapshotFontRows(supabase: SupabaseClient, organizationId: string, ids: string[], signal: AbortSignal) {
-  signal.throwIfAborted();
-  const result = await supabase.from(ORGANIZATION_FONT_TABLE)
-    .select("id,organization_id,family,source,status,checksum_sha256,file_size_bytes,mime_type,storage_bucket,storage_path")
-    .eq("organization_id",organizationId).in("id",ids).limit(ids.length+1).abortSignal(signal);
-  signal.throwIfAborted();
-  if (result.error || Buffer.byteLength(JSON.stringify(result.data) ?? "") > HTML_EDITING_REPOSITORY_POLICY.responseBytes) throw new Error();
-  const rows = z.array(fontRow).max(ids.length).parse(result.data);
-  if (rows.length !== ids.length || new Set(rows.map(font => font.id)).size !== ids.length
-    || rows.some(font => font.organization_id !== organizationId || !ids.includes(font.id))) throw new Error();
-  return rows;
-}
 
 /** Metadata-only refresh of READY uploaded authority; no second download. The
  * prepared local bytes stay checksum-bound. Commit still reauthorizes under SQL
@@ -39,9 +19,9 @@ export async function revalidateHtmlSnapshotFontAuthority(supabase: SupabaseClie
     const organizationId = z.string().uuid().parse(input.organizationId), manifest = conformanceFontManifestSchema.parse(input.manifest);
     input.signal.throwIfAborted(); if (!manifest.length) return;
     const signal = AbortSignal.any([input.signal, AbortSignal.timeout(HTML_EDITING_REPOSITORY_POLICY.rpcTimeoutMs)]);
-    const rows = await readHtmlSnapshotFontRows(supabase, organizationId, manifest.map(font => font.fontAssetId).sort(), signal);
+    const rows = await readReadyCompositionFontRows(supabase, organizationId, manifest.map(font => font.fontAssetId).sort(), signal);
     const current = rows.map(font => ({fontAssetId: font.id, family: font.family, checksumSha256: font.checksum_sha256,
-      fileSizeBytes: font.file_size_bytes, mimeType: font.mime_type}));
+      fileSizeBytes: font.file_size_bytes, mimeType: font.mime_type, ...(font.google_face ? {googleFace: font.google_face} : {})}));
     if (conformanceFontManifestHash(current) !== conformanceFontManifestHash(manifest)) throw new Error();
   } catch {input.signal.throwIfAborted(); throw new Error("HTML_SNAPSHOT_FONTS_UNAVAILABLE_OR_FORBIDDEN");}
 }
@@ -62,21 +42,17 @@ export function createHtmlSnapshotFontAcquirer(configuration:{supabase:SupabaseC
     const organizationId = z.string().uuid().parse(params.organizationId);
     params.signal?.throwIfAborted();
     const document = compositionEditorDocumentSchema.parse(params.document);
-    const references = new Map<string,string>();
-    for (const clip of document.clips) if ((clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS") && clip.source.style.fontAssetId) {
-      const {fontAssetId,fontFamily} = clip.source.style;
-      if (references.has(fontAssetId) && references.get(fontAssetId) !== fontFamily) throw new Error("HTML_SNAPSHOT_FONT_FAMILY_CONFLICT");
-      references.set(fontAssetId,fontFamily);
-    }
+    const references = compositionFontReferences(document);
     if (references.size > CONFORMANCE_FONT_BINDING_LIMITS.maximumFonts) throw new Error("HTML_SNAPSHOT_FONT_LIMIT");
     if (!references.size) return [];
     const timeout = AbortSignal.timeout(HTML_EDITING_REPOSITORY_POLICY.rpcTimeoutMs);
     const signal = params.signal ? AbortSignal.any([params.signal,timeout]) : timeout;
     try {
       const ids = [...references.keys()].sort();
-      const rows = await readHtmlSnapshotFontRows(configuration.supabase, organizationId, ids, signal);
+      const rows = await readReadyCompositionFontRows(configuration.supabase, organizationId, ids, signal);
       const manifest = assertDocumentConformanceFontBindings(document,rows.map(font => ({fontAssetId:font.id,family:font.family,
-        checksumSha256:font.checksum_sha256,fileSizeBytes:font.file_size_bytes,mimeType:font.mime_type})));
+        checksumSha256:font.checksum_sha256,fileSizeBytes:font.file_size_bytes,mimeType:font.mime_type,
+        ...(font.google_face ? {googleFace:font.google_face} : {})})));
       if (manifest.reduce((total,font) => total+font.fileSizeBytes,0) > CONFORMANCE_MATERIALIZATION_LIMITS.extractedBytes) throw new Error();
       const packaged = [];
       // Sequential bounded downloads avoid 32 simultaneous large byte buffers.

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { compositionDeckFontReferencesSchema } from "./composition-font-references";
 import { HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT, htmlEditingReferencesSchema } from "./html-editing/html-editing-reference.contract";
 import { COMPOSITION_VIDEO_PLAYBACK_RATES, videoRateSourceWindowFits } from "./composition-video-rate";
 import { COMPOSITION_VIDEO_FREEZE_TOLERANCE_SECONDS, COMPOSITION_VIDEO_MAX_FREEZE_SECONDS, resolveVideoFreezeTailSeconds } from "./composition-video-freeze";
@@ -151,6 +152,7 @@ export const compositionAudioMixSchema = z.object({
 });
 
 const deckSourceSchema = z.object({
+  fontBindings: compositionDeckFontReferencesSchema.optional(),
     htmlAssetId: z.string().uuid().optional(),
     sourceSlideIndex: z.number().int().min(0).max(1000).optional(),
     sourceWidth: z.number().int().positive().max(8192).optional(),

@@ -323,6 +323,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const saveInFlightRef = useRef(false);
   const saveQueueRef = useRef<CompositionSaveQueue<() => Promise<boolean>> | null>(null);
   const htmlEditorialHostRef = useRef<CompositionHtmlEditorialNativeHost | null>(null);
+  const refreshHtmlAnchorRef = useRef<(signal: AbortSignal, isCurrent: () => boolean) => Promise<void>>(async () => {});
   const nativeBypassPendingRef = useRef(0);
   const presetWritePendingRef = useRef(false);
   const nativeMountedRef = useRef(true);
@@ -686,6 +687,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
       reserve: task => saveQueueRef.current!.runExclusiveWhenIdle(task),
       getStorage: resolveHtmlSnapshotLocatorStorage,
       getLock: resolveHtmlSnapshotPublicationLock,
+      onAnchorAvailable: (signal, isCurrent) => refreshHtmlAnchorRef.current(signal, isCurrent),
       onBusyChange: busy => {
         if (!nativeMountedRef.current) return;
         setHtmlEditorialBusy(busy);
@@ -861,7 +863,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     }
   }, [draftId]);
 
-  const loadSnapshotHistory = useCallback(async (signal?: AbortSignal, options?: {preserveRenderProfile?:boolean}) => {
+  const loadSnapshotHistory = useCallback(async (signal?: AbortSignal, options?: {preserveRenderProfile?:boolean; isCurrent?: () => boolean}) => {
     if (options?.preserveRenderProfile) setSnapshotHistory(null);
     const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/revisions`, {
       cache: "no-store",
@@ -872,7 +874,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
       error?: string;
     }>(response, "No se pudo cargar el historial de snapshots.");
     if (!response.ok || !body.data) throw new Error(body.error || "No se pudo cargar el historial de snapshots.");
-    if (signal?.aborted) return;
+    if (signal?.aborted || (options?.isCurrent && !options.isCurrent())) return;
     setSnapshotHistory(body.data.snapshots);
     const activeSnapshot = body.data.snapshots.find((snapshot) => snapshot.id === body.data?.activeRevisionId);
     if (activeSnapshot && !options?.preserveRenderProfile) {
@@ -889,6 +891,11 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
       status: body.data.status === "READY_FOR_RENDER" ? "READY_FOR_RENDER" : "READY_FOR_PREVIEW",
     } : null);
   }, [compositionId]);
+
+  useEffect(() => {
+    refreshHtmlAnchorRef.current = (signal, isCurrent) => loadSnapshotHistory(signal, { isCurrent });
+    return () => { refreshHtmlAnchorRef.current = async () => { throw new Error("HTML_INITIAL_ANCHOR_OWNER_CHANGED"); }; };
+  }, [loadSnapshotHistory]);
 
   useEffect(() => { void loadDocument(); void loadBrandingAvailability(); }, [loadBrandingAvailability, loadDocument]);
   useEffect(() => {

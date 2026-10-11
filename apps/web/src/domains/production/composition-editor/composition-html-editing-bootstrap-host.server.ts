@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { compositionEditorDocumentSchema } from "./composition-document.types";
+import type { CompositionFontReference } from "./composition-font-references";
 import { hashCompositionDocument } from "./composition-document.service";
 import { SupabaseHtmlEditingRevisionRepository } from "./composition-html-editing-repository.service";
 import { HTML_EDITING_REPOSITORY_POLICY } from "./composition-html-editing-repository-policy";
@@ -22,17 +23,27 @@ const readSchema = z.object({ organizationId: z.string().uuid(), documentId: z.s
   grantedAssetIds: z.array(z.string().uuid()).max(6400).refine(ids => new Set(ids).size === ids.length),
 }).strict();
 
+export type HtmlEditingBootstrapCatalogProvider = (input: z.infer<typeof choicesRequestSchema> & {
+  sourceHtml: string; slideIndex: number; fontBindings?: CompositionFontReference[];
+}, signal?: AbortSignal) => Promise<HtmlEditingTemplateCatalog>;
+
 /** Authenticated actor/tenant come from the host, not request claims. This service
  * reads source/anchor/grants independently and composes catalog + registration.
  * No browser endpoint, template activation, URL fetch or render is implied. */
 export class CompositionHtmlEditingBootstrapHost {
-  constructor(private readonly supabase: SupabaseClient, private readonly catalog: HtmlEditingTemplateCatalog) {}
+  constructor(private readonly supabase: SupabaseClient, private readonly catalog: HtmlEditingTemplateCatalog | HtmlEditingBootstrapCatalogProvider) {}
+
+  private resolveCatalog(scope: z.infer<typeof choicesRequestSchema>, sourceHtml: string, slideIndex: number,
+    fontBindings: CompositionFontReference[] | undefined, signal?: AbortSignal) {
+    return typeof this.catalog === "function" ? this.catalog({ ...scope, sourceHtml, slideIndex, fontBindings }, signal) : this.catalog;
+  }
 
   async listTemplateChoices(input: z.infer<typeof choicesRequestSchema>, signal?: AbortSignal) {
     const request = choicesRequestSchema.safeParse(input);
     if (!request.success) throw new HtmlEditingRevisionError("INVALID_REVISION");
-    const { context, sourceHtml, effectiveSignal } = await this.readBootstrapContext(request.data, signal);
-    const templates = this.catalog.listSourceMatches({ organizationId: request.data.organizationId,
+    const { context, sourceHtml, slideIndex, fontBindings, effectiveSignal } = await this.readBootstrapContext(request.data, signal);
+    const catalog = await this.resolveCatalog(request.data, sourceHtml, slideIndex, fontBindings, effectiveSignal);
+    const templates = catalog.listSourceMatches({ organizationId: request.data.organizationId,
       sourceSha256: createHash("sha256").update(sourceHtml, "utf8").digest("hex") });
     effectiveSignal.throwIfAborted();
     return htmlTemplateChoicesViewSchema.parse({ documentId: context.documentId, clipId: context.clipId,
@@ -76,8 +87,9 @@ export class CompositionHtmlEditingBootstrapHost {
   }
 
   private async prepareRegistration(scope: z.infer<typeof requestSchema>, signal?: AbortSignal) {
-    const { context, sourceHtml, effectiveSignal } = await this.readBootstrapContext(scope, signal);
-    const template = htmlEditingTrustedTemplateSchema.parse(JSON.parse(this.catalog.resolve({
+    const { context, sourceHtml, slideIndex, fontBindings, effectiveSignal } = await this.readBootstrapContext(scope, signal);
+    const catalog = await this.resolveCatalog(scope, sourceHtml, slideIndex, fontBindings, effectiveSignal);
+    const template = htmlEditingTrustedTemplateSchema.parse(JSON.parse(catalog.resolve({
       organizationId: scope.organizationId, templateId: scope.templateId, templateVersion: scope.templateVersion,
       sourceSha256: createHash("sha256").update(sourceHtml, "utf8").digest("hex"),
     })));
@@ -90,7 +102,7 @@ export class CompositionHtmlEditingBootstrapHost {
         revisionId: context.revisionId, documentSha256: context.documentHash },
       sourceHtml, grantedAssetIds: declaredIds.filter(id => currentGrants.has(id)),
       imageSources: new Map(declaredIds.map(id => [id, `conformance-media/${id}`])),
-      catalog: this.catalog, templateId: scope.templateId, templateVersion: scope.templateVersion, signal,
+      catalog, templateId: scope.templateId, templateVersion: scope.templateVersion, signal,
     };
   }
 
@@ -124,6 +136,6 @@ export class CompositionHtmlEditingBootstrapHost {
     const sourceHtml = clip.source.html;
     if (Buffer.byteLength(sourceHtml, "utf8") > HTML_EDITING_LIMITS.sourceBytes) throw new HtmlEditingRevisionError("INVALID_REVISION");
     effectiveSignal.throwIfAborted();
-    return { context, sourceHtml, effectiveSignal };
+    return { context, sourceHtml, slideIndex: clip.source.slideIndex, fontBindings: clip.source.fontBindings, effectiveSignal };
   }
 }

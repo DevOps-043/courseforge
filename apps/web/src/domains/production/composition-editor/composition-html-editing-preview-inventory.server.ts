@@ -5,7 +5,7 @@ import { ORGANIZATION_FONT_STORAGE_BUCKET, type OrganizationFontRecord } from ".
 import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "./composition-document.types";
 import { htmlEditingImageIdentitiesSchema, htmlEditingImageIdentitySchema } from "./composition-html-editing-image-identity";
 import { assertDocumentConformanceFontBindings, CONFORMANCE_FONT_BINDING_LIMITS } from "./composition-conformance-font-bindings";
-import { compiledCompositionFont, compositionFontArchivePath } from "./composition-font-assets.service";
+import { compiledCompositionFont, compositionFontArchivePath, compositionFontManifestBinding } from "./composition-font-assets.service";
 import { htmlEditingPreviewStorageIdentitySchema, type HtmlEditingPreviewStorageIdentity } from "./composition-html-editing-preview-storage.server";
 import { HTML_EDITING_PREVIEW_IMAGE_POLICY } from "./composition-html-editing-preview-images.server";
 import { HTML_EDITING_PREVIEW_FONT_POLICY } from "./composition-html-editing-preview-fonts.server";
@@ -50,10 +50,7 @@ export function buildCompositionHtmlEditingPreviewInventory(input: {
       byId.set(productionAssetId, identity);
     }
     if (byId.size > HYPERFRAMES_MAXIMUM_MANIFEST_ASSETS) throw new Error();
-    const fontBindings = assertDocumentConformanceFontBindings(document, input.fonts.map(font => ({
-      fontAssetId: font.id, family: font.family, checksumSha256: font.checksumSha256,
-      fileSizeBytes: font.fileSizeBytes, mimeType: font.mimeType,
-    })));
+    const fontBindings = assertDocumentConformanceFontBindings(document, input.fonts.map(compositionFontManifestBinding));
     const resources = new Map<string, HtmlEditingPreviewInventoryResource>();
     const assetUrls = new Map<string, string>();
     for (const [id, identity] of [...byId.entries()].sort(([first], [second]) => first.localeCompare(second))) {

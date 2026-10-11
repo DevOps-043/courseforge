@@ -16,9 +16,10 @@ export class HtmlEditingCatalogError extends Error {
   }
 }
 
-/** Operator-installed, tenant-scoped snapshot. JSON integrity does NOT establish
- * trust: construction must use independently managed server configuration, never
- * a request body or a URL supplied by a client. No fetch/fallback/global catalog.
+/** Independently trusted, tenant-scoped snapshot. JSON integrity does NOT establish
+ * trust: construction must use operator configuration or reconstruction by the
+ * owned deterministic producer after saved actor/tenant/source authorization,
+ * never request declarations, raw Storage JSON or a client-supplied URL.
  * Reconstruct on configuration revocation; previously registered templates still
  * require the durable template-revocation path and current-grant checks. */
 export class HtmlEditingTemplateCatalog {
