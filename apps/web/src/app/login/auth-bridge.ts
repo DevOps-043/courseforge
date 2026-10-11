@@ -173,7 +173,20 @@ export async function completeAuthBridgeLogin(
   password: string,
   rememberMe: boolean,
 ): Promise<LoginResult> {
-  if (!identifier || !password) {
+  return completeAuthBridgeLoginInternal(identifier, password, rememberMe);
+}
+
+export async function completeAuthBridgeSsoLogin(accessToken: string): Promise<LoginResult> {
+  return completeAuthBridgeLoginInternal('', '', true, accessToken);
+}
+
+async function completeAuthBridgeLoginInternal(
+  identifier: string,
+  password: string,
+  rememberMe: boolean,
+  sofiaAccessToken?: string,
+): Promise<LoginResult> {
+  if (!sofiaAccessToken && (!identifier || !password)) {
     return { error: "Por favor completa todos los campos" };
   }
 
@@ -200,11 +213,14 @@ export async function completeAuthBridgeLogin(
     );
     const identifierColumn = identifier.includes("@") ? "email" : "username";
 
-    const { data: rawUser, error: userError } = await sofliaAdmin
+    const nativeUser = sofiaAccessToken ? await sofliaAuth.auth.getUser(sofiaAccessToken) : null;
+    if (nativeUser && (nativeUser.error || !nativeUser.data.user)) return { error: 'La sesión de Soflia no es válida.' };
+    const profileQuery = sofliaAdmin
       .from("users")
-      .select(SOFLIA_USER_SELECT)
-      .ilike(identifierColumn, identifier)
-      .single();
+      .select(SOFLIA_USER_SELECT);
+    const { data: rawUser, error: userError } = await (nativeUser?.data.user
+      ? profileQuery.eq('id', nativeUser.data.user.id)
+      : profileQuery.ilike(identifierColumn, identifier)).single();
 
     const user = rawUser as SofliaUserRecord | null;
     if (userError || !user) {
@@ -217,7 +233,7 @@ export async function completeAuthBridgeLogin(
       };
     }
 
-    const authResult = await authenticateSofliaPassword({
+    const authResult = sofiaAccessToken ? { success: true as const } : await authenticateSofliaPassword({
       authClient: sofliaAuth,
       email: user.email,
       expectedUserId: user.id,
@@ -231,13 +247,13 @@ export async function completeAuthBridgeLogin(
       return { error: authResult.failure.message };
     }
 
-    const { data: rawOrganizationUsers } = await sofliaAdmin
+    let organizationQuery = sofliaAdmin
       .from("organization_users")
       .select(
         `
         role,
         organization_id,
-        organizations (
+        ${sofiaAccessToken ? 'organizations!inner' : 'organizations'} (
           id,
           name,
           slug,
@@ -247,10 +263,14 @@ export async function completeAuthBridgeLogin(
       )
       .eq("user_id", user.id)
       .eq("status", "active");
+    if (sofiaAccessToken) organizationQuery = organizationQuery.eq('organizations.is_active', true);
+    const { data: rawOrganizationUsers, error: organizationError } = await organizationQuery;
+    if (sofiaAccessToken && organizationError) return { error: 'No se pudo verificar la membresía.' };
 
     const organizations = mapOrganizations(
       ((rawOrganizationUsers || []) as unknown) as OrganizationUserRecord[],
     );
+    if (sofiaAccessToken && organizations.length === 0) return { error: 'No existe una membresía activa.' };
     const activeOrgId = organizations[0]?.id || null;
 
     await syncOrganizations(courseforgeAdmin, organizations);
@@ -287,6 +307,7 @@ export async function completeAuthBridgeLogin(
       });
     } catch (error) {
       console.error("Error setting cookies:", error);
+      if (sofiaAccessToken) throw error;
     }
 
     await sofliaAdmin
