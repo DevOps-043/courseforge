@@ -7,10 +7,11 @@ SofLIA - Engine es una plataforma multi-tenant para crear, validar, producir y p
 - **Monorepo npm workspaces**: `apps/web` y `apps/api`.
 - **Frontend**: Next.js 16, React 19, TypeScript, TailwindCSS 4, Zustand, Remotion Player.
 - **Backend web**: Next.js API routes y Netlify Functions para jobs largos del pipeline.
-- **Backend de produccion**: Next.js API routes para `desktop_worker`; Express en `apps/api` queda como camino legacy para render local/Lambda.
-- **DB/Auth**: Supabase PostgreSQL con RLS, tabla `profiles`, Auth Bridge JWT HS256 y soporte multi-organizacion.
-- **IA**: Google Gemini como proveedor principal; OpenAI como fallback y para el bundle agent de Remotion.
-- **Servicios**: Gamma API, Google Search grounding, SofLIA API, Google Drive, Microsoft Graph/OneDrive, Artlist, AWS Remotion Lambda, S3, CodeBuild y CloudFront para templates externos.
+- **Backend de produccion**: render final en HyperFrames Cloud via `/api/production/hyperframes/renders` y `hyperframes-render-background.ts`. El worker de escritorio Remotion fue retirado: las rutas `/api/v1/production/remotion/*` y `/admin/worker-telemetry` se eliminaron (`d0b18ed4`); solo queda `GET /api/v1/production/jobs/:jobId/status`.
+- **`apps/api`**: worker de procesamiento de audio (`start:audio-worker`, FFmpeg + DeepFilterNet opcional) y un Express legado que solo expone `GET /health`. Ya no contiene render Remotion local/Lambda ni builds cloud.
+- **DB/Auth**: Supabase PostgreSQL con RLS, tabla `profiles`, Auth Bridge JWT HS256, sesion PulseHub (`POST /api/auth/hub-session`) y soporte multi-organizacion.
+- **IA**: Google Gemini como proveedor principal; OpenAI como fallback, curacion y bundle agent de Remotion. El consumo se registra en `ai_usage_events` y se consulta en `/platform/ai-usage`.
+- **Servicios**: Google Search grounding, SofLIA API, PulseHub, HeyGen, HyperFrames Cloud, Google Drive, Microsoft Graph/OneDrive y Artlist.
 - **Editor de composicion**: el dominio `production/composition-editor` gestiona documento, assets, pistas, mezcla de audio, profundidad de capas, presets de movimiento, auto-organizacion y patches validados de propuestas del agente. El documento se persiste como versiones inmutables con hash y auditoria; el RPC `append_video_composition_draft_document_v2` devuelve resultados explicitos de guardado y evita colas de bloqueo.
 - **HyperFrames**: el dominio `production/hyperframes` cubre borradores, composiciones, preflight, revisiones, preview, render y sincronizacion de assets; sus rutas viven bajo `/api/production/hyperframes`.
 - **Fuente de verdad HyperFrames**: antes de cambiar documento, SFX, preview, snapshot ZIP, variables, upload o render, leer y actualizar `docs/architecture/hyperframes-composition-render-flow-source-of-truth.md` en el mismo cambio.
@@ -26,20 +27,24 @@ npm install
 npm run dev
 npm run build
 npm run lint
+npm run typecheck
+npm run verify
 npm run test:remotion --workspace=apps/web
-npm run test:remotion --workspace=apps/api
+npm run test:hyperframes --workspace=apps/web
 npm run test:auth-bridge --workspace=apps/web
 npm run test:curation --workspace=apps/web
+npm run test:materials-generation --workspace=apps/web
+npm run test:audio-processing
 ```
 
 Notas:
 
 - `npm run dev` levanta `apps/web` en `:3000`.
-- `npm run dev:legacy-api` levanta `apps/api` en `:4000` solo para diagnosticar el camino Express.
+- `npm run dev:legacy-api` levanta el Express legado de `apps/api` (solo `GET /health`); el worker de audio corre con `npm run start:audio-worker --workspace=apps/api` tras compilar.
 - En `apps/web`, `npm run lint` sigue usando `next lint`; para validacion confiable de TypeScript usa `npx tsc -p apps/web/tsconfig.json --noEmit`.
 - En `apps/api`, `npm run lint` es `tsc --noEmit` (no hay ESLint en ese workspace).
 - Los scripts `test:*` compilan primero con `tsc -p <tsconfig.*-test.json>` hacia `.tmp/` y luego ejecutan los `.js` resultantes con `node`; no son runners tipo Jest/Vitest, así que para correr un test individual hay que compilar y apuntar `node` directamente al archivo compilado bajo `.tmp/`.
-- Para cambios de Remotion o produccion visual, ejecuta los tests Remotion del workspace afectado. Para cambios en Auth Bridge (`apps/web/src/app/login`) usa `test:auth-bridge`; para cambios en curacion (`netlify/functions/shared/curation-v2`) usa `test:curation`.
+- Para cambios de Remotion, HeyGen o slides ejecuta `test:remotion`; para editor de composicion o HyperFrames, `test:hyperframes` (y `test:composition-*` segun el area); para audio, `test:audio-processing`. Para cambios en Auth Bridge (`apps/web/src/app/login`) usa `test:auth-bridge`; para cambios en curacion (`netlify/functions/shared/curation-v2`) usa `test:curation`.
 
 ---
 
@@ -53,11 +58,8 @@ apps/
     src/remotion/            Composiciones internas de Remotion
     netlify/functions/       Background jobs del pipeline educativo
   api/
-    src/features/auth/       Auth auxiliar
-    src/features/production/ API Express legacy para render, previews y builds
-packages/
-  shared/
-  ui/
+    src/features/auth/              Auth auxiliar legado
+    src/features/audio-processing/  Worker de procesamiento de audio
 supabase/
   migrations/
   Scripts/
@@ -173,45 +175,20 @@ Genera lecturas, quizzes, dialogos, ejercicios, guias demo y scripts/storyboards
 Incluye:
 
 - Prompts de B-roll (`video-prompts-generation.ts`)
-- Slides/Gamma y exportes visuales
+- Slides, decks animados y Open Design (`/api/production/slides/*`, `/api/production/open-design/*`)
 - Importacion de assets desde Google Drive, OneDrive/cloud storage y Artlist
-- Composiciones Remotion internas en `apps/web/src/remotion`
-- Templates Remotion versionados y validados
-- Bundle agent para generar specs/bundles desde conversacion
-- Preview externo de bundles aprobados
-- Render final mediante worker de escritorio y rutas Next.js
+- HeyGen: avatares, voces, clips y catalogo reconciliado (`docs/heygen_catalog_sync_source_of_truth.md`)
+- Editor de composicion: transiciones, correccion de color (flag), texto/captions nativos, tipografias por organizacion y agrupacion de timeline (ADRs en `docs/architecture/`)
+- Ensamblado standalone en `/admin/assembly` (medios libres, formato 9:16)
+- Procesamiento de audio (`/api/production/audio-processing/jobs`, worker en `apps/api`)
+- Composiciones Remotion internas en `apps/web/src/remotion` y bundle agent
+- Render final en HyperFrames Cloud
 
 ## Remotion y Produccion
 
-El control plane activo vive en `apps/web` bajo `/api/v1/production` y expone:
-
-- `POST /remotion/render`
-- `GET /remotion/readiness`
-- `GET /remotion/workers`
-- `POST /remotion/workers/link-codes`
-- `POST /remotion/workers/link`
-- `POST /remotion/workers/heartbeat`
-- `POST /remotion/workers/jobs/claim-next`
-- `POST /remotion/workers/jobs/:jobId/claim`
-- `POST /remotion/workers/jobs/:jobId/progress`
-- `POST /remotion/workers/jobs/:jobId/complete`
-- `POST /remotion/workers/jobs/:jobId/fail`
-- `GET /jobs/:jobId/status`
-
-`apps/api` conserva endpoints legacy para render local/Lambda, previews externos y builds cloud.
-
-Proveedores de render:
-
-- `local`
-- `lambda`
-- `desktop_worker`
-
-Reglas importantes:
-
-- `RENDER_PROVIDER` decide el proveedor.
-- En produccion local/Cloud Run se requieren timeouts altos para renders largos.
-- Lambda requiere region, function name, serve URL y bucket.
-- Templates externos deben pasar validacion, versionado, aprobacion y, para Lambda, build cloud compatible con Remotion `4.0.484`.
+- Render final: HyperFrames Cloud (`/api/production/hyperframes/renders`, `hyperframes-render-background.ts`), con credencial por workspace o `HYPERFRAMES_CLOUD_API_KEY`.
+- Remotion 4.0.484 se usa para Player, composiciones internas y bundle agent; no hay render Lambda ni builds CodeBuild en el codigo actual.
+- Worker de escritorio retirado: `/downloads` redirige a `/admin`. Quedan residuos pendientes de limpieza (`RENDER_PROVIDER`, `PRODUCTION_API_URL`, `getRenderWorkerStatusAction` en `production.actions.ts`, `desktop-worker-*.ts` en `lib/server`, tablas `render_worker_*`). No reintroducir dependencias de esas rutas.
 - El API redacta secretos en logs y diagnosticos.
 
 ## Importacion SCORM
@@ -252,6 +229,7 @@ La publicacion valida el contrato `SOFLIA_DIALOGUE` para dialogos modernos y blo
 - `POST /api/auth/login`
 - `POST /api/auth/sign-up`
 - `GET /api/auth/callback`
+- `POST /api/auth/hub-session` (sesion PulseHub; header `x-pulsehub-session: 1`, mismo origen, rate limit)
 - `POST /api/auth/switch-organization`
 - `GET /api/auth/google/login`
 - `GET /api/auth/google/callback`
@@ -264,8 +242,10 @@ La publicacion valida el contrato `SOFLIA_DIALOGUE` para dialogos modernos y blo
 - `POST /api/admin/users`
 - `POST /api/admin/scorm/upload`
 - `POST /api/admin/scorm/process`
-- `POST /api/gpt/sources`
-- `GET /api/debug/soflia`
+- `GET /api/materials/components/:componentId/downloads` y `/export` (auditados en `asset_access_audit_events`)
+- `POST /api/production/audio-processing/jobs`
+- `POST /api/production/standalone/media`
+- `/api/production/hyperframes/*`, `/api/production/heygen/*`, `/api/production/slides/*`
 - `POST /api/production/cloud-storage/import`
 - `GET /api/production/cloud-storage/list`
 - `POST /api/production/google-drive/import`
@@ -273,6 +253,8 @@ La publicacion valida el contrato `SOFLIA_DIALOGUE` para dialogos modernos y blo
 - `POST /api/production/artlist/import`
 - `GET /api/production/artlist/search`
 - `POST /api/admin/remotion/bundle-agent/*`
+
+Inventario completo de rutas y Netlify Functions (incluidas las programadas): ver `README.md`.
 
 ## Base de Datos
 
@@ -292,9 +274,15 @@ Tablas y areas relevantes:
 - `remotion_templates`
 - `remotion_template_versions`
 - `remotion_template_builds`
-- `production_jobs`
+- `production_jobs` (incluye leases de jobs de audio)
 - `production_evidence`
-- `render_workers`
+- `video_composition_*`, `standalone_assembly_projects`
+- `hyperframes_workspace_connections`, `hyperframes_render_requests`
+- `heygen_*` (incluye `heygen_catalog_exclusions`)
+- `ai_usage_events`, `ai_pricing_versions`, `ai_provider_cost_daily`
+- `asset_access_audit_events`
+- `background_request_nonces`
+- `render_worker_*` (legacy del worker de escritorio retirado)
 - `user_cloud_storage_credentials`
 - `user_google_credentials`
 - `organization_user_roles`
@@ -304,7 +292,7 @@ Storage buckets principales:
 - `scorm-packages`
 - `thumbnails`
 - `production-videos`
-- buckets Remotion/AWS segun entorno
+- buckets de tipografias, assets de composicion y branding segun migraciones
 
 ## Variables De Entorno
 
@@ -316,24 +304,28 @@ Base:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `COURSEFORGE_JWT_SECRET`
+- `BACKGROUND_FUNCTION_SECRET`
 - `NEXT_PUBLIC_APP_URL`
+- `SOFLIA_ENGINE_WEB_URL`
 - `SOFLIA_API_URL`
 - `SOFLIA_API_KEY`
 - `SOFLIA_INBOX_SUPABASE_URL`
 - `SOFLIA_INBOX_SUPABASE_KEY`
+- `SOFLIA_AUTH_SUPABASE_ANON_KEY`
 
 IA:
 
 - `GOOGLE_GENERATIVE_AI_API_KEY`
 - `GOOGLE_API_KEY`
+- `GEMINI_MODEL`, `GEMINI_SEARCH_MODEL`, `GEMINI_BUNDLE_AGENT_MODEL`
 - `OPENAI_API_KEY`
-- `OPENAI_BUNDLE_AGENT_MODEL`
+- `OPENAI_CURATION_MODEL`, `OPENAI_BUNDLE_AGENT_MODEL`
+- `OPENAI_ADMIN_KEY`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`
 
 Produccion y assets:
 
-- `GAMMA_API_KEY`
-- `GPT_SOURCES_API_KEY`
 - `HEYGEN_API_KEY`
+- `HYPERFRAMES_CLOUD_API_KEY`
 - `ARTLIST_CLIENT_ID`
 - `ARTLIST_CLIENT_SECRET`
 - `GOOGLE_CLIENT_ID`
@@ -349,28 +341,24 @@ Produccion y assets:
 - `OAUTH_TOKEN_CRYPTO_SECRET`
 - `GOOGLE_OAUTH_CRYPTO_SECRET`
 
-API/Remotion:
+Feature flags del editor:
+
+- `NEXT_PUBLIC_COMPOSITION_COLOR_GRADING_ENABLED`
+- `NEXT_PUBLIC_COMPOSITION_MOTION_ENABLED`
+- `NEXT_PUBLIC_COMPOSITION_PREVIEW_SYNC_V2_ENABLED`
+
+Worker de audio (`apps/api`):
+
+- `AUDIO_PROCESSING_POLL_MILLISECONDS`, `AUDIO_PROCESSING_BATCH_SIZE`
+- `DEEPFILTERNET_ENABLED`, `DEEPFILTER_BINARY_PATH`, `DEEPFILTER_BINARY_SHA256`, `DEEPFILTER_MODEL_PATH`, `DEEPFILTER_MODEL_SHA256`, `DEEPFILTER_MANIFEST_PATH`
+
+Residuales del worker de escritorio retirado (aun leidas por codigo):
 
 - `PRODUCTION_API_URL`
 - `RENDER_PROVIDER`
 - `REMOTION_DESKTOP_WORKER_TOKEN_PEPPER`
 - `REMOTION_DESKTOP_WORKER_LINK_CODE_PEPPER`
-
-API/Remotion legacy, solo si se usa `apps/api`:
-
-- `EXPRESS_INTERNAL_API_URL`
-- `EXPRESS_PUBLIC_URL`
-- `API_PUBLIC_URL`
-- `ALLOWED_ORIGINS`
-- `REMOTION_ENTRY_POINT`
-- `REMOTION_RENDER_TIMEOUT_MS`
-- `EXTERNAL_TEMPLATE_RENDER_TIMEOUT_MS`
-- `EXTERNAL_TEMPLATE_PREVIEW_RENDER_TIMEOUT_MS`
-- `REMOTION_LAMBDA_*`
-- `REMOTION_TEMPLATE_CODEBUILD_*`
-- `AWS_ACCESS_KEY_ID` / `SOFLIA_AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY` / `SOFLIA_AWS_SECRET_ACCESS_KEY`
-- `AWS_SESSION_TOKEN` / `SOFLIA_AWS_SESSION_TOKEN`
+- `DESKTOP_WORKER_SIGNED_URL_TTL_SECONDS`
 
 ## Patrones Importantes
 
@@ -378,6 +366,8 @@ API/Remotion legacy, solo si se usa `apps/api`:
 - Mantener `organization_id` en flujos tenant-aware.
 - No ejecutar bundles Remotion subidos sin validacion, versionado y aprobacion.
 - Para templates externos, distinguir preview interno, preview sandbox y render final.
+- Registrar descargas/exportaciones de assets en `asset_access_audit_events` y no exponer rutas de storage ni URLs firmadas en exportaciones.
+- HeyGen: solo recursos `private`, `AVAILABLE` y no archivados son seleccionables; ver `docs/heygen_catalog_sync_source_of_truth.md`.
 - No renombrar variables legacy aun usadas por codigo.
 - Preferir validadores Zod y servicios de dominio sobre logica en componentes.
 - Mantener business rules fuera de route handlers cuando exista dominio equivalente.
