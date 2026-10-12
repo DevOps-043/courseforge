@@ -17,7 +17,7 @@ const paramsSchema = z.object({ draftId: z.string().uuid() }).strict();
 const identitySchema = generatedDeckInitializationRequestSchema.omit({ expectedDocumentHash: true });
 const rateSchema = z.array(z.object({ allowed: z.boolean() }).passthrough()).length(1);
 export function createGeneratedDeckInitializationHandler(dependencies: {
-  enabled: () => boolean; authenticate: () => Promise<HtmlReadAuthentication>; serviceClient: () => SupabaseClient;
+  enabled: (method: string) => boolean; authenticate: () => Promise<HtmlReadAuthentication>; serviceClient: () => SupabaseClient;
   read: (client: SupabaseClient, owner: GeneratedDeckInitializationOwner,
     identity: z.infer<typeof identitySchema>, signal: AbortSignal) => Promise<unknown>;
   initialize: (client: SupabaseClient, owner: GeneratedDeckInitializationOwner,
@@ -31,7 +31,7 @@ export function createGeneratedDeckInitializationHandler(dependencies: {
       Response.json(createApiErrorBody({ code, message, requestId, retryable: false }), { status, headers: { ...headers, ...extra } });
     try {
       if (request.method !== "GET" && request.method !== "POST") return fail(405, API_ERROR_CODE.invalidRequest, "Método no permitido.", { Allow: "GET, POST" });
-      if (!dependencies.enabled()) return fail(503, API_ERROR_CODE.dependencyUnavailable, "La preparación del deck no está habilitada.");
+      if (!dependencies.enabled(request.method)) return fail(503, API_ERROR_CODE.dependencyUnavailable, "La preparación del deck no está habilitada.");
       const url = new URL(request.url), origin = request.headers.get("origin"), site = request.headers.get("sec-fetch-site");
       if ((request.method === "POST" ? origin !== url.origin : origin !== null && origin !== url.origin)
         || (site !== null && site !== "same-origin" && site !== "none")) return fail(403, API_ERROR_CODE.tenantForbidden, "Solicitud no autorizada.");

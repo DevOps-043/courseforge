@@ -8,8 +8,9 @@ import { GeneratedDeckInitializationHost } from "@/domains/production/compositio
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const handle = createGeneratedDeckInitializationHandler({
-  enabled: () => process.env.COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED === "true"
-    && process.env.COMPOSITION_HTML_EDITING_INITIALIZATION_RECEIPTS_ENABLED === "true",
+  enabled: method => process.env.COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED === "true"
+    && process.env.COMPOSITION_HTML_EDITING_INITIALIZATION_RECEIPTS_ENABLED === "true"
+    && (method === "GET" || process.env.COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED === "true"),
   authenticate: async () => {
     const user = await getAuthenticatedUser(await createClient());
     return { actorId: user?.userId ?? null, tenant: user ? await resolveActiveTenantContext() : null };

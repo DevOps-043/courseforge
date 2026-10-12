@@ -31,6 +31,55 @@ function loadComponent(name, dependencies = {}) {
 }
 
 const { CompositionHtmlPanel } = loadComponent("CompositionHtmlPanel.tsx");
+function generatedPanel(tracking, enabled = true) {
+  const inspectorFlag = process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED;
+  const initializationFlag = process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED;
+  process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED = String(enabled);
+  process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED = String(enabled);
+  try {
+    const { CompositionHtmlInitialAnchorStep } = loadComponent("CompositionHtmlInitialAnchorStep.tsx");
+    const { CompositionGeneratedDeckPreparationPanel } = loadComponent("CompositionGeneratedDeckPreparationPanel.tsx", {
+      "./CompositionHtmlPanel": { CompositionHtmlPanel }, "./CompositionHtmlInitialAnchorStep": { CompositionHtmlInitialAnchorStep },
+      "@/domains/production/composition-editor/composition-generated-deck-initialization-coordinator.client": { GeneratedDeckInitializationCoordinatorError: class extends Error {} },
+    });
+    return renderToStaticMarkup(React.createElement(CompositionGeneratedDeckPreparationPanel, {
+      scope: { actorId: "actor", organizationId: "org", draftId: "draft" },
+      document: { clips: [{ id: "slide-one", kind: "DECK_SLIDE", source: { type: "DECK_SLIDE", html: '<h1 data-courseforge-editable-id="title">Título</h1>' } }] },
+      host: { generatedDeckTracking: () => tracking,
+        prepareGeneratedDeck: () => { throw new Error("SSR must not initialize"); }, initialAnchor: () => { throw new Error("SSR must not activate"); } },
+    }));
+  } finally {
+    if (inspectorFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED;
+    else process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED = inspectorFlag;
+    if (initializationFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED;
+    else process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED = initializationFlag;
+  }
+}
+
+test("generated-deck control uses the real Engine panel and exposes one explicit preparation without mount writes", () => {
+  const markup = generatedPanel({ status: "EMPTY" });
+  assert.match(markup, /Preparar todas las diapositivas \(1\)/);
+  assert.match(markup, /data-primary="true"[^>]*>Preparar todas las diapositivas/);
+  assert.match(markup, /primera revisión guardada/);
+  assert.match(markup, /no cambia escenas|ni cambia escenas/);
+  assert.equal(generatedPanel({ status: "EMPTY" }, false), "");
+});
+
+test("generated pending recovery stays open with write flag off and cannot resend", () => {
+  const markup = generatedPanel({ status: "PENDING", entry: { request: { operationId: "operation" } } }, false);
+  assert.match(markup, /<details[^>]*open=""/);
+  assert.match(markup, /Consultar y verificar preparación/);
+  assert.match(markup, /Confirmar solo registro histórico/);
+  assert.doesNotMatch(markup, /data-primary="true"/);
+  assert.match(markup, /sin repetir el envío/);
+});
+
+test("corrupt generated tracking stays visible without reset or retry controls", () => {
+  const markup = generatedPanel({ status: "UNAVAILABLE" }, false);
+  assert.match(markup, /role="alert"/);
+  assert.match(markup, /No se borrará ni se reenviará/);
+  assert.doesNotMatch(markup, /<button/);
+});
 const renderPanel = props => renderToStaticMarkup(React.createElement(CompositionHtmlPanel, {
   title: "Contenido HTML editable", label: "Inspector HTML editorial", ...props,
 }, React.createElement("button", { type: "button", "data-primary": "true" }, "Cargar campos editables")));

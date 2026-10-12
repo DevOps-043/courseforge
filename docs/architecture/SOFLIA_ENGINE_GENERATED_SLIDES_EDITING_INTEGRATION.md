@@ -1,6 +1,7 @@
 # Diapositivas nuevas: preparación editorial desde la generación
 
-Fecha: 2026-10-10. Alcance: productor de diapositivas Engine, no migración de
+Inicio: 2026-10-10. Cierre de implementación previo al QA: 2026-10-12.
+Alcance: productor de diapositivas Engine, no migración de
 talleres existentes ni cambios CAP-022/025/worker. Fuente de prácticas:
 `docs/prompt_maestro.md`. La implementación del editor no acreditaba esta integración.
 
@@ -14,13 +15,15 @@ La generación guarda ahora **dos salidas del mismo CourseDeckSpec**:
    compilador editorial real. También se reconstruye en cambios de apariencia
    de materiales que ya tengan preparación editorial.
 
-**No es todavía el flujo completo de edición automática.** El artefacto declara
+**Implementación integrada: 8/8 unidades (100%), pendiente de rollout y QA.** El artefacto declara
 `activation: REQUIRES_AUTHORIZED_DRAFT_REGISTRATION`. Ahora Ensamble consume los
 fragmentos al crear un documento nuevo, siempre que no haya fuentes personalizadas
 sin vincular ni HTML externo mezclado. Los endpoints de plantillas e inicialización
-reconstruyen el catálogo por clip, sin añadir declaraciones a `.env`. El registro
-sigue siendo explícito mediante el flujo existente del inspector y exige un
-snapshot real activo de la composición. No se inventan anclas ni se escribe en GET.
+reconstruyen el catálogo por clip, sin añadir declaraciones a `.env`. El control
+«Preparar todas las diapositivas» ejecuta, dentro del SEND autorizado, la consulta
+y preparación de un primer snapshot real si falta y el registro/enlace atómico
+del deck completo. El flujo individual del inspector se conserva. No se inventan
+anclas ni se escribe por mount/efecto/GET; no hay registro silencioso en generación.
 Los borradores existentes no se migran al regenerar materiales.
 
 | Unidad necesaria | Estado |
@@ -31,8 +34,11 @@ Los borradores existentes no se migran al regenerar materiales.
 | Materializar fuentes personalizadas con autoridad nativa | Uploaded READY y Google admitido/fijado integrados en documentos, compiladores, preview, snapshots y reconstrucción; SQL preparado, no aplicado |
 | Consumir diapositivas nuevas en Ensamble | Implementado con fuentes de sistema, uploaded READY y Google fijado; instancias por clip |
 | Catálogo reconstruido/registro explícito | Implementado; conserva bootstrap/recibos/CAS y requisito de snapshot real |
-| Activación inicial automática/registro de todo el deck | Pendiente; no confundir catálogo con registro o enlace nativo |
+| Activación inicial automática/registro de todo el deck | Implementada dentro de SEND explícito: ancla real si falta, lote atómico, enlace v1 nativo, recibo, readback y recuperación; UI Engine integrada |
 | Validar flujo integrado generación→edición→preview/render | Integración automatizada de productor/registro/importación/catálogo/primer cambio/ambos compiladores/ZIP; pendientes DB/Storage/browser/render reales para QA |
+
+Los cortes inferiores conservan la trazabilidad histórica. El estado actual y
+la auditoría final se encuentran en este resumen y en el octavo corte al final.
 
 ## Contrato del productor
 
@@ -488,3 +494,142 @@ diapositivas». No marcar el objetivo completo por tener el backend listo.
 listado anterior y de las migraciones existentes de bootstrap, lector exacto y
 append nativo. No reaplicar SQL ya exitosos ni activar esta integración como
 terminada antes de entregar su cliente recuperable.
+
+### Séptimo corte: autoridad actual y seguimiento del navegador
+
+Avance por unidades completas: **7/8 (87.5%)**. La octava continúa parcial;
+los siguientes módulos ya están implementados, pero no se ha conectado todavía
+el botón del editor ni se afirma preparación automática en la UI.
+
+- `composition-generated-deck-initialization.client.ts`: digest WebCrypto con
+  el mismo preimage del servidor, un POST explícito sin retries y dos consultas
+  GET separadas (recibo histórico y estado actual). Respuestas acotadas,
+  same-origin, sin redirects/caché, dueño/digest/hash/correlación verificados.
+- `composition-generated-deck-initialization-journal.client.ts`: intención
+  durable antes del envío y registro del recibo con compare-and-swap de metadata.
+  No guarda HTML, templates ni grants. Storage ausente/corrupto/con dueño ajeno
+  queda UNAVAILABLE; intención desconocida no puede cerrarse ni borrarse para
+  reintentar. Un recibo confirmado no puede sustituirse por otro.
+- GET `.../generated-deck-initialization/current`: reutiliza la infraestructura
+  autenticada de lectura existente; retorna metadata, no fuentes ni permisos.
+  El servidor verifica el compilador exacto de todo el documento, incluidos
+  vecinos editados, y exige que los clips del recibo conserven su v1 sin overrides.
+- SQL `20261011020000_read_current_generated_deck_initialization.sql`: un lock
+  de lectura de la raíz protege comprobación de último hash/versión nativa,
+  referencias exactas y autoridad actual de fuentes/imágenes. Un hash histórico
+  idéntico no sustituye una versión nativa posterior. No escribe ni reactiva.
+  La compilación y sus grants se vuelven a verificar en el host; la respuesta
+  declara explícitamente que NO es certificación de render.
+- Deshabilitar nuevas inicializaciones ya no deshabilita por sí mismo la consulta
+  histórica del lote; los GET requieren inspector/receipts, mientras el POST
+  exige además initialization. No hay flags nuevos.
+
+Verificación: **41/41** pruebas de preparación, cliente/journal, HTTP y
+regresiones de generación/fuentes; **11/11** SQL ejecutadas en PostgreSQL aislado;
+tipado HyperFrames, lint focalizado sin errores/warnings y `diff --check`.
+El test runner se ejecutó con `--test-isolation=none` por restricción local de
+creación de subprocesos, sin desactivar casos ni asserts. No equivale a QA del
+browser/Supabase/Storage real. No se aplicaron migraciones ni se desplegó.
+
+Pendiente obligatorio: coordinador SEND/RECOVER y aceptación nativa verificable,
+integración en el lock/reserva/bloqueo del host y centro de recuperación,
+prerrequisito explícito del ancla inicial y control Engine para el deck completo.
+Los módulos de journal/transporte NO envían nada por mount/efecto.
+
+SQL manual adicional, después del sexto archivo y únicamente si está pendiente:
+**7. `20261011020000_read_current_generated_deck_initialization.sql`**.
+Conservar el orden 1–5 del listado anterior, seguido por 6 (commit del lote) y
+7 (lectura actual). No reaplicar SQL exitosos; ambos nuevos archivos corresponden
+al release coordinado del cliente aún pendiente.
+
+### Octavo corte: integración nativa y cierre previo al QA
+
+**8/8 unidades principales implementadas (100%).** Se completó la unidad pendiente,
+sin migrar talleres viejos, ampliar permisos, incorporar flags ni modificar
+stores/políticas CAP-025 o el worker CAP-022. Este porcentaje describe implementación,
+no despliegue, QA humano ni conformidad visual certificada.
+
+`coordinateGeneratedDeckInitialization` mantiene el lock compartido y la reserva
+nativa durante preflight, journal, POST, lectura y adopción. SEND consulta el ancla
+y prepara automáticamente el primer snapshot real si falta, una sola vez y bajo
+la confirmación explícita del usuario. Un resultado incierto del ancla interrumpe
+antes de registrar intención/POST del lote; la UI exige comprobar disponibilidad
+antes de un nuevo intento. No se inventa una revisión ni se crea un edit ficticio.
+
+Antes del POST del lote se guarda su intención durable. El recibo confirmado no
+basta para adoptar: se verifican el documento leído, hash, versión, fuente de
+cada clip, conjunto completo de referencias y conservación exacta de contenido
+nativo ajeno. La lectura autorizada de estado actual recompila todos los campos
+y revalida permisos/recursos/fuentes. Solo entonces se adopta y cierra el journal.
+RECOVER nunca POSTea. NOT_FOUND mantiene el bloqueo, incluso con un hash de contenido
+coincidente. La confirmación histórica explícita no restaura ni adopta revisiones.
+
+`CompositionHtmlEditorialNativeHost` integra el lote en sus guards: un journal
+pendiente/corrupto bloquea bypasses, otros flujos HTML y snapshots nativos que
+usan el bloqueo del host; apagar nuevos
+envíos no elimina el intento. Abort/timeout liberan la reserva y las respuestas
+tardías no adoptan ni borran intención. La adopción reutiliza la proyección de
+referencias HTML sobre el undo nativo y refresca el canal HTML existente del preview.
+
+`CompositionGeneratedDeckPreparationPanel` aparece en el centro del borrador,
+independientemente del clip seleccionado. Usa `CompositionHtmlPanel`/tokens Engine,
+disclosure, estados accesibles, conteos y control explícito. No envía solicitudes
+por montaje. Las marcas HTML solo ayudan a visibilidad: el servidor sigue
+reconstruyendo el material exacto. Muestra recuperación aunque nuevos envíos estén
+deshabilitados; no ofrece reset ni resend de operaciones desconocidas.
+
+Auditoría de las ocho unidades y evidencia actual:
+
+| Unidad | Evidencia inspeccionada/ejecutada |
+| --- | --- |
+| Productor determinista/compilable | Productor editorial y suite de layouts, TEXT/IMAGE/CHART, límites, IDs y primer cambio real |
+| Imágenes tenant/componente/path/checksum | Preparación/reader; alias iniciales, vínculos actuales y rechazo de recursos ausentes/ambiguos/revocados |
+| Persistencia/cache/apariencia | Rutas generate/appearance y store; referencias direccionadas por hash, spec y compatibilidad legacy |
+| Fuentes nativas | Uploaded READY y Google pin; ambos compiladores, ZIP con bytes reales, decoder, SQL de admisión/lectura/guard |
+| Importación en Ensamble | Creación inicial del draft, namespace por clip y preservación de borradores/planos/escenas existentes |
+| Catálogo/registro | Reconstrucción servidor después de autorización; bootstrap, CAS, grants y recibos; sin catálogo creciente en env |
+| Ancla/lote/adopción/UI | Coordinador/host/panel; primer ancla dentro de SEND, native append único, rollback completo, recuperación y conservación de vecino editado |
+| Flujo integrado | Productor/importación/primer comando/ambos compiladores/snapshot ZIP; integración del host/queue/lock/transporte y SSR UI |
+
+Verificación técnica ejecutada: **376/376** pruebas de fuentes/editor/host/
+preparación/preview/snapshots/undo; **112/112** productor/reader/renderer/preprocesado;
+**33/33** SQL aislado (14 lote/current/ancla + 5 candidatos + 14 admisión/guard); **10/10**
+SSR paneles HTML y **3/3** SSR control Google. Total **534**, sin fallos/skips/cancelaciones.
+Tipado HyperFrames/Remotion/web y lint focalizado aprobados; los módulos nuevos
+sin advertencias. `NativeCompositionPreview.tsx` mantiene 52 warnings preexistentes,
+sin errores ni incremento. `diff --check` aprobado.
+
+Límites de la evidencia: los tests integrados de transporte/Storage usan adapters
+simulados; SQL y decoder tienen ejecución real aislada. No sustituyen QA browser,
+Supabase/Storage/red/concurrencia multiusuario/render ni comparación visual de la
+presentación navegable contra el perfil editorial. No se realizó deploy ni SQL remoto.
+
+### Rollout manual y QA posterior
+
+1. Aplicar únicamente las migraciones pendientes completas, con las anteriores
+   del editor/bootstrap/snapshots ya presentes, en el orden 1–7 siguiente.
+2. Desplegar el release coordinado backend/cliente. Usar material de **nueva
+   generación y nuevo borrador de Ensamble**; regenerar material no sustituye un
+   borrador editado existente.
+3. Confirmar los flags existentes inspector/initialization/initialization receipts
+   del servidor y sus flags públicos ya usados. Edición de campos exige además
+   mutations/operation receipts existentes. No se agregó ninguna variable.
+4. Validar la configuración de preview ya requerida por CAP-029:
+   `COMPOSITION_HTML_EDITING_PREVIEW_DELIVERY_KEY` (clave dedicada privada),
+   `COMPOSITION_HTML_EDITING_PREVIEW_PARENT_ORIGIN` (origen canónico del ambiente)
+   y `NEXT_PUBLIC_SUPABASE_URL`. Consultar
+   `SOFLIA_ENGINE_CAP029_ENVIRONMENT_BUDGET_AUDIT.md`; los flags solos no configuran
+   entrega privada. No derivar la clave/origen de datos del cliente ni exponerlos.
+5. Con el tester: nueva generación→nuevo Ensamble→Preparar todas→edición real
+   TEXT/IMAGE/CHART→preview/render/ZIP; reload tras ACK perdido, autorización/revocación,
+   ambiente/Storage real, undo y competencia con native/propuestas/presets.
+
+SQL final, solo pendientes y sin reaplicar los ya exitosos:
+
+1. `20261010200000_initial_html_editing_anchor.sql`
+2. `20261010210000_google_font_candidate_bundles.sql` (CASE corregido)
+3. `20261010220000_google_font_native_admission.sql`
+4. `20261010230000_google_font_native_face_read.sql`
+5. `20261011000000_google_font_html_resource_bindings.sql`
+6. `20261011010000_generated_deck_initialization.sql`
+7. `20261011020000_read_current_generated_deck_initialization.sql`

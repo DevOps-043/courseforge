@@ -6,8 +6,9 @@ import type { HtmlSnapshotLocatorScope } from "@/domains/production/composition-
 
 /** Explicit prerequisite only. Availability is not registration or an operation
  * receipt. After an uncertain POST, only an explicit consultation is offered. */
-export function CompositionHtmlInitialAnchorStep({ scope, host, disabled, onAvailabilityChange }: {
+export function CompositionHtmlInitialAnchorStep({ scope, host, disabled, onAvailabilityChange, availableMessage }: {
   scope: HtmlSnapshotLocatorScope; host: CompositionHtmlEditorialHost; disabled: boolean; onAvailabilityChange: (available: boolean) => void;
+  availableMessage?: string;
 }) {
   const [status, setStatus] = useState<"UNCHECKED" | "MISSING" | "AVAILABLE" | "UNKNOWN">("UNCHECKED");
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
@@ -43,7 +44,7 @@ export function CompositionHtmlInitialAnchorStep({ scope, host, disabled, onAvai
       <p role="status">Todavía no hay una revisión activa. Guarda la primera para continuar.</p>
       <button type="button" data-primary="true" disabled={disabled || busy} onClick={() => void run("PREPARE")}>Preparar primera revisión para editar</button>
     </>}
-    {status === "AVAILABLE" && <p role="status">Revisión disponible. Ahora busca la plantilla compatible y habilita sus campos.</p>}
+    {status === "AVAILABLE" && <p role="status">{availableMessage ?? "Revisión disponible. Ahora busca la plantilla compatible y habilita sus campos."}</p>}
     {error && <p role="alert">{error}</p>}
   </div>;
 }

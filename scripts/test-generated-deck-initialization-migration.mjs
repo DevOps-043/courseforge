@@ -32,7 +32,9 @@ const files = [
   '20261010220000_google_font_native_admission.sql',
   '20261010230000_google_font_native_face_read.sql',
   '20261011000000_google_font_html_resource_bindings.sql',
+  '20261010200000_initial_html_editing_anchor.sql',
   '20261011010000_generated_deck_initialization.sql',
+  '20261011020000_read_current_generated_deck_initialization.sql',
 ];
 const migrations = await Promise.all(files.map(file => readFile(path.join(root, 'supabase/migrations', file), 'utf8')));
 const operation = '00000000-0000-4000-8000-000000000099';
@@ -78,6 +80,15 @@ async function fixture(withImage = false) {
       await db.query("INSERT INTO public.production_assets VALUES($1,$2,'APPROVED',$3,48,'image/png','production-assets','image.png')", [source.imageId, source.organizationId, 'a'.repeat(64)]);
       await db.query('INSERT INTO public.video_composition_draft_assets VALUES($1,$2,$3)', [source.imageId, source.organizationId, source.draftId]);
     }
+    await db.exec(`ALTER TABLE public.video_compositions ADD status text DEFAULT 'DRAFT',ADD updated_at timestamptz;
+      ALTER TABLE public.video_composition_revisions ADD manifest jsonb,ADD project_hash text,ADD project_storage_bucket text,
+        ADD project_storage_path text,ADD project_archive_size_bytes bigint;
+      CREATE TABLE public.video_composition_assets(composition_revision_id uuid,organization_id uuid,production_asset_id uuid,
+        source_checksum text,source_storage_path text,file_size_bytes bigint,mime_type text);
+      CREATE TABLE public.video_composition_brand_assets(composition_revision_id uuid,organization_id uuid,organization_assembly_asset_id uuid,
+        source_checksum text,source_storage_path text,source_storage_bucket text,file_size_bytes bigint,mime_type text);
+      CREATE TABLE public.video_composition_sound_effect_assets(composition_revision_id uuid,organization_id uuid,sound_effect_asset_id uuid,
+        source_checksum text,source_storage_path text,source_storage_bucket text,file_size_bytes bigint,mime_type text);`);
     for (const sql of migrations) await db.exec(sql);
     const requestHash = computeGeneratedDeckInitializationRequestSha256(context.documentHash);
     const parameters = [source.organizationId, source.draftId, owner.actorId, operation, requestHash, context.documentHash,
@@ -242,4 +253,98 @@ test('an authored neighbour is kept exactly; only remaining clips are initialize
     assert.deepEqual(latest, edited.revision);
     assert.deepEqual(await counts(), { templates: prepared.references.length, revisions: prepared.references.length + 1, documents: 3, changes: 2, receipts: 1 });
   } finally { await db.close(); }
+});
+
+test('current reader verifies latest exact initial references without any registration, append or receipt write', async () => {
+  const { db, commit, prepared, owner, parameters, counts } = await fixture(true);
+  try {
+    const receipt = await commit(), before = await counts();
+    await db.exec('SET ROLE service_role');
+    const current = (await db.query('SELECT public.read_current_generated_deck_initialization($1,$2,$3,$4,$5,$6,$7) AS result',
+      [owner.organizationId, owner.draftId, owner.actorId, operation, parameters[4], prepared.documentHash, '[]'])).rows[0].result;
+    await db.exec('RESET ROLE');
+    assert.deepEqual(current.receipt, receipt);
+    assert.equal(current.documentVersion, 2);
+    assert.deepEqual(current.compilation.document, prepared.document);
+    assert.equal(current.compilation.revisions.length, prepared.references.length);
+    assert.deepEqual(await counts(), before);
+    const signature='public.read_current_generated_deck_initialization(uuid,uuid,uuid,uuid,text,text,jsonb)';
+    const grants=(await db.query("SELECT has_function_privilege('anon',$1,'EXECUTE') AS anon,has_function_privilege('authenticated',$1,'EXECUTE') AS browser",[signature])).rows[0];
+    assert.deepEqual(grants,{anon:false,browser:false});
+  } finally { await db.close(); }
+});
+
+test('current reader cannot substitute a matching historical hash after a later native append; receipt history remains readable', async () => {
+  const { db, commit, prepared, owner, parameters, read } = await fixture();
+  try {
+    const receipt = await commit();
+    await db.exec('INSERT INTO public.video_composition_draft_documents(draft_id,organization_id,version,format,document,document_hash,created_by) SELECT draft_id,organization_id,3,format,document,document_hash,created_by FROM public.video_composition_draft_documents WHERE version=2');
+    await assert.rejects(db.query('SELECT public.read_current_generated_deck_initialization($1,$2,$3,$4,$5,$6,$7)',
+      [owner.organizationId,owner.draftId,owner.actorId,operation,parameters[4],prepared.documentHash,'[]']), /CURRENT_CHANGED/);
+    assert.deepEqual(await read(),{status:'RECORDED',receipt});
+  } finally { await db.close(); }
+});
+
+async function prepareAnchorMetadata(f, assets = []) {
+  const projectHash='f'.repeat(64);
+  await f.db.exec('UPDATE public.video_compositions SET active_revision_id=NULL');
+  await f.db.query('UPDATE public.video_composition_revisions SET manifest=$1,project_hash=$2,project_storage_bucket=$3,project_storage_path=$4,project_archive_size_bytes=1000',
+    [JSON.stringify({snapshot:true,draft_document_id:f.source.draftId,draft_document_hash:f.context.documentHash,asset_manifest:assets,font_manifest:[]}),
+      projectHash,'production-assets',`composition-snapshots/${f.source.organizationId}/${f.source.compositionId}/${projectHash}.zip`]);
+}
+async function activateAnchor(f) {
+  return f.db.query('SELECT public.activate_initial_html_editing_anchor($1,$2,$3,$4,$5)',
+    [f.owner.organizationId,f.owner.actorId,f.owner.draftId,f.context.documentHash,f.source.compositionId]);
+}
+
+test('first real anchor migration executes service-only and activates once without native/template/receipt writes',async()=>{
+  const f=await fixture();
+  try {
+    await prepareAnchorMetadata(f); const before=await f.counts();
+    const read=async()=> (await f.db.query('SELECT public.read_initial_html_editing_anchor($1,$2,$3,$4) AS result',
+      [f.owner.organizationId,f.owner.actorId,f.owner.draftId,f.context.documentHash])).rows[0].result;
+    await f.db.exec('SET ROLE service_role');
+    assert.equal((await read()).activeRevisionId,null);
+    await activateAnchor(f); assert.equal((await read()).activeRevisionId,f.source.compositionId);
+    await assert.rejects(activateAnchor(f),/ANCHOR_CONFLICT/);
+    await f.db.exec('RESET ROLE');
+    assert.deepEqual(await f.counts(),before);
+    assert.equal((await f.db.query('SELECT status FROM public.video_compositions')).rows[0].status,'READY_FOR_PREVIEW');
+    const signature='public.activate_initial_html_editing_anchor(uuid,uuid,uuid,text,uuid)';
+    const grants=(await f.db.query("SELECT has_function_privilege('anon',$1,'EXECUTE') AS anon,has_function_privilege('authenticated',$1,'EXECUTE') AS browser",[signature])).rows[0];
+    assert.deepEqual(grants,{anon:false,browser:false});
+  } finally { await f.db.close(); }
+});
+
+test('initial anchor rejects stale native hash, invalid snapshot path and revoked actor before activation',async()=>{
+  const f=await fixture();
+  try {
+    await prepareAnchorMetadata(f);
+    await f.db.exec("UPDATE public.video_composition_draft_documents SET document_hash=repeat('b',64)");
+    await assert.rejects(activateAnchor(f),/ANCHOR_CONFLICT/);
+    await f.db.query('UPDATE public.video_composition_draft_documents SET document_hash=$1',[f.context.documentHash]);
+    await f.db.exec("UPDATE public.video_composition_revisions SET project_storage_path='foreign.zip'");
+    await assert.rejects(activateAnchor(f),/ANCHOR_INVALID/);
+    await prepareAnchorMetadata(f);
+    await f.db.exec("UPDATE public.organization_user_roles SET platform_role='BUILDER'");
+    await assert.rejects(activateAnchor(f),/ACTOR_FORBIDDEN/);
+    assert.equal((await f.db.query('SELECT active_revision_id FROM public.video_compositions')).rows[0].active_revision_id,null);
+  } finally { await f.db.close(); }
+});
+
+test('first anchor requires exact snapshot image links and current grants inside activation transaction',async()=>{
+  const f=await fixture(true);
+  try {
+    const asset={productionAssetId:f.source.imageId,checksum:'a'.repeat(64),fileSizeBytes:48,mimeType:'image/png',storageBucket:'production-assets',storagePath:'image.png'};
+    await prepareAnchorMetadata(f,[asset]);
+    await assert.rejects(activateAnchor(f),/ANCHOR_INVALID/);
+    await f.db.query('INSERT INTO public.video_composition_assets VALUES($1,$2,$3,$4,$5,$6,$7)',
+      [f.source.compositionId,f.source.organizationId,f.source.imageId,asset.checksum,asset.storagePath,asset.fileSizeBytes,asset.mimeType]);
+    await f.db.exec("UPDATE public.production_assets SET qa_status='ARCHIVED'");
+    await assert.rejects(activateAnchor(f),/RESOURCES_FORBIDDEN/);
+    assert.equal((await f.db.query('SELECT active_revision_id FROM public.video_compositions')).rows[0].active_revision_id,null);
+    await f.db.exec("UPDATE public.production_assets SET qa_status='APPROVED'");
+    await activateAnchor(f);
+    assert.equal((await f.db.query('SELECT active_revision_id FROM public.video_compositions')).rows[0].active_revision_id,f.source.compositionId);
+  } finally { await f.db.close(); }
 });

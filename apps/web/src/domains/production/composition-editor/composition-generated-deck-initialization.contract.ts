@@ -33,6 +33,13 @@ export const generatedDeckInitializationReadSchema = z.discriminatedUnion("statu
 export type GeneratedDeckInitializationRequest = z.infer<typeof generatedDeckInitializationRequestSchema>;
 export type GeneratedDeckInitializationOwner = z.infer<typeof generatedDeckInitializationOwnerSchema>;
 export type GeneratedDeckInitializationReceipt = z.infer<typeof generatedDeckInitializationReceiptSchema>;
+export const generatedDeckInitializationCurrentSchema = z.object({
+  scope: z.literal("GENERATED_DECK_CURRENT_INITIAL_REFERENCES_VERIFIED_NOT_RENDERED"),
+  receipt: generatedDeckInitializationReceiptSchema, documentHash: hash,
+  documentVersion: z.number().int().positive(), fieldCount: z.number().int().positive(),
+}).strict().refine(view => view.documentHash === view.receipt.documentHash
+  && view.documentVersion === view.receipt.documentVersion);
+export type GeneratedDeckInitializationCurrent = z.infer<typeof generatedDeckInitializationCurrentSchema>;
 
 /** Shared ASCII preimage; browser uses WebCrypto, server uses node:crypto. */
 export function generatedDeckInitializationRequestPreimage(expectedDocumentHash: string): string {

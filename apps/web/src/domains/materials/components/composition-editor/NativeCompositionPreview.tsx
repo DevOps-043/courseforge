@@ -670,6 +670,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
       enabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_MUTATIONS_ENABLED === "true",
       durableEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_OPERATION_RECEIPTS_ENABLED === "true",
       initializationEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED === "true",
+      generatedDeckEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED === "true"
+        && process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED === "true",
       legacyAdoptionEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED === "true"
         && process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_LEGACY_ADOPTION_RECEIPTS_ENABLED === "true"
         && process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_LEGACY_ADOPTION_ENABLED === "true"
@@ -3479,7 +3481,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
 
   return (
     <section className={`${styles.studio} courseforge-composition-studio`} inert={htmlEditorialBusy || narrativeExtractionHost?.busy} aria-busy={htmlEditorialBusy || narrativeExtractionHost?.busy}>
-      {htmlEditorialHostRef.current && <CompositionHtmlRecoveryCenter draftId={draftId} compositionId={compositionId} host={htmlEditorialHostRef.current} />}
+      {htmlEditorialHostRef.current && <CompositionHtmlRecoveryCenter draftId={draftId} compositionId={compositionId} host={htmlEditorialHostRef.current} document={payload?.document} />}
       {commandPaletteOpen && <CompositionCommandPalette items={commandPaletteItems} onClose={() => setCommandPaletteOpen(false)} onRun={runCompositionCommand} />}
       <CompositionPresetPanel
         activePreview={presetPreview}

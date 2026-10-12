@@ -5,17 +5,17 @@ import { readGeneratedCourseDeckEditorial, GeneratedDeckReadError, type Verified
 import { compositionEditorDocumentSchema } from "./composition-document.types";
 import { hashCompositionDocument } from "./composition-document.service";
 import { bindHtmlEditingRevisionToComposition } from "./composition-html-editing-document.server";
-import { readCompositionHtmlEditingCompilation } from "./composition-html-editing-reader.service";
+import { readCompositionHtmlEditingCompilation, verifyCompositionHtmlEditingRead } from "./composition-html-editing-reader.service";
 import { compileCompositionHtmlEditingFragments } from "./composition-html-editing-compilation.server";
 import { prepareInitialHtmlEditingRevision } from "./html-editing/html-editing-bootstrap.server";
-import { HtmlEditingRevisionError } from "./html-editing/html-editing-revision.contract";
+import { HtmlEditingRevisionError, htmlEditingRevisionSchema } from "./html-editing/html-editing-revision.contract";
 import { htmlEditingReferenceSchema } from "./html-editing/html-editing-reference.contract";
 import { readReferencedCompositionFonts, compositionFontManifestBinding } from "./composition-font-assets.service";
 import { assertDocumentConformanceFontBindings } from "./composition-conformance-font-bindings";
 import {
   GENERATED_DECK_INITIALIZATION_POLICY as policy, generatedDeckInitializationOwnerSchema,
   generatedDeckInitializationRequestSchema, generatedDeckInitializationRequestPreimage,
-  generatedDeckInitializationReadSchema, generatedDeckInitializationReceiptSchema,
+  generatedDeckInitializationReadSchema, generatedDeckInitializationReceiptSchema, generatedDeckInitializationCurrentSchema,
   type GeneratedDeckInitializationOwner, type GeneratedDeckInitializationRequest, type GeneratedDeckInitializationReceipt,
 } from "./composition-generated-deck-initialization.contract";
 
@@ -54,7 +54,8 @@ export class GeneratedDeckInitializationHost {
       const response = await this.supabase.rpc(name, args).abortSignal(signal);
       signal.throwIfAborted();
       if (response.error) throw new Error();
-      const maximum = name === "read_generated_deck_initialization_context" ? policy.maximumContextBytes : policy.maximumReceiptBytes;
+      const maximum = name === "read_generated_deck_initialization_context" || name === "read_current_generated_deck_initialization"
+        ? policy.maximumContextBytes : policy.maximumReceiptBytes;
       if (Buffer.byteLength(JSON.stringify(response.data) ?? "", "utf8") > maximum) throw new Error();
       return response.data as unknown;
     } catch { throw new HtmlEditingRevisionError(write ? "COMMIT_UNCONFIRMED" : "READ_UNAVAILABLE"); }
@@ -76,6 +77,42 @@ export class GeneratedDeckInitializationHost {
     if (result.status === "RECORDED" && !this.matches(result.receipt, owner, parsedIdentity))
       throw new HtmlEditingRevisionError("REVISION_CONFLICT");
     return result;
+  }
+
+  /** Current verification is separate from receipt history. One SQL draft lock
+   * checks latest native version, exact revisions/grants/fonts; no clip GET loop. */
+  async readCurrent(owner: GeneratedDeckInitializationOwner,
+    input: Pick<GeneratedDeckInitializationRequest, "operationId" | "requestSha256"> & { documentHash: string }, signal?: AbortSignal) {
+    const identity = generatedDeckInitializationRequestSchema.omit({ expectedDocumentHash: true })
+      .extend({ documentHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict().parse(input);
+    const effectiveSignal = this.signal(signal);
+    const authorized = await readCompositionHtmlEditingCompilation({ organizationId: owner.organizationId, documentId: owner.draftId,
+      actorId: owner.actorId, documentHash: identity.documentHash, supabase: this.supabase, signal: effectiveSignal });
+    const fonts = await readReferencedCompositionFonts({ document: authorized.document, organizationId: owner.organizationId, supabase: this.supabase, signal: effectiveSignal });
+    const manifest = assertDocumentConformanceFontBindings(authorized.document, fonts.map(compositionFontManifestBinding));
+    const responseSchema = z.object({ receipt: generatedDeckInitializationReceiptSchema,
+      documentVersion: z.number().int().positive(), compilation: z.unknown() }).strict();
+    const response = responseSchema.parse(await this.rpc("read_current_generated_deck_initialization", {
+      ...this.scope(owner), p_operation: identity.operationId, p_request_sha256: identity.requestSha256,
+      p_document_hash: identity.documentHash, p_fonts: manifest,
+    }, effectiveSignal));
+    if (!this.matches(response.receipt, owner, identity) || response.receipt.documentHash !== identity.documentHash)
+      throw new HtmlEditingRevisionError("REVISION_CONFLICT");
+    const verified = verifyCompositionHtmlEditingRead({ organizationId: owner.organizationId, documentId: owner.draftId,
+      documentHash: identity.documentHash, response: response.compilation });
+    let fieldCount = 0;
+    for (const item of response.receipt.items) {
+      const entry = verified.context.revisions.find(revision => revision.authoritativeBinding.clipId === item.clipId);
+      const pointer = verified.document.htmlEditing?.items.find(reference => reference.clipId === item.clipId);
+      if (!entry || JSON.stringify(pointer) !== JSON.stringify(htmlEditingReferenceSchema.strip().parse(item)))
+        throw new HtmlEditingRevisionError("INVALID_REVISION");
+      const revision = htmlEditingRevisionSchema.parse(JSON.parse(entry.encodedRevision));
+      if (revision.version !== 1 || revision.state.overrides.length !== 0) throw new HtmlEditingRevisionError("REVISION_CONFLICT");
+      fieldCount += revision.manifest.elements.length;
+    }
+    effectiveSignal.throwIfAborted();
+    return generatedDeckInitializationCurrentSchema.parse({ scope: "GENERATED_DECK_CURRENT_INITIAL_REFERENCES_VERIFIED_NOT_RENDERED",
+      receipt: response.receipt, documentHash: identity.documentHash, documentVersion: response.documentVersion, fieldCount });
   }
 
   async initialize(owner: GeneratedDeckInitializationOwner, input: GeneratedDeckInitializationRequest, signal?: AbortSignal) {

@@ -14,6 +14,7 @@ import { compileCompositionPreview, COMPOSITION_COMPILATION_TARGETS } from "../c
 import { prepareHtmlEditingRevisionCommand } from "../html-editing/html-editing-revision.server";
 import { bindHtmlEditingRevisionToComposition } from "../composition-html-editing-document.server";
 import { readReferencedCompositionFonts, compiledCompositionFont } from "../composition-font-assets.service";
+import { createGeneratedDeckCurrentHandler } from "../http/composition-generated-deck-current-handler.server";
 
 async function scenario(withImage = false) {
   const fixture = generatedDeckIntegrationFixture(withImage);
@@ -28,6 +29,39 @@ async function scenario(withImage = false) {
 }
 
 describe("atomic generated-deck preparation", () => {
+  it("current-state GET verifies the whole exact initial compilation, not receipt history, without reading material or writing", async () => {
+    const fixture = await scenario(true), prepared = prepareGeneratedDeckInitializations(fixture);
+    const requestSha256 = computeGeneratedDeckInitializationRequestSha256(fixture.context.documentHash);
+    const receipt = { scope: "GENERATED_DECK_INITIALIZATION_RECEIPT_NOT_CURRENT_STATE_OR_RENDERED", owner: fixture.owner,
+      operationId: fixture.compositionId, requestSha256, expectedDocumentHash: fixture.context.documentHash,
+      documentHash: prepared.documentHash, documentVersion: 2, items: prepared.references.map(reference => ({ ...reference, created: true })) };
+    const calls: string[] = [], state = { version: 2, granted: true };
+    const compilation = () => ({ document: prepared.document, documentHash: prepared.documentHash, revisions: prepared.revisions.map(entry => ({
+      authoritativeBinding: entry.authoritativeBinding, revision: JSON.parse(entry.encodedRevision), grantedAssetIds: state.granted ? entry.grantedAssetIds : [],
+    })) });
+    const client = { from: () => { throw new Error("Current recovery must not depend on material generation"); },
+      rpc: (name: string) => ({ abortSignal: async () => {
+        calls.push(name);
+        if (name === "consume_api_rate_limit") return { error: null, data: [{ allowed: true, reset_at: "2026-10-12T00:00:00Z" }] };
+        if (name === "read_html_editing_compilation") return { error: null, data: compilation() };
+        if (name === "read_current_generated_deck_initialization") return { error: null, data: { receipt, documentVersion: state.version, compilation: compilation() } };
+        throw new Error("Unexpected write");
+      } }) } as unknown as SupabaseClient;
+    const handler = createGeneratedDeckCurrentHandler({ enabled: () => true, serviceClient: () => client,
+      authenticate: async () => ({ actorId: fixture.owner.actorId,
+        tenant: { userId: fixture.owner.actorId, organizationId: fixture.owner.organizationId, platformRole: "ADMIN" } }) });
+    const url = `https://engine.example/current?operationId=${fixture.compositionId}&requestSha256=${requestSha256}&documentHash=${prepared.documentHash}`;
+    const response = await handler(new Request(url), { draftId: fixture.draftId });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).data.fieldCount, prepared.registrations.reduce((count, entry) => count + entry.revision.manifest.elements.length, 0));
+    assert.deepEqual(calls, ["consume_api_rate_limit", "consume_api_rate_limit", "read_html_editing_compilation", "read_current_generated_deck_initialization"]);
+    state.version = 3;
+    assert.equal((await handler(new Request(url), { draftId: fixture.draftId })).status, 503);
+    state.version = 2; state.granted = false;
+    assert.equal((await handler(new Request(url), { draftId: fixture.draftId })).status, 503);
+    assert.ok(!calls.some(name => name.startsWith("commit") || name.startsWith("register")));
+  });
+
   it("whole-deck initial binding retains uploaded and every pinned Google face in both compiler targets", async () => {
     for (const fixture of [generatedDeckFontFixture(), generatedGoogleDeckFontFixture()]) {
       const generated = (await readGeneratedCourseDeckEditorial({ componentId: fixture.componentId, organizationId: fixture.organizationId, supabase: fixture.client }))!;
