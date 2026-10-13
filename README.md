@@ -24,6 +24,10 @@ El producto ya no es solo un generador de cursos. Es un flujo operativo con apro
 
 ## Stack
 
+La voz de catalogo HeyGen usa Starfish explicitamente tanto al listar voces como al sintetizar audio; no depende del motor guardado en HeyGen. Diagnostico y validacion del incidente `locale`: [auditoria de voz](docs/architecture/heygen-speech-engine-audit-2026-10-13.md).
+
+La sincronizacion del catalogo HeyGen requiere la cadena completa de funciones SQL de reconciliacion. Para el fallo `42883` por dependencia ausente, ver [contrato y reparacion](docs/heygen_catalog_sync_source_of_truth.md).
+
 | Capa | Tecnologia |
 | --- | --- |
 | Frontend | Next.js 16, React 19, TypeScript |

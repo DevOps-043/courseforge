@@ -27,6 +27,7 @@ import {
   scaleCompositionCropInsets,
 } from "./composition-visual-crop.service";
 import { compositionClipHasConfigurableAudio } from "./composition-clip-audio.service";
+import { areCompositionVolumeEnvelopeEditsEnabled } from "./composition-volume-envelope";
 import { compositionClipExclusionKey } from "./composition-source-selection";
 import { resolveAvatarAudioLink } from "./composition-avatar-audio-link.service";
 import {
@@ -853,6 +854,7 @@ export function applyCompositionEditorPatches(
       delete clip.playbackRate;
       delete clip.freezeTailSeconds;
       delete clip.volume;
+      delete clip.volumeEnvelope;
       delete clip.fadeInSeconds;
       delete clip.fadeOutSeconds;
       next.clips = next.clips.filter((candidate) => candidate.id === clip.id || !siblingIds.has(candidate.id));
@@ -1211,6 +1213,16 @@ export function applyCompositionEditorPatches(
         throw new CompositionEditorPatchError("El volumen individual solo está disponible para clips con una fuente de audio confirmada.");
       }
       clip.volume = operation.volume;
+    }
+
+    if (operation.type === "clip.volume-envelope") {
+      if (operation.points.length && !areCompositionVolumeEnvelopeEditsEnabled()) {
+        throw new CompositionEditorPatchError("La edición de curvas de volumen no está habilitada en este entorno.");
+      }
+      if (currentTrack.locked || !compositionClipHasConfigurableAudio(clip, currentTrack)) {
+        throw new CompositionEditorPatchError("La curva de volumen requiere un clip con audio y una pista desbloqueada.");
+      }
+      clip.volumeEnvelope = operation.points;
     }
 
     if (operation.type === "clip.audio-fades") {

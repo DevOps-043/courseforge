@@ -2,8 +2,10 @@ import {dirname, isAbsolute, relative, sep} from "node:path";
 import {assertPlainDirectory, hashBytes, readPinnedPackageFile} from "./producer-extension-files.mjs";
 import {ORIGINAL_SESSION_OBSERVER_POLICY} from "./original-session-observer.mjs";
 import {parseObservedOperatorReference} from "./observed-producer-operator-reference.mjs";
+import {parseObservedOriginalServerChannel} from "./observed-original-server-channel.mjs";
 
 export const OBSERVED_OPERATOR_CONFIGURATION_POLICY = "OBSERVED_PRODUCER_OPERATOR_CONFIGURATION_V1";
+export const OBSERVED_NETWORK_OPERATOR_CONFIGURATION_POLICY = "OBSERVED_PRODUCER_OPERATOR_CONFIGURATION_V2";
 const MAXIMUM_CONFIGURATION_BYTES = 4 * 1024 * 1024;
 const fail = () => {throw new Error("CONTROLLED_RENDER_OBSERVED_OPERATOR_CONFIGURATION_INVALID");};
 const exact = (value, fields) => value && typeof value === "object" && !Array.isArray(value)
@@ -18,9 +20,15 @@ export async function readObservedOperatorConfiguration(reference, signal) {
     const bytes = await readPinnedPackageFile(reference.path, MAXIMUM_CONFIGURATION_BYTES);
     if (hashBytes(bytes) !== reference.sha256) fail();
     const configuration = JSON.parse(new TextDecoder("utf-8", {fatal: true}).decode(bytes));
-    if (!exact(configuration, ["policy", "observerPolicy", "packageDirectory", "expectedPackageManifestSha256", "dependencyInventory", "execution"])
-      || configuration.policy !== OBSERVED_OPERATOR_CONFIGURATION_POLICY
+    const networkEnabled = configuration.policy === OBSERVED_NETWORK_OPERATOR_CONFIGURATION_POLICY;
+    if (!exact(configuration, ["policy", "observerPolicy", "packageDirectory", "expectedPackageManifestSha256", "dependencyInventory", "execution",
+      ...(networkEnabled ? ["networkChannel"] : [])])
+      || ![OBSERVED_OPERATOR_CONFIGURATION_POLICY, OBSERVED_NETWORK_OPERATOR_CONFIGURATION_POLICY].includes(configuration.policy)
       || configuration.observerPolicy !== ORIGINAL_SESSION_OBSERVER_POLICY) fail();
+    if (networkEnabled) {
+      configuration.networkChannel = parseObservedOriginalServerChannel(configuration.networkChannel);
+      if (!isAbsolute(configuration.networkChannel.directory)) fail();
+    }
     // Bootstrap metadata cannot be a self-hashed file in its own runtime inventory.
     const roots = configuration.dependencyInventory?.roots;
     if (!roots || typeof roots !== "object" || Array.isArray(roots)) fail();

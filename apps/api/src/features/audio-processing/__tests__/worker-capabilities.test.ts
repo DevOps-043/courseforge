@@ -4,17 +4,19 @@ import { processAudioProcessingBatch, processClaimedAudioJob } from "../audio-wo
 import {
   BASE_AUDIO_PROFILE_ID,
   DEEPFILTER_AUDIO_PROFILE_ID,
+  WAVEFORM_AUDIO_PROFILE_ID,
   supportedAudioProfileIds,
 } from "../worker-capabilities";
 
-test("base image claims only the baseline profile", () => {
-  assert.deepEqual(supportedAudioProfileIds({}), [BASE_AUDIO_PROFILE_ID]);
+test("base image claims baseline and analysis-only profiles", () => {
+  assert.deepEqual(supportedAudioProfileIds({}), [BASE_AUDIO_PROFILE_ID, WAVEFORM_AUDIO_PROFILE_ID]);
 });
 
 test("managed neural image claims baseline and DeepFilterNet profiles", () => {
   assert.deepEqual(supportedAudioProfileIds({ DEEPFILTERNET_ENABLED: "true" }), [
     BASE_AUDIO_PROFILE_ID,
     DEEPFILTER_AUDIO_PROFILE_ID,
+    WAVEFORM_AUDIO_PROFILE_ID,
   ]);
 });
 

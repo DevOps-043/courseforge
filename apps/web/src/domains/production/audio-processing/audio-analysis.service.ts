@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseWaveformV2Manifest, parseWaveformV2Derivative } from "./audio-waveform-v2.contract";
 import type {
   AudioLoudnessAnalysis,
   AudioWaveformDerivative,
@@ -49,13 +50,22 @@ export interface AudioProcessingDerivatives {
   waveform: AudioWaveformManifest;
 }
 
+export function parseAudioWaveformManifest(metadata: unknown): AudioWaveformManifest | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const value = (metadata as Record<string, unknown>).waveform;
+  const current = parseWaveformV2Manifest(value);
+  if (current) return current;
+  const legacy = waveformManifestSchema.safeParse(value);
+  return legacy.success && legacy.data.storage_path.includes(`/${legacy.data.checksum}/`)
+    ? mapWaveformManifest(legacy.data) : null;
+}
+
 export function parseAudioProcessingDerivatives(metadata: unknown): AudioProcessingDerivatives | null {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
   const record = metadata as Record<string, unknown>;
   const loudness = loudnessSchema.safeParse(record.audio_analysis);
-  const waveform = waveformManifestSchema.safeParse(record.waveform);
-  if (!loudness.success || !waveform.success) return null;
-  if (!waveform.data.storage_path.includes(`/${waveform.data.checksum}/`)) return null;
+  const waveform = parseAudioWaveformManifest(metadata);
+  if (!loudness.success || !waveform) return null;
   return {
     loudness: {
       contractVersion: 1,
@@ -68,11 +78,12 @@ export function parseAudioProcessingDerivatives(metadata: unknown): AudioProcess
       toleranceLu: loudness.data.tolerance_lu,
       truePeakDbtp: loudness.data.true_peak_dbtp,
     },
-    waveform: mapWaveformManifest(waveform.data),
+    waveform,
   };
 }
 
 export function parseAudioWaveformDerivative(value: unknown): AudioWaveformDerivative {
+  if (value && typeof value === "object" && (value as { contract_version?: unknown }).contract_version === 2) return parseWaveformV2Derivative(value);
   const parsed = waveformDerivativeSchema.parse(value);
   const levels = parsed.levels.map(mapWaveformLevel);
   for (let index = 0; index < levels.length; index += 1) {

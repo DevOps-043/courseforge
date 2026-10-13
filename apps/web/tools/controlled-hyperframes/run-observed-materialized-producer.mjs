@@ -10,6 +10,7 @@ import {createOriginalSessionNativeObserver} from "./original-session-native-obs
 import {createOriginalSessionSdrStages, ORIGINAL_SDR_STAGE_TIMEOUT_MILLISECONDS} from "./original-session-sdr-stages.mjs";
 import {ORIGINAL_NATIVE_RECEIPT_FILE, ORIGINAL_NATIVE_RECEIPT_MAXIMUM_BYTES} from "./original-native-receipt.mjs";
 import {readObservedOperatorConfiguration} from "./observed-producer-operator-configuration.mjs";
+import {createObservedOriginalServerChannel} from "./observed-original-server-channel.mjs";
 import {decodeObservedOperatorReference} from "./observed-producer-operator-reference.mjs";
 import {createOriginalSessionObserver} from "./original-session-observer.mjs";
 import {startOriginalSessionNetworkGuard} from "./original-session-network-guard.mjs";
@@ -58,6 +59,10 @@ export async function runObservedMaterializedProducer(encodedRequest, encodedRef
       await checkNetwork();
     }]));
     if (sdrStages) Object.assign(observer, {onEncode: sdrStages.onEncode, onAfterAssemble: sdrStages.onAfterAssemble});
+    if (operator.configuration.networkChannel) {
+      observer.onOriginalServer = await createObservedOriginalServerChannel(operator.configuration.networkChannel, request,
+        operator.assertUnchanged, signal);
+    }
     await operator.assertUnchanged();
     await measurement?.assertUnchanged();
     const receipt = await runMaterializedProducer(encodedRequest, {...ports, signal,

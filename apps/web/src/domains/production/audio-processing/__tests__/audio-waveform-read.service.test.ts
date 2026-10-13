@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
+import { AudioWaveformDerivativeCache } from "../audio-waveform-cache.server";
 import { AudioWaveformReadError, readAudioWaveformPreview } from "../audio-waveform-read.service";
 
 const organizationId = "00000000-0000-4000-8000-000000000001";
@@ -65,7 +66,6 @@ test("reads a checksum-verified waveform through tenant, component and asset fil
     ["id", assetId],
     ["organization_id", organizationId],
     ["material_component_id", componentId],
-    ["asset_type", "PROCESSED_AUDIO"],
   ]);
   assert.equal(fake.downloads, 1);
   assert.deepEqual(preview.min, [-0.5, -0.75]);
@@ -74,7 +74,7 @@ test("reads a checksum-verified waveform through tenant, component and asset fil
 test("rejects a derivative from another tenant before storage access", async () => {
   const fake = fakeSupabase(metadata("00000000-0000-4000-8000-000000000099"));
   await assert.rejects(
-    readAudioWaveformPreview({ assetId, componentId, organizationId, supabase: fake.supabase }),
+    readAudioWaveformPreview({ assetId, componentId, organizationId, supabase: fake.supabase, cache: new AudioWaveformDerivativeCache() }),
     (error: unknown) => error instanceof AudioWaveformReadError && error.status === 422,
   );
   assert.equal(fake.downloads, 0);
@@ -83,7 +83,17 @@ test("rejects a derivative from another tenant before storage access", async () 
 test("rejects derivative bytes whose checksum differs from the manifest", async () => {
   const fake = fakeSupabase(metadata(), Buffer.from("{}"));
   await assert.rejects(
-    readAudioWaveformPreview({ assetId, componentId, organizationId, supabase: fake.supabase }),
+    readAudioWaveformPreview({ assetId, componentId, organizationId, supabase: fake.supabase, cache: new AudioWaveformDerivativeCache() }),
     /checksum/,
   );
+});
+
+test("reuses a verified derivative but still checks authorization on every read", async () => {
+  const fake = fakeSupabase(metadata());
+  const cache = new AudioWaveformDerivativeCache();
+  const input = { assetId, componentId, organizationId, supabase: fake.supabase, cache };
+  await readAudioWaveformPreview(input);
+  await readAudioWaveformPreview({ ...input, startSeconds: 0, endSeconds: 1, widthPixels: 100 });
+  assert.equal(fake.downloads, 1);
+  assert.equal(fake.filters.filter(([name]) => name === "organization_id").length, 2);
 });

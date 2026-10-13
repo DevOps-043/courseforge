@@ -48,3 +48,29 @@ test("uncertain process ownership survives sanitization and cleanup without perm
   }
   assert.equal(requiresConformanceExecutionRecovery(new Error("private reason")), false);
 });
+
+test("blocked spool admission is non-retryable through stage and cleanup boundaries", () => {
+  for (const suffix of ["RECONCILIATION_REQUIRED", "SCAN_LIMIT", "SCAN_UNCONFIRMED", "INVALID"]) {
+    const raw = new Error(`CONTROLLED_RENDER_MEASUREMENT_SPOOL_${suffix}`);
+    assert.deepEqual(classifyConformanceJobFailure(raw), {code: "CONFORMANCE_JOB_EXECUTION_RECOVERY_REQUIRED", retryable: false});
+    const primary = wrapConformanceStageFailure("RENDER_COMPARISON", raw);
+    for (const failure of [primary, recordConformanceCleanupFailure(primary)]) {
+      assert.equal(requiresConformanceExecutionRecovery(failure), true);
+      assert.equal(classifyConformanceJobFailure(failure).retryable, false);
+      assert.match(failure.errorCode, /RECOVERY_REQUIRED$/);
+    }
+  }
+});
+
+test("network journal or native outcome uncertainty retains recovery semantics through the worker", () => {
+  for (const component of ["CONTROLLER", "JOURNAL", "CHANNEL"]) {
+    const raw = new Error(`CONTROLLED_RENDER_NETWORK_${component}_RECOVERY_REQUIRED`);
+    assert.equal(classifyConformanceJobFailure(raw).retryable, false);
+    const primary = wrapConformanceStageFailure("RENDER_COMPARISON", raw);
+    for (const wrapped of [primary, recordConformanceCleanupFailure(primary)]) {
+      assert.equal(requiresConformanceExecutionRecovery(wrapped), true);
+      assert.equal(classifyConformanceJobFailure(wrapped).retryable, false);
+      assert.match(wrapped.errorCode, /RECOVERY_REQUIRED$/);
+    }
+  }
+});

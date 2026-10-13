@@ -37,6 +37,153 @@ function fixture() {
     send: (status: string, extra = {}) => child.stdout.write(Buffer.from(JSON.stringify({status, executionId, ...extra}) + "\n"))};
 }
 
+const appContainerToken = {policy: "WINDOWS_APPCONTAINER_NO_NETWORK_V5" as const, desktop: "winsta0\\courseforge-worker",
+  appContainerSid: "S-1-15-2-1-2-3-4-5-6-7", readOnlyPaths: [resolve("readonly")], deniedPaths: [resolve("denied")],
+  treeAudit: {maximumEntries: 32, maximumDepth: 8, timeoutMilliseconds: 1000}};
+const ownedRoot = {pid: 123, creationFileTime: "133000000000000001"};
+
+test("V4 listener observation correlates exact port/request and immutable owned identity", async () => {
+  const f = fixture(); let observation: unknown;
+  const start = createWindowsJobBridgeStart({...f.configuration, resourceLimits, reducedToken: appContainerToken,
+    onOwnedReady: async (_descriptor, _workspace, root, _signal, control) => {
+      root.pid = 999; observation = await control.observeOriginalListener(43210);
+    }}, {spawnBridge: f.spawnBridge, platform: "win32"});
+  const handle = start(descriptor, workspace, new AbortController().signal);
+  f.send("READY", {rootIdentity: ownedRoot}); await Promise.resolve();
+  const command = JSON.parse(f.commands[1]);
+  assert.equal(command.command, "OBSERVE_ORIGINAL_LISTENER"); assert.equal(command.port, 43210);
+  f.send("LISTENER_OBSERVED", {requestId: command.requestId, port: 43210, address: "127.0.0.1", rootIdentity: ownedRoot});
+  await new Promise(done => setImmediate(done));
+  assert.deepEqual(observation, {port: 43210, address: "127.0.0.1", rootIdentity: ownedRoot});
+  f.send("ROOT_EXITED", {exitCode: 0}); await Promise.resolve();
+  const stopping = handle.stopAndConfirm(); f.send("STOPPED", {activeProcesses: 0}); f.child.emit("close", 0);
+  await stopping; await handle.completion;
+});
+
+test("V4 rejects mismatched listener correlation, root identity, endpoint and unsolicited evidence", async () => {
+  for (const mutation of [{requestId: "00000000-0000-4000-8000-000000000099"}, {port: 43211},
+    {rootIdentity: {...ownedRoot, pid: 999}}, {rootIdentity: {...ownedRoot, creationFileTime: "133000000000000002"}},
+    {address: "0.0.0.0"}]) {
+    const f = fixture();
+    const start = createWindowsJobBridgeStart({...f.configuration, resourceLimits, reducedToken: appContainerToken,
+      onOwnedReady: async (_descriptor, _workspace, _root, _signal, control) => {await control.observeOriginalListener(43210);}},
+      {spawnBridge: f.spawnBridge, platform: "win32"});
+    const handle = start(descriptor, workspace, new AbortController().signal);
+    f.send("READY", {rootIdentity: ownedRoot}); await Promise.resolve();
+    const command = JSON.parse(f.commands[1]);
+    f.send("LISTENER_OBSERVED", {requestId: command.requestId, port: 43210, address: "127.0.0.1", rootIdentity: ownedRoot, ...mutation});
+    await assert.rejects(handle.completion, /BRIDGE_FAILED|RECOVERY_REQUIRED/);
+    assert.equal(f.counts().collections, 0);
+  }
+  const f = fixture(), handle = f.start(descriptor, workspace, new AbortController().signal);
+  f.send("READY"); f.send("LISTENER_OBSERVED", {requestId: executionId, port: 43210, address: "127.0.0.1", rootIdentity: ownedRoot});
+  await assert.rejects(handle.completion, /BRIDGE_FAILED/);
+});
+
+test("STOP cancels pending listener work before draining operator hook", async () => {
+  const f = fixture();
+  const start = createWindowsJobBridgeStart({...f.configuration, resourceLimits, reducedToken: appContainerToken,
+    onOwnedReady: async (_descriptor, _workspace, _root, _signal, control) => {await control.observeOriginalListener(43210);}},
+    {spawnBridge: f.spawnBridge, platform: "win32"});
+  const handle = start(descriptor, workspace, new AbortController().signal);
+  f.send("READY", {rootIdentity: ownedRoot}); await Promise.resolve();
+  const stopping = handle.stopAndConfirm(); f.send("STOPPED", {activeProcesses: 0}); f.child.emit("close", 0);
+  await assert.rejects(stopping, /RECOVERY_REQUIRED/);
+  await assert.rejects(handle.completion, /ABORTED|RECOVERY_REQUIRED/);
+  assert.equal(f.counts().collections, 0);
+});
+
+test("aborted observation cannot be retried through a retained operator control", async () => {
+  const f = fixture(), cancellation = new AbortController(); let rejected = false;
+  const start = createWindowsJobBridgeStart({...f.configuration, resourceLimits, reducedToken: appContainerToken,
+    onOwnedReady: async (_descriptor, _workspace, _root, _signal, control) => {
+      await assert.rejects(control.observeOriginalListener(43210), /RECOVERY_REQUIRED/);
+      await assert.rejects(control.observeOriginalListener(43210)); rejected = true;
+    }}, {spawnBridge: f.spawnBridge, platform: "win32"});
+  const handle = start(descriptor, workspace, cancellation.signal);
+  f.send("READY", {rootIdentity: ownedRoot}); await Promise.resolve(); cancellation.abort();
+  await new Promise(done => setImmediate(done)); assert.equal(rejected, true); assert.equal(f.commands.length, 2);
+  const stopping = handle.stopAndConfirm(); f.send("STOPPED", {activeProcesses: 0}); f.child.emit("close", 0);
+  await assert.rejects(stopping, /RECOVERY_REQUIRED/); await assert.rejects(handle.completion, /ABORTED|RECOVERY_REQUIRED/);
+});
+
+test("listener deadline quarantines swallowed failure and rejects late response", async context => {
+  context.mock.timers.enable({apis: ["setTimeout"]});
+  const f = fixture();
+  const start = createWindowsJobBridgeStart({...f.configuration, resourceLimits, reducedToken: appContainerToken,
+    onOwnedReady: async (_descriptor, _workspace, _root, _signal, control) => {
+      try {await control.observeOriginalListener(43210);} catch { /* Operator cannot turn uncertainty into success. */ }
+    }}, {spawnBridge: f.spawnBridge, platform: "win32"});
+  const handle = start(descriptor, workspace, new AbortController().signal);
+  f.send("READY", {rootIdentity: ownedRoot}); await Promise.resolve();
+  const command = JSON.parse(f.commands[1]);
+  context.mock.timers.tick(15000);
+  await assert.rejects(handle.completion, /RECOVERY_REQUIRED/);
+  f.send("LISTENER_OBSERVED", {requestId: command.requestId, port: 43210, address: "127.0.0.1", rootIdentity: ownedRoot});
+  assert.equal(f.counts().kills, 1); assert.equal(f.counts().collections, 0);
+  await assert.rejects(handle.stopAndConfirm(), /BRIDGE_FAILED/);
+  context.mock.timers.reset();
+});
+
+test("V4 publishes exact owned root identity only to an explicit AppContainer operator hook", async () => {
+  const f = fixture(); let observed: unknown;
+  const start = createWindowsJobBridgeStart({...f.configuration, resourceLimits, reducedToken: appContainerToken,
+    onOwnedReady: async (_descriptor, _workspace, root) => {observed = structuredClone(root); root.pid = 999;}},
+    {spawnBridge: f.spawnBridge, platform: "win32"});
+  const handle = start(descriptor, workspace, new AbortController().signal);
+  assert.equal(JSON.parse(f.commands[0]).policy, "WINDOWS_JOB_CONTROL_CHANNEL_V4");
+  f.send("READY", {rootIdentity: ownedRoot}); await Promise.resolve();
+  assert.deepEqual(observed, ownedRoot);
+  f.send("ROOT_EXITED", {exitCode: 0}); await Promise.resolve();
+  const stopping = handle.stopAndConfirm(); f.send("STOPPED", {activeProcesses: 0}); f.child.emit("close", 0);
+  await stopping; assert.equal(await handle.completion, result);
+  assert.equal(ownedRoot.pid, 123);
+});
+
+test("confirmed producer stop does not release ownership while the owned-ready hook is still running", async () => {
+  const f = fixture(); let release!: () => void;
+  const gate = new Promise<void>(resolveGate => {release = resolveGate;});
+  const start = createWindowsJobBridgeStart({...f.configuration, resourceLimits, reducedToken: appContainerToken,
+    onOwnedReady: async () => {await gate;}}, {spawnBridge: f.spawnBridge, platform: "win32"});
+  const handle = start(descriptor, workspace, new AbortController().signal);
+  f.send("READY", {rootIdentity: ownedRoot}); await Promise.resolve();
+  f.send("ROOT_EXITED", {exitCode: 0}); await Promise.resolve();
+  let settled = false;
+  const stopping = handle.stopAndConfirm().then(value => {settled = true; return value;});
+  f.send("STOPPED", {activeProcesses: 0}); f.child.emit("close", 0);
+  await new Promise(resolveImmediate => setImmediate(resolveImmediate));
+  assert.equal(settled, false); assert.equal(f.counts().collections, 0);
+  release(); await stopping; await handle.completion;
+});
+
+test("V4 rejects missing identity and V1 rejects unsolicited root metadata", async () => {
+  for (const identityEnabled of [true, false]) {
+    const f = fixture(); let called = false;
+    const start = createWindowsJobBridgeStart(identityEnabled ? {...f.configuration, resourceLimits, reducedToken: appContainerToken,
+      onOwnedReady: async () => {called = true;}} : f.configuration, {spawnBridge: f.spawnBridge, platform: "win32"});
+    const handle = start(descriptor, workspace, new AbortController().signal);
+    f.send("READY", identityEnabled ? {} : {rootIdentity: ownedRoot});
+    await assert.rejects(handle.completion, /BRIDGE_FAILED/); assert.equal(called, false);
+  }
+  const f = fixture();
+  assert.throws(() => createWindowsJobBridgeStart({...f.configuration, onOwnedReady: async () => {}},
+    {spawnBridge: f.spawnBridge, platform: "win32"}), /ROOT_IDENTITY_CONFIGURATION_INVALID/);
+  assert.equal(f.counts().calls, 0);
+});
+
+test("failed owned-ready work is not hidden by successful producer exit or cleanup", async () => {
+  const f = fixture();
+  const start = createWindowsJobBridgeStart({...f.configuration, resourceLimits, reducedToken: appContainerToken,
+    onOwnedReady: async () => {throw new Error("private details");}}, {spawnBridge: f.spawnBridge, platform: "win32"});
+  const handle = start(descriptor, workspace, new AbortController().signal);
+  f.send("READY", {rootIdentity: ownedRoot});
+  await assert.rejects(handle.completion, /NETWORK_CONTROLLER_RECOVERY_REQUIRED/);
+  const stopping = handle.stopAndConfirm();
+  f.send("STOPPED", {activeProcesses: 0}); f.child.emit("close", 0);
+  await assert.rejects(stopping, /NETWORK_CONTROLLER_RECOVERY_REQUIRED/);
+  assert.equal(f.counts().collections, 0);
+});
+
 test("operator resource limits use V2, are cloned before start and preserve confirmed closure", async () => {
   const f = fixture(), limits = {...resourceLimits};
   const start = createWindowsJobBridgeStart({...f.configuration, resourceLimits: limits},

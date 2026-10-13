@@ -1810,7 +1810,10 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         console.warn("[CompositionRecovery] No se pudo registrar el cambio pendiente.", recoveryError);
       }
     }
-    const updateStrategy = classifyCompositionPreviewOperations(effectiveOperations);
+    // A scalar DOM volume patch cannot replace a persisted time-varying envelope.
+    const changesAuthoredAudio = optimisticDocument.clips.some((clip) => clip.volumeEnvelope?.length)
+      && effectiveOperations.some((operation) => operation.type === "clip.volume" || operation.type === "clip.visibility");
+    const updateStrategy = changesAuthoredAudio ? "FULL_RELOAD" : classifyCompositionPreviewOperations(effectiveOperations);
     const requiresCompiledPreviewReload = requiresCompositionPreviewReload(updateStrategy);
     if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
       previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "EDIT_ACCEPTED" });

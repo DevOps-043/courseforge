@@ -2,14 +2,19 @@ import {dirname, join, resolve} from "node:path";
 import {createControlledRenderWorkerHost} from "./composition-controlled-render-worker-host";
 import {createWindowsJobBridgeStart, type WindowsJobBridgeConfiguration} from "./composition-windows-job-bridge";
 import type {ControlledExecutionFence} from "./composition-controlled-execution-fence";
+import {createWindowsNetworkOwnedStart} from "./composition-windows-network-owned-start";
 
 /** Explicit Windows composition; no flag activation, synthetic-driver default or platform fallback. */
 export function createWindowsControlledRenderWorkerHost(input:
   Omit<Parameters<typeof createControlledRenderWorkerHost>[0], "ownedExecutor"> & {
     jobBridge: WindowsJobBridgeConfiguration; executionFence: ControlledExecutionFence;
+    /** Explicit one-execution network lifecycle. No native/default transport or policy activation. */
+    networkLifecycle?: Parameters<typeof createWindowsNetworkOwnedStart>[1];
   }) {
   if (process.platform !== "win32") throw new Error("CONTROLLED_RENDER_WINDOWS_PLATFORM_UNSUPPORTED");
   const inventory = input.dependencyInventory;
+  if (input.networkLifecycle && input.jobBridge.onOwnedReady !== undefined)
+    throw new Error("CONTROLLED_RENDER_WINDOWS_NETWORK_LIFECYCLE_CONFIGURATION_INVALID");
   const declaredPaths = new Set(inventory.manifest.files.map(file => {
     const root = inventory.roots[file.rootId];
     if (typeof root !== "string") throw new Error("CONTROLLED_RENDER_WINDOWS_BRIDGE_INVENTORY_REQUIRED");
@@ -36,6 +41,7 @@ export function createWindowsControlledRenderWorkerHost(input:
     return launch;
   }};
   return createControlledRenderWorkerHost({...input, ownedExecutor: {
-    fence: input.executionFence, start: createWindowsJobBridgeStart(jobBridge),
+    fence: input.executionFence, start: input.networkLifecycle
+      ? createWindowsNetworkOwnedStart(jobBridge, input.networkLifecycle) : createWindowsJobBridgeStart(jobBridge),
   }});
 }

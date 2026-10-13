@@ -24,8 +24,20 @@ export function createOriginalSessionSdrStages(input, ports = {}) {
     || !Number.isSafeInteger(input.timeoutMilliseconds) || input.timeoutMilliseconds < 1 || input.timeoutMilliseconds > 600000
     || typeof input.acquireFrames !== "function" || typeof input.verifyFiles !== "function") fail();
   const execute = ports.execute ?? executeClosedStageFile;
+  // Operator test clock only, never accepted from a render document or serialized request.
+  const clock = ports.clock ?? (() => performance.now());
+  if (typeof clock !== "function") fail();
+  let budgetStarted, lastTime;
+  const remaining = () => {
+    const current = clock();
+    if (!Number.isFinite(current) || lastTime !== undefined && current < lastTime) fail();
+    lastTime = current; budgetStarted ??= current;
+    const milliseconds = input.timeoutMilliseconds - (current - budgetStarted);
+    if (milliseconds <= 0) fail();
+    return Math.max(1, Math.floor(milliseconds));
+  };
   let phase = "WAITING", encoding, mux, silentAssembly, archived, silentPath, finalPin;
-  const active = () => {input.signal.throwIfAborted(); if (phase === "FAILED") fail();};
+  const active = () => {input.signal.throwIfAborted(); if (phase === "FAILED") fail(); if (budgetStarted !== undefined) remaining();};
   const verify = async () => {active(); await input.verifyFiles(); active();};
   const match = payload => {
     const canvas = contract.canvas;
@@ -41,19 +53,21 @@ export function createOriginalSessionSdrStages(input, ports = {}) {
     const started = performance.now();
     try {
       active(); match(payload); if (phase !== "WAITING") fail(); phase = "ENCODING";
+      remaining();
       await verify(); archived = await input.acquireFrames(); await archived.assertUnchanged();
       encoding = await encodeSdrCapturedFrames({profile: {captureProfile: SDR_FRAME_CONVERSION_POLICY.captureProfile,
         width: payload.width, height: payload.height, fps: payload.fps, frameCount: payload.frameCount},
         framesDirectory: archived.directory, outputParentDirectory: input.outputDirectory,
         ffmpegPath: input.encoderPath, ffmpegSha256: execution.files.encoder.sha256,
         ffprobePath: input.probePath, ffprobeSha256: execution.comparisonTools.probe.sha256,
-        timeoutMilliseconds: input.timeoutMilliseconds, signal: input.signal, retainWorkFilesOnFailure: true}, execute);
+        timeoutMilliseconds: remaining(), signal: input.signal, retainWorkFilesOnFailure: true}, execute);
       await verify(); await archived.assertUnchanged();
       await copyFile(encoding.videoPath, payload.videoOnlyPath, constants.COPYFILE_EXCL);
       silentPath = payload.videoOnlyPath;
       const silent = await pinConformanceFile(silentPath, 2 * 1024 ** 3, false, input.signal);
       if (silent.sha256 !== encoding.output.sha256 || silent.sizeBytes !== encoding.output.sizeBytes) fail();
       await assertConformanceFileUnchanged(encoding.videoPath, encoding.output, 2 * 1024 ** 3, false, input.signal);
+      active();
       phase = "ENCODED"; return {encodeMs: performance.now() - started};
     } catch {phase = "FAILED"; fail();}
   }, onAfterAssemble: async payload => {
@@ -64,7 +78,7 @@ export function createOriginalSessionSdrStages(input, ports = {}) {
       const verification = {silentVideoPath: silentPath, silentVideoSha256: encoding.output.sha256,
           videoPath: input.videoPath, videoSha256: finalPin.sha256, ffprobePath: input.probePath,
           ffprobeSha256: execution.comparisonTools.probe.sha256, profile: encoding.profile,
-          timeoutMilliseconds: input.timeoutMilliseconds, signal: input.signal};
+          timeoutMilliseconds: remaining(), signal: input.signal};
       if (execution.sdrAudioMuxPolicy) {
         mux = await verifySdrAudioMuxOutput(verification, execute);
         if (mux.policy !== SDR_AUDIO_MUX_POLICY) fail();
@@ -76,6 +90,7 @@ export function createOriginalSessionSdrStages(input, ports = {}) {
       active(); if (phase !== "VERIFIED") fail(); await verify(); await archived.assertUnchanged();
       await assertConformanceFileUnchanged(encoding.videoPath, encoding.output, 2 * 1024 ** 3, false, input.signal);
       await assertConformanceFileUnchanged(input.videoPath, finalPin, 2 * 1024 ** 3, false, input.signal);
+      active();
       return {sdrEncoding: encoding, ...(mux ? {sdrMux: mux} : {}), ...(silentAssembly ? {sdrSilentAssembly: silentAssembly} : {})};
     } catch {phase = "FAILED"; fail();}
   }};

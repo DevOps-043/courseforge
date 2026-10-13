@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { compositionVolumeEnvelopeSchema } from "./composition-volume-envelope";
 import {
   COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS,
   COMPOSITION_DURATION_SOURCES,
@@ -137,6 +138,10 @@ const clipAudioFadesOperationSchema = z.object({
   fadeInSeconds: z.number().finite().min(0).max(30),
   fadeOutSeconds: z.number().finite().min(0).max(30),
   type: z.literal("clip.audio-fades"),
+}).strict();
+
+const clipVolumeEnvelopeOperationSchema = z.object({
+  type: z.literal("clip.volume-envelope"), points: compositionVolumeEnvelopeSchema,
 }).strict();
 
 const clipTextContentOperationSchema = z.object({
@@ -396,6 +401,7 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipVisibilityOperationSchema,
   clipVolumeOperationSchema,
   clipAudioFadesOperationSchema,
+  clipVolumeEnvelopeOperationSchema,
   clipTextContentOperationSchema,
   clipTextStyleOperationSchema,
 ]).and(z.object({ clipId: editorIdSchema }).strict());

@@ -1,4 +1,7 @@
-import { buildCompositionVolumeAutomations, type CompositionClipVolumeAutomation, type CompositionVolumePoint } from "./composition-audio-mix.service";
+import { buildCompositionVolumeAutomations, type CompositionClipVolumeAutomation } from "./composition-audio-mix.service";
+import { resolvePlaybackVolume } from "./composition-volume-interpolation";
+export { resolvePlaybackVolume } from "./composition-volume-interpolation";
+import { applyAuthoredVolumeEnvelopes } from "./composition-authored-volume";
 import { resolveCompositionClipAudioVolume } from "./composition-clip-audio.service";
 import type { CompositionEditorDocument } from "./composition-document.types";
 import { buildCompositionTransitionRuntime, type CompositionTransitionRuntime } from "./composition-transition-runtime";
@@ -6,27 +9,12 @@ import { buildCompositionTransitionRuntime, type CompositionTransitionRuntime } 
 export const COMPOSITION_PLAYBACK_AUDIO_ENVELOPE_VERSION = 2;
 export const COMPOSITION_AUDIO_CROSSFADE_SEGMENTS = 16;
 
-/** The same piecewise-linear envelope is serialized into preview/render and evaluated by the source reference. */
-export function resolvePlaybackVolume(points: readonly CompositionVolumePoint[], time: number, baselineVolume: number) {
-  const first = points[0]; if (!first) return baselineVolume;
-  if (time <= first.timeSeconds) return first.volume;
-  const last = points.at(-1)!; if (time >= last.timeSeconds) return last.volume;
-  let lower = 1; let upper = points.length - 1;
-  while (lower < upper) {
-    const middle = Math.floor((lower + upper) / 2);
-    if (points[middle]!.timeSeconds < time) lower = middle + 1; else upper = middle;
-  }
-  const previous = points[lower - 1]!; const next = points[lower]!;
-  const duration = next.timeSeconds - previous.timeSeconds;
-  return duration <= 0 ? next.volume : previous.volume + (next.volume - previous.volume) * (time - previous.timeSeconds) / duration;
-}
-
 /** Audio crossfades are linear and independent of visual easing; gains multiply authored fade/duck envelopes. */
 export function buildCompositionPlaybackVolumeAutomations(
   document: CompositionEditorDocument,
   runtime: CompositionTransitionRuntime = buildCompositionTransitionRuntime(document),
 ): CompositionClipVolumeAutomation[] {
-  const base = buildCompositionVolumeAutomations(document);
+  const base = applyAuthoredVolumeEnvelopes(document, buildCompositionVolumeAutomations(document), runtime.audioWindowsByClipId);
   const crossfades = runtime.items.filter((transition) => transition.audioMode === "CROSSFADE");
   if (!crossfades.length) return base;
   const automations = new Map(base.map((automation) => [automation.targetClipId, automation]));

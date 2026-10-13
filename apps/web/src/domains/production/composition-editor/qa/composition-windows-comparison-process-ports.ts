@@ -7,7 +7,7 @@ import {createControlledRenderDeadline} from "./composition-controlled-render-de
 import {requiresControlledExecutorIntervention, type ControlledExecutionFence} from "./composition-controlled-execution-fence";
 import {admitControlledDependencyInventory, type ControlledDependencyInventoryConfiguration} from "./composition-controlled-dependency-inventory";
 import {pinConformanceFile, assertConformanceFileUnchanged} from "./composition-conformance-file-integrity";
-import {readOwnedMeasurementFile} from "./composition-owned-measurement-files";
+import {readOwnedMeasurementFile, assertMeasurementSpoolAvailable, MEASUREMENT_SPOOL_ADMISSION_POLICY} from "./composition-owned-measurement-files";
 import {OWNED_MEASUREMENT_POLICY as policy, ownedMeasurementRequestSchema, ownedMeasurementReceiptSchema,
   encodeOwnedMeasurementReference, type OwnedMeasurementRequest} from "./composition-owned-measurement-contract";
 import type {ControlledMaterializedExecutor} from "./composition-materialized-supervisor-renderer";
@@ -79,7 +79,8 @@ export function createWindowsComparisonProcessPorts(raw: Configuration, bridgePo
     try {
       const parent = await lstat(outputParentDirectory);
       if (!parent.isDirectory() || parent.isSymbolicLink() || await realpath(outputParentDirectory) !== outputParentDirectory) throw failure();
-      const directory = await mkdtemp(join(outputParentDirectory, "measurement-"));
+      await assertMeasurementSpoolAvailable(outputParentDirectory, signal);
+      const directory = await mkdtemp(join(outputParentDirectory, MEASUREMENT_SPOOL_ADMISSION_POLICY.directoryPrefix));
       const directoryIdentity = await lstat(directory);
       const verifyDirectory = async () => {
         const [currentParent, currentDirectory] = await Promise.all([lstat(outputParentDirectory), lstat(directory)]);
@@ -116,6 +117,9 @@ export function createWindowsComparisonProcessPorts(raw: Configuration, bridgePo
       const pins = await ownedExecute(descriptor, {directory}, signal, {
         verifyMeasurementFiles: async () => {
           await verifyDirectory();
+          // Recheck while holding the shared fence, before launching any decoder.
+          await assertMeasurementSpoolAvailable(outputParentDirectory, signal, directory);
+          await verifyDirectory();
           installation ??= await admitControlledDependencyInventory(inventory, execution, signal);
           await installation.assertUnchanged();
           await assertConformanceFileUnchanged(path, requestPin, policy.maximumRequestBytes, false, signal);
@@ -131,7 +135,8 @@ export function createWindowsComparisonProcessPorts(raw: Configuration, bridgePo
       if (execute?.isQuarantined() || error instanceof Error && requiresControlledExecutorIntervention(error.message)) quarantined = true;
       if (quarantined) throw new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED");
       active(signal);
-      // Failures retain bounded spool files. No recursive cleanup, PID fallback or automatic fence reclaim.
+      // Failures retain bounded spool files; subsequent instances reject them before allocation/start.
+      // No recursive cleanup, PID fallback or automatic fence reclaim.
       throw error instanceof Error && /^CONTROLLED_RENDER_[A-Z_]+$/.test(error.message) ? error : failure();
     } finally {deadline.dispose(); busy = false;}
   }

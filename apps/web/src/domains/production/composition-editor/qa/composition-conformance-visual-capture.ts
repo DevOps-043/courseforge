@@ -305,6 +305,7 @@ export async function captureMaterializedConformancePreview(params: {
     await verifyFiles();
     assertCaptureBrowserIdentityUnchanged(browserIdentity, await readCaptureBrowserIdentity(client));
     await browser.verifyExecutableIdentity();
+    platformFonts.assertValid();
     const textParity = captureTextRegions ? validateTextParityEvidence({schemaVersion: 1,
       policy: COMPOSITION_TEXT_PARITY_POLICY.id, repeatability: TEXT_PARITY_REPEATABILITY, checkpoints: textCheckpoints}, contract) : undefined;
     const fontUsageRequired = contract.schemaVersion === 4 && contract.fontUsageContract !== undefined;
@@ -339,6 +340,7 @@ export async function captureMaterializedConformancePreview(params: {
       const path = join(directory, name); ownedFiles.push(path); await writeFile(path, serialized, { flag: "wx", mode: 0o600 });
     }
     assertConformanceJobActive(params.signal);
+    platformFonts.assertValid();
     return { directory, metadata, receipt, playback, cleanup, contract };
   } catch (error) { await cleanup(); assertConformanceJobActive(params.signal); throw error; }
   finally {

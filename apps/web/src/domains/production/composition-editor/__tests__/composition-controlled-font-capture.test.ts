@@ -400,6 +400,7 @@ function fixture() {
   }};
   return {document, contract, text, client, pinChecks: () => pinChecks, subscribed: () => !!handler,
     emit() {handler?.({font: {fontFamily: font.family, platformFontFamily: "Internal Editorial", src: `${origin}/${conformanceFontPath(font)}`}});},
+    emitInvalid() {handler?.({font: {fontFamily: font.family, platformFontFamily: "Unexpected Replacement", src: "http://foreign.invalid/font.woff2"}});},
     fallback() {fallback = true;}, changeBrowser() {changedBrowser = true;}, changeFiles() {changedFiles = true;},
     async start() {return startControlledFontCapture({document, contract, client, origin, fonts: [font], verifyFiles: async () => {
       pinChecks++; if (changedFiles) throw new Error("private file path");
@@ -505,6 +506,25 @@ test("finalization rejects browser changes and a substituted text witness, prese
     if (kind === "text") text.checkpoints[0].regions[0].width++;
     await assert.rejects(capture.finish(text), /FINALIZATION_FAILED/);
     assert.equal(state.subscribed(), false);
+  }
+});
+
+test("invalid font events after the last checkpoint or during final browser read prevent evidence publication", async () => {
+  for (const phase of ["before-finish", "browser-read"] as const) {
+    const state = fixture(); const capture = await state.start(); state.emit();
+    for (const point of state.text.checkpoints) await capture.capture(point);
+    if (phase === "before-finish") state.emitInvalid();
+    else {
+      const send = state.client.send;
+      state.client.send = async (method, params) => {
+        const response = await send(method, params);
+        if (method === "Browser.getVersion") state.emitInvalid();
+        return response;
+      };
+    }
+    await assert.rejects(capture.finish(state.text), /FINALIZATION_FAILED/, phase);
+    assert.equal(state.subscribed(), false);
+    await assert.rejects(capture.finish(state.text), /COVERAGE_INCOMPLETE/);
   }
 });
 

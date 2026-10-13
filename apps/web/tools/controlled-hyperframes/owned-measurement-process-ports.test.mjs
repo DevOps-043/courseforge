@@ -227,6 +227,36 @@ test("invalid UTF8 is rejected after stop, without silently replacing probe byte
   assert.deepEqual(await readdir(f.fences), []); assert.equal((await readdir(f.outputs)).length, 1);
 });
 
+test("retained spool blocks the same ports and a fresh provider before another allocation or start", {timeout: 10_000}, async t => {
+  const f = await fixture(t, {stdout: Buffer.from([0xff]), autoStop: true});
+  await assert.rejects(f.ports.execute(f.ports.probePath, [], executeOptions), /MEASUREMENT_FAILED/);
+  const retained = await readdir(f.outputs);
+  assert.equal(retained.length, 1); assert.deepEqual(await readdir(f.fences), []);
+  const restarted = createWindowsComparisonProcessPorts(f.configuration, f.bridgePorts);
+  for (const ports of [f.ports, restarted]) {
+    await assert.rejects(ports.execute(ports.probePath, [], executeOptions), /SPOOL_RECONCILIATION_REQUIRED/);
+    assert.deepEqual(await readdir(f.outputs), retained);
+    assert.equal(f.calls(), 1);
+  }
+});
+
+test("spool is rechecked under the fence before decoder start", {timeout: 10_000}, async t => {
+  const f = await fixture(t, {autoStop: true});
+  const delegate = f.configuration.measurementFence;
+  const ports = createWindowsComparisonProcessPorts({...f.configuration, measurementFence: {
+    acquire: async descriptor => {
+      const lease = await delegate.acquire(descriptor);
+      await mkdir(join(f.outputs, "measurement-retained-during-admission"));
+      return lease;
+    },
+    releaseConfirmed: lease => delegate.releaseConfirmed(lease),
+  }}, f.bridgePorts);
+  await assert.rejects(ports.execute(ports.probePath, [], executeOptions), /SPOOL_RECONCILIATION_REQUIRED/);
+  assert.equal(f.calls(), 0);
+  assert.ok((await readdir(f.outputs)).includes("measurement-retained-during-admission"));
+  assert.deepEqual(await readdir(f.fences), []);
+});
+
 test("shared deadline covers a noncooperative PCM consumer and retains files until reconciliation", {timeout: 10_000}, async t => {
   const f = await fixture(t, {stdout: Buffer.alloc(8), autoStop: true});
   const release = deferred(); let count = 0;

@@ -424,6 +424,27 @@ test("declared font loading is mandatory before frames and throughout forward/re
   }, true, 4, false, undefined, false, true);
 });
 
+test("late invalid font events reject preview publication and clean captured files", async () => {
+  await withSource(async (parent, materialized) => {
+    const before = await readdir(parent);
+    const adapter = await browserAdapter(materialized.receipt.documentHash, "text");
+    const launch: typeof launchCompositionQaBrowser = async (options) => {
+      const browser = await adapter.launch(options);
+      return {...browser, verifyExecutableIdentity: async () => {
+        assert.ok(browser.verifyExecutableIdentity);
+        await browser.verifyExecutableIdentity();
+        adapter.handlers.get("CSS.fontsUpdated")?.({font: {fontFamily: "Editorial",
+          platformFontFamily: "Unexpected Replacement", src: "http://foreign.invalid/font.woff2"}});
+      }};
+    };
+    await assert.rejects(captureMaterializedConformancePreview({materialized, outputParentDirectory: parent}, launch),
+      /CONFORMANCE_FONT_EVENT_INVALID/);
+    assert.deepEqual(await readdir(parent), before);
+    assert.equal(adapter.wasClosed(), true);
+    assert.equal(adapter.handlers.size, 0);
+  }, true, 4, false, undefined, false, true);
+});
+
 test("actual glyph fallback rejects forward or reverse packages despite unchanged PNGs and loaded FontFaces", async () => {
   await withSource(async (parent, materialized) => {
     const good = await browserAdapter(materialized.receipt.documentHash, "text");

@@ -68,6 +68,20 @@ test("platform capture accepts an actual custom family with a different CSS alia
   assert.equal(browser.subscribed(), false);
 });
 
+test("publication validation retains late invalid events even after another valid event", async () => {
+  const browser = adapter(); const capture = await startConformancePlatformFontCapture(browser.client, [font], documentFixture(), origin);
+  try {
+    browser.emit(event);
+    await capture.verify(checkpoint());
+    assert.doesNotThrow(() => capture.assertValid());
+    browser.emit({...event, src: "http://foreign.invalid/font.woff2"});
+    browser.emit(event);
+    assert.throws(() => capture.assertValid(), /CONFORMANCE_FONT_EVENT_INVALID/);
+    await assert.rejects(capture.verify(checkpoint()), /CONFORMANCE_FONT_EVENT_INVALID/);
+  } finally {capture.close();}
+  assert.equal(browser.subscribed(), false);
+});
+
 test("a single system fallback glyph, another custom family or malformed usage rejects and releases references", async () => {
   const browser = adapter(); const capture = await startConformancePlatformFontCapture(browser.client, [font], documentFixture(), origin);
   try {

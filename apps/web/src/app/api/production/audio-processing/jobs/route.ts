@@ -69,7 +69,7 @@ export async function GET(request: Request) {
     const source = await resolveAudioProcessingSource({ componentId: parsed.data.componentId, organizationId: tenant.organizationId,
       sourceAssetId: parsed.data.sourceAssetId, supabase: authorized.admin });
     const capability = getAudioSourceCapability(source);
-    let query = authorized.admin.from("production_jobs").select("id, status, provider_error, created_at, updated_at, output_snapshot").eq("organization_id", tenant.organizationId).eq("material_component_id", parsed.data.componentId).eq("job_type", PRODUCTION_JOB_TYPES.AUDIO_PROCESSING).eq("provider", PRODUCTION_PROVIDERS.FFMPEG).contains("input_snapshot", { source: { assetId: source.id } }).order("created_at", { ascending: false }).limit(1);
+    let query = authorized.admin.from("production_jobs").select("id, status, provider_error, created_at, updated_at, output_snapshot").eq("organization_id", tenant.organizationId).eq("material_component_id", parsed.data.componentId).eq("job_type", PRODUCTION_JOB_TYPES.AUDIO_PROCESSING).eq("provider", PRODUCTION_PROVIDERS.FFMPEG).contains("input_snapshot", { profile: { id: "voice-course-v1" }, source: { assetId: source.id } }).order("created_at", { ascending: false }).limit(1);
     if (parsed.data.jobId) query = query.eq("id", parsed.data.jobId);
     const { data, error } = await query.maybeSingle();
     if (error) throw error;

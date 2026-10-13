@@ -41,6 +41,8 @@ export function createMaterializedProducerBridgeConfiguration(input) {
       "observed-producer-operator-reference.mjs", "original-session-receipt.mjs", "original-session-observer.mjs",
       "materialized-measurement-plan-policy.mjs", "original-native-receipt.mjs",
       ...(installation.operatorConfiguration ? ["run-observed-materialized-producer.mjs", "original-session-observer.mjs",
+        "original-session-network-guard.mjs",
+        "observed-original-server-channel.mjs", "original-server-file-channel.mjs", "original-server-channel-policy.mjs",
         "observed-producer-operator-configuration.mjs", "materialized-measurement-plan.mjs", "original-session-native-observer.mjs",
         "original-session-sdr-stages.mjs", "closed-stage-executor.mjs"] : [])]
       .map(file => join(toolDirectory, file)), installation.nodePath, installation.browserPath,

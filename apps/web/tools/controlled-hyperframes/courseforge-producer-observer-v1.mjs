@@ -2,6 +2,7 @@ import {AsyncLocalStorage} from "node:async_hooks";
 import {createHash} from "node:crypto";
 
 const observations = new AsyncLocalStorage();
+export const ORIGINAL_SERVER_AUTHORIZATION_TIMEOUT_MILLISECONDS = 15000;
 const reject = code => { throw new Error(`CONTROLLED_PRODUCER_OBSERVER_${code}`); };
 function rejectObservation(context, code) {
   context.failure ??= new Error(`CONTROLLED_PRODUCER_OBSERVER_${code}`);
@@ -26,6 +27,30 @@ async function invoke(context, callback, payload) {
   }
 }
 
+/** Preserve SDK pipeline; observed launches use private CDP handles instead of a second TCP port.
+ * Legacy calls outside this context preserve upstream args/default transport. Not OS attestation. */
+export function observedProducerBrowserLaunchOptions(arguments_) {
+  const context = activeObservation();
+  if (!context) return {};
+  if (!Array.isArray(arguments_) || arguments_.length > 128
+    || arguments_.some(value => typeof value !== "string" || value.length > 4096))
+    rejectObservation(context, "BROWSER_LAUNCH_INVALID");
+  const removed = new Set(["--no-sandbox", "--disable-setuid-sandbox", "--disable-ipc-flooding-protection"]);
+  const unsafe = /^--(?:remote-debugging-|disable-web-security(?:=|$)|allow-running-insecure-content(?:=|$)|ignore-certificate-errors(?:-|=|$)|single-process(?:=|$)|disable-site-isolation(?:-|=|$))/;
+  const args = [];
+  for (const argument of arguments_) {
+    if (unsafe.test(argument) || /^--(?:no-sandbox|disable-setuid-sandbox|disable-ipc-flooding-protection)=/.test(argument))
+      rejectObservation(context, "BROWSER_LAUNCH_INVALID");
+    if (removed.has(argument)) continue;
+    if (argument.startsWith("--disable-features=")) {
+      const features = argument.slice("--disable-features=".length).split(",")
+        .filter(feature => !/^(?:IsolateOrigins|site-per-process)(?:[<:].*)?$/.test(feature));
+      if (features.length) args.push(`--disable-features=${features.join(",")}`);
+    } else args.push(argument);
+  }
+  return {pipe: true, args};
+}
+
 /** Host callbacks are trusted code, not a sandbox or client-supplied scripts. */
 export async function runObservedProducer(execute, job, signal, observer) {
   const config = job?.config;
@@ -35,6 +60,7 @@ export async function runObservedProducer(execute, job, signal, observer) {
     reject("INPUT_INVALID");
   if ((observer.onEncode !== undefined || observer.onAfterAssemble !== undefined)
     && (typeof observer.onEncode !== "function" || typeof observer.onAfterAssemble !== "function")) reject("STAGE_CALLBACKS_INVALID");
+  if (observer.onOriginalServer !== undefined && typeof observer.onOriginalServer !== "function") reject("SERVER_CALLBACK_INVALID");
   signal.throwIfAborted();
   if (config.workers !== 1 || config.useGpu !== false || config.hdrMode !== "force-sdr"
     || profile?.concurrency !== 1 || profile.enableBrowserPool !== false
@@ -46,7 +72,8 @@ export async function runObservedProducer(execute, job, signal, observer) {
   // Capture functions cannot leak observer state between concurrent jobs.
   const context = {signal, job, observer: Object.freeze({onSession: observer.onSession,
     onBeforeFrame: observer.onBeforeFrame, onAfterFrame: observer.onAfterFrame,
-    onEncode: observer.onEncode, onAfterAssemble: observer.onAfterAssemble}), failure: undefined,
+    onEncode: observer.onEncode, onAfterAssemble: observer.onAfterAssemble,
+    onOriginalServer: observer.onOriginalServer}), failure: undefined, originalServerUrl: undefined,
     encoding: undefined, assembling: false, assembled: false,
     sessions: new WeakSet(), pending: new Map(), frames: 0, closed: false};
   return observations.run(context, async () => {
@@ -115,12 +142,47 @@ function assertSession(context, session) {
     || session.staticFrames != null) rejectObservation(context, "SESSION_INVALID");
 }
 
+/** Optional operator authorization gate. Candidate URL is not socket/policy evidence.
+ * Trusted callback MUST obtain an independent owned listener observation and broker ACK.
+ * Never provide it from HTML/job metadata; there is no default grant or network fallback. */
+async function authorizeOriginalServer(context, session) {
+  if (!context.observer.onOriginalServer) return;
+  const sourceUrl = session.serverUrl;
+  const match = typeof sourceUrl === "string" && /^http:\/\/localhost:([1-9][0-9]{0,4})$/.exec(sourceUrl);
+  const port = match && Number(match[1]);
+  if (!port || port > 65535 || context.originalServerUrl !== undefined && context.originalServerUrl !== sourceUrl)
+    rejectObservation(context, "SERVER_CANDIDATE_INVALID");
+  context.originalServerUrl = sourceUrl;
+  const authorization = new AbortController();
+  let timer, abort;
+  const cancelled = new Promise((_, fail) => {
+    abort = () => {authorization.abort(); fail(new Error("CONTROLLED_PRODUCER_OBSERVER_SERVER_AUTHORIZATION_FAILED"));};
+    context.signal.addEventListener("abort", abort, {once: true});
+    timer = setTimeout(abort, ORIGINAL_SERVER_AUTHORIZATION_TIMEOUT_MILLISECONDS);
+  });
+  try {
+    const ack = await Promise.race([cancelled, Promise.resolve().then(() => {
+      activeObservation();
+      return context.observer.onOriginalServer(Object.freeze({serverUrl: sourceUrl, address: "127.0.0.1", port,
+        signal: authorization.signal}));
+    })]);
+    activeObservation();
+    if (!ack || Object.keys(ack).sort().join(",") !== "address,port,status" || ack.status !== "AUTHORIZED"
+      || ack.address !== "127.0.0.1" || ack.port !== port || session.serverUrl !== sourceUrl)
+      rejectObservation(context, "SERVER_AUTHORIZATION_FAILED");
+    // The SDK binds IPv4, while localhost resolution could select IPv6/DNS. Use only the authorized literal.
+    session.serverUrl = `http://127.0.0.1:${port}`;
+  } catch {authorization.abort(); rejectObservation(context, "SERVER_AUTHORIZATION_FAILED");}
+  finally {clearTimeout(timer); context.signal.removeEventListener("abort", abort);}
+}
+
 /** Called on the SDK's page before its first navigation, using its cached CDP session. */
 export async function observeProducerSession(session, acquireCdp) {
   const context = activeObservation();
   if (!context) return;
   if (context.closed || !session?.page || typeof acquireCdp !== "function" || session.captureMode !== "screenshot") rejectObservation(context, "SESSION_INVALID");
   if (context.sessions.has(session)) return;
+  await authorizeOriginalServer(context, session);
   let cdp;
   try { cdp = await acquireCdp(); }
   catch { rejectObservation(context, "SESSION_INVALID"); }

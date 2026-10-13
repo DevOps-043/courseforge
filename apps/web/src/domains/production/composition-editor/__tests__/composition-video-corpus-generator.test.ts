@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, rmdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rename, rm, rmdir, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -117,6 +117,33 @@ test("probe failures and video/binary mutation reject the artifact and clean onl
     } finally {await state.cleanup();}
   }
 });
+
+for (const replacement of ["encoder", "probe", "audio", "video"] as const) {
+  test(`same-byte ${replacement} replacement cannot produce a corpus receipt`, async () => {
+    const state = await controlledFiles();
+    try {
+      await assert.rejects(generateVideoConformanceCorpusSource(state.params, async (binary, args) => {
+        if (binary === state.params.ffmpegPath) {
+          await writeFile(args.at(-1)!, mockBytes, {flag: "wx"}); return {stdout: ""};
+        }
+        if (args.includes("-select_streams")) return {stdout: frameTimes};
+        const targetPath = replacement === "encoder" ? state.params.ffmpegPath
+          : replacement === "probe" ? state.params.ffprobePath
+          : replacement === "audio" ? join(dirname(args.at(-1)!), "source.wav") : args.at(-1)!;
+        const original = await stat(targetPath);
+        const originalBytes = await readFile(targetPath);
+        const replacementPath = `${targetPath}.replacement`;
+        await writeFile(replacementPath, originalBytes, {flag: "wx"});
+        await utimes(replacementPath, original.atime, original.mtime);
+        assert.notEqual((await stat(replacementPath)).ino, original.ino);
+        await rename(replacementPath, targetPath);
+        assert.deepEqual(await readFile(targetPath), originalBytes);
+        return {stdout: JSON.stringify(probe)};
+      }, async () => 250, mockDecode, mockAudioDecode), /CONFORMANCE_CORPUS_INTEGRITY_CHANGED/);
+      assert.deepEqual((await readdir(state.params.outputParentDirectory)).sort(), ["controlled-encoder", "controlled-probe"]);
+    } finally {await state.cleanup();}
+  });
+}
 
 test("WAV pipe decoder accepts bounded PCM chunks and rejects malformed stream metadata", () => {
   const header = Buffer.alloc(44);

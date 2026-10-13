@@ -1,5 +1,376 @@
 # Hoja de seguimiento — siete capacidades prioritarias del editor multimedia
 
+## Corte vigente — admisión runtime y build preparado (2026-10-13)
+
+CAP-027: inventario exacto integrado al binding CLR (6/6 pruebas), proyectos net48 separados
+y receta de doble build con comparación de tres DLL preparada. Build nativo no ejecutado,
+sin instalación/activación. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-027 91.30% parcial; siete 98.76% estimados. CAP-004/009/010/017/023/026: 100% de
+implementación registrada cada una, QA pendiente/sin reauditoría. Cierre físico sigue abierto.
+
+## Corte vigente — entrada administrada CAP-027 (2026-10-13)
+
+Entrada C# + adaptador Node edge implementados, con cancelación/drenaje y FILETIME exacto.
+No instalados/activados: falta admitir clausura runtime, build CLR/ABI y verificar conexión
+nativa. [Evidencia y límites](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-027: 91.30% parcial; siete: 98.76% estimados. CAP-004/009/010/017/023/026: 100% de
+implementación registrada cada una, QA pendiente/sin reauditoría. Sin crédito de cierre nativo.
+
+## Corte vigente — fuentes tardías en CAP-027 (2026-10-12)
+
+Sesión original y preview rechazan evidencia invalidada por eventos CSS después del último
+checkpoint y antes de publicar. [Detalle](SOFLIA_ENGINE_CAP027_CLOSURE_AUDIT.md).
+CAP-027: 91.30% estimado parcial; promedio siete: 98.76%. CAP-004/009/010/017/023/026:
+100% de implementación registrada cada una, QA pendiente, sin reauditoría. No hay aumento
+por corrección de garantía previamente contabilizada; cierre nativo/corpus/DB sigue pendiente.
+
+## Corte vigente — presupuesto SDR sin reinicio entre etapas (2026-10-12)
+
+Inspección local no encontró runtime CLR declarado en package manifests ni dotnet/cl/cmake
+en PATH: no acredita ausencia global, pero no existe binding operativo probado. No instalar
+ni sustituir autenticación por subprocess. Se corrigió una brecha independiente CAP-027:
+encode y verificación mux recibían timeout completo cada uno. Ahora comparten presupuesto
+monotónico desde entrada en encode, incluyendo intervalo de assembly/finalize; clock drift/
+agotamiento fallan latched y cada herramienta recibe solo remaining.
+
+7/7 etapas SDR pasan con archivos reales/execute multimedia simulado y clock dirigido;
+sin SDK/render/QA formal. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Sin crédito adicional por corrección de garantía ya
+contabilizada. Binding nativo/política efectiva/provision/corpus/DB continúan abiertos.
+Corte sustituye inferiores. SDK fijo/pipeline original conservados; pins a regenerar.
+
+## Corte vigente — admisión del exchange e identidad nativa del cliente (2026-10-12)
+
+Adaptador exchange valida config/pins/binding/secuencia antes y después del callback
+managed, copia buffers y enclava errores. Nuevo entry C# ExchangeBoundOnceAsync comprueba
+PID actual y handle/FILETIME/cuenta/logon del cliente antes/después del pipe autenticado.
+No lanzar en PowerShell hijo: cambia PID admitido. Falta runtime CLR in-process concreto;
+callback NO equivale a conexión nativa resuelta. Preparación no abre pipe ni carga DLL.
+
+3/3 exchange y5/5 cliente pasan (managed/native simulados); ambos TS y compilación C#
+con5 checks framing managed pasan, sin Win32/pipe/WFP/render/QA formal. Inventario/pins
+requieren regeneración explícita. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Bloques nativos/provision/corpus/DB continúan abiertos.
+Corte sustituye inferiores. Sin activación ni modificación de seguridad del equipo.
+
+## Corte vigente — composición concreta de supervisor firmado (2026-10-12)
+
+original-server-network-lifecycle.mjs implementa serveOriginalServer con mailbox firmado,
+cliente broker y doble observación del listener. Clave privada KeyObject queda en closure
+supervisor; se comprueba par público, ejecución/nonce y DENIED antes de atender. Factoría
+materializada verifica configuración V2 y pins runtime antes de componer, sin comandos de red.
+Wrapper exige organización y SID AppContainer iguales a descriptor/token antes de DENY.
+Bridge materializado exige inventario de nuevos módulos y network guard ya importado.
+
+4/4 composición supervisor,6/6 ciclo,11/11 bridge materializado,4/4 measurer y ambos TS pasan.
+Mailbox/firmas/filesystem reales; SDK/socket/job/broker transport simulados. Sin prueba OS.
+Pendiente exchange nativo autenticado conectado al backend efectivo/confirmación Job,
+provisión ACL/key/profile, inventario completo admitido/pins, build DLL y corpus/DB.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Sin configuración operativa/activación/render/QA formal.
+Corte sustituye inferiores. No confundir composición concreta con backend nativo completo.
+
+## Corte vigente — ciclo de red conectado a factoría Windows (2026-10-12)
+
+Wrapper opt-in por ejecución reserva intento síncronamente: DENY antes de START, READY
+atiende port supervisor, STOP/cierre/drain antes de SEAL; resultado retenido hasta ACK
+SEALED. STOP/aborto durante DENY impiden launch tardío y no fabrican STOP sin job; fallo
+retiene fence/quarantina. Factoría Windows admite networkLifecycle explícito y rechaza
+mezclarlo con onOwnedReady anterior; legacy conservado, sin default/activación.
+
+5/5 ciclo (cliente/bridge/snapshots/native simulados),27/27 bridge y ambos TS pasan.
+Falta composición operativa del port serve con mailbox/clave privada, inventario/ACL/
+provision y broker confirmación independiente Job/SID/política efectiva/build; corpus/DB.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Sin red/job/WFP/render físico ni QA formal.
+Corte sustituye inferiores; integración de ports no demuestra aislamiento efectivo.
+
+## Corte vigente — bootstrap V2 conectado al canal firmado (2026-10-12)
+
+Configuración V2 opt-in contiene metadata pública estricta: ejecución/nonce/directorio,
+SPKI Ed25519 canónico y SHA, SHA/tamaño del transporte fijo. V1 rechaza campos nuevos y
+mantiene legacy. Bootstrap V2 conecta onOriginalServer a mailbox real, ligado a ejecución
+y directorio sibling preprovisionado; verifica config/transporte antes y después, sin
+callback/módulo arbitrario/clave privada desde JSON. Directorio de video conserva mkdir exclusivo.
+
+9/9 loader/bootstrap (incluido V2 con mailbox/firma reales y SDK/native simulados),
+2/2 configuración,6/6 canal y5/5 gate pasan. No IPC OS entre procesos/job/WFP/render/QA formal.
+Falta orchestration supervisor DENY-before-start/serve/SEAL-after-stop y admisión del
+inventario runtime completo/ACL/key custody/política efectiva/native build/corpus/DB.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Sin configuración operativa escrita/activación.
+Corte sustituye inferiores; pins/inventario deben regenerarse antes de admisión.
+
+## Corte vigente — transporte local candidato/ACK firmado (2026-10-12)
+
+Canal de archivos dedicado por ejecución/nonce: solicitudes y ACK Ed25519 vinculan hash/
+UUID/secuencia/puerto/PID, sin clave privada en productor ni nuevo puerto TCP. Escrituras
+exclusivas+sync+marker, lecturas acotadas/pinned, máximo4 intercambios/15s y reservas sin
+replay/resume/TTL/cleanup. Cancelación drena autorización pendiente antes de retornar;
+sin late ACK aunque callback ignore señal.6/6 pruebas filesystem/firmas reales pasan.
+
+NO conectado aún a bootstrap/configuración/inventario ni al ciclo de arranque/cierre.
+Callback de autorización/native root simulado: no prueba aislamiento OS ni IPC entre procesos.
+Faltan configuración pública pinneada, key custody privado supervisor, ACL/provision/pins,
+política efectiva/native build y corpus/DB/wiring. Sin activación/render/QA formal.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Corte sustituye inferiores.
+
+## Corte vigente — compuerta original pre-navegación y enlace supervisor (2026-10-12)
+
+Extensión versionada V6/mismo SDK0.7.106 conserva los ocho hooks y pipeline original.
+Observer opt-in onOriginalServer espera ACK exacto ANTES de CDP/onSession/navegación,
+con candidato localhost/puerto canónico, deadline15s+cancelación del callback; solo después
+usa dirección IPv4 literal autorizada. Fallo permanece latched aunque SDK lo absorba.
+Loader admitido preserva/fija callback; legacy sin callback no cambia ni queda certificado.
+
+Supervisor compone root/control poseídos con cliente broker: requiere DENIED previo,
+observa listener antes/después de allow y rechaza owner/port drift; sesiones adicionales
+revalidan sin reenviar ALLOW. No hay implementación de transporte candidato/ACK entre
+procesos ni wiring productivo todavía; política efectiva/SID/native build siguen pendientes.
+
+5/5 compuerta,3/3 composición supervisor,15/15 extensión y8/8 loader pasan;
+ambos TS compilan. Sin navegador/Win32/WFP/pipe/render/QA formal ni activación.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Corte sustituye inferiores; sin incremento por ports
+aún desconectados entre procesos. Regenerar pins/package/inventario antes de admisión.
+
+## Corte vigente — listener integrado al canal poseído (2026-10-12)
+
+Bridge V4 expone observeOriginalListener al callback del OPERADOR. Comando/respuesta
+correlacionados por executionId/requestId/puerto y PID/FILETIME contra READY inmutable;
+PowerShell llama a observación nativa del root/Job retenidos. Máximo8 snapshots seriales,
+deadline15s, aborto/STOP/root-exit y respuestas ajenas/tardías impiden aceptar evidencia.
+Fallo/timeout no puede ocultarse absorbiendo el rechazo en el callback. Legacy V1–V3 conservado.
+
+27/27 pruebas bridge,12/12 decoder managed, ambos TS y C#/PS compile/parse pasan.
+Transporte/metadata simulados; ninguna API nativa de socket/Job/WFP/pipe fue ejecutada.
+NO conectado aún al candidato del SDK ni al ACK de autorización HTTP; SID/política efectiva,
+build/pins/provisionamiento y corpus/DB/wiring continúan pendientes.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-02791.30% estimado parcial; siete98.76% sin incremento. CAP-004/009/010/017/023/026100%
+implementación registrada cada una/QA pendiente/sin reauditoría. Sin instalación/activación/
+migración/render/QA formal. Corte sustituye inferiores.
+
+## Corte vigente — observación acotada del listener poseído (2026-10-12)
+
+OwnedRenderJob incorpora observación IPv4 TCP LISTEN 127.0.0.1/puerto exacto usando tabla
+del OS, PID del owner, handle retenido, pertenencia al MISMO Job Object y FILETIME/liveness
+antes/después. Consulta única acotada a4MiB/65536 filas; falla ante crecimiento/error,
+wildcard, puerto compartido o identidad ajena. Decoder puro NO equivale a observación OS.
+
+12/12 comprobaciones managed y compilación de los tres helpers C# pasan. Sin llamada a
+GetExtendedTcpTable, Job Object, WFP, pipe o render físicos; sin instalación/activación.
+Todavía NO conectado a bridge/candidato/ACK ni autorización HTTP. SID/política efectiva,
+provisionamiento/DLL/build/pins y corpus/DB/wiring siguen pendientes.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-02791.30% estimado parcial; siete98.76% sin incremento. CAP-004/009/010/017/023/026100%
+implementación registrada cada una/QA pendiente/sin reauditoría. Corte sustituye inferiores.
+
+## Corte vigente — identidad de raíz para autorizar HTTP (2026-10-12)
+
+Bridge V4 opt-in entrega PID/FILETIME desde handle poseído mediante callback del operador,
+requiere AppContainerV5/cuotas y rechaza ausencia/metadata no solicitada. Callback/colección
+se drenan antes de liberar ownership/fence incluso con productor STOP/cerrado. No permiso de red
+implícito ni identidad del documento.22/22 bridge y ambos TS pasan; C#/PS compile/parse pasan.
+Sin Win32/job/pipe/WFP físicos. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-02791.30% estimado parcial; siete98.76% sin incremento. CAP-004/009/010/017/023/026100%
+registrada cada una/QA pendiente/sin reauditoría. Falta candidato/ACK antes de navegación,
+listener ownership independiente y autorización efectiva, DLL/build/pins y wiring/corpus/DB.
+No instalación/activación/migración/QA formal. Corte sustituye inferiores; objetivo activo.
+
+## Corte vigente — corrección de arranque CDP y protecciones (2026-10-12)
+
+SDK fijado usaba CDP TCP dinámico antes de onSession: contradicción con DENY_ALL inicial.
+Extensión V5 usa pipe en contexto observado, retira overrides de sandbox/aislamiento/IPC,
+rechaza nuevos bypass y preserva legacy sin contexto/pipeline completo. Dos nuevos hooks,
+ningún cambio a node_modules/SDK versión.26/26 launch/transform/package pasan; Puppeteer mock,
+syntax/files reales, sin Chromium/WFP/render físicos. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-02791.15→91.30% estimado parcial (+0.15pp): identidad/ejecutor94→95, peso15%, crédito por
+corrección concreta de startup, NO por tests ni aislamiento demostrado. Siete98.76% estimado.
+CAP-004/009/010/017/023/026100% registrada cada una/QA pendiente/sin reauditoría. No cierreR04.
+Regenerar paquete V5/pins; aún faltan runtime bridge/DLL/HTTP-broker/provisión/enforcement/corpus/DB.
+Sin instalación/activación/migración/QA formal. Corte sustituye inferiores; objetivo activo.
+
+## Corte vigente — invocación administrada con ownership (2026-10-12)
+
+Adaptador C# concreto valida record/owner/generación y llama al delegate DLL; copias fijadas y
+resultado owned-only, NO política global. Invoker TS liga journal/encoder/managed resultSHA,
+con serialización/deadline/cuarentena. Config V2 exige quinto pin invocation; rechaza V1 sin upgrade.
+C# compila, 3/3 checks managed +8/8 Node invoker/host y ambos builds TS pasan. Nativo/transporte
+simulados, sin DLL/pipe/WFP físicos. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-027 91.15% estimado parcial; siete98.74% estimado, sin incremento. CAP-004/009/010/017/023/
+026100% registrada cada una/QA pendiente/sin reauditoría. No vswhere estándar encontrado; C++
+sin compilar. Faltan transporte runtime, build/pins, peers y política efectiva/global/wiring.
+Sin instalación/activación/migración/QA formal. Corte sustituye inferiores; objetivo activo.
+
+## Corte vigente — preparación operatoria del broker (2026-10-12)
+
+Config estricta SHA-pinned para binding/peers/authority/root y cuatro archivos; revisión de
+ancestros/pins y rechazo de datos compartidos o no canónicos. prepare es read-only: cero callbacks
+nativos, pipe/DLL/filtros/servicios creados. serveOnce separado compone journal/controller/dispatcher,
+exige un dispatch completado, reutiliza3sesiones y cuarentena por outcome incierto. No default ports.
+14/14 host/journal y ambos builds TS pasan (filesystem real, pipe/WFP simulados).
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md). No se ejecutó serve físico ni se activó seguridad.
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento. CAP-004/009/010/017/023/
+026100% registrada individual, QA pendiente/sin reauditoría. Adaptadores concretos C#↔TS↔DLL,
+build/pins/arbitraje/procesos/ACL/enforcement efectivo siguen pendientes. No migración/QA formal.
+Corte sustituye inferiores; objetivo activo.
+
+## Corte vigente — puente invocable C#↔C++ preparado (2026-10-12)
+
+Preparados export C ABI/DLL y encoder binario512 bytes: intención/SHA/keys exactos, IDs operatorios
+provider/subcapa, generaciones1–3 y parser acotado sin punteros desde JSON. Loader C# por ruta/hash/
+tamaño, handle retenido y dependencias System32, sin activación implícita. No se cargó la DLL.
+Encoder1/1 +source5/5 +dos checks managed pasan; C# y ambos builds TS compilan. C++ NO compilado:
+SDK/toolchain aún no disponibles. [Detalle y límites](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento. CAP-004/009/010/017/023/
+026100% registrada cada una/QA pendiente/sin reauditoría. Faltan bootstrap/pins/build nativo y
+arbitraje/loader/ownership/enforcement efectivo; ReadOwned no equivale a política global.
+No instalación/activación/pipe/WFP/migración/QA formal. Corte sustituye inferiores; objetivo activo.
+
+## Corte vigente — cliente, dispatcher y validación de respuestas (2026-10-12)
+
+Cliente C# preparado: identidad de servidor PID/handle/FILETIME/cuenta/logon antes de escribir,
+local-only, derechos individuales y Identification, sin resend. Dispatcher TS valida
+scope/channelId/nonce/orden, reserva comando en journal ANTES de efectos y bloquea replay incluso
+tras recreación. Respuesta fija request/generación/lease; aborto o outcome incierto conserva latch.
+Cliente TS compara eco exacto/lease/generación y SHA del plan esperado, sin aprender endpoint
+desde respuesta; ACK perdido/cancelación bloquea siguientes llamadas. Recorrido software completo
+cliente→dispatcher→controlador→journal probado con diez entradas reales y WFP/transporte simulados.
+11/11 Node del corte (cliente5+dispatcher6) y ambos builds TS pasan; no sumar suites históricas.
+No pipe físico ni WFP activado. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento. CAP-004/009/010/017/023/
+026100% registrada cada una/QA pendiente/sin reauditoría. Falta bootstrap C#↔TS↔C++, pins,
+compilación nativa y wiring/enforcement real. No instalación/migraciones/QA formal.
+Corte sustituye inferiores; autorización resuelta y objetivo activo.
+
+## Corte vigente — servidor de canal local preparado (2026-10-12)
+
+Servidor C# desarrollado y compilado: pipe primera instancia/solo local/DACL explícita,
+cliente ligado a handle vivo/PID/FILETIME/cuenta/logon y broker en cuenta distinta. Framing
+32KiB/UTF-8 estricto, presupuesto15s y latch tras dispatch incierto; nunca libera filtros/lease.
+5/5 managed framing +3/3 source checks +6/6 etapas/worker pasan, ambos builds TS pasan.
+No se abrió pipe ni invocó Win32/WFP; source/framing no acreditan autenticación física.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md). Faltan cliente autenticación mutua,
+dispatcher scope/nonce/replay, puente C++/compilación/pins y wiring con SDK/worker.
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento por canal aún incompleto.
+CAP-004/009/010/017/023/026: 100% registrada cada una, QA pendiente/sin reauditoría.
+Sin instalación/activación/cambio de seguridad del equipo/migraciones/QA formal. Corte sustituye inferiores.
+
+## Corte vigente — reserva durable local y conexión al controlador (2026-10-12)
+
+Implementado journal SID exclusivo con intención y claves de filtros ANTES de escritura nativa,
+3 generaciones inmutables/7 archivos como máximo por reserva, readback exacto y observación ligada
+por SHA. Nuevas instancias no reutilizan SID retenido. Puertos conectan controlador→journal→backend
+obligatorio; ACK perdido no reintenta ni declara aplicado desde metadata. Errores de recuperación
+preservan no retry/inputs a través de etapas/worker/cleanup. No backend nativo por defecto.
+23/23 dirigidas y ambos builds TS pasan: filesystem/reservas reales, nativo simulado.
+[Detalle y límites](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento. Seis CAP-004/009/010/017/
+023/026100% registrada cada una, QA pendiente/sin reauditoría. Faltan canal autenticado, compilación
+C++, pins, arbitraje/enforcement real y wiring del worker. No WFP físico/instalación/activación/
+migraciones/QA formal; no garantías cross-host o pérdida de energía. Este corte sustituye inferiores.
+
+## Corte vigente — biblioteca WFP preparada (2026-10-12)
+
+Desarrollada biblioteca C++ con tipos oficiales Windows SDK: instalación explícita deny-all,
+reemplazo transaccional ligado a SID/lease/generación y readback exacto de filtros persistentes.
+No servicio/ejecutable/instalación/activación. Falta broker durable/canal/autorización, auditoría
+de arbitraje y wiring; no confundir lectura de filtros propios con enforcement global.
+8/8 núcleo TS reejecutadas +3/3 checks estructurales pasan. C++ NO compilado: SDK/toolchain no
+detectados, sin instalarlos. Ninguna API WFP invocada. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento por nativo no verificado.
+CAP-004/009/010/017/023/026: 100% registrada individual, QA pendiente/sin reauditoría.
+Objetivo activo; este corte sustituye los inferiores. La autorización de desarrollo está resuelta.
+
+## Corte vigente — núcleo del controlador de red (2026-10-12)
+
+Autorización recibida: desarrollar sin instalar/activar/modificar seguridad del equipo. Se
+implementaron compilador de planes BLOCK y ciclo deny-all→loopback exacto→deny-all persistente,
+con lease/hash/generación/readback, deadline, ACK perdido no retry y confirmación del job cerrado.
+8/8 dirigidas y ambos builds TS pasan; backend simulado, NO filtros WFP ni tráfico físico.
+Faltan adaptador nativo, canal autenticado, reserva durable y conexión al worker/SDK. No activar.
+[Contrato y siguientes obligaciones](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento por núcleo no operativo.
+CAP-004/009/010/017/023/026: 100% implementación registrada cada una, QA pendiente/sin reauditoría.
+Este corte sustituye los inferiores; la autorización de desarrollo ya no es un pendiente.
+
+## Corte vigente — temporales retenidos del medidor (2026-10-12)
+
+Auditoría posterior de cierre: [brechas y decisión de frontera OS](SOFLIA_ENGINE_CAP027_CLOSURE_AUDIT.md).
+SDR tiene ruta de conversión/ensamblado explícita; no duplicar encoder. Falta implementar una
+frontera de red OS compatible con loopback original. Se requiere decisión sobre un controlador
+separado del worker restringido antes de expandir la arquitectura; no es solo QA pendiente.
+
+CAP-027 **91.15% estimado, parcial**; promedio siete **98.74% estimado**, sin incremento.
+CAP-004/009/010/017/023/026: 100% implementación registrada cada una, QA pendiente, sin reauditoría.
+Este corte sustituye los inferiores; R04 parcial y objetivo activo.
+
+Implementado un gate de admisión del spool en los puertos Windows: antes de crear otro directorio
+se rechaza cualquier entrada measurement- previa (también archivo/nombre con mayúsculas), sin abrir
+hijos ni borrar. Recheck después de adquirir el fence y antes del start, excluyendo solo el directorio
+propio. Enumeración streaming, señal/deadline común y límite de 4096 entradas del padre. Instancias
+nuevas con el mismo padre también bloquean; no se depende solo de quarantine en memoria.
+
+Reconciliación requerida, scan incierto/límite o configuración inválida conservan semántica de
+recuperación y NO retry a través del worker, wrappers de etapa y cleanup. No se etiqueta falsamente
+como terminación de proceso incierta cuando nunca se lanzó uno. No hay reclaim, TTL, borrado o
+limpieza automática. El operador debe reconciliar evidencia/procesos y mantener padre/fence estables
+antes de volver a admitir. Regenerar inventario/pins de archivos modificados explícitamente.
+
+Esta es una barrera a acumular temporales en operaciones sucesivas de los puertos cooperantes,
+NO cuota física de disco, aislamiento ACL, lock distribuido, ni garantía ante escritores externos,
+cambio de padre, otros workers o pérdida de energía. Preparaciones concurrentes pueden rechazarse
+conservadoramente y conservar sus propios temporales; no se concede mayor paralelismo.
+
+Validación del corte: **19/19 dirigidas** (transporte12, admisión filesystem2, etapas/worker5),
+ambas compilaciones TypeScript pasan. Filesystem real, procesos/bridge simulados; sin Win32,
+FFmpeg, SDK/render físico, DB/migración, activación ni QA formal. No se suman a suites históricas.
+La rúbrica conserva el valor anterior: sigue faltando cierre integral de red/provisión,
+corpus/color/fuentes/A-V/procedencia y operación PostgreSQL/entre hosts.
+
+## Corte vigente — integridad del corpus (2026-10-12)
+
+CAP-027 conserva **91.15% estimado, parcial**; promedio de los siete **98.74% estimado**.
+CAP-004/009/010/017/023/026: cada una 100% de implementación registrada, QA pendiente,
+sin reauditoría en este corte. Este encabezado sustituye los estados históricos inferiores.
+
+Se verificó la implementación existente por handle con cuatro regresiones nuevas: sustitución
+por otro archivo con bytes idénticos del encoder, probe, WAV y video. Se conserva el contenido y
+se restaura mtime; se comprueba un inode distinto. Cada caso exige rechazo por integridad y limpieza
+solo de archivos propios, sin recibo. No se cambió el generador productivo en este corte.
+
+Validación: **11/11 pruebas dirigidas** (10 del generador +1 del pin de archivos), ambas compilaciones
+TypeScript pasan y diff sin errores de whitespace. Archivos/hash/identidad reales, procesos y
+salidas de codec simulados; no FFmpeg, navegador, render real ni QA formal. El runner con proceso
+hijo fue bloqueado por sandbox (EPERM); los módulos compilados se ejecutaron directamente y pasaron.
+
+No aumenta la rúbrica: esta evidencia protege integridad, no cierra conformidad preview/render.
+Siguen pendientes aislamiento efectivo de red/loopback y provisión Windows, corpus original
+con color/fuentes/audio-video/procedencia, y migraciones/concurrencia/operación entre hosts.
+La siguiente prioridad es contrastar esas brechas con el cierre requerido, no sumar pruebas como
+porcentaje ni ampliar capacidades fuera de CAP-027. Objetivo activo; R04 parcial.
+
 ## Estado actual autoritativo (2026-10-08)
 
 Corte vigente: **CAP-027 ~91% (rúbrica 91.15%), siete ~98.74%, sin incremento**. Entrega diferida

@@ -113,3 +113,44 @@ test("silent stage cannot finalize when SDK assembly changes decode timing", asy
     await assert.rejects(stages.finalize(), /STAGE_FAILED/);
   }, false);
 });
+
+test("SDR stages share one budget across encode, SDK assembly interval and finalization", async () => {
+  await fixture(async ({input, payload, execute}) => {
+    let now = 0, calls = 0;
+    const stages = createOriginalSessionSdrStages(input, {clock: () => now, execute: async (...args) => {
+      calls++; return execute(...args);
+    }});
+    await stages.onEncode(payload); const encodedCalls = calls;
+    now = input.timeoutMilliseconds;
+    await writeFile(payload.outputPath, "assembly completed too late");
+    await assert.rejects(stages.onAfterAssemble(payload), /STAGE_FAILED/);
+    assert.equal(calls, encodedCalls, "expired shared budget must not start new probe");
+    now = 0; await assert.rejects(stages.finalize(), /STAGE_FAILED/);
+  });
+});
+
+test("SDR mux probes receive reduced remaining budget rather than the initial timeout", async () => {
+  await fixture(async ({input, payload, execute}) => {
+    let now = 0, assembled = false; const budgets = [];
+    const stages = createOriginalSessionSdrStages(input, {clock: () => now, execute: async (binary, args, options) => {
+      if (assembled) budgets.push(options.timeout);
+      return execute(binary, args, options);
+    }});
+    await stages.onEncode(payload); now = 6000; assembled = true;
+    await writeFile(payload.outputPath, "muxed fixture"); await stages.onAfterAssemble(payload);
+    assert.ok(budgets.length > 0); assert.ok(budgets.every(value => value > 0 && value <= 4000));
+    await stages.finalize(); now = 10000;
+    await assert.rejects(stages.finalize(), /STAGE_FAILED/);
+  });
+});
+
+test("invalid or regressing monotonic clock never publishes SDR observations", async () => {
+  for (const invalid of [NaN, Infinity, -1]) await fixture(async ({input, payload, execute}) => {
+    let now = 0;
+    const stages = createOriginalSessionSdrStages(input, {execute, clock: () => now});
+    await stages.onEncode(payload); now = invalid;
+    await writeFile(payload.outputPath, "muxed fixture");
+    await assert.rejects(stages.onAfterAssemble(payload), /STAGE_FAILED/);
+    await assert.rejects(stages.finalize(), /STAGE_FAILED/);
+  });
+});

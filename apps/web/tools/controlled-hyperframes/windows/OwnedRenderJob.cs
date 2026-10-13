@@ -38,6 +38,74 @@ namespace Courseforge.ControlledRender {
     private JobHandle job;
     private ProcessHandle process;
     public uint ProcessId { get; private set; }
+    [StructLayout(LayoutKind.Sequential)] private struct RootFileTime { public uint Low, High; }
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetProcessTimes(ProcessHandle process,
+      out RootFileTime creation, out RootFileTime exit, out RootFileTime kernel, out RootFileTime user);
+    // Query the retained owned handle, never reopen a numeric PID supplied by a document.
+    public ulong RootCreationFileTime() {
+      if (process == null || process.IsClosed || process.IsInvalid) throw Failure("ROOT_IDENTITY_INVALID");
+      RootFileTime creation, exit, kernel, user;
+      if (!GetProcessTimes(process, out creation, out exit, out kernel, out user)) throw Failure("ROOT_IDENTITY_QUERY_FAILED");
+      ulong value = ((ulong)creation.High << 32) | creation.Low;
+      if (value == 0) throw Failure("ROOT_IDENTITY_INVALID"); return value;
+    }
+
+    private const int MaximumTcpTableBytes = 4 * 1024 * 1024, MaximumTcpListenerRows = 65536;
+    private const uint Ipv4AddressFamily = 2, OwnerPidListenerTable = 3, TcpListenState = 2;
+    [DllImport("iphlpapi.dll", ExactSpelling = true)] private static extern uint GetExtendedTcpTable(
+      IntPtr table, ref uint bytes, [MarshalAs(UnmanagedType.Bool)] bool sorted,
+      uint addressFamily, uint tableClass, uint reserved);
+
+    // A point-in-time socket observation, NOT effective network policy or a durable port lease.
+    // The root handle stays retained across the query; PID reuse cannot substitute another root.
+    public ulong ObserveOriginalLoopbackListener(uint expectedPort) {
+      if (expectedPort < 1 || expectedPort > UInt16.MaxValue) throw Failure("LISTENER_PORT_INVALID");
+      VerifyLiveRootMembership(); ulong creation = RootCreationFileTime();
+      IntPtr buffer = Marshal.AllocHGlobal(MaximumTcpTableBytes);
+      try {
+        uint bytes = MaximumTcpTableBytes;
+        // Bounded single snapshot: table growth/insufficient capacity fails closed, never retries indefinitely.
+        if (GetExtendedTcpTable(buffer, ref bytes, false, Ipv4AddressFamily, OwnerPidListenerTable, 0) != 0
+          || bytes < 4 || bytes > MaximumTcpTableBytes) throw Failure("LISTENER_TABLE_QUERY_FAILED");
+        var snapshot = new byte[(int)bytes]; Marshal.Copy(buffer, snapshot, 0, snapshot.Length);
+        if (!ContainsExclusiveRootListener(snapshot, ProcessId, expectedPort)) throw Failure("LISTENER_OWNERSHIP_MISMATCH");
+        VerifyLiveRootMembership();
+        if (RootCreationFileTime() != creation) throw Failure("LISTENER_ROOT_IDENTITY_CHANGED");
+        return creation;
+      } finally {Marshal.FreeHGlobal(buffer);}
+    }
+    private void VerifyLiveRootMembership() {
+      if (process == null || process.IsClosed || process.IsInvalid || job == null || job.IsClosed || job.IsInvalid)
+        throw Failure("LISTENER_OWNER_CLOSED");
+      bool belongs;
+      if (!IsProcessInJob(process, job, out belongs) || !belongs || WaitRoot(0)) throw Failure("LISTENER_ROOT_NOT_LIVE_MEMBER");
+    }
+    private static uint ReadLittleEndianDword(byte[] bytes, int offset) {
+      return (uint)bytes[offset] | ((uint)bytes[offset + 1] << 8)
+        | ((uint)bytes[offset + 2] << 16) | ((uint)bytes[offset + 3] << 24);
+    }
+    // Pure decoder used by directed managed tests; it cannot issue a trusted socket observation.
+    private static bool ContainsExclusiveRootListener(byte[] snapshot, uint rootPid, uint expectedPort) {
+      const int HeaderBytes = 4, RowBytes = 24;
+      if (snapshot == null || snapshot.Length < HeaderBytes || snapshot.Length > MaximumTcpTableBytes
+        || rootPid == 0 || expectedPort < 1 || expectedPort > UInt16.MaxValue) throw Failure("LISTENER_TABLE_INVALID");
+      uint count = ReadLittleEndianDword(snapshot, 0);
+      if (count > MaximumTcpListenerRows || (long)HeaderBytes + (long)count * RowBytes > snapshot.Length)
+        throw Failure("LISTENER_TABLE_INVALID");
+      bool found = false;
+      for (int index = 0; index < (int)count; index++) {
+        int offset = HeaderBytes + index * RowBytes;
+        uint port = ((uint)snapshot[offset + 8] << 8) | snapshot[offset + 9];
+        if (port != expectedPort) continue;
+        // Reject shared/ambiguous ports, wildcard interfaces, another PID, or a non-listening row.
+        if (found || ReadLittleEndianDword(snapshot, offset) != TcpListenState
+          || snapshot[offset + 4] != 127 || snapshot[offset + 5] != 0
+          || snapshot[offset + 6] != 0 || snapshot[offset + 7] != 1
+          || ReadLittleEndianDword(snapshot, offset + 20) != rootPid) return false;
+        found = true;
+      }
+      return found;
+    }
 
     [StructLayout(LayoutKind.Sequential)] private struct BasicLimits {
       public long ProcessTime, JobTime; public uint Flags;

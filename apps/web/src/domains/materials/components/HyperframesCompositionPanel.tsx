@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clapperboard, Film, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { parseAudioProcessingDerivatives } from "@/domains/production/audio-processing/audio-analysis.service";
+import { parseAudioProcessingDerivatives, parseAudioWaveformManifest } from "@/domains/production/audio-processing/audio-analysis.service";
 import {
   NativeCompositionPreview,
   type CompositionStudioAsset,
@@ -98,7 +98,8 @@ export function HyperframesCompositionPanel({
     const audioDerivatives = parseAudioProcessingDerivatives(asset.metadata);
     return {
       audioAnalysis: audioDerivatives?.loudness,
-      waveform: audioDerivatives?.waveform,
+      sourceChecksum: asset.checksum,
+      waveform: parseAudioWaveformManifest(asset.metadata) ?? undefined,
       durationSeconds: asset.durationSeconds,
       detachedFromAssetId: asset.metadata.detached_from_asset_id || undefined,
       detachedFromClipId: asset.metadata.detached_from_clip_id || undefined,

@@ -39,10 +39,12 @@ export class ConformanceStageFailure extends Error {
   }
 }
 
-/** Unconfirmed ownership survives sanitized stage boundaries; never retry or erase live inputs. */
+/** Ownership uncertainty or blocked spool admission survives sanitization; requires operator recovery. */
 export function requiresConformanceExecutionRecovery(error: unknown): boolean {
   return error instanceof ConformanceStageFailure ? error.recoveryRequired
     : error instanceof Error && (requiresControlledExecutorIntervention(error.message)
+      || /^CONTROLLED_RENDER_NETWORK_(?:CONTROLLER|JOURNAL|CHANNEL)_RECOVERY_REQUIRED$/.test(error.message)
+      || /^CONTROLLED_RENDER_MEASUREMENT_SPOOL_(?:RECONCILIATION_REQUIRED|SCAN_LIMIT|SCAN_UNCONFIRMED|INVALID)$/.test(error.message)
       || /^CONFORMANCE_JOB_[A-Z_]+_RECOVERY_REQUIRED$/.test(error.message));
 }
 

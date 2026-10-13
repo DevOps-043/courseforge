@@ -1,7 +1,7 @@
 import {createHash} from "node:crypto";
 
 export const PRODUCER_EXTENSION_V1 = Object.freeze({
-  id: "COURSEFORGE_ORIGINAL_SESSION_OBSERVER_V4", version: "0.7.106", bytes: 9931212,
+  id: "COURSEFORGE_ORIGINAL_SESSION_OBSERVER_V6", version: "0.7.106", bytes: 9931212,
   sourceSha256: "f9dbd087025acb3e18d262ea66c0c2dcee72e3143952894f30ba5f0e3b56e94e",
   scope: "ORIGINAL_SESSION_HOOKS_NOT_CONFORMANCE_OR_SANDBOX",
 });
@@ -19,9 +19,13 @@ const hooks = Object.freeze([
     "  const observedEncoding = await encodeObservedProducerStage(input2);\n  if (observedEncoding !== undefined) return observedEncoding;\n"],
   ["  return { assembleMs: Date.now() - stage6Start };\n",
     "  await observeProducerAssembly(input2);\n"],
+  ["      args: [...fingerprint.args],\n",
+    "      ...observedProducerBrowserLaunchOptions(fingerprint.args),\n"],
+  ["          args: stripBeginFrameFlags([...fingerprint.args]),\n",
+    "          ...observedProducerBrowserLaunchOptions(stripBeginFrameFlags([...fingerprint.args])),\n"],
 ]);
-const prefix = `// Courseforge modification: original-session observer v4; upstream Apache-2.0 license retained by packaging.
-import {runObservedProducer, observeProducerSession, guardProducerFrame, observeProducerBeforeFrame, observeProducerAfterFrame, encodeObservedProducerStage, observeProducerAssembly} from "./courseforge-producer-observer-v1.mjs";
+const prefix = `// Courseforge modification: original-session observer v6; upstream Apache-2.0 license retained by packaging.
+import {runObservedProducer, observeProducerSession, guardProducerFrame, observeProducerBeforeFrame, observeProducerAfterFrame, encodeObservedProducerStage, observeProducerAssembly, observedProducerBrowserLaunchOptions} from "./courseforge-producer-observer-v1.mjs";
 `;
 const suffix = `
 export async function executeObservedRenderJob(job, projectDir, outputPath, progressSink, abortSignal, observer) {

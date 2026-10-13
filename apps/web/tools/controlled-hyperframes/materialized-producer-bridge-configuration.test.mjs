@@ -12,6 +12,8 @@ import {createHash} from "node:crypto";
 import {materializedProducerOutputPaths, materializedProducerRequestDigest} from "./materialized-producer-request.mjs";
 import {auditMaterializedProducerCapture} from "./materialized-producer-capture-audit.mjs";
 const observedDependencies = ["run-observed-materialized-producer.mjs", "original-session-observer.mjs",
+  "original-session-network-guard.mjs",
+  "observed-original-server-channel.mjs", "original-server-file-channel.mjs", "original-server-channel-policy.mjs",
   "observed-producer-operator-configuration.mjs", "materialized-measurement-plan.mjs", "original-session-native-observer.mjs",
   "original-session-sdr-stages.mjs", "closed-stage-executor.mjs"];
 function configuration() {
@@ -105,7 +107,9 @@ test("observed bridge binds declared operator config to fixed entry and unchange
 });
 
 // These imports are evaluated by the observed entry even for a contract without SDR.
-for (const dependency of ["original-session-sdr-stages.mjs", "closed-stage-executor.mjs"]) {
+for (const dependency of ["original-session-sdr-stages.mjs", "closed-stage-executor.mjs",
+  "original-session-network-guard.mjs",
+  "observed-original-server-channel.mjs", "original-server-file-channel.mjs", "original-server-channel-policy.mjs"]) {
   test(`observed bridge rejects an inventory without ${dependency} before launching or measuring`, () => {
     const input = configuration(), tools = dirname(fileURLToPath(import.meta.url));
     input.operatorConfiguration = {path: join(tools, "operator.json"), sha256: "c".repeat(64)};

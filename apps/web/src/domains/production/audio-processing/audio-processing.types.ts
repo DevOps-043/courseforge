@@ -74,7 +74,9 @@ export interface AudioLoudnessAnalysis {
 
 export interface AudioWaveformManifest {
   checksum: string;
-  contractVersion: 1;
+  contractVersion: 1 | 2;
+  channelCount?: number;
+  sourceChecksum?: string;
   durationSeconds: number;
   levelCount: number;
   sampleRateHz: number;
@@ -89,7 +91,8 @@ export interface AudioWaveformLevel {
 }
 
 export interface AudioWaveformDerivative {
-  contractVersion: 1;
+  contractVersion: 1 | 2;
+  channels?: { levels: AudioWaveformLevel[] }[];
   durationSeconds: number;
   levels: AudioWaveformLevel[];
   sampleRateHz: number;
@@ -97,6 +100,11 @@ export interface AudioWaveformDerivative {
 
 /** A single server-selected LOD for responsive timeline rendering. */
 export interface AudioWaveformPreview {
+  contractVersion?: 1 | 2;
+  checksum?: string;
+  /** Source time of the first bucket in this window. Absent for legacy full-source responses. */
+  offsetSeconds?: number;
+  channels?: { min: number[]; max: number[] }[];
   bucketSizeSamples: number;
   durationSeconds: number;
   max: number[];

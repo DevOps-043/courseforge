@@ -142,10 +142,12 @@ export async function startControlledFontCapture(input: {client: CompositionQaCd
       throw new Error("CONTROLLED_RENDER_FONT_COVERAGE_INCOMPLETE");
     capturing = true;
     try {
+      platform.assertValid();
       await verifyFiles();
       await verifyConformanceFontLoading(client, fonts, false);
       const after = await readCaptureBrowserIdentity(client);
       assertCaptureBrowserIdentityUnchanged(before, after);
+      platform.assertValid();
       // Seek evidence comes from the capture caller, not a fabricated repeatability label here.
       const text = validateTextParityEvidence(textEvidenceInput, contract, "RENDERER_GEOMETRY");
       if (JSON.stringify(text.checkpoints) !== JSON.stringify(checkpoints))

@@ -15,8 +15,10 @@ export async function loadAdmittedObservedProducer(input, ports = {}) {
   if ((input.observer.onEncode !== undefined || input.observer.onAfterAssemble !== undefined)
     && (typeof input.observer.onEncode !== "function" || typeof input.observer.onAfterAssemble !== "function")) fail("INPUT_INVALID");
   const signal = input.signal;
+  if (input.observer.onOriginalServer !== undefined && typeof input.observer.onOriginalServer !== "function") fail("INPUT_INVALID");
   signal.throwIfAborted();
   const observer = Object.freeze({onSession: input.observer.onSession,
+    ...(input.observer.onOriginalServer ? {onOriginalServer: input.observer.onOriginalServer} : {}),
     onBeforeFrame: input.observer.onBeforeFrame, onAfterFrame: input.observer.onAfterFrame,
     ...(input.observer.onEncode ? {onEncode: input.observer.onEncode, onAfterAssemble: input.observer.onAfterAssemble} : {})});
   const inventory = structuredClone(input.dependencyInventory);

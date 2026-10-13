@@ -4,6 +4,9 @@ SofLIA - Engine es una plataforma multi-tenant para crear, validar, producir y p
 
 ## Estado Real Del Sistema
 
+- **HeyGen TTS**: `HEYGEN_SPEECH_ENGINE` fija Starfish en el catalogo y en `HeygenClient.generateSpeech`. No omitir el motor: el default guardado de una voz puede ser ElevenLabs y rechazar `locale`. Ver [auditoria de voz](docs/architecture/heygen-speech-engine-audit-2026-10-13.md). No introducir fallback de motor sin validar compatibilidad, idioma, costo y sincronizacion.
+- **HeyGen catalogo**: `42883` en la reconciliacion privada puede indicar que falta `reconcile_heygen_core_catalog_snapshot`. La reparacion aditiva `20261013150000_restore_heygen_core_catalog_reconciler.sql` restaura esa dependencia; conservar reconciliacion transaccional. Ver [fuente de verdad](docs/heygen_catalog_sync_source_of_truth.md). Los fallos se diagnostican por etapa/codigo sin exponer mensajes SQL.
+
 - **Monorepo npm workspaces**: `apps/web` y `apps/api`.
 - **Frontend**: Next.js 16, React 19, TypeScript, TailwindCSS 4, Zustand, Remotion Player.
 - **Backend web**: Next.js API routes y Netlify Functions para jobs largos del pipeline.

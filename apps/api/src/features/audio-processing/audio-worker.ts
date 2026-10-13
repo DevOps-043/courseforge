@@ -9,6 +9,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { AUDIO_SOURCE_MIME_TYPES, MAX_AUDIO_SOURCE_BYTES, resolveAudioStorageSource } from "./audio-source-contract";
 import { AudioProcessingTerminalError, AudioProcessingRetryableError } from "./audio-worker-errors";
 import { probeAudioSource } from "./audio-source-probe";
+import { processClaimedWaveformJob } from "./audio-waveform-worker";
+import { WAVEFORM_ANALYSIS_PROFILE_ID } from "./audio-waveform-stream";
 import { AudioLoudnessQualityError, buildLoudnessAnalysisArgs, parseLoudnessAnalysis, requirePassingAudioLoudness, type AudioLoudnessAnalysis } from "./audio-analysis";
 import {
   AUDIO_WAVEFORM_SAMPLE_RATE_HZ,
@@ -55,6 +57,11 @@ export async function processClaimedAudioJob(params: {
   supabase: SupabaseClient<any, any, any>;
   supportedProfiles: readonly string[];
 }) {
+  const waveformJob = z.object({ input_snapshot: z.object({ profile: z.object({ id: z.literal(WAVEFORM_ANALYSIS_PROFILE_ID) }) }) }).safeParse(params.job);
+  if (waveformJob.success) {
+    assertSupportedAudioProfile(WAVEFORM_ANALYSIS_PROFILE_ID, params.supportedProfiles);
+    return processClaimedWaveformJob(params.job, params.supabase);
+  }
   const parsedJob = claimedJobSchema.safeParse(params.job);
   if (!parsedJob.success) {
     const identity = z.object({ id: z.string().uuid(), audio_processing_lease_token: z.string().uuid() }).passthrough().safeParse(params.job);

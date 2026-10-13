@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { compositionVolumeEnvelopeSchema } from "./composition-volume-envelope";
 import { compositionDeckFontReferencesSchema } from "./composition-font-references";
 import { HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT, htmlEditingReferencesSchema } from "./html-editing/html-editing-reference.contract";
 import { COMPOSITION_VIDEO_PLAYBACK_RATES, videoRateSourceWindowFits } from "./composition-video-rate";
@@ -198,6 +199,8 @@ const soundEffectAssetSourceSchema = z.object({
 }).strict();
 
 export const compositionClipSchema = z.object({
+  /** Source-anchored gain points survive trim/split without destructive audio edits. */
+  volumeEnvelope: compositionVolumeEnvelopeSchema.optional(),
   colorGrading: compositionColorGradingSchema.optional(),
   sceneId: z.string().min(1).max(160).optional(),
   crop: compositionVisualCropSchema.optional(),

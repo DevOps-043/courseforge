@@ -21,7 +21,8 @@ try {
   if ($null -eq $line -or [Text.Encoding]::UTF8.GetByteCount($line) -gt 65536) { throw 'INVALID_START' }
   $request = $line | ConvertFrom-Json
   $properties = @($request.PSObject.Properties.Name | Sort-Object)
-  $withReducedToken = $request.policy -ceq 'WINDOWS_JOB_CONTROL_CHANNEL_V3'
+  $withRootIdentity = $request.policy -ceq 'WINDOWS_JOB_CONTROL_CHANNEL_V4'
+  $withReducedToken = $withRootIdentity -or $request.policy -ceq 'WINDOWS_JOB_CONTROL_CHANNEL_V3'
   $withResources = $withReducedToken -or $request.policy -ceq 'WINDOWS_JOB_CONTROL_CHANNEL_V2'
   $expectedProperties = 'arguments,command,directory,executable,executionId,policy'
   if ($withReducedToken) { $expectedProperties += ',reducedToken' }
@@ -31,6 +32,7 @@ try {
   if ($withReducedToken) {
     $security = $request.reducedToken
     $withAppContainer = $security.policy -ceq 'WINDOWS_APPCONTAINER_NO_NETWORK_V5'
+    if ($withRootIdentity -and -not $withAppContainer) { throw 'ROOT_IDENTITY_REQUIRES_APPCONTAINER' }
     $withAclTree = $withAppContainer -or $security.policy -ceq 'WINDOWS_LUA_ACL_TREE_PREFLIGHT_V4'
     $withAclPreflight = $withAclTree -or $security.policy -ceq 'WINDOWS_LUA_ACL_PREFLIGHT_V3'
     $withRestrictingSid = -not $withAppContainer -and ($withAclPreflight -or $security.policy -ceq 'WINDOWS_LUA_RESTRICTING_CAPABILITY_V2')
@@ -138,15 +140,34 @@ try {
     $owned = [Courseforge.ControlledRender.OwnedRenderJob]::Start($request.executable,
       [string[]]$request.arguments, $request.directory, $environment, 64, 2147483648, 4294967296, 600)
   }
-  Send-State ([ordered]@{status='READY'; executionId=$executionId})
+  if ($withRootIdentity) {
+    Send-State ([ordered]@{status='READY'; executionId=$executionId; rootIdentity=[ordered]@{
+      pid=$owned.ProcessId; creationFileTime=$owned.RootCreationFileTime().ToString([Globalization.CultureInfo]::InvariantCulture)}})
+  } else { Send-State ([ordered]@{status='READY'; executionId=$executionId}) }
   $stopRead = [Courseforge.ControlledRender.OwnedRenderJob]::ReadControlLine(4096)
   $clock = [Diagnostics.Stopwatch]::StartNew()
   $rootReported = $false
+  $listenerRequests = 0
   while ($clock.ElapsedMilliseconds -lt 600000) {
     if ($stopRead.IsCompleted) {
       $stopLine = $stopRead.GetAwaiter().GetResult()
       if ($null -eq $stopLine -or [Text.Encoding]::UTF8.GetByteCount($stopLine) -gt 4096) { throw 'CONTROL_CHANNEL_CLOSED' }
       $stop = $stopLine | ConvertFrom-Json
+      if ($withRootIdentity -and $stop.command -ceq 'OBSERVE_ORIGINAL_LISTENER') {
+        if ((@($stop.PSObject.Properties.Name | Sort-Object) -join ',') -ne 'command,executionId,port,requestId' -or
+          $stop.executionId -cne $executionId -or $rootReported -or $listenerRequests -ge 8 -or
+          $stop.requestId -isnot [string]) { throw 'INVALID_LISTENER_REQUEST' }
+        $requestGuid = [Guid]::Empty
+        if (-not [Guid]::TryParseExact($stop.requestId, 'D', [ref]$requestGuid)) { throw 'INVALID_LISTENER_REQUEST' }
+        Assert-IntegerBound $stop.port 1 65535
+        $listenerRequests++
+        $creation = $owned.ObserveOriginalLoopbackListener([uint32]$stop.port)
+        Send-State ([ordered]@{status='LISTENER_OBSERVED'; executionId=$executionId; requestId=$stop.requestId;
+          address='127.0.0.1'; port=$stop.port; rootIdentity=[ordered]@{pid=$owned.ProcessId;
+          creationFileTime=$creation.ToString([Globalization.CultureInfo]::InvariantCulture)}})
+        $stopRead = [Courseforge.ControlledRender.OwnedRenderJob]::ReadControlLine(4096)
+        continue
+      }
       if ((@($stop.PSObject.Properties.Name | Sort-Object) -join ',') -ne 'command,executionId' -or
         $stop.command -ne 'STOP' -or $stop.executionId -cne $executionId) { throw 'INVALID_STOP' }
       $owned.StopAndConfirm(4000)

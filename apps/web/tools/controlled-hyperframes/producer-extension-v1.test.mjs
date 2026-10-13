@@ -6,7 +6,7 @@ import {runInNewContext} from "node:vm";
 import {createHash} from "node:crypto";
 import {PRODUCER_EXTENSION_V1, transformProducerExtension} from "./producer-extension-v1.mjs";
 import {runObservedProducer, observeProducerSession, guardProducerFrame,
-  observeProducerBeforeFrame, observeProducerAfterFrame} from "./courseforge-producer-observer-v1.mjs";
+  observeProducerBeforeFrame, observeProducerAfterFrame, observedProducerBrowserLaunchOptions} from "./courseforge-producer-observer-v1.mjs";
 
 const source = await readFile(new URL("./node_modules/@hyperframes/producer/dist/index.js", import.meta.url));
 const transformed = transformProducerExtension(source, "0.7.106");
@@ -26,7 +26,7 @@ const renderFrame = async current => {
   return original;
 };
 
-test("deterministic pinned transformation preserves all upstream bytes except six hooks and wrapper", () => {
+test("deterministic pinned transformation preserves all upstream bytes except eight versioned hooks and wrapper", () => {
   const output = transformed.output.toString("utf8");
   assert.deepEqual(transformed, transformProducerExtension(source, "0.7.106"));
   let restored = output.slice(output.indexOf("import { createRequire"), output.lastIndexOf("\nexport async function executeObservedRenderJob"));
@@ -37,6 +37,8 @@ test("deterministic pinned transformation preserves all upstream bytes except si
     "    await observeProducerAfterFrame(session, frameIndex, time, quantizedTime, screenshotBuffer, async (index, seconds, capture = false) => { const prepared = await prepareFrameForCapture(session, index, seconds); return { ...prepared, ...(capture ? { buffer: await pageScreenshotCapture(session.page, session.options) } : {}) }; });\n",
     "  const observedEncoding = await encodeObservedProducerStage(input2);\n  if (observedEncoding !== undefined) return observedEncoding;\n",
     "  await observeProducerAssembly(input2);\n",
+    "      ...observedProducerBrowserLaunchOptions(fingerprint.args),\n",
+    "          ...observedProducerBrowserLaunchOptions(stripBeginFrameFlags([...fingerprint.args])),\n",
   ]) {
     assert.equal(restored.split(line).length, 2);
     restored = restored.replace(line, "");
@@ -63,6 +65,26 @@ test("before-navigation hook is first initialization action and legacy entry doe
   let acquired = false;
   await observeProducerSession(session(), async () => {acquired = true; return {};});
   assert.equal(acquired, false);
+});
+
+test("actual patched SDK launch selects CDP pipe only for observed jobs, without creating a browser", async () => {
+  const output = transformed.output.toString("utf8");
+  const start = output.indexOf("async function launchBrowser(fingerprint) {");
+  const end = output.indexOf("function forceCloseBrowserProcess(browser) {", start);
+  assert.ok(start >= 0 && end > start);
+  const launches = [];
+  const launch = runInNewContext(output.slice(start, end) + "\nlaunchBrowser;", {
+    getPuppeteer: async () => ({launch: async options => {launches.push(options); return {version: async () => "mock browser"};}}),
+    observedProducerBrowserLaunchOptions, console: {log() {}, warn() {}}, process: {platform: "win32"},
+  });
+  const fingerprint = {args: ["--no-sandbox", "--disable-ipc-flooding-protection", "--force-color-profile=srgb"],
+    requestedCaptureMode: "screenshot", executablePath: "unused mock executable", browserTimeoutMs: 1000, protocolTimeoutMs: 1000};
+  await runObservedProducer(async () => {await launch(fingerprint); await renderFrame(session());},
+    configuration(), new AbortController().signal, observer());
+  assert.equal(launches[0].pipe, true);
+  assert.deepEqual(Array.from(launches[0].args), ["--force-color-profile=srgb"]);
+  await launch(fingerprint);
+  assert.equal(launches[1].pipe, undefined); assert.deepEqual(Array.from(launches[1].args), fingerprint.args);
 });
 
 test("failure acquiring original CDP is latched and aborted acquisition does not call observer", async () => {
