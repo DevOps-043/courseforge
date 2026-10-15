@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { createReadStream } from "node:fs";
+import { createHash } from "node:crypto";
+import { resolve, dirname } from "node:path";
 import sharp from "sharp";
 import { z } from "zod";
 import {
@@ -11,17 +13,25 @@ import {
 } from "../composition-preview-render-conformance";
 import { measureFrameSsim } from "./composition-frame-ssim";
 import { COMPOSITION_SSIM_POLICY } from "../composition-visual-metrics-policy";
-import { textParityEvidenceSchema, validateTextParityEvidence } from "./composition-text-parity-evidence";
+import { textParityEvidenceSchema, validateTextParityEvidence, assertRequiredTextPaintMaskEvidence } from "./composition-text-parity-evidence";
 import { compareTextParityRegions } from "./composition-text-region-comparison";
 import type { textCheckpointEvidenceSchema } from "./composition-text-parity-evidence";
 import { assertRequiredFontUsageEvidence, fontUsageEvidenceSchema, validateFontUsageEvidence } from "./composition-font-usage-evidence";
 import { browserIdentitySchema } from "./composition-browser-identity";
 import { browserExecutableIdentitySchema } from "./composition-browser-executable-identity";
 import { exportedColorTagReportSchema } from "../composition-color-tag-policy";
+import { COMPOSITION_TEXT_PARITY_POLICY } from "../composition-text-parity-policy";
+import { suppressedTextFrameName, verifyTextPaintMaskPair } from "./composition-text-paint-mask-derivation";
+import { deckTextEvidenceSchema, validateDeckTextEvidence, type deckTextCheckpointEvidenceSchema } from "./composition-deck-text-evidence";
+import { compareDeckTextRegions } from "./composition-deck-text-comparison";
+import type { DeckTextPlan } from "../composition-deck-text-plan";
+import { suppressedDeckTextFrameName, verifyDeckTextPaintPair } from "./composition-deck-text-paint-derivation";
+import {applyRendererTextGeometry} from "./composition-renderer-text-geometry";
 
 export const compositionConformanceCaptureMetadataSchema = z.object({
   documentHash: z.string().regex(/^[a-f0-9]{64}$/),
   textParity: textParityEvidenceSchema.optional(),
+  deckText: deckTextEvidenceSchema.optional(),
   fontUsage: fontUsageEvidenceSchema.optional(),
   browserIdentity: browserIdentitySchema.optional(),
   browserExecutableIdentity: browserExecutableIdentitySchema.optional(),
@@ -57,8 +67,12 @@ export async function measureCompositionConformanceDirectories(params: {
   const previewTimes = new Map(previewMetadata.frames.map((frame) => [frame.frameIndex, frame.timeSeconds]));
   const renderTimes = new Map(renderMetadata.frames.map((frame) => [frame.frameIndex, frame.timeSeconds]));
   const samples: CompositionConformanceSample[] = [];
+  validateDeckTextEvidence(previewMetadata.deckText, contract);
   assertRequiredFontUsageEvidence(previewMetadata.fontUsage, contract);
+  assertRequiredTextPaintMaskEvidence(previewMetadata.textParity, contract);
   if (contract.schemaVersion === 4 && previewMetadata.textParity) validateTextParityEvidence(previewMetadata.textParity, contract);
+  if (contract.schemaVersion === 4 && renderMetadata.textParity)
+    validateTextParityEvidence(renderMetadata.textParity, contract, "RENDERER_GEOMETRY");
   if (previewMetadata.fontUsage) {
     if (!previewMetadata.textParity) throw new Error("CONFORMANCE_FONT_USAGE_TEXT_EVIDENCE_MISSING");
     validateTextParityEvidence(previewMetadata.textParity, contract);
@@ -82,6 +96,11 @@ export async function measureCompositionConformanceDirectories(params: {
       }),
       contract.schemaVersion >= 3,
       contract.schemaVersion === 4 ? previewMetadata.textParity?.checkpoints.find((entry) => entry.frameIndex === checkpoint.frameIndex) : undefined,
+      contract.schemaVersion === 4 && contract.deckTextPlan && previewMetadata.deckText ? {
+        plan: contract.deckTextPlan, checkpoint: previewMetadata.deckText.checkpoints.find((entry) => entry.frameIndex === checkpoint.frameIndex)!,
+      } : undefined,
+      contract.schemaVersion === 4 && Boolean(contract.renderExecution),
+      contract.schemaVersion === 4 ? renderMetadata.textParity?.checkpoints.find(entry => entry.frameIndex === checkpoint.frameIndex) : undefined,
     ));
   }
 
@@ -99,6 +118,24 @@ export async function measureCompositionConformanceDirectories(params: {
   return {report, measurements};
 }
 
+/** Hash and decode the same bounded bytes, rather than reopening a mutable path after verification. */
+async function readBoundedPaintFrame(path: string): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let length = 0;
+  const stream = createReadStream(path);
+  try {
+    for await (const chunk of stream) {
+      const bytes = chunk as Buffer;
+      length += bytes.length;
+      if (length > COMPOSITION_TEXT_PARITY_POLICY.maximumPaintCapturePngBytes)
+        throw new Error("CONFORMANCE_TEXT_PAINT_CAPTURE_LIMIT");
+      chunks.push(bytes);
+    }
+    if (!length) throw new Error("CONFORMANCE_TEXT_PAINT_CAPTURE_LIMIT");
+    return Buffer.concat(chunks, length);
+  } finally {stream.destroy();}
+}
+
 async function compareFrames(
   previewPath: string,
   renderPath: string,
@@ -107,9 +144,29 @@ async function compareFrames(
   temporalDriftMs: number,
   ssimRequired: boolean,
   textCheckpoint?: z.infer<typeof textCheckpointEvidenceSchema>,
+  deckCheckpoint?: {plan: DeckTextPlan; checkpoint: z.infer<typeof deckTextCheckpointEvidenceSchema>},
+  rendererGeometryRequired = false,
+  rendererTextCheckpoint?: z.infer<typeof textCheckpointEvidenceSchema>,
 ): Promise<CompositionConformanceSample> {
+  let previewInput: string | Buffer = previewPath;
+  if (textCheckpoint?.paintMaskCapture) {
+    previewInput = await readBoundedPaintFrame(previewPath);
+    if (createHash("sha256").update(previewInput).digest("hex") !== textCheckpoint.paintMaskCapture.paintedPngSha256)
+      throw new Error("CONFORMANCE_TEXT_PAINT_CAPTURE_FRAME_MISMATCH");
+    const dimensions = await sharp(previewInput, {limitInputPixels: COMPOSITION_SSIM_POLICY.maximumPixels}).metadata();
+    await verifyTextPaintMaskPair({checkpoint: textCheckpoint, paintedPng: previewInput,
+      suppressedPng: await readBoundedPaintFrame(resolve(dirname(previewPath), suppressedTextFrameName(frameIndex))),
+      width: dimensions.width ?? 0, height: dimensions.height ?? 0});
+  }
+  if (deckCheckpoint?.checkpoint.paintCapture) {
+    if (typeof previewInput === "string") previewInput = await readBoundedPaintFrame(previewPath);
+    const dimensions = await sharp(previewInput, {limitInputPixels: COMPOSITION_SSIM_POLICY.maximumPixels}).metadata();
+    await verifyDeckTextPaintPair({checkpoint: deckCheckpoint.checkpoint, paintedPng: previewInput,
+      suppressedPng: await readBoundedPaintFrame(resolve(dirname(previewPath), suppressedDeckTextFrameName(frameIndex))),
+      width: dimensions.width ?? 0, height: dimensions.height ?? 0});
+  }
   const [preview, rendered] = await Promise.all([
-    sharp(previewPath, {limitInputPixels: COMPOSITION_SSIM_POLICY.maximumPixels}).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+    sharp(previewInput, {limitInputPixels: COMPOSITION_SSIM_POLICY.maximumPixels}).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
     sharp(renderPath, {limitInputPixels: COMPOSITION_SSIM_POLICY.maximumPixels}).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
   ]);
   if (preview.info.width !== rendered.info.width
@@ -135,14 +192,20 @@ async function compareFrames(
   const pixelCount = preview.info.width * preview.info.height;
   const comparedChannelCount = pixelCount * Math.min(3, channels);
   const meanSquaredError = squaredDifference / comparedChannelCount;
+  const textPixels = textCheckpoint ? compareTextParityRegions({preview: preview.data, rendered: rendered.data,
+    width: preview.info.width, height: preview.info.height, channels, regions: textCheckpoint.regions,
+    expectedTexts: textCheckpoint.expectedTexts}) : undefined;
+  const textParity = textPixels && rendererGeometryRequired
+    ? applyRendererTextGeometry({pixels: textPixels, preview: textCheckpoint, rendered: rendererTextCheckpoint}) : textPixels;
   return {
     frameIndex,
     meanAbsoluteError: absoluteDifference / comparedChannelCount,
     mismatchedPixelRatio: mismatchedPixels / pixelCount,
     psnrDb: meanSquaredError === 0 ? 99 : 10 * Math.log10((255 ** 2) / meanSquaredError),
     temporalDriftMs,
-    ...(textCheckpoint ? {textParity: compareTextParityRegions({preview: preview.data, rendered: rendered.data,
-      width: preview.info.width, height: preview.info.height, channels, regions: textCheckpoint.regions, expectedTexts: textCheckpoint.expectedTexts})} : {}),
+    ...(deckCheckpoint ? {deckText: compareDeckTextRegions({preview: preview.data, rendered: rendered.data,
+      width: preview.info.width, height: preview.info.height, channels, ...deckCheckpoint})} : {}),
+    ...(textParity ? {textParity} : {}),
     ...(ssimRequired ? {ssim: measureFrameSsim(preview.data, rendered.data, preview.info.width, preview.info.height, channels),
       width: preview.info.width, height: preview.info.height} : {}),
   };

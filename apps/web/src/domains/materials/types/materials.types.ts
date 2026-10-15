@@ -297,6 +297,16 @@ export interface MaterialAssets {
         prepared_from_storyboard?: boolean;
         prepared_slide_count?: number;
         prepared_spec?: Record<string, unknown>;
+        /** Generated source preparation; not proof of active draft registration. */
+        editable_deck?: {
+            format: string;
+            storage_path: string;
+            sha256: string;
+            source_spec_sha256: string;
+            slide_count: number;
+            field_count: number;
+            activation: 'REQUIRES_AUTHORIZED_DRAFT_REGISTRATION';
+        } | null;
         copy_pipeline_version?: string;
         copy_synthesis_signature?: string;
         qa_content_path?: string;

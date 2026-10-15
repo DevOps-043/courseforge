@@ -5,6 +5,7 @@ import { compositionEditorDocumentSchema, getCompositionClipMediaAssetId, type C
 import { buildCompositionTimelineLayout } from "./composition-timeline-layout.service";
 import { buildCompositionTransitionRuntime } from "./composition-transition-runtime";
 import { buildCompositionPreviewTimelineState, compositionPreviewTimelineStateSchema } from "./composition-preview-timeline-state";
+import { compositionFontReferenceDetails } from "./composition-font-references";
 
 const safeMediaUrl = z.string().refine((value) => {
   try {
@@ -35,12 +36,18 @@ export function buildCompositionPreviewScenePatch(params: {
   document: CompositionEditorDocument;
 }): CompositionPreviewScenePatch | null {
   const { beforeDocument, document } = params;
+  // Controlled HTML owns a compiled layout runtime and must retain its authority checks.
+  if (beforeDocument.htmlEditing?.items.length || document.htmlEditing?.items.length) return null;
   // New CSS, deck HTML and organization fonts require the authenticated compiler.
   if (JSON.stringify(document.deckStyles) !== JSON.stringify(beforeDocument.deckStyles)) return null;
-  const fontIds = new Set(beforeDocument.clips.flatMap((clip) => (
-    "style" in clip.source && clip.source.style.fontAssetId ? [clip.source.style.fontAssetId] : []
-  )));
-  if (document.clips.some((clip) => "style" in clip.source && clip.source.style.fontAssetId && !fontIds.has(clip.source.style.fontAssetId))) return null;
+  try {
+    const previousFonts = compositionFontReferenceDetails(beforeDocument);
+    for (const [id, reference] of compositionFontReferenceDetails(document)) {
+      if (JSON.stringify(previousFonts.get(id)) !== JSON.stringify(reference)) return null;
+    }
+  } catch {
+    return null;
+  }
   const deckSources = new Map(beforeDocument.clips.flatMap((clip) => (
     clip.source.type === "DECK_SLIDE" ? [[JSON.stringify(clip.source), clip.hfId] as const] : []
   )));

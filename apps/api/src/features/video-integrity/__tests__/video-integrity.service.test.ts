@@ -9,6 +9,20 @@ import { assertTrustedSignedVideoUrl, assertUnchangedVideoChecksum, checkImporte
 
 const payload = new TextEncoder().encode("small synthetic MP4 bytes");
 
+test("abort interrupts an outstanding streamed read without exposing caller reasons", async () => {
+  const cancellation = new AbortController(); let cancelled = false;
+  const response = new Response(new ReadableStream({cancel() {cancelled = true;}}));
+  const reading = hashStoredVideoResponse(response, payload.byteLength, undefined, cancellation.signal);
+  cancellation.abort("private signed URL");
+  await assert.rejects(reading, error => error instanceof Error && error.message === "VIDEO_INTEGRITY_CANCELLED");
+  assert.equal(cancelled, true); assert.equal(response.body!.locked, false);
+});
+test("abort after snapshot sink writes cannot emit a successful checksum", async () => {
+  const cancellation = new AbortController();
+  await assert.rejects(hashStoredVideoResponse(new Response(payload), payload.byteLength,
+    async () => {cancellation.abort("private reason");}, cancellation.signal), /VIDEO_INTEGRITY_CANCELLED/);
+});
+
 test("emite un recibo estricto solo para una comprobación MATCH y nunca sobrescribe evidencia", async () => {
   const video = { checksum: "a".repeat(64), documentHash: "b".repeat(64), status: "MATCH" as const };
   assert.deepEqual(buildVerifiedVideoReceipt(video), { documentHash: video.documentHash, videoSha256: video.checksum });
@@ -120,6 +134,15 @@ test("registra el digest solo tras leer el objeto final enlazado", async () => {
   assert.equal(checked.status, "MATCH");
   assert.equal(checked.documentHash, documentHash);
   assert.equal(recorded, null, "la comprobación no debe escribir en la base de datos");
+  const cancellation = new AbortController(); let fetchSignal: AbortSignal | undefined;
+  await assert.rejects(checkImportedHyperframesVideo({...checkInput, signal: cancellation.signal,
+    fetchImpl: async (_url, options) => {
+      fetchSignal = options!.signal as AbortSignal; cancellation.abort("private token");
+      return new Response(payload, {headers: {"Content-Type": "video/mp4"}});
+    }}), /VIDEO_INTEGRITY_CANCELLED/);
+  assert.equal(fetchSignal!.aborted, true);
+  assert.equal((fetchSignal!.reason as Error).message, "VIDEO_INTEGRITY_CANCELLED");
+  assert.equal(recorded, null);
   const snapshotDirectory = await mkdtemp(join(tmpdir(), "courseforge-verified-snapshot-"));
   const destinationPath = join(snapshotDirectory, "final.mp4");
   try {

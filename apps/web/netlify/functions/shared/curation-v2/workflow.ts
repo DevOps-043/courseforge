@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { readSyllabusWithOrigin } from "../../../../src/domains/syllabus/services/syllabus-workflow-read";
 import { PIPELINE_GENERATION_LIMITS, isPermanentProviderFailure } from "../../../../src/lib/pipeline-generation-policy";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CurationRowInsert } from "../../../../src/shared/types/curation.types";
@@ -117,15 +118,22 @@ export async function runCurationWorkflowV2(params: {
       )
       .eq("id", artifactId)
       .single(),
-    supabase
-      .from("syllabus")
-      .select("modules")
-      .eq("artifact_id", artifactId)
-      .single(),
+    readSyllabusWithOrigin(supabase, artifactId, "modules,state"),
   ]);
   if (planResult.error) throw new Error(planResult.error.message);
   if (artifactResult.error) throw new Error(artifactResult.error.message);
   if (syllabusResult.error) throw new Error(syllabusResult.error.message);
+  if (syllabusResult.data?.input_mode === "PROVIDED_SYLLABUS") {
+    const { data: version, error } = await supabase.from("instructional_plans").select("syllabus_content_version").eq("artifact_id", artifactId).single();
+    if (error) throw error;
+    if (syllabusResult.data.state !== "STEP_APPROVED" || version?.syllabus_content_version !== syllabusResult.data.content_version) {
+      throw new Error("El plan no corresponde al temario importado aprobado. Regenera el plan antes de buscar fuentes.");
+    }
+  }
+  const sourceLessons = new Map<string, { topics?: string[] }>();
+  for (const module of syllabusResult.data?.modules || []) {
+    for (const lesson of module.lessons || []) if (lesson.id) sourceLessons.set(lesson.id, lesson);
+  }
 
   const context = buildCourseContextSummary(
     artifactResult.data,
@@ -134,6 +142,7 @@ export async function runCurationWorkflowV2(params: {
   const lessons = buildLessonsToProcess(planResult.data.lesson_plans).map(
     (lesson): CurationLesson => ({
       lesson_id: lesson.lesson_id,
+      topics: sourceLessons.get(lesson.lesson_id)?.topics || [],
       lesson_title: lesson.lesson_title,
       lesson_objective: lesson.lesson_objective,
       module_title: lesson.module_title,

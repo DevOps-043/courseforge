@@ -2,6 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const HEYGEN_API_BASE_URL = "https://api.heygen.com";
 export const HEYGEN_DEFAULT_PAGE_SIZE = 50;
+// Keep catalog filtering and speech generation on the same engine. Omitting it
+// lets a voice's saved default select ElevenLabs, which rejects locale.
+export const HEYGEN_SPEECH_ENGINE = "starfish";
 export const HEYGEN_MAX_IMPORT_SIZE_BYTES = 150 * 1024 * 1024;
 // Create-video acknowledgements can take longer than 20 seconds, especially for
 // higher resolutions.  Keep this below the request ceiling while allowing one

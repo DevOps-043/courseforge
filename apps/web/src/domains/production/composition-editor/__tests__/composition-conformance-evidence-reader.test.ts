@@ -257,6 +257,17 @@ test("download error, truncated bytes or changed checksum fail before decompress
     }
   });
 });
+test("suppressed frames without corresponding mask witnesses are rejected and cleaned", async () => {
+  await fixture(async (input) => {
+    const frameIndex = input.contract.checkpoints[0]!.frameIndex;
+    const png = await input.zip.file(`frame-${frameIndex}.png`)!.async("nodebuffer");
+    input.zip.file(`text-suppressed-${frameIndex}.png`, png);
+    input.bytes = await input.zip.generateAsync({type: "nodebuffer", compression: "DEFLATE"});
+    await assert.rejects(readPersistedVisualConformanceEvidence(database(input).params), /ARCHIVE_INVALID/);
+    assert.deepEqual(await readdir(input.outputParentDirectory), []);
+  });
+});
+
 test("extra files, missing frames and archive traversal paths are rejected", async () => {
   await fixture(async (input) => {
     for (const variant of ["extra", "missing", "traversal"]) {

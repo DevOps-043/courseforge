@@ -19,6 +19,7 @@ import { createClient } from "@/utils/supabase/server";
 import {
   getAuthenticatedUser,
   getAuthorizedArtifactAdminForTenant,
+  canReviewContent,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { applyGeneratedLessonDurationEstimates } from "@/domains/syllabus/lib/lesson-duration-estimator";
@@ -37,11 +38,20 @@ import { getTextModelProvider } from "@/shared/ai/text-model-provider";
 import { syllabusGenerationRequestSchema } from "@/domains/syllabus/syllabus-generation-request.schema";
 import { syllabusManagementRequestSchema } from "@/domains/syllabus/syllabus-management-request.schema";
 import { runAllValidations } from "@/domains/syllabus/validators/syllabus.validators";
+import { validateSyllabusForMode } from "@/domains/syllabus/validators/syllabus-validation-policy";
+import { SyllabusImportRepository } from "@/domains/syllabus/import/syllabus-import.repository";
+import { readSyllabusWithOrigin } from "@/domains/syllabus/services/syllabus-workflow-read";
 import { recoverStaleSyllabusGeneration } from "@/domains/syllabus/lib/syllabus-generation-recovery";
 import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
-import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
-import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+import {
+  apiErrorResponse,
+  apiSuccessResponse,
+} from "@/lib/server/api-response";
+import {
+  createOperationalLogger,
+  resolveCorrelationId,
+} from "@/lib/server/operational-logger";
 import { resolvePromptWithMetadata } from "@/shared/config/prompts/prompt-resolver.service";
 import { SYLLABUS_PROMPT_CODE } from "@/shared/config/prompts/pipeline.prompts";
 
@@ -96,7 +106,10 @@ async function authorizeSyllabusArtifact(artifactId: string) {
 }
 
 function authorizationErrorResponse(
-  authorization: Exclude<Awaited<ReturnType<typeof authorizeSyllabusArtifact>>, { success: true }>,
+  authorization: Exclude<
+    Awaited<ReturnType<typeof authorizeSyllabusArtifact>>,
+    { success: true }
+  >,
   requestId: string,
 ) {
   return apiErrorResponse({
@@ -110,7 +123,11 @@ function authorizationErrorResponse(
 export async function GET(request: Request) {
   const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   const artifactId = new URL(request.url).searchParams.get("artifactId") || "";
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(artifactId)) {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      artifactId,
+    )
+  ) {
     return apiErrorResponse({
       code: API_ERROR_CODE.invalidRequest,
       message: "Identificador de artefacto inválido.",
@@ -137,11 +154,13 @@ export async function GET(request: Request) {
     );
     return apiSuccessResponse({ syllabus }, { requestId });
   } catch (error) {
-    createOperationalLogger("syllabus.read", { correlationId: requestId })
-      .error("syllabus.read_failed", error);
+    createOperationalLogger("syllabus.read", {
+      correlationId: requestId,
+    }).error("syllabus.read_failed", error);
     return apiErrorResponse({
       code: API_ERROR_CODE.dependencyUnavailable,
-      message: "No se pudo consultar temporalmente el temario. Intenta de nuevo.",
+      message:
+        "No se pudo consultar temporalmente el temario. Intenta de nuevo.",
       requestId,
       retryable: true,
       status: 503,
@@ -158,9 +177,10 @@ export async function PATCH(request: Request) {
   );
   if (!parsedRequest.success) {
     return apiErrorResponse({
-      code: parsedRequest.reason === "too_large"
-        ? API_ERROR_CODE.payloadTooLarge
-        : API_ERROR_CODE.invalidRequest,
+      code:
+        parsedRequest.reason === "too_large"
+          ? API_ERROR_CODE.payloadTooLarge
+          : API_ERROR_CODE.invalidRequest,
       message: "Solicitud de actualización de temario inválida.",
       requestId,
       status: parsedRequest.reason === "too_large" ? 413 : 400,
@@ -168,12 +188,28 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const authorization = await authorizeSyllabusArtifact(parsedRequest.data.artifactId);
+    const authorization = await authorizeSyllabusArtifact(
+      parsedRequest.data.artifactId,
+    );
     if (!authorization.success) {
       return authorizationErrorResponse(authorization, requestId);
     }
 
     if (parsedRequest.data.action === "modules") {
+      const { data: origin, error: originError } = await readSyllabusWithOrigin(
+        authorization.admin,
+        parsedRequest.data.artifactId,
+        "state",
+      );
+      if (originError) throw originError;
+      if (origin?.input_mode === "PROVIDED_SYLLABUS")
+        return apiErrorResponse({
+          requestId,
+          status: 409,
+          code: API_ERROR_CODE.conflict,
+          message:
+            "Edita y confirma la estructura desde la revisión del temario importado.",
+        });
       const { data, error } = await authorization.admin
         .from("syllabus")
         .update({
@@ -193,16 +229,32 @@ export async function PATCH(request: Request) {
         });
       }
     } else {
+      let approvalVersion: number | undefined;
       let validatedApproval:
-        | { automatic_pass: boolean; checks: ReturnType<typeof runAllValidations>["checks"] }
+        | {
+            automatic_pass: boolean;
+            checks: ReturnType<typeof runAllValidations>["checks"];
+          }
         | undefined;
       if (parsedRequest.data.state === "STEP_APPROVED") {
+        if (
+          !(await canReviewContent(
+            authorization.tenant.userId,
+            authorization.tenant,
+          ))
+        )
+          return apiErrorResponse({
+            requestId,
+            status: 403,
+            code: API_ERROR_CODE.roleForbidden,
+            message: "Tu rol no permite aprobar temarios.",
+          });
         const [syllabusResult, artifactResult] = await Promise.all([
-          authorization.admin
-            .from("syllabus")
-            .select("modules")
-            .eq("artifact_id", parsedRequest.data.artifactId)
-            .maybeSingle(),
+          readSyllabusWithOrigin(
+            authorization.admin,
+            parsedRequest.data.artifactId,
+            "modules,state,source_summary",
+          ),
           authorization.admin
             .from("artifacts")
             .select("objetivos")
@@ -211,13 +263,39 @@ export async function PATCH(request: Request) {
         ]);
         if (syllabusResult.error) throw syllabusResult.error;
         if (artifactResult.error) throw artifactResult.error;
-        const validation = runAllValidations(
+        approvalVersion = syllabusResult.data?.content_version;
+        const imported =
+          syllabusResult.data?.input_mode === "PROVIDED_SYLLABUS" &&
+          syllabusResult.data.active_import_id
+            ? await new SyllabusImportRepository(
+                authorization.admin,
+                parsedRequest.data.artifactId,
+              ).get(syllabusResult.data.active_import_id)
+            : null;
+        const savedRevision =
+          syllabusResult.data?.source_summary?.import_revision;
+        // The exact confirmed snapshot used by enrichment is immutable in history.
+        let baseline = undefined;
+        if (imported && typeof savedRevision === "number") {
+          const { data: snapshot, error: snapshotError } =
+            await authorization.admin
+              .from("syllabus_import_revisions")
+              .select("outline")
+              .eq("import_id", imported.id)
+              .eq("revision", savedRevision)
+              .maybeSingle();
+          if (snapshotError) throw snapshotError;
+          baseline = snapshot?.outline;
+        }
+        const validation = validateSyllabusForMode(
           Array.isArray(syllabusResult.data?.modules)
             ? syllabusResult.data.modules
             : [],
           Array.isArray(artifactResult.data?.objetivos)
             ? artifactResult.data.objetivos
             : [],
+          syllabusResult.data?.input_mode,
+          baseline,
         );
         if (!validation.passed) {
           return apiErrorResponse({
@@ -233,40 +311,63 @@ export async function PATCH(request: Request) {
           checks: validation.checks,
         };
       }
-      const qa = parsedRequest.data.notes === undefined
-        ? undefined
-        : {
-            status: parsedRequest.data.state === "STEP_APPROVED"
-              ? "APPROVED"
-              : parsedRequest.data.state === "STEP_REJECTED"
-                ? "REJECTED"
-                : "PENDING",
-            notes: parsedRequest.data.notes,
-            reviewed_at: new Date().toISOString(),
-          };
+      const qa =
+        parsedRequest.data.notes === undefined
+          ? undefined
+          : {
+              status:
+                parsedRequest.data.state === "STEP_APPROVED"
+                  ? "APPROVED"
+                  : parsedRequest.data.state === "STEP_REJECTED"
+                    ? "REJECTED"
+                    : "PENDING",
+              notes: parsedRequest.data.notes,
+              reviewed_at: new Date().toISOString(),
+            };
       const payload = {
         state: parsedRequest.data.state,
         updated_at: new Date().toISOString(),
         ...(validatedApproval ? { validation: validatedApproval } : {}),
         ...(qa ? { qa } : {}),
       };
-      const { error } = await authorization.admin.from("syllabus").upsert(
-        {
-          artifact_id: parsedRequest.data.artifactId,
-          ...payload,
-        },
-        { onConflict: "artifact_id" },
-      );
-      if (error) throw error;
+      if (approvalVersion !== undefined) {
+        const { data, error } = await authorization.admin
+          .from("syllabus")
+          .update(payload)
+          .eq("artifact_id", parsedRequest.data.artifactId)
+          .eq("content_version", approvalVersion)
+          .select("id")
+          .maybeSingle();
+        if (error) throw error;
+        if (!data)
+          return apiErrorResponse({
+            requestId,
+            status: 409,
+            code: API_ERROR_CODE.conflict,
+            message:
+              "El temario cambió durante la revisión. Recarga y revisa la versión actual antes de aprobar.",
+          });
+      } else {
+        const { error } = await authorization.admin.from("syllabus").upsert(
+          {
+            artifact_id: parsedRequest.data.artifactId,
+            ...payload,
+          },
+          { onConflict: "artifact_id" },
+        );
+        if (error) throw error;
+      }
     }
 
     return apiSuccessResponse({ updated: true }, { requestId });
   } catch (error) {
-    createOperationalLogger("syllabus.update", { correlationId: requestId })
-      .error("syllabus.update_failed", error);
+    createOperationalLogger("syllabus.update", {
+      correlationId: requestId,
+    }).error("syllabus.update_failed", error);
     return apiErrorResponse({
       code: API_ERROR_CODE.dependencyUnavailable,
-      message: "No se pudo actualizar temporalmente el temario. Intenta de nuevo.",
+      message:
+        "No se pudo actualizar temporalmente el temario. Intenta de nuevo.",
       requestId,
       retryable: true,
       status: 503,
@@ -277,7 +378,11 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   const artifactId = new URL(request.url).searchParams.get("artifactId") || "";
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(artifactId)) {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      artifactId,
+    )
+  ) {
     return apiErrorResponse({
       code: API_ERROR_CODE.invalidRequest,
       message: "Identificador de artefacto inválido.",
@@ -291,6 +396,20 @@ export async function DELETE(request: Request) {
     if (!authorization.success) {
       return authorizationErrorResponse(authorization, requestId);
     }
+    const syllabus = await readSyllabusWithOrigin(
+      authorization.admin,
+      artifactId,
+      "state",
+    );
+    if (syllabus.error) throw syllabus.error;
+    if (syllabus.data?.input_mode === "PROVIDED_SYLLABUS")
+      return apiErrorResponse({
+        requestId,
+        status: 409,
+        code: API_ERROR_CODE.conflict,
+        message:
+          "Corrige el temario importado mediante una revisión confirmada antes de continuar.",
+      });
     const { error } = await authorization.admin
       .from("syllabus")
       .update({
@@ -306,11 +425,13 @@ export async function DELETE(request: Request) {
     if (error) throw error;
     return apiSuccessResponse({ reset: true }, { requestId });
   } catch (error) {
-    createOperationalLogger("syllabus.reset", { correlationId: requestId })
-      .error("syllabus.reset_failed", error);
+    createOperationalLogger("syllabus.reset", {
+      correlationId: requestId,
+    }).error("syllabus.reset_failed", error);
     return apiErrorResponse({
       code: API_ERROR_CODE.dependencyUnavailable,
-      message: "No se pudo reiniciar temporalmente el temario. Intenta de nuevo.",
+      message:
+        "No se pudo reiniciar temporalmente el temario. Intenta de nuevo.",
       requestId,
       retryable: true,
       status: 503,
@@ -320,7 +441,9 @@ export async function DELETE(request: Request) {
 
 export async function POST(request: Request) {
   const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
-  const logger = createOperationalLogger("syllabus.api", { correlationId: requestId });
+  const logger = createOperationalLogger("syllabus.api", {
+    correlationId: requestId,
+  });
   let reservationAdmin: SupabaseClient | null = null;
   let reservationCreated = false;
   let reservationArtifactId = "";
@@ -335,12 +458,14 @@ export async function POST(request: Request) {
     );
     if (!parsedRequest.success) {
       return apiErrorResponse({
-        code: parsedRequest.reason === "too_large"
-          ? API_ERROR_CODE.payloadTooLarge
-          : API_ERROR_CODE.invalidRequest,
-        message: parsedRequest.reason === "too_large"
-          ? "La solicitud de temario excede el tamaño permitido."
-          : "Solicitud de generación de temario inválida.",
+        code:
+          parsedRequest.reason === "too_large"
+            ? API_ERROR_CODE.payloadTooLarge
+            : API_ERROR_CODE.invalidRequest,
+        message:
+          parsedRequest.reason === "too_large"
+            ? "La solicitud de temario excede el tamaño permitido."
+            : "Solicitud de generación de temario inválida.",
         requestId,
         status: parsedRequest.reason === "too_large" ? 413 : 400,
       });
@@ -364,15 +489,20 @@ export async function POST(request: Request) {
     reservationAdmin = admin;
 
     const { data: currentSyllabus, error: syllabusLookupError } =
-      await admin
-        .from("syllabus")
-        .select("iteration_count, state")
-        .eq("artifact_id", artifactId)
-        .maybeSingle();
+      await readSyllabusWithOrigin(admin, artifactId, "iteration_count,state");
 
     if (syllabusLookupError) {
       throw syllabusLookupError;
     }
+
+    if (currentSyllabus?.input_mode === "PROVIDED_SYLLABUS")
+      return apiErrorResponse({
+        requestId,
+        status: 409,
+        code: API_ERROR_CODE.conflict,
+        message:
+          "Este curso usa un temario explícito. Completa o revisa su importación en lugar de regenerarlo desde cero.",
+      });
 
     if (currentSyllabus?.state === "STEP_GENERATING") {
       return apiErrorResponse({
@@ -426,7 +556,8 @@ export async function POST(request: Request) {
       if (reservationError.code === "23505") {
         return apiErrorResponse({
           code: API_ERROR_CODE.conflict,
-          message: "Otra iteración del temario fue iniciada al mismo tiempo. Actualiza la página antes de reintentar.",
+          message:
+            "Otra iteración del temario fue iniciada al mismo tiempo. Actualiza la página antes de reintentar.",
           requestId,
           status: 409,
         });
@@ -437,7 +568,8 @@ export async function POST(request: Request) {
     if (!reservedSyllabus) {
       return apiErrorResponse({
         code: API_ERROR_CODE.conflict,
-        message: "Otra iteración del temario fue iniciada al mismo tiempo. Actualiza la página antes de reintentar.",
+        message:
+          "Otra iteración del temario fue iniciada al mismo tiempo. Actualiza la página antes de reintentar.",
         requestId,
         status: 409,
       });
@@ -449,7 +581,8 @@ export async function POST(request: Request) {
       .select("generation_metadata")
       .eq("id", artifactId)
       .maybeSingle();
-    const artifactGenerationMetadata = artifactDurationSource?.generation_metadata;
+    const artifactGenerationMetadata =
+      artifactDurationSource?.generation_metadata;
 
     if (isNetlifyDeployment()) {
       await dispatchBackgroundFunctionJson(
@@ -473,26 +606,34 @@ export async function POST(request: Request) {
         artifactId,
         iterationNumber: reservedIteration,
       });
-      return apiSuccessResponse({
-        status: "processing",
-        message: "Generación de temario iniciada en background",
-        artifactId,
-      }, { requestId });
+      return apiSuccessResponse(
+        {
+          status: "processing",
+          message: "Generación de temario iniciada en background",
+          artifactId,
+        },
+        { requestId },
+      );
     }
 
     const syllabusSettings = await getPipelineModelSettings(
       "SYLLABUS",
       tenant.organizationId,
     );
-    const searchModelName = syllabusSettings.fallback_model || syllabusSettings.model_name;
+    const searchModelName =
+      syllabusSettings.fallback_model || syllabusSettings.model_name;
     const configuredModels = Array.from(
       new Set([syllabusSettings.model_name, searchModelName].filter(Boolean)),
     );
     const clients: SyllabusModelClients = {};
-    if (configuredModels.some((model) => getTextModelProvider(model) === "gemini")) {
+    if (
+      configuredModels.some((model) => getTextModelProvider(model) === "gemini")
+    ) {
       clients.gemini = new GoogleGenAI({ apiKey: getGeminiApiKey() });
     }
-    if (configuredModels.some((model) => getTextModelProvider(model) === "openai")) {
+    if (
+      configuredModels.some((model) => getTextModelProvider(model) === "openai")
+    ) {
       const openAiApiKey = getOptionalOpenAIApiKey();
       if (!openAiApiKey) {
         throw new Error(
@@ -516,7 +657,8 @@ export async function POST(request: Request) {
 
       researchContext = researchResult.text;
       researchMetadata =
-        (researchResult.groundingMetadata as GroundingMetadata | undefined) || null;
+        (researchResult.groundingMetadata as GroundingMetadata | undefined) ||
+        null;
 
       logger.info("syllabus.research_completed", {
         artifactId,
@@ -538,16 +680,18 @@ export async function POST(request: Request) {
       tenant.organizationId,
     );
     const promptTemplate = promptOverride?.trim() || resolvedPrompt.content;
-    const finalPrompt = buildSyllabusGenerationPrompt({
-      promptTemplate,
-      ideaCentral,
-      objetivos,
-      route,
-      researchContext,
-      sourceDocuments,
-    }) + (iterationInstructions?.trim()
-      ? `\n\nRETROALIMENTACION PARA ESTA ITERACION:\n${iterationInstructions.trim()}\nRegenera el temario completo aplicando esta retroalimentacion.`
-      : "");
+    const finalPrompt =
+      buildSyllabusGenerationPrompt({
+        promptTemplate,
+        ideaCentral,
+        objetivos,
+        route,
+        researchContext,
+        sourceDocuments,
+      }) +
+      (iterationInstructions?.trim()
+        ? `\n\nRETROALIMENTACION PARA ESTA ITERACION:\n${iterationInstructions.trim()}\nRegenera el temario completo aplicando esta retroalimentacion.`
+        : "");
 
     const generationText = await generateSyllabusJson({
       clients,
@@ -587,8 +731,12 @@ export async function POST(request: Request) {
       })),
       source_documents: sourceDocuments,
       prompt_override_applied: Boolean(promptOverride?.trim()),
-      prompt_source: promptOverride?.trim() ? "override" : resolvedPrompt.source,
-      prompt_version: promptOverride?.trim() ? "ad-hoc" : resolvedPrompt.version,
+      prompt_source: promptOverride?.trim()
+        ? "override"
+        : resolvedPrompt.source,
+      prompt_version: promptOverride?.trim()
+        ? "ad-hoc"
+        : resolvedPrompt.version,
     };
 
     content.generation_metadata = metadata;

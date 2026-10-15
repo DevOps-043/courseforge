@@ -11,7 +11,7 @@ const integrityEntry = fileURLToPath(new URL("../apps/api/dist/features/video-in
 
 async function main() {
   const options = parseFinalVideoGateArguments(process.argv.slice(2));
-  const { compareExportedVideoWithPreview } = require("../apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/qa/composition-exported-video-conformance.js");
+  const { compareExportedVideoWithPreview } = require("../apps/web/dist/composition-worker/domains/production/composition-editor/qa/composition-exported-video-conformance.js");
   const report = await runFinalVideoGate(options, {
     async checkIntegrity(organizationId, requestId) {
       const { stdout } = await execute(process.execPath, [integrityEntry, "--check-only", organizationId, requestId], {

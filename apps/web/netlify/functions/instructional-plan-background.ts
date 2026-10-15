@@ -37,6 +37,8 @@ import {
 } from "../../src/domains/plan/lib/instructional-plan-generation.schema";
 import { buildInstructionalPlanContextPrompt } from "../../src/domains/plan/lib/instructional-plan-prompt";
 import { getInstructionalPlanCompletenessIssues } from "../../src/domains/plan/lib/plan-completeness";
+import { alignPlanLessonsById } from "../../src/domains/plan/lib/plan-lesson-identity";
+import { readSyllabusWithOrigin } from "../../src/domains/syllabus/services/syllabus-workflow-read";
 import { recordAiFailure, recordAiSdkUsage } from "../../src/shared/ai/usage-telemetry";
 
 type BackgroundSupabaseClient = SupabaseClient;
@@ -60,6 +62,7 @@ interface ArtifactRecord {
 }
 
 interface SyllabusLessonRecord {
+  topics?: string[];
   estimated_minutes?: number | null;
   id: string;
   objective_specific?: string | null;
@@ -74,6 +77,9 @@ interface SyllabusModuleRecord {
 
 interface SyllabusRecord {
   modules?: unknown;
+  state?: string;
+  input_mode?: string;
+  content_version?: number;
 }
 
 function createBackgroundSupabaseClient() {
@@ -97,7 +103,7 @@ function renderLessonsText(lessons: SyllabusLessonRecord[]) {
   return lessons
     .map(
       (lesson, index) =>
-        `${index + 1}. ID: ${lesson.id}\n   Leccion: ${lesson.title}\n   OA Original: ${lesson.objective_specific || "N/A"}\n   Tiempo total estimado de aprendizaje: ${lesson.estimated_minutes || "N/A"} minutos`,
+        `${index + 1}. ID: ${lesson.id}\n   Leccion: ${lesson.title}\n   Temas obligatorios: ${(lesson.topics || []).join("; ")}\n   OA Original: ${lesson.objective_specific || "N/A"}\n   Tiempo total estimado de aprendizaje: ${lesson.estimated_minutes || "N/A"} minutos`,
     )
     .join("\n\n");
 }
@@ -282,7 +288,9 @@ async function generateModulePlans(params: {
     usage: result.usage,
   });
 
-  const moduleLessonPlans = result.object.lesson_plans.map((lessonPlan, lessonIndex) => {
+  const identifiedLessons = lessons.map((lesson, lessonIndex) => ({ ...lesson, id: lesson.id || `lesson-${moduleIndex + 1}-${lessonIndex + 1}` }));
+  const orderedPlans = alignPlanLessonsById(identifiedLessons, result.object.lesson_plans);
+  const moduleLessonPlans = orderedPlans.map((lessonPlan, lessonIndex) => {
     const syllabusLesson = lessons[lessonIndex];
     return {
       ...lessonPlan,
@@ -342,11 +350,7 @@ export const handler: Handler = async (event) => {
       { data: rawSyllabus, error: syllabusError },
     ] = await Promise.all([
       supabase.from("artifacts").select("*").eq("id", artifactId).single(),
-      supabase
-        .from("syllabus")
-        .select("modules")
-        .eq("artifact_id", artifactId)
-        .single(),
+      readSyllabusWithOrigin(supabase, artifactId, "modules,state"),
     ]);
 
     if (artifactError || !rawArtifact) {
@@ -364,6 +368,9 @@ export const handler: Handler = async (event) => {
     const syllabusRecord = (rawSyllabus || null) as SyllabusRecord | null;
     if (!syllabusRecord?.modules) {
       throw new Error("Syllabus record has no modules.");
+    }
+    if (syllabusRecord.input_mode === "PROVIDED_SYLLABUS" && syllabusRecord.state !== "STEP_APPROVED") {
+      throw new Error("Aprueba el temario importado antes de generar el plan.");
     }
 
     const artifact = rawArtifact as ArtifactRecord;
@@ -402,6 +409,11 @@ export const handler: Handler = async (event) => {
       body.iterationNumber,
     );
     activeIteration = iterationNumber;
+    if (syllabusRecord.input_mode === "PROVIDED_SYLLABUS") {
+      const { error: versionError } = await supabase.from("instructional_plans")
+        .update({ syllabus_content_version: syllabusRecord.content_version }).eq("artifact_id", artifactId).eq("iteration_count", iterationNumber);
+      if (versionError) throw versionError;
+    }
 
     const modelConfig = await resolveModelSetting(
       createServiceRoleClient(),

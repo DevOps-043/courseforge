@@ -17,6 +17,14 @@ test("normalizes legacy iframe messages to the current protocol version", () => 
   assert.equal(message?.protocolVersion, COMPOSITION_PREVIEW_PROTOCOL_VERSION);
 });
 
+test("focus restoration accepts only bounded target identity and rejects arbitrary selectors", () => {
+  assert.equal(createCompositionPreviewParentCommand({ type: "courseforge-composition-restore-focus", hfId: "clip" })?.type,
+    "courseforge-composition-restore-focus");
+  assert.ok(createCompositionPreviewParentCommand({ type: "courseforge-composition-restore-focus", hfId: null }));
+  assert.equal(createCompositionPreviewParentCommand({ type: "courseforge-composition-restore-focus", hfId: "x".repeat(161) }), null);
+  assert.equal(createCompositionPreviewParentCommand({ type: "courseforge-composition-restore-focus", hfId: "clip", selector: "body" } as never), null);
+});
+
 test("accepts a versioned ready event and rejects malformed document hashes", () => {
   const documentHash = "a".repeat(64);
   const ready = parseCompositionPreviewIframeMessage({

@@ -3,15 +3,19 @@ import { z } from "zod";
 import type { CompositionEditorDocument } from "./composition-document.types";
 import type { CompositionCompiledFont } from "../fonts/organization-font.types";
 import { compositionTextLayerStyleSchema } from "./composition-text-layer.types";
+import { compositionFontReferenceDetails, COMPOSITION_FONT_REFERENCE_LIMIT } from "./composition-font-references";
+import { googleFontFaceBindingSchema } from "../fonts/google-font-native-face.contract";
+import { googleFontSelectorsOverlap } from "../fonts/google-font-face-selectors";
 import { captionCueElementId } from "./composition-native-overlay-renderer.service";
 import { declaredNativeFontUsageContractSchema, DECLARED_NATIVE_FONT_USAGE_POLICY } from "./composition-font-usage-contract";
 
-export const CONFORMANCE_FONT_BINDING_LIMITS = {maximumFonts: 32, maximumFontBytes: 50 * 1024 * 1024} as const;
+export const CONFORMANCE_FONT_BINDING_LIMITS = {maximumFonts: COMPOSITION_FONT_REFERENCE_LIMIT, maximumFontBytes: 50 * 1024 * 1024} as const;
 export const conformanceFontManifestSchema = z.array(z.object({
   checksumSha256: z.string().regex(/^[a-f0-9]{64}$/),
   family: compositionTextLayerStyleSchema.shape.fontFamily.removeDefault(),
   fileSizeBytes: z.number().int().positive().max(CONFORMANCE_FONT_BINDING_LIMITS.maximumFontBytes),
   fontAssetId: z.string().uuid(), mimeType: z.enum(["font/woff", "font/woff2", "font/ttf", "font/otf"]),
+  googleFace: googleFontFaceBindingSchema.optional(),
 }).strict()).max(CONFORMANCE_FONT_BINDING_LIMITS.maximumFonts)
   .refine((fonts) => new Set(fonts.map((font) => font.fontAssetId)).size === fonts.length, "CONFORMANCE_FONT_BINDING_DUPLICATE");
 export type ConformanceFontManifest = z.infer<typeof conformanceFontManifestSchema>;
@@ -45,20 +49,30 @@ export function buildDeclaredNativeFontUsageContract(document: CompositionEditor
 export function assertDocumentConformanceFontBindings(document: CompositionEditorDocument, input: unknown) {
   const fonts = normalizeConformanceFontManifest(input);
   const byId = new Map(fonts.map((font) => [font.fontAssetId, font]));
-  const families = new Map<string, string>();
+  const families = new Map<string, ConformanceFontManifest>();
   for (const font of fonts) {
     const familyKey = font.family.normalize("NFC").toLowerCase();
     const contentIdentity = `${font.checksumSha256}:${font.mimeType}:${font.fileSizeBytes}`;
-    const previous = families.get(familyKey);
-    if (previous && previous !== contentIdentity) throw new Error("CONFORMANCE_FONT_FAMILY_AMBIGUOUS");
-    families.set(familyKey, contentIdentity);
+    const previous = families.get(familyKey) ?? [];
+    for (const prior of previous) {
+      const priorIdentity = `${prior.checksumSha256}:${prior.mimeType}:${prior.fileSizeBytes}`;
+      if (font.googleFace || prior.googleFace) {
+        const current = font.googleFace, saved = prior.googleFace;
+        if (!current || !saved || current.fontId !== saved.fontId || current.bundleId !== saved.bundleId
+          || current.candidateSha256 !== saved.candidateSha256 || current.admissionId !== saved.admissionId
+          || priorIdentity !== contentIdentity && googleFontSelectorsOverlap(current, saved))
+          throw new Error("CONFORMANCE_FONT_FAMILY_AMBIGUOUS");
+      } else if (priorIdentity !== contentIdentity) throw new Error("CONFORMANCE_FONT_FAMILY_AMBIGUOUS");
+    }
+    families.set(familyKey, [...previous, font]);
   }
-  for (const clip of document.clips) {
-    if (clip.source.type !== "NATIVE_TEXT" && clip.source.type !== "NATIVE_CAPTIONS") continue;
-    const {fontAssetId, fontFamily} = clip.source.style;
-    if (!fontAssetId) continue;
+  let references: ReturnType<typeof compositionFontReferenceDetails>;
+  try { references = compositionFontReferenceDetails(document); }
+  catch { throw new Error("CONFORMANCE_FONT_DOCUMENT_BINDING_MISMATCH"); }
+  for (const [fontAssetId, reference] of references) {
     const font = byId.get(fontAssetId);
-    if (!font || font.family !== fontFamily) throw new Error("CONFORMANCE_FONT_DOCUMENT_BINDING_MISMATCH");
+    if (!font || font.family !== reference.fontFamily || JSON.stringify(font.googleFace) !== JSON.stringify(reference.googleFace))
+      throw new Error("CONFORMANCE_FONT_DOCUMENT_BINDING_MISMATCH");
   }
   return fonts;
 }
@@ -72,6 +86,7 @@ export function assertCompiledConformanceFontBindings(document: CompositionEdito
     const extension = font.mimeType.slice("font/".length);
     const format = extension === "otf" ? "opentype" : extension === "ttf" ? "truetype" : extension;
     if (!face || face.assetId !== font.fontAssetId || face.family !== font.family || face.format !== format
+      || JSON.stringify(face.googleFace ? googleFontFaceBindingSchema.parse(face.googleFace) : undefined) !== JSON.stringify(font.googleFace)
       || face.sourceUrl !== conformanceFontPath(font)) throw new Error("CONFORMANCE_FONT_COMPILED_BINDING_MISMATCH");
   }
   return fonts;

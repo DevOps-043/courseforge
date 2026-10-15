@@ -36,6 +36,12 @@ async function main() {
     await dispatchKey(browser.client, "k", "KeyK", 2);
     await waitFor(browser.client, "document.querySelector('[role=dialog]') !== null", "apertura con Ctrl+K");
     await assertRuntimeValue(browser.client, "document.activeElement?.getAttribute('aria-label')", "Buscar comandos del editor", "autofocus del buscador");
+    await assertRuntimeValue(browser.client, "document.getElementById(document.activeElement?.getAttribute('aria-activedescendant'))?.dataset?.commandId", "edit.copy", "referencia accesible al resultado activo");
+    await dispatchKey(browser.client, "ArrowDown", "ArrowDown", 0);
+    await waitFor(browser.client, "document.getElementById(document.activeElement?.getAttribute('aria-activedescendant'))?.dataset?.commandId === 'view.grid'", "resultado habilitado activo antes de IME");
+    await evaluate(browser.client, `document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, isComposing: true }));`);
+    await assertRuntimeValue(browser.client, "document.querySelector('[role=dialog]') !== null", true, "Enter IME no ejecuta ni cierra");
+    await assertRuntimeValue(browser.client, "document.querySelector('#last-command').textContent", "none", "Enter IME no despacha comando habilitado");
 
     await evaluate(browser.client, "document.querySelector('[data-command-id=\"edit.copy\"]').click()");
     await assertRuntimeValue(browser.client, "document.querySelector('[role=dialog]') !== null", true, "comando deshabilitado mantiene la paleta");
@@ -60,6 +66,19 @@ async function main() {
     await waitFor(browser.client, "document.querySelector('[role=dialog]') === null", "cierre con Escape");
     await assertRuntimeValue(browser.client, "document.activeElement?.id", "command-palette-opener", "foco tras Escape");
 
+    await evaluate(browser.client, "document.querySelector('#command-palette-opener').click()");
+    await waitFor(browser.client, "document.querySelector('[role=dialog]') !== null", "reapertura para botón de cierre");
+    await evaluate(browser.client, "document.querySelector('[aria-label=\"Cerrar paleta de comandos\"]').focus()");
+    await dispatchKey(browser.client, "Enter", "Enter", 0);
+    await waitFor(browser.client, "document.querySelector('[role=dialog]') === null", "Enter activa el botón cerrar");
+    await assertRuntimeValue(browser.client, "document.querySelector('#last-command').textContent", "view.grid", "cerrar no despacha otro comando");
+
+    await evaluate(browser.client, "document.querySelector('#command-palette-opener').click()");
+    await waitFor(browser.client, "document.querySelector('[role=dialog]') !== null", "reapertura para aislamiento modal");
+    await evaluate(browser.client, "document.querySelector('[data-command-id=\"view.safe-areas\"]').focus()");
+    await dispatchKey(browser.client, "k", "KeyK", 2);
+    await waitFor(browser.client, "document.querySelector('[role=dialog]') === null", "Ctrl+K cierra sin reabrir desde el listener global");
+
     process.stdout.write(`${JSON.stringify({
       browserPath: browser.browserPath,
       commandDispatch: "passed",
@@ -67,6 +86,10 @@ async function main() {
       focusRestoration: "passed",
       focusTrap: "passed",
       keyboardOpenClose: "passed",
+      nativeCloseButtonEnter: "passed",
+      modalKeyboardIsolation: "passed",
+      composingEnter: "passed",
+      activeDescendant: "passed",
       search: "passed",
     }, null, 2)}\n`);
   } finally {

@@ -135,6 +135,7 @@ test("browser DOM reader is self-contained and rounds/clips transformed text ran
       getBoundingClientRect: () => ({left: -0.2, top: 2.1, right: 101.3, bottom: 20.8})})},
     getComputedStyle: () => ({opacity: "1", display: "flex", visibility: "visible"})});
   assert.equal(rows[0].left, 0); assert.equal(rows[0].top, 2); assert.equal(rows[0].width, 100); assert.equal(rows[0].height, 19);
+  assert.equal(JSON.stringify(rows[0].observedBounds), JSON.stringify({left: -0.2, top: 2.1, right: 101.3, bottom: 20.8}));
 });
 
 test("capture validates content/identity/geometry and returns hashes only", async () => {

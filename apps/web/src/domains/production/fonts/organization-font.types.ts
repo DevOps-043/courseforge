@@ -1,3 +1,4 @@
+import type { GoogleFontFaceBinding } from "./google-font-native-face.contract";
 export const ORGANIZATION_FONT_STORAGE_BUCKET = "organization-fonts";
 export const ORGANIZATION_FONT_TABLE = "organization_slide_fonts";
 
@@ -12,6 +13,7 @@ export type OrganizationFontRecord = {
   status: OrganizationFontStatus;
   storageBucket: string;
   storagePath: string;
+  googleFace?: GoogleFontFaceBinding;
 };
 
 export type CompositionCompiledFont = {
@@ -19,4 +21,5 @@ export type CompositionCompiledFont = {
   family: string;
   format: "opentype" | "truetype" | "woff" | "woff2";
   sourceUrl: string;
+  googleFace?: GoogleFontFaceBinding;
 };

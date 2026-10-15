@@ -35,6 +35,7 @@ import {
 } from "../hyperframes/hyperframes-render-profiles";
 import {
   compiledCompositionFont,
+  compositionFontManifestBinding,
   compositionFontArchivePath,
   CompositionFontAssetError,
   downloadCompositionFont,
@@ -45,11 +46,15 @@ import {
   summarizeCompositionConformanceContract,
 } from "./composition-preview-render-conformance";
 import { buildSnapshotConformanceContract } from "./composition-snapshot-conformance-contract";
+import { writeConformanceReferenceArchive } from "./composition-conformance-reference-archive.server";
+import { restrictSnapshotDeckTextReuse } from "./composition-snapshot-conformance-policy";
 import { buildCompositionEventBatchAuthorization, assertSnapshotEventBatchAuthorization } from "./composition-conformance-event-batch-contract";
 import { assertSnapshotFontManifestReuse, assertDocumentConformanceFontBindings } from "./composition-conformance-font-bindings";
 import type { ConformanceFontManifest } from "./composition-conformance-font-bindings";
-import { assertSnapshotVisibilityReuse, restrictSnapshotVisibilityReuse, restrictSnapshotFontUsageReuse, restrictSnapshotColorTagReuse, restrictSnapshotEventCheckpointReuse, resolveSnapshotTextVisibilityPolicy } from "./composition-snapshot-conformance-policy";
-import { buildConformanceReferenceSource, conformanceReferenceVersion, CONFORMANCE_REFERENCE_ARCHIVE_PATHS } from "./composition-conformance-reference.service";
+import { assertSnapshotVisibilityReuse, restrictSnapshotVisibilityReuse, restrictSnapshotFontUsageReuse, restrictSnapshotColorTagReuse, restrictSnapshotEventCheckpointReuse, restrictSnapshotPaintMaskReuse, resolveSnapshotTextVisibilityPolicy } from "./composition-snapshot-conformance-policy";
+import {restrictSnapshotRenderExecutionReuse} from "./composition-snapshot-conformance-policy";
+import { buildConformanceReferenceSource, conformanceReferenceVersion } from "./composition-conformance-reference.service";
+import { compositionDeckImageAssetIds, isCompositionDeckImageAvailable } from "./composition-deck-image-aliases.server";
 
 const PROJECT_BUCKET = "production-assets";
 
@@ -81,6 +86,10 @@ export async function snapshotCompositionDocument(params: {
   renderProfile: HyperframesRenderProfile;
   supabase: SupabaseClient<any, "public", any>;
   userId: string;
+  /** Initial editorial onboarding freezes first; a separate draft-locked RPC
+   * may activate it only while no active revision exists. Never reuse partially
+   * linked legacy rows in this path. */
+  initialEditorialAnchor?: { expectedDocumentHash: string };
 }) {
   const [{ data: draft, error: draftError }, { data: composition, error: compositionError }, current] = await Promise.all([
     params.supabase.from("video_composition_drafts").select("id, composition_id, state").eq("id", params.draftId).eq("organization_id", params.organizationId).maybeSingle(),
@@ -91,6 +100,9 @@ export async function snapshotCompositionDocument(params: {
   if (compositionError) throw compositionError;
   if (!draft || draft.composition_id !== params.compositionId || draft.state !== "ACTIVE") throw new CompositionSnapshotError("El borrador no pertenece a una composici\u00f3n editable.", 409);
   if (!composition) throw new CompositionSnapshotError("La composici\u00f3n no existe.", 404);
+  if (params.initialEditorialAnchor && (current.documentHash !== params.initialEditorialAnchor.expectedDocumentHash
+    || hashCompositionDocument(current.document) !== current.documentHash))
+    throw new CompositionSnapshotError("El borrador cambió. Recarga la composición antes de preparar la edición.", 409);
   assertCompositionSnapshotRenderContract(current.document);
   if (!current.document.canvas.durationSource && current.document.canvas.durationMode !== "USER_EDITED") {
     throw new CompositionSnapshotError(
@@ -120,13 +132,7 @@ export async function snapshotCompositionDocument(params: {
   }
   let fontManifest: ConformanceFontManifest;
   try {
-    fontManifest = assertDocumentConformanceFontBindings(current.document, referencedFonts.map((font) => ({
-      checksumSha256: font.checksumSha256,
-      family: font.family,
-      fileSizeBytes: font.fileSizeBytes,
-      fontAssetId: font.id,
-      mimeType: font.mimeType,
-    })));
+    fontManifest = assertDocumentConformanceFontBindings(current.document, referencedFonts.map(compositionFontManifestBinding));
   } catch {
     throw new CompositionSnapshotError("Las fuentes de la composición no tienen una identidad única y verificable para render. Revisa sus familias y registros.", 409);
   }
@@ -134,9 +140,12 @@ export async function snapshotCompositionDocument(params: {
   const fontUsage = conformanceContractVersion === 4 && process.env.COMPOSITION_CONFORMANCE_FONT_USAGE_V1 === "true";
   const colorTags = conformanceContractVersion === 4 && process.env.COMPOSITION_CONFORMANCE_COLOR_TAGS_V1 === "true";
   const eventCheckpoints = conformanceContractVersion === 4 && process.env.COMPOSITION_CONFORMANCE_EVENT_CHECKPOINTS_V1 === "true";
+  const paintMasks = conformanceContractVersion === 4 && process.env.COMPOSITION_CONFORMANCE_TEXT_PAINT_MASKS_V1 === "true";
+  const deckText = conformanceContractVersion === 4 && process.env.COMPOSITION_CONFORMANCE_DECK_TEXT_V1 === "true";
+  const deckTextPaintMasks = deckText && process.env.COMPOSITION_CONFORMANCE_DECK_TEXT_PAINT_MASKS_V1 === "true";
   const checkpointContract = buildSnapshotConformanceContract({assets: [], visibilityPolicy,
     contractVersion: conformanceContractVersion, document: current.document, documentHash: current.documentHash,
-    renderProfile: renderSettings, fontUsage, fontManifest, colorTags, eventCheckpoints});
+    renderProfile: renderSettings, fontUsage, fontManifest, colorTags, eventCheckpoints, paintMasks, deckText, deckTextPaintMasks});
   const reuseQuery = params.supabase
     .from("video_composition_revisions")
     .select("id, revision_number, project_hash, project_archive_size_bytes, manifest")
@@ -150,8 +159,9 @@ export async function snapshotCompositionDocument(params: {
       render_profile: persistedRenderProfile,
       ...(referenceVersion ? { conformance_reference_version: referenceVersion } : {}),
     });
-  const { data: existing, error: existingError } = await restrictSnapshotEventCheckpointReuse(restrictSnapshotColorTagReuse(restrictSnapshotFontUsageReuse(
-    restrictSnapshotVisibilityReuse(reuseQuery, checkpointContract), checkpointContract), checkpointContract), checkpointContract).maybeSingle();
+  const deckReuseQuery = restrictSnapshotRenderExecutionReuse(restrictSnapshotDeckTextReuse(reuseQuery, checkpointContract), checkpointContract);
+  const { data: existing, error: existingError } = params.initialEditorialAnchor ? { data: null, error: null } : await restrictSnapshotPaintMaskReuse(restrictSnapshotEventCheckpointReuse(restrictSnapshotColorTagReuse(restrictSnapshotFontUsageReuse(
+    restrictSnapshotVisibilityReuse(deckReuseQuery, checkpointContract), checkpointContract), checkpointContract), checkpointContract), checkpointContract).maybeSingle();
   if (existingError) throw existingError;
   if (existing) {
     const {manifest: storedManifest, ...existingSummary} = existing;
@@ -208,7 +218,7 @@ export async function snapshotCompositionDocument(params: {
   })));
   const conformanceContract = buildSnapshotConformanceContract({
     assets: manifest.map((asset) => ({ checksum: asset.checksum, id: asset.productionAssetId })),
-    fontUsage, fontManifest, colorTags, eventCheckpoints,
+    fontUsage, fontManifest, colorTags, eventCheckpoints, paintMasks, deckText, deckTextPaintMasks,
     visibilityPolicy,
     contractVersion: conformanceContractVersion,
     document: current.document,
@@ -278,11 +288,7 @@ export async function snapshotCompositionDocument(params: {
     deckPublicUrls: new Map(deckDependencies.flatMap((asset) => asset.public_url ? [[asset.id, asset.public_url] as const] : [])),
   }) : null;
   if (referenceSource) {
-    zip.file(CONFORMANCE_REFERENCE_ARCHIVE_PATHS.preview, referenceSource.previewHtml);
-    zip.file(CONFORMANCE_REFERENCE_ARCHIVE_PATHS.metadata, JSON.stringify(referenceSource.metadata, null, 2));
-    // Use exactly the serialized bytes whose digests the reference metadata records.
-    zip.file("composition-document.json", referenceSource.documentJson);
-    zip.file("conformance-contract.json", referenceSource.contractJson);
+    writeConformanceReferenceArchive(zip, referenceSource);
   }
   const archive = await zip.generateAsync({ compression: "DEFLATE", type: "uint8array", compressionOptions: { level: 6 } });
   const archivePreflight = validateHyperframesPreflight({
@@ -334,6 +340,7 @@ export async function snapshotCompositionDocument(params: {
       canvas_duration_seconds: current.document.canvas.durationSeconds,
       canvas_aspect_ratio: resolveCompositionCanvasFormat(current.document.canvas),
       draft_document_hash: current.documentHash,
+      draft_document_id: params.draftId,
       draft_document_version: current.version,
       font_manifest: fontManifest,
       render_profile: {
@@ -408,7 +415,7 @@ export async function snapshotCompositionDocument(params: {
     })));
     if (linkError) throw new CompositionSnapshotError("La revisión se creó, pero no se pudieron vincular sus efectos de sonido.", 500);
   }
-  await setActiveCompositionSnapshot({
+  if (!params.initialEditorialAnchor) await setActiveCompositionSnapshot({
     compositionId: params.compositionId,
     organizationId: params.organizationId,
     revisionId: revision.id,
@@ -657,7 +664,7 @@ async function readSnapshotSoundEffectAssets(params: { draftId: string; organiza
   })) as AssetRow[];
 }
 
-async function readReferencedDeckDependencies(
+export async function readReferencedDeckDependencies(
   params: { draftId: string; organizationId: string; supabase: SupabaseClient<any, "public", any> },
   document: Awaited<ReturnType<typeof getCurrentCompositionDocument>>["document"],
 ) {
@@ -669,20 +676,27 @@ async function readReferencedDeckDependencies(
     .eq("source_reference", "DECK_DEPENDENCY");
   if (linksError) throw linksError;
   const dependencyIds = [...new Set((links || []).map((link) => link.production_asset_id as string))];
+  const declaredImageIds = compositionDeckImageAssetIds(document);
+  if (declaredImageIds.some(id => !dependencyIds.includes(id))) {
+    throw new CompositionSnapshotError("Una imagen de las diapositivas no está vinculada al borrador.", 409);
+  }
   if (dependencyIds.length === 0) return [] as AssetRow[];
 
   const { data, error } = await params.supabase
     .from("production_assets")
-    .select("id, checksum, file_size_bytes, metadata, mime_type, public_url, storage_bucket, storage_path")
+    .select("id, checksum, file_size_bytes, metadata, mime_type, public_url, storage_bucket, storage_path, qa_status")
     .eq("organization_id", params.organizationId)
     .in("id", dependencyIds);
   if (error) throw error;
+  if (declaredImageIds.some(id => !data?.some(asset => asset.id === id && isCompositionDeckImageAvailable(asset.mime_type, asset.qa_status)))) {
+    throw new CompositionSnapshotError("Una imagen de las diapositivas ya no está disponible para el snapshot.", 409);
+  }
   const deckSource = JSON.stringify({
     deckStyles: document.deckStyles,
     slides: document.clips.flatMap((clip) => clip.source.type === "DECK_SLIDE" ? [clip.source.html] : []),
   });
   return (data || []).filter((asset) => (
-    typeof asset.public_url === "string" && asset.public_url.length > 0 && deckSource.includes(asset.public_url)
+    declaredImageIds.includes(asset.id) || typeof asset.public_url === "string" && asset.public_url.length > 0 && deckSource.includes(asset.public_url)
   )) as AssetRow[];
 }
 
@@ -726,6 +740,9 @@ function readPersistedRenderProfile(manifest: Record<string, unknown>) {
 export function assertCompositionSnapshotRenderContract(
   document: Awaited<ReturnType<typeof getCurrentCompositionDocument>>["document"],
 ) {
+  if (document.htmlEditing?.items.length) {
+    throw new CompositionSnapshotError("El snapshot HTML requiere integrar el paquete congelado, sus recursos y el plan de conformidad antes de crear o reutilizar una revisión.", 409);
+  }
   if (!document.clips.length) throw new CompositionSnapshotError("Añade al menos un asset al timeline antes de exportar.", 409);
   if (document.canvas.fps !== HYPERFRAMES_DURABLE_RENDER_PROFILE.fps) {
     throw new CompositionSnapshotError(

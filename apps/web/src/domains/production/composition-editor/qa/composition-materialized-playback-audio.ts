@@ -12,6 +12,7 @@ const defaults = {capture: captureMaterializedConformancePreview, canonicalize: 
 export async function createMaterializedPlaybackAudioReference(params: {
   materialized: Awaited<ReturnType<typeof materializeConformanceReference>>; outputParentDirectory: string;
   ffmpegPath: string; allowLongAudio?: boolean;
+  signal?: AbortSignal;
 }, dependencies: typeof defaults = defaults) {
   // Reject unsupported long production before launching the browser; inspect authorized contract bytes via capture as well.
   const contractPath = join(params.materialized.directory, "conformance-contract.json");

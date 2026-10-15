@@ -23,8 +23,10 @@ export function buildAudioWaveformPath(input: {
     const start = input.sourceOffsetSeconds + (column / columns) * input.clipDurationSeconds;
     if (start >= waveform.durationSeconds) break;
     const end = Math.min(waveform.durationSeconds, input.sourceOffsetSeconds + ((column + 1) / columns) * input.clipDurationSeconds);
-    const first = Math.min(waveform.min.length - 1, Math.floor(start / bucketSeconds));
-    const last = Math.min(waveform.min.length - 1, Math.max(first, Math.ceil(end / bucketSeconds) - 1));
+    const offset = waveform.offsetSeconds ?? 0;
+    if (start < offset || start >= offset + waveform.min.length * bucketSeconds) continue;
+    const first = Math.min(waveform.min.length - 1, Math.floor((start - offset) / bucketSeconds));
+    const last = Math.min(waveform.min.length - 1, Math.max(first, Math.ceil((end - offset) / bucketSeconds) - 1));
     let minimum = 1;
     let maximum = -1;
     for (let index = first; index <= last; index += 1) {

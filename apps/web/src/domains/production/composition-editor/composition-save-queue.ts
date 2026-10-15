@@ -15,6 +15,7 @@ export class CompositionSaveQueue<TCommand> {
   private readonly entries: Array<QueueEntry<TCommand>> = [];
   private readonly idleWaiters: Array<() => void> = [];
   private running = false;
+  private externallyReserved = false;
 
   constructor(
     private readonly execute: (command: TCommand) => Promise<boolean>,
@@ -23,6 +24,7 @@ export class CompositionSaveQueue<TCommand> {
   ) {}
 
   enqueue(command: TCommand) {
+    if (this.externallyReserved) return Promise.resolve(false);
     if (this.entries.length >= COMPOSITION_PREVIEW_SAVE_QUEUE_CONFIG.maxPendingCommands) {
       this.onOverflow?.();
       return Promise.resolve(false);
@@ -37,14 +39,28 @@ export class CompositionSaveQueue<TCommand> {
   snapshot(): CompositionSaveQueueSnapshot {
     return {
       pendingCount: this.entries.length,
-      status: this.running ? "RUNNING" : "IDLE",
+      status: this.running || this.externallyReserved ? "RUNNING" : "IDLE",
     };
   }
 
   /** Resolves after the active save and every queued command have settled. */
   whenIdle(): Promise<void> {
-    if (!this.running && this.entries.length === 0) return Promise.resolve();
+    if (!this.running && !this.externallyReserved && this.entries.length === 0) return Promise.resolve();
     return new Promise<void>((resolve) => this.idleWaiters.push(resolve));
+  }
+
+  /** Immediate reservation, never a queued wait against a stale document base.
+   * External workflow must also fence mutations which bypass this save queue. */
+  async runExclusiveWhenIdle<TResult>(task: () => Promise<TResult>): Promise<TResult> {
+    if (this.running || this.externallyReserved || this.entries.length > 0) throw new Error("COMPOSITION_SAVE_QUEUE_BUSY");
+    this.externallyReserved = true;
+    try {
+      this.emitState();
+      return await task();
+    } finally {
+      this.externallyReserved = false;
+      try { this.emitState(); } finally { this.resolveIdleWaiters(); }
+    }
   }
 
   private async drain() {
@@ -79,6 +95,7 @@ export class CompositionSaveQueue<TCommand> {
   }
 
   private resolveIdleWaiters() {
+    if (this.running || this.externallyReserved || this.entries.length > 0) return;
     this.idleWaiters.splice(0).forEach((resolve) => resolve());
   }
 }

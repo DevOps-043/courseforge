@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { createCaptionEffectsProjection } from "./composition-caption-effects-projection";
+import { captionHasEffects } from "./composition-caption-effects.service";
+import { captionEffectElementId } from "./composition-caption-effects-plan";
 import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "./composition-document.types";
 import { captionCueElementId } from "./composition-native-overlay-renderer.service";
 import { COMPOSITION_TEXT_PARITY_POLICY as policy } from "./composition-text-parity-policy";
@@ -22,8 +25,9 @@ function projectTextCheckpoint(document: CompositionEditorDocument, seconds: num
     if (clip.source.type === "NATIVE_TEXT") expectedTexts.push({elementId: `${clip.id}-motion`, textSha256: hashTextParityContent(clip.source.text)});
     if (clip.source.type === "NATIVE_CAPTIONS") for (const cue of clip.source.cues) {
       if (seconds < clip.startSeconds + cue.startSeconds || seconds >= clip.startSeconds + cue.endSeconds) continue;
-      const text = cue.words?.length ? cue.words.map((word) => word.text).join(" ") : cue.text;
-      expectedTexts.push({elementId: captionCueElementId(clip.id, cue.id), textSha256: hashTextParityContent(text)});
+      const enhanced = captionHasEffects(cue, clip.source.effects);
+      const text = enhanced ? cue.text : cue.words?.length ? cue.words.map((word) => word.text).join(" ") : cue.text;
+      expectedTexts.push({elementId: enhanced ? captionEffectElementId(clip.id, cue.id) : captionCueElementId(clip.id, cue.id), textSha256: hashTextParityContent(text)});
     }
     if (expectedTexts.length > policy.maximumRegions) throw new Error("CONFORMANCE_TEXT_REGION_LIMIT");
   }
@@ -35,29 +39,36 @@ export function buildTextParityCheckpointPlan(input: unknown, seconds: number, m
   const document = compositionEditorDocumentSchema.parse(input);
   if (!motionVisibility) return projectTextCheckpoint(document, seconds);
   const projection = createMotionOpacityProjection(document, includesTransitions(motionVisibility));
+  const captionProjection = createCaptionEffectsProjection(document);
   try {
     const plan = projectTextCheckpoint(document, seconds, projection.windows);
-    return {...plan, expectedTexts: addVisibility(plan.expectedTexts, document, seconds, projection, motionVisibility)};
+    return {...plan, expectedTexts: addVisibility(plan.expectedTexts, document, seconds, projection, motionVisibility, captionProjection)};
   }
-  finally { projection.dispose(); }
+  finally { projection.dispose(); captionProjection.dispose(); }
 }
 
 function addVisibility(expectedTexts: Array<{elementId: string; textSha256: string}>, document: CompositionEditorDocument,
-  seconds: number, projection: ReturnType<typeof createMotionOpacityProjection>, visibilityPolicy: boolean | NativeTextVisibilityPolicy) {
+  seconds: number, projection: ReturnType<typeof createMotionOpacityProjection>, visibilityPolicy: boolean | NativeTextVisibilityPolicy,
+  captionProjection: ReturnType<typeof createCaptionEffectsProjection>) {
   const owners = new Map<string, string>();
   for (const clip of document.clips) {
     if (clip.source.type === "NATIVE_TEXT") owners.set(`${clip.id}-motion`, clip.id);
-    if (clip.source.type === "NATIVE_CAPTIONS") for (const cue of clip.source.cues) owners.set(captionCueElementId(clip.id, cue.id), clip.id);
+    if (clip.source.type === "NATIVE_CAPTIONS") for (const cue of clip.source.cues) owners.set(
+      captionHasEffects(cue, clip.source.effects) ? captionEffectElementId(clip.id, cue.id) : captionCueElementId(clip.id, cue.id), clip.id);
   }
   let overlayReferences = 0;
   return expectedTexts.map((expected) => {
     const ownerId = owners.get(expected.elementId)!;
     const appearance = visibilityPolicy === NATIVE_TEXT_APPEARANCE_POLICY || visibilityPolicy === NATIVE_TEXT_GEOMETRY_POLICY;
-    const presentation = appearance ? {...projection.presentationAt(seconds, ownerId),
+    const captionEffects = expected.elementId.endsWith("-effect") ? captionProjection.at(seconds, expected.elementId) : [];
+    const cueOpacity = captionEffects.find((pose) => pose.elementId === expected.elementId)?.opacity ?? 1;
+    const basePresentation = projection.presentationAt(seconds, ownerId);
+    const presentation = appearance ? {...basePresentation, effectiveOpacity: basePresentation.effectiveOpacity * cueOpacity,
+      ...(captionEffects.length ? { captionEffects } : {}),
       ...(visibilityPolicy === NATIVE_TEXT_GEOMETRY_POLICY ? {paintPose: projection.paintPoseAt(seconds, ownerId)} : {})} : undefined;
     overlayReferences += presentation?.opaqueOverlayIds.length ?? 0;
     if (overlayReferences > policy.maximumOverlayReferencesPerCheckpoint) throw new Error("CONFORMANCE_TEXT_PRESENTATION_LIMIT");
-    return {...expected, visibility: projection.at(seconds, ownerId),
+    return {...expected, visibility: cueOpacity === 0 ? "HIDDEN" as const : projection.at(seconds, ownerId),
       ...(presentation ? {presentation} : {})};
   });
 }
@@ -66,10 +77,11 @@ function addVisibility(expectedTexts: Array<{elementId: string; textSha256: stri
 export function buildTextParityCheckpointPlans(input: unknown, checkpoints: Array<{frameIndex: number; timeSeconds: number}>, motionVisibility: boolean | NativeTextVisibilityPolicy = false) {
   const document = compositionEditorDocumentSchema.parse(input);
   const projection = motionVisibility ? createMotionOpacityProjection(document, includesTransitions(motionVisibility)) : null;
+  const captionProjection = projection ? createCaptionEffectsProjection(document) : null;
   try {
     return checkpoints.map(({frameIndex, timeSeconds}) => {
       const expectedTexts = projectTextCheckpoint(document, timeSeconds, projection?.windows).expectedTexts;
-      return {frameIndex, timeSeconds, expectedTexts: projection ? addVisibility(expectedTexts, document, timeSeconds, projection, motionVisibility) : expectedTexts};
+      return {frameIndex, timeSeconds, expectedTexts: projection && captionProjection ? addVisibility(expectedTexts, document, timeSeconds, projection, motionVisibility, captionProjection) : expectedTexts};
     });
-  } finally { projection?.dispose(); }
+  } finally { projection?.dispose(); captionProjection?.dispose(); }
 }

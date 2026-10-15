@@ -96,7 +96,7 @@ export function createCompositionTranscriptCaptionPlan(params: {
     );
   }
   if (transcriptLayers.length > 1) {
-    throw new CompositionTranscriptCaptionError("La composición contiene más de una capa de captions generados.");
+    throw new CompositionTranscriptCaptionError("Los captions de voz están divididos en varias capas. Regenerarlos reemplazaría sus recortes. Conserva las capas actuales o retíralas explícitamente antes de generar una nueva capa desde la voz.");
   }
 
   const existing = transcriptLayers[0];
@@ -114,7 +114,9 @@ export function createCompositionTranscriptCaptionPlan(params: {
       timingSource: "USER_EDITED",
       type: "clip.template",
     }];
-    return { cueCount: cues.length, hfId: existing.hfId, mode: "UPDATE" as const, operations };
+    const discardedCueCustomizations = existing.source.type === "NATIVE_CAPTIONS"
+      ? existing.source.cues.filter((cue) => cue.effects !== undefined || Boolean(cue.emphasis?.length)).length : 0;
+    return { cueCount: cues.length, discardedCueCustomizations, hfId: existing.hfId, mode: "UPDATE" as const, operations };
   }
 
   const { clip, track } = createCompositionNativeOverlay({
@@ -137,7 +139,7 @@ export function createCompositionTranscriptCaptionPlan(params: {
     ...(track ? { track } : {}),
     type: "clip.add",
   }];
-  return { cueCount: cues.length, hfId: clip.hfId, mode: "CREATE" as const, operations };
+  return { cueCount: cues.length, discardedCueCustomizations: 0, hfId: clip.hfId, mode: "CREATE" as const, operations };
 }
 
 function normalizeWord(word: TranscriptWord, durationSeconds: number): TranscriptWord[] {

@@ -24,6 +24,7 @@ export function renderCompositionClip(
   audioRuntimeWindow: CompositionTransitionRuntimeClipWindow | undefined,
   serializeColorGrading: HfColorGradingSerializer | null,
   audioMetersEnabled: boolean,
+  compiledDeckHtml?: string,
 ) {
   const isHyperframesRender = target === COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER;
   const audioCrossOrigin = audioMetersEnabled ? ' crossorigin="anonymous"' : "";
@@ -33,7 +34,7 @@ export function renderCompositionClip(
   const crop = resolveCompositionCropInsets(clip.crop, clip.layout);
   const cropData = ` data-crop-top="${crop.top}" data-crop-right="${crop.right}" data-crop-bottom="${crop.bottom}" data-crop-left="${crop.left}"`;
   const cropStyle = renderVisualCropStyle(crop);
-  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}" data-croppable="true" data-layout-opacity="${clip.layout.opacity}" data-media-fit="${mediaFit}"${cropData}${aspectAnchor ? ` data-preserve-aspect="${aspectAnchor}"` : ""} style="${layout}"`;
+  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}"${isHyperframesRender ? "" : ` data-editor-label="${escapeAttribute(clip.label)}"`} data-croppable="true" data-layout-opacity="${clip.layout.opacity}" data-media-fit="${mediaFit}"${cropData}${aspectAnchor ? ` data-preserve-aspect="${aspectAnchor}"` : ""} style="${layout}"`;
   const motionId = `${escapeAttribute(clip.id)}-motion`;
   const visualWindow = runtimeWindow || {
     durationSeconds: clip.durationSeconds,
@@ -42,7 +43,7 @@ export function renderCompositionClip(
     startSeconds: clip.startSeconds,
   };
   const visualTiming = `data-start="${visualWindow.startSeconds}" data-duration="${visualWindow.durationSeconds}" data-track-index="${runtimeTrackIndex}"`;
-  const canonicalTiming = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}"`;
+  const canonicalTiming = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-end="${clip.startSeconds + clip.durationSeconds}"`;
   const visualMediaOffset = `data-source-offset="${visualWindow.sourceOffsetSeconds}"${isHyperframesRender ? ` data-media-start="${visualWindow.sourceOffsetSeconds}"` : ""}`;
   const canonicalMediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
   const audioWindow = audioRuntimeWindow || {
@@ -51,7 +52,7 @@ export function renderCompositionClip(
     sourceOffsetSeconds: clip.sourceOffsetSeconds || 0,
     startSeconds: clip.startSeconds,
   };
-  const audioTiming = `data-start="${audioWindow.startSeconds}" data-duration="${audioWindow.durationSeconds}"`;
+  const audioTiming = `data-start="${audioWindow.startSeconds}" data-duration="${audioWindow.durationSeconds}" data-end="${audioWindow.startSeconds + audioWindow.durationSeconds}"`;
   const audioMediaOffset = `data-source-offset="${audioWindow.sourceOffsetSeconds}"${isHyperframesRender ? ` data-media-start="${audioWindow.sourceOffsetSeconds}"` : ""}`;
   const hidden = clip.hidden || track?.hidden ? (isHyperframesRender ? ' data-hidden="true"' : ' data-clip-hidden="true"') : "";
   const volumeAutomation = hasVolumeAutomation ? ' data-volume-automated="true"' : "";
@@ -69,7 +70,7 @@ export function renderCompositionClip(
   }
   if (clip.source.type === "DECK_SLIDE") {
     const deckContainStyle = renderDeckContainStyle(clip, canvas);
-    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"${clip.source.htmlAssetId ? ` data-html-asset="${escapeAttribute(clip.source.htmlAssetId)}"` : ""} data-appearance="${clip.source.appearance || deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${replaceCompositionAssetUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
+    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"${clip.source.htmlAssetId ? ` data-html-asset="${escapeAttribute(clip.source.htmlAssetId)}"` : ""} data-appearance="${clip.source.appearance || deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${compiledDeckHtml ?? replaceCompositionAssetUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
   }
   const mediaAssetId = getCompositionClipMediaAssetId(clip);
   if (!mediaAssetId) throw new CompositionPreviewCompilerError(`El clip ${clip.id} no tiene un asset multimedia válido.`);

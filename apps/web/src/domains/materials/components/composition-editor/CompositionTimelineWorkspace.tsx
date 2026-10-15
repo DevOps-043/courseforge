@@ -21,7 +21,7 @@ interface CompositionTimelineWorkspaceProps {
   assets: CompositionStudioAsset[];
   brandingAvailability: AssemblyBrandingAvailability | null;
   currentTime: number;
-  componentId: string;
+  componentId: string | null;
   document: CompositionEditorDocument;
   durationSourceLabel: string | null;
   editingGroupId: string | null;
@@ -63,7 +63,7 @@ interface CompositionTimelineWorkspaceProps {
 
 export function CompositionTimelineWorkspace({ assetLabels, assets, brandingAvailability, componentId, currentTime, document, durationSourceLabel, editingGroupId, estimatedClipCount, onAnimationSelect, onAnimationTimingChange, onAudioMixUpdate, onClearSelection, onDurationChange, onEditingGroupChange, onInspectSelection, onMove, onMoveGroup, onOrganize, onOutroChange, onRecalculateDuration, onRecoverHistoricalAssets, onRefreshProductionAssets, onRoll, onSeek, onSelect, onSelectedClipIdsChange, onSelectedGroupChange, onSlide, onTrackUpdate, onTransitionSelect, onTrim, recoveringHistoricalAssets, refreshingProductionAssets, saving, selectedAnimationId, selectedClipIds, selectedGroupId, selectedHfId, selectedTransitionId, snapEnabled, trimToolEnabled }: CompositionTimelineWorkspaceProps) {
   const duration = document.canvas.durationSeconds;
-  const { failedAssetIds, waveforms } = useCompositionWaveforms(componentId, assets, document);
+  const { notices, waveforms, retry } = useCompositionWaveforms(componentId, assets, document);
   return <section className={styles.timelinePanel}>
     <div className={styles.timelineScroll}>
       <div className={`${styles.durationStrip} ${durationSourceLabel ? "" : styles.durationStripWarning}`}>
@@ -71,14 +71,18 @@ export function CompositionTimelineWorkspace({ assetLabels, assets, brandingAvai
         <div className={styles.durationActions}>
           <button type="button" disabled={saving} onClick={onRecalculateDuration} className={styles.durationAction}>Recalcular duración</button>
           <button type="button" disabled={saving} onClick={onOrganize} className={styles.durationAction}>Organizar timeline</button>
-          <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={onRefreshProductionAssets} className={styles.durationAction}>{refreshingProductionAssets ? "Actualizando…" : "Actualizar assets"}</button>
-          <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={onRecoverHistoricalAssets} className={styles.durationAction}>{recoveringHistoricalAssets ? "Recuperando…" : "Recuperar históricos"}</button>
+          {componentId !== null && <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={onRefreshProductionAssets} className={styles.durationAction}>{refreshingProductionAssets ? "Actualizando…" : "Actualizar assets"}</button>}
+          {componentId !== null && <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={onRecoverHistoricalAssets} className={styles.durationAction}>{recoveringHistoricalAssets ? "Recuperando…" : "Recuperar históricos"}</button>}
           {brandingAvailability && <select value={brandingAvailability.selectedOutroAssetId || ""} disabled={saving} onChange={(event) => onOutroChange(event.target.value || null)} className={styles.durationAction} aria-label="Outro de este video"><option value="">Sin outro</option>{brandingAvailability.outros.map((outro) => <option key={outro.id} value={outro.id}>{outro.name} · {(outro.duration_milliseconds / 1000).toFixed(1)} s</option>)}</select>}
         </div>
       </div>
       <AudioMixControls audioMix={document.audioMix} disabled={saving} onUpdate={onAudioMixUpdate} />
-      {failedAssetIds.length > 0 && <p role="status" className={styles.estimatedWarning}><AlertTriangle className="mt-0.5 shrink-0" size={14} /> No se pudo mostrar la waveform de {failedAssetIds.length} audio(s). Puedes editar y reproducir los clips; actualiza los assets para reintentar.</p>}
-      <CompositionTimeline assetLabels={assetLabels} waveforms={waveforms} document={document} currentTime={currentTime} editingGroupId={editingGroupId} saving={saving} selectedAnimationId={selectedAnimationId} selectedClipIds={selectedClipIds} selectedGroupId={selectedGroupId} selectedHfId={selectedHfId} selectedTransitionId={selectedTransitionId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={onAnimationSelect} onAnimationTimingChange={onAnimationTimingChange} onClearSelection={onClearSelection} onDurationChange={onDurationChange} onEditingGroupChange={onEditingGroupChange} onInspectSelection={onInspectSelection} onMove={onMove} onMoveGroup={onMoveGroup} onRoll={onRoll} onSeek={onSeek} onSelect={onSelect} onSelectedClipIdsChange={onSelectedClipIdsChange} onSelectedGroupChange={onSelectedGroupChange} onSlide={onSlide} onTrackUpdate={onTrackUpdate} onTransitionSelect={onTransitionSelect} onTrim={onTrim} />
+      {notices.map((notice) => <p key={notice.status} role="status" className={styles.estimatedWarning}>
+        {notice.action && <AlertTriangle className="mt-0.5 shrink-0" size={14} />}
+        {notice.message} ({notice.count} recurso(s)).
+        {notice.action && <button type="button" onClick={() => retry(notice.status === "ANALYSIS_FAILED" || notice.status === "CANCELLED")}>{notice.action}</button>}
+      </p>)}
+      <CompositionTimeline componentId={componentId} assetLabels={assetLabels} waveforms={waveforms} document={document} currentTime={currentTime} editingGroupId={editingGroupId} saving={saving} selectedAnimationId={selectedAnimationId} selectedClipIds={selectedClipIds} selectedGroupId={selectedGroupId} selectedHfId={selectedHfId} selectedTransitionId={selectedTransitionId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={onAnimationSelect} onAnimationTimingChange={onAnimationTimingChange} onClearSelection={onClearSelection} onDurationChange={onDurationChange} onEditingGroupChange={onEditingGroupChange} onInspectSelection={onInspectSelection} onMove={onMove} onMoveGroup={onMoveGroup} onRoll={onRoll} onSeek={onSeek} onSelect={onSelect} onSelectedClipIdsChange={onSelectedClipIdsChange} onSelectedGroupChange={onSelectedGroupChange} onSlide={onSlide} onTrackUpdate={onTrackUpdate} onTransitionSelect={onTransitionSelect} onTrim={onTrim} />
       {estimatedClipCount > 0 && <p className={styles.estimatedWarning}><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
     </div>
   </section>;

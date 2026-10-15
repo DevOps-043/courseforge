@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { UpstreamChangeAlert } from "@/shared/components/UpstreamChangeAlert";
@@ -21,6 +21,7 @@ import { SyllabusReviewPanel } from "./SyllabusReviewPanel";
 import { SyllabusSetupPanel } from "./SyllabusSetupPanel";
 import { SyllabusStatusPanel } from "./SyllabusStatusPanel";
 import { SyllabusViewer } from "./SyllabusViewer";
+import { SyllabusImportPanel } from "./SyllabusImportPanel";
 import {
   canIterateSyllabus,
   normalizeSyllabusIterationCount,
@@ -79,6 +80,8 @@ export function SyllabusGenerationContainer({
   const [hasExistingSyllabus, setHasExistingSyllabus] = useState(false);
   const [sourceDocuments, setSourceDocuments] = useState<SyllabusSourceDocument[]>([]);
   const [documentsUploading, setDocumentsUploading] = useState(false);
+  const [importAvailable, setImportAvailable] = useState(false);
+  const [useProvidedSyllabus, setUseProvidedSyllabus] = useState(false);
   const [configuredPrompt, setConfiguredPrompt] = useState("");
   const [prompt, setPrompt] = useState("");
   const [promptError, setPromptError] = useState<string | null>(null);
@@ -116,6 +119,7 @@ export function SyllabusGenerationContainer({
   };
 
   const handleIterate = async () => {
+    if (temario?.input_mode === "PROVIDED_SYLLABUS") { setUseProvidedSyllabus(true); return; }
     if (!route || status === "STEP_GENERATING") {
       return;
     }
@@ -153,6 +157,7 @@ export function SyllabusGenerationContainer({
   };
 
   const handleGenerate = async () => {
+    if (temario?.input_mode === "PROVIDED_SYLLABUS") { setUseProvidedSyllabus(true); return; }
     if (!route) {
       return;
     }
@@ -276,6 +281,7 @@ export function SyllabusGenerationContainer({
       setReviewNotes("");
       setRoute(null);
       setSourceDocuments([]);
+      setUseProvidedSyllabus(false);
       setError(null);
       setIterationCount(0);
     } catch (resetError) {
@@ -299,6 +305,7 @@ export function SyllabusGenerationContainer({
             normalizeSyllabusIterationCount(data.iteration_count),
           );
           setRoute(data.route || "B_NO_SOURCE");
+          setUseProvidedSyllabus(data.input_mode === "PROVIDED_SYLLABUS");
           setSourceDocuments(data.source_summary?.source_documents || []);
           if (data.state === SYLLABUS_STATES.ESCALATED) {
             setError(
@@ -323,6 +330,26 @@ export function SyllabusGenerationContainer({
 
     void checkExisting();
   }, [artifactId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/syllabus/imports?artifactId=${encodeURIComponent(artifactId)}`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : null)
+      .then(payload => { if (!controller.signal.aborted) setImportAvailable(Boolean(payload?.enabled)); })
+      .catch(() => { /* Existing generation remains available if import setup is unavailable. */ });
+    return () => controller.abort();
+  }, [artifactId]);
+
+  const reloadImportedSyllabus = useCallback(async () => {
+    const current = await syllabusService.getSyllabus(artifactId);
+    if (current?.modules.length) {
+      setTemario(buildTemarioForReview(current, current.route, initialObjetivos));
+      setStatus(current.state);
+      setHasExistingSyllabus(true);
+      setRoute(current.route);
+      router.refresh();
+    }
+  }, [artifactId, initialObjetivos, router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -428,7 +455,7 @@ export function SyllabusGenerationContainer({
         canIterate={canIterateSyllabus(iterationCount)}
         isIterating={status === "STEP_GENERATING"}
         onIterate={
-          hasExistingSyllabus ? () => void handleIterate() : undefined
+          hasExistingSyllabus && temario?.input_mode !== "PROVIDED_SYLLABUS" ? () => void handleIterate() : undefined
         }
       />
 
@@ -438,7 +465,14 @@ export function SyllabusGenerationContainer({
         onToggle={() => setIsObjectivesOpen((current) => !current)}
       />
 
-      {!temario && status === "STEP_DRAFT" && (
+      {importAvailable && !temario && status === "STEP_DRAFT" && <div className="flex flex-wrap gap-3 text-sm">
+        <button type="button" className="rounded-xl border px-4 py-3 font-semibold" aria-pressed={!useProvidedSyllabus} onClick={() => setUseProvidedSyllabus(false)}>Generar un temario nuevo</button>
+        <button type="button" className="rounded-xl border px-4 py-3 font-semibold" aria-pressed={useProvidedSyllabus} onClick={() => setUseProvidedSyllabus(true)}>Usar mi temario existente</button>
+      </div>}
+
+      {useProvidedSyllabus && importAvailable && <SyllabusImportPanel artifactId={artifactId} onCompleted={reloadImportedSyllabus} />}
+
+      {!temario && status === "STEP_DRAFT" && !useProvidedSyllabus && (
         <SyllabusSetupPanel
           artifactId={artifactId}
           documents={sourceDocuments}
@@ -515,7 +549,7 @@ export function SyllabusGenerationContainer({
                     d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                Temario Generado
+                {temario.input_mode === "PROVIDED_SYLLABUS" ? "Temario proporcionado" : "Temario Generado"}
               </h3>
             </div>
           </div>
@@ -525,7 +559,7 @@ export function SyllabusGenerationContainer({
             validation={temario.validation}
             metadata={temario.source_summary}
             onSave={handleSaveModules}
-            isEditable
+            isEditable={temario.input_mode !== "PROVIDED_SYLLABUS"}
           />
 
           <SyllabusReviewPanel

@@ -1,0 +1,14 @@
+{
+  "name": "courseforge-controlled-hyperframes-tools",
+  "private": true,
+  "description": "Opt-in local synthetic render tooling; not a production worker or application dependency.",
+  "engines": {"node": ">=22"},
+  "dependencies": {"hyperframes": "0.7.106", "@hyperframes/producer": "0.7.106", "@hyperframes/engine": "0.7.106", "ffmpeg-static": "5.3.0"},
+  "overrides": {
+    "@hyperframes/core": "0.7.106",
+    "@hyperframes/parsers": "0.7.106",
+    "@hyperframes/lint": "0.7.106",
+    "@hyperframes/studio": "0.7.106",
+    "@hyperframes/studio-server": "0.7.106"
+  }
+}

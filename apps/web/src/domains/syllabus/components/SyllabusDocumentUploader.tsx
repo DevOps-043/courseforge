@@ -12,6 +12,7 @@ import {
 } from "../syllabus-source-documents";
 
 interface SyllabusDocumentUploaderProps {
+  persistDocuments?: boolean;
   artifactId: string;
   documents: SyllabusSourceDocument[];
   onChange: (documents: SyllabusSourceDocument[]) => void;
@@ -19,6 +20,7 @@ interface SyllabusDocumentUploaderProps {
 }
 
 export function SyllabusDocumentUploader({
+  persistDocuments = false,
   artifactId,
   documents,
   onChange,
@@ -61,6 +63,7 @@ export function SyllabusDocumentUploader({
 
     const formData = new FormData();
     formData.set("artifactId", artifactId);
+    if (persistDocuments) formData.set("persistDocuments", "true");
     selectedFiles.forEach((file) => formData.append("files", file));
     setUploading(true);
     onUploadingChange(true);

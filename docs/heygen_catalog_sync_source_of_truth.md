@@ -31,6 +31,30 @@ Use the archive endpoint so the exclusion remains durable.
 
 ## Rollout
 
+### Repair for a missing core reconciler (2026-10-13)
+
+The affected database exposes the private and legacy reconciliation functions
+but lacks `reconcile_heygen_core_catalog_snapshot`. A real authorized sync failed
+inside reconciliation with PostgreSQL `42883`; provider listing completed with
+84 private avatar looks and 2 private voices. This is migration drift, independent
+of the ElevenLabs locale rejection during speech synthesis.
+
+Apply only `20261013150000_restore_heygen_core_catalog_reconciler.sql` to restore
+the missing dependency. It contains the original core function from migration
+`20260920004500`, checks that the legacy reconciler exists, and restores restrictive
+execution privileges in one transaction. It does not modify catalog rows when
+applied. Do not replace this repair with a nontransactional application fallback.
+
+Application errors now retain stage and safe SQL/provider code. They do not
+persist SQL messages, row values, hints, or credentials. If recording FAILED also
+fails, the original failure remains primary. Operational logs include the sync
+run and request correlation.
+
+After applying the repair, confirm the function exists and execute one authorized
+sync. Check SUCCEEDED, the last complete sync timestamp, active counts, and
+preserved exclusions. No audio/video generation is required for this validation.
+Detailed evidence and deployment limitations: [incident report](architecture/heygen-catalog-sync-incident-2026-10-13.md).
+
 Apply migrations before deploying application code. Migration
 `20260920020000_make_heygen_catalog_visibility_durable.sql` is non-destructive:
 it backfills existing archives and changes unobserved legacy rows to `MISSING`.

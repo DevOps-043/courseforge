@@ -585,7 +585,8 @@ export async function listHyperframesSourceAssets(params: {
         ? reference.sceneOrder
         : positiveInteger(assetMetadata.scene_order),
       sourceType: reference?.sourceType || "PRODUCTION_MEDIA",
-      storagePath: asset.storage_path,
+      storagePath: asset.storage_bucket && !asset.storage_path.startsWith(`${asset.storage_bucket}/`)
+        ? `${asset.storage_bucket}/${asset.storage_path}` : asset.storage_path,
       timelineRole: reference?.timelineRole
         || (isStandaloneMedia ? "MEDIA" : isAvatarRegistryAsset ? "AVATAR" : isVoiceRegistryAsset || isManualVoiceRegistryAsset ? "VOICE" : "VISUAL"),
       timelineVariant: reference
@@ -636,7 +637,9 @@ function mimeTypeFromFileName(fileName: string) {
   const extension = fileName.split(".").pop()?.toLowerCase();
   if (extension === "mp3") return "audio/mpeg";
   if (extension === "wav") return "audio/wav";
-  if (["m4a", "aac", "ogg"].includes(extension || "")) return `audio/${extension}`;
+  if (extension === "m4a") return "audio/mp4";
+  if (extension === "aac") return "audio/aac";
+  if (extension === "ogg") return "audio/ogg";
   if (extension === "mp4") return "video/mp4";
   if (extension === "webm") return "video/webm";
   if (extension === "mov") return "video/quicktime";

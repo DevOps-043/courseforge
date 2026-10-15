@@ -4,12 +4,16 @@ import { compositionDocumentHasAudibleMedia } from "./composition-clip-audio.ser
 import type { HyperframesRenderSettings } from "../hyperframes/hyperframes-render-profiles";
 import { COMPOSITION_SSIM_POLICY } from "./composition-visual-metrics-policy";
 import { textParityContractSchema, textRegionReportSchema } from "./composition-text-parity-contract";
+import { DECK_TEXT_PLAN_POLICY, deckTextPlanSchema, deckTextNodeMetricId, selectDeckTextCheckpointClips } from "./composition-deck-text-plan";
+import { DECK_TEXT_PAINT_PAIR_POLICY } from "./composition-deck-text-paint-policy";
 import { COMPOSITION_TEXT_PARITY_POLICY } from "./composition-text-parity-policy";
 import { declaredNativeFontUsageContractSchema, rendererFontUsagePendingSchema } from "./composition-font-usage-contract";
 import { EXPORTED_COLOR_TAG_POLICY, evaluateExportedColorTags, exportedColorTagReportSchema,
   type ExportedColorTagReport } from "./composition-color-tag-policy";
 import { COMPOSITION_CONFORMANCE_MAX_CHECKPOINTS, COMPOSITION_EVENT_CHECKPOINT_POLICY } from "./composition-conformance-checkpoint-policy";
 import { eventCheckpointBatchSchema, eventCheckpointBatchCoverageSchema, eventBatchCheckpointCount } from "./composition-conformance-batch-contract";
+import {controlledRenderExecutionContractSchema, type ControlledRenderExecutionReport} from "./composition-render-execution-contract";
+import type {ControlledSeekRepeatabilityReport} from "./composition-render-seek-policy";
 
 export const COMPOSITION_CONFORMANCE_CONTRACT_VERSION = 4;
 export { COMPOSITION_CONFORMANCE_MAX_CHECKPOINTS } from "./composition-conformance-checkpoint-policy";
@@ -23,6 +27,14 @@ export const COMPOSITION_CONFORMANCE_THRESHOLDS = {
 } as const;
 
 const hashSchema = z.string().regex(/^[a-f0-9]{64}$/);
+
+export const compositionConformanceThresholdsSchema = z.object({
+  maxMeanAbsoluteError: z.number().finite().nonnegative(),
+  maxMismatchedPixelRatio: z.number().finite().min(0).max(1),
+  maxTemporalDriftFrames: z.number().finite().nonnegative(),
+  minPsnrDb: z.number().finite().nonnegative(),
+  pixelDifferenceThreshold: z.number().int().min(0).max(255),
+}).strict();
 
 const compositionConformanceContractV1Schema = z.object({
   assets: z.array(z.object({ checksum: hashSchema, id: z.string().min(1) }).strict()),
@@ -46,13 +58,7 @@ const compositionConformanceContractV1Schema = z.object({
     resolution: z.literal("1080p"),
   }).passthrough(),
   schemaVersion: z.literal(1),
-  thresholds: z.object({
-    maxMeanAbsoluteError: z.number().nonnegative(),
-    maxMismatchedPixelRatio: z.number().min(0).max(1),
-    maxTemporalDriftFrames: z.number().nonnegative(),
-    minPsnrDb: z.number().nonnegative(),
-    pixelDifferenceThreshold: z.number().int().min(0).max(255),
-  }).strict(),
+  thresholds: compositionConformanceThresholdsSchema,
 }).strict();
 
 const compositionConformanceContractV2Schema = compositionConformanceContractV1Schema.extend({
@@ -68,9 +74,12 @@ const compositionConformanceContractV3Schema = compositionConformanceContractV2S
 const compositionConformanceContractV4Schema = compositionConformanceContractV3Schema.extend({
   schemaVersion: z.literal(COMPOSITION_CONFORMANCE_CONTRACT_VERSION), textParity: textParityContractSchema,
   fontUsageContract: declaredNativeFontUsageContractSchema.optional(),
+  deckTextPlan: deckTextPlanSchema.optional(),
+  deckTextPaintMaskPolicy: z.literal(DECK_TEXT_PAINT_PAIR_POLICY).optional(),
   colorTagPolicy: z.literal(EXPORTED_COLOR_TAG_POLICY).optional(),
   checkpointPolicy: z.literal(COMPOSITION_EVENT_CHECKPOINT_POLICY).optional(),
   checkpointBatch: eventCheckpointBatchSchema.optional(),
+  renderExecution: controlledRenderExecutionContractSchema.optional(),
 }).strict();
 
 export const compositionConformanceContractSchema = z.discriminatedUnion("schemaVersion", [
@@ -79,6 +88,12 @@ export const compositionConformanceContractSchema = z.discriminatedUnion("schema
   compositionConformanceContractV3Schema,
   compositionConformanceContractV4Schema,
 ]).superRefine((contract, context) => {
+  if (contract.schemaVersion === 4 && contract.renderExecution?.sdrConversionPolicy && !contract.colorTagPolicy)
+    context.addIssue({code: "custom", message: "CONFORMANCE_SDR_COLOR_TAG_POLICY_REQUIRED"});
+  if (contract.schemaVersion === 4 && contract.deckTextPaintMaskPolicy && !contract.deckTextPlan)
+    context.addIssue({code: "custom", message: "CONFORMANCE_DECK_PAINT_PLAN_REQUIRED"});
+  if (contract.schemaVersion === 4 && contract.deckTextPlan && contract.deckTextPlan.documentHash !== contract.documentHash)
+    context.addIssue({code: "custom", message: "CONFORMANCE_DECK_TEXT_DOCUMENT_MISMATCH"});
   if (contract.schemaVersion === 4 && contract.checkpointBatch
     && (!contract.checkpointPolicy || contract.checkpoints.length !== eventBatchCheckpointCount(contract.checkpointBatch))) {
     context.addIssue({code: "custom", message: "CONFORMANCE_EVENT_BATCH_CONTRACT_INVALID"});
@@ -100,6 +115,7 @@ export type CompositionConformanceSample = {
   width?: number;
   height?: number;
   textParity?: z.infer<typeof textRegionReportSchema>;
+  deckText?: z.infer<typeof textRegionReportSchema>;
 };
 
 export const compositionConformanceSampleSchema = z.object({
@@ -112,6 +128,7 @@ export const compositionConformanceSampleSchema = z.object({
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
   textParity: textRegionReportSchema.optional(),
+  deckText: textRegionReportSchema.optional(),
 }).strict();
 
 /** Detects shared seek errors as well as preview-versus-render drift. */
@@ -128,6 +145,8 @@ export function measureCompositionConformanceTemporalDriftMs(params: {
 }
 
 export type CompositionConformanceReport = {
+  thresholds?: z.infer<typeof compositionConformanceThresholdsSchema>;
+  incompletenessReasons?: import("./composition-conformance-incompleteness").CompositionConformanceIncompleteReason[];
   checkedCheckpointCount: number;
   failures: Array<{ frameIndex?: number; message: string; metric: string }>;
   observed: {
@@ -139,10 +158,15 @@ export type CompositionConformanceReport = {
   requiredCheckpointCount: number;
   fontUsage?: z.infer<typeof rendererFontUsagePendingSchema>;
   colorTags?: ExportedColorTagReport;
+  renderExecution?: ControlledRenderExecutionReport;
+  seekRepeatability?: ControlledSeekRepeatabilityReport;
   checkpointBatchCoverage?: z.infer<typeof eventCheckpointBatchCoverageSchema>;
   ssim?: {policy: typeof COMPOSITION_SSIM_POLICY.id; minimumRequired: number; minimumObserved: number | null; checkedCheckpointCount: number};
   textParity?: {policy: typeof COMPOSITION_TEXT_PARITY_POLICY.id; scope: "NATIVE_TEXT_AND_CAPTIONS"; status: "PASS" | "FAIL" | "INCOMPLETE";
     checkedCheckpointCount: number; requiredCheckpointCount: number; expectedRegionCount: number; checkedRegionCount: number};
+  deckText?: {policy: typeof DECK_TEXT_PLAN_POLICY; scope: "DECK_SOURCE_TEXT_REGIONS_NOT_RENDER_FONT_ATTESTATION";
+    status: "PASS" | "FAIL" | "INCOMPLETE"; checkedCheckpointCount: number; requiredCheckpointCount: number;
+    expectedRegionCount: number; checkedRegionCount: number};
   status: "FAIL" | "INCOMPLETE" | "PASS";
 };
 
@@ -231,6 +255,11 @@ export function evaluateCompositionConformance(params: {
     checkedCheckpointCount: 0, requiredCheckpointCount: contract.checkpoints.length,
     expectedRegionCount: contract.schemaVersion === 4 ? contract.textParity.checkpoints.reduce((count, checkpoint) => count + checkpoint.expectedTexts.length, 0) : 0,
     checkedRegionCount: 0};
+  const deckSummary: CompositionConformanceReport["deckText"] = contract.schemaVersion === 4 && contract.deckTextPlan
+    ? {policy: DECK_TEXT_PLAN_POLICY, scope: "DECK_SOURCE_TEXT_REGIONS_NOT_RENDER_FONT_ATTESTATION", status: "PASS",
+      checkedCheckpointCount: 0, requiredCheckpointCount: contract.checkpoints.length,
+      expectedRegionCount: contract.checkpoints.reduce((count, checkpoint) => count + selectDeckTextCheckpointClips(contract.deckTextPlan!, checkpoint.timeSeconds)
+        .reduce((clipCount, clip) => clipCount + clip.entries.length, 0), 0), checkedRegionCount: 0} : undefined;
   const observed: CompositionConformanceReport["observed"] = {
     maxMeanAbsoluteError: null,
     maxMismatchedPixelRatio: null,
@@ -241,6 +270,21 @@ export function evaluateCompositionConformance(params: {
     const sample = samplesByFrame.get(checkpoint.frameIndex);
     if (!sample) continue;
     checkedCheckpointCount += 1;
+    if (sample.deckText && !deckSummary) throw new Error("CONFORMANCE_DECK_TEXT_METRICS_UNAUTHORIZED");
+    if (deckSummary && contract.schemaVersion === 4 && contract.deckTextPlan) {
+      if (!sample.deckText) {if (deckSummary.status !== "FAIL") deckSummary.status = "INCOMPLETE";}
+      else {
+        const measured = textRegionReportSchema.parse(sample.deckText);
+        deckSummary.checkedCheckpointCount++; deckSummary.checkedRegionCount += measured.checkedRegionCount;
+        const expectedIds = new Set(selectDeckTextCheckpointClips(contract.deckTextPlan, checkpoint.timeSeconds).flatMap((clip) =>
+          clip.entries.map((entry) => deckTextNodeMetricId({clipId: clip.clipId, nodePath: entry.nodePath}))));
+        if (measured.expectedRegionCount !== expectedIds.size || measured.regions.length !== expectedIds.size
+          || measured.regions.some((region) => !expectedIds.has(region.elementId)) || measured.status === "FAIL") {
+          deckSummary.status = "FAIL";
+          failures.push({frameIndex: checkpoint.frameIndex, metric: "deck_text_parity", message: "Texto de deck fuera de tolerancia o cobertura distinta al contrato."});
+        } else if (measured.status !== "PASS" && deckSummary.status !== "FAIL") deckSummary.status = "INCOMPLETE";
+      }
+    }
     if (contract.schemaVersion >= 3 && "visualMetrics" in contract) {
       if (sample.width !== undefined && sample.height !== undefined
         && (sample.width !== contract.canvas.width || sample.height !== contract.canvas.height)) {
@@ -292,16 +336,38 @@ export function evaluateCompositionConformance(params: {
     ? rendererFontUsagePendingSchema.parse({policy: contract.fontUsageContract!.policy, scope: "RENDERER_GLYPH_PROVENANCE",
       status: "INCOMPLETE", reason: "RENDERER_FONT_USAGE_EVIDENCE_UNAVAILABLE",
       manifestSha256: contract.fontUsageContract!.manifestSha256, requiredBindingCount: contract.fontUsageContract!.bindings.length}) : undefined;
+  const deckTextPending = contract.schemaVersion === 4 && Boolean(contract.deckTextPlan?.clips.length);
   const complete = checkedCheckpointCount === contract.checkpoints.length
     && (contract.schemaVersion < 3 || checkedSsimCount === contract.checkpoints.length)
     && (contract.schemaVersion !== 4 || (textSummary.checkedCheckpointCount === contract.checkpoints.length && textSummary.status === "PASS"))
+    && (!deckSummary || (deckSummary.checkedCheckpointCount === contract.checkpoints.length && deckSummary.status === "PASS"
+      && deckSummary.checkedRegionCount === deckSummary.expectedRegionCount))
     // Preview font evidence cannot certify the renderer's glyph/font choices.
-    && fontUsage === undefined && colorTags?.status !== "INCOMPLETE";
+    && fontUsage === undefined && colorTags?.status !== "INCOMPLETE" && !requiredColorPolicy && !deckTextPending
+    && !(contract.schemaVersion === 4 && contract.renderExecution);
   if (colorTags?.status === "FAIL") failures.push({metric: "encoded_color_tags", message: "Las etiquetas de color no cumplen la política seleccionada."});
   const localStatus = contract.schemaVersion >= 3 && failures.length > 0 ? "FAIL"
     : !complete ? "INCOMPLETE" : failures.length > 0 ? "FAIL" : "PASS";
   const checkpointBatch = contract.schemaVersion === 4 ? contract.checkpointBatch : undefined;
+  const incompletenessReasons: NonNullable<CompositionConformanceReport["incompletenessReasons"]> = [];
+  if (checkedCheckpointCount !== contract.checkpoints.length) incompletenessReasons.push("CHECKPOINT_SAMPLES_MISSING");
+  if (contract.schemaVersion >= 3 && checkedSsimCount !== contract.checkpoints.length) incompletenessReasons.push("SSIM_CHECKPOINTS_MISSING");
+  if (contract.schemaVersion === 4 && (textSummary.checkedCheckpointCount !== contract.checkpoints.length
+    || textSummary.status !== "PASS")) incompletenessReasons.push("NATIVE_TEXT_EVIDENCE_INCOMPLETE");
+  if (fontUsage) incompletenessReasons.push("RENDERER_FONT_USAGE_UNAVAILABLE");
+  if (deckTextPending || deckSummary && (deckSummary.status !== "PASS"
+    || deckSummary.checkedCheckpointCount !== contract.checkpoints.length
+    || deckSummary.checkedRegionCount !== deckSummary.expectedRegionCount))
+    incompletenessReasons.push("DECK_TEXT_EVIDENCE_INCOMPLETE");
+  if (colorTags?.status === "INCOMPLETE") incompletenessReasons.push("COLOR_TAGS_INCOMPLETE");
+  if (requiredColorPolicy) incompletenessReasons.push("SDR_PIXEL_CONVERSION_UNATTESTED");
+  if (contract.schemaVersion === 4 && contract.renderExecution) incompletenessReasons.push("RENDER_EXECUTION_ATTESTATION_PENDING");
+  if (contract.schemaVersion === 4 && contract.renderExecution?.seekRepeatabilityPolicy)
+    incompletenessReasons.push("RENDER_SEEK_REPEATABILITY_UNAVAILABLE");
+  if (checkpointBatch && checkpointBatch.batchCount > 1) incompletenessReasons.push("EVENT_PARTITION_COVERAGE");
   return {
+    thresholds: {...contract.thresholds},
+    incompletenessReasons,
     checkedCheckpointCount,
     failures,
     observed,
@@ -314,6 +380,8 @@ export function evaluateCompositionConformance(params: {
       minimumObserved: minimumSsim, checkedCheckpointCount: checkedSsimCount}} : {}),
     ...(contract.schemaVersion === 4 ? {textParity: {...textSummary, status: textSummary.checkedCheckpointCount < contract.checkpoints.length
       && textSummary.status !== "FAIL" ? "INCOMPLETE" as const : textSummary.status}} : {}),
+    ...(deckSummary ? {deckText: {...deckSummary, status: deckSummary.checkedCheckpointCount < contract.checkpoints.length
+      && deckSummary.status !== "FAIL" ? "INCOMPLETE" as const : deckSummary.status}} : {}),
     status: checkpointBatch && checkpointBatch.batchCount > 1 && localStatus === "PASS" ? "INCOMPLETE" : localStatus,
   };
 }

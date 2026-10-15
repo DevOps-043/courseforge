@@ -38,6 +38,7 @@ export interface CompositionStudioLesson {
 }
 
 export interface CompositionStudioAsset {
+  sourceChecksum?: string;
   audioAnalysis?: AudioLoudnessAnalysis;
   waveform?: AudioWaveformManifest;
   deckClip?: CompositionClip;

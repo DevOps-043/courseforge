@@ -51,7 +51,8 @@ export function readNativeTextPaintPoses(expected: Array<{elementId: string; pos
   return expected.map(({elementId, pose}) => {
     const parent = document.getElementById(pose.clipId), motion = document.getElementById(`${pose.clipId}-motion`);
     const element = document.getElementById(elementId);
-    if (!parent || !motion || !element || motion.parentElement !== parent || (element !== motion && element.parentElement !== motion)) {
+    const structuralElement = elementId.endsWith("-effect") && element?.parentElement?.id === elementId.slice(0, -7) ? element.parentElement : element;
+    if (!parent || !motion || !element || !structuralElement || motion.parentElement !== parent || (structuralElement !== motion && structuralElement.parentElement !== motion)) {
       throw new Error("CONFORMANCE_TEXT_PAINT_STRUCTURE_INVALID");
     }
     const parentStyle = getComputedStyle(parent), motionStyle = getComputedStyle(motion);
@@ -78,8 +79,8 @@ export function readNativeTextPaintPoses(expected: Array<{elementId: string; pos
       || !inset.every((value, index) => Number.isFinite(value) && Math.abs(value - pose.inset[index]!) <= coefficientTolerance)) {
       throw new Error("CONFORMANCE_TEXT_PAINT_POSE_MISMATCH");
     }
-    if (element !== motion) {
-      const cueStyle = getComputedStyle(element);
+    if (structuralElement !== motion) {
+      const cueStyle = getComputedStyle(structuralElement);
       if (!ordinaryTransform(cueStyle) || !ordinaryMask(cueStyle) || cueStyle.transform !== "none"
         || cueStyle.filter !== "none" || cueStyle.clipPath !== "none" || !zeroBorder(cueStyle) || cueStyle.boxSizing !== "border-box"
         || cueStyle.overflowX !== "hidden" || cueStyle.overflowY !== "hidden"

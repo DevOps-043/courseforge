@@ -7,7 +7,7 @@ import {
   normalizeAnimatedDeckAppearance,
   repairLegacyAnimatedDeckAppearanceSelectors,
 } from "../animated-deck/animated-deck-appearance.service";
-import type { HyperframesPlan } from "./hyperframes-plan.service";
+import type { HyperframesPlan } from "./hyperframes-plan.types";
 
 export interface HyperframesProjectAsset extends HyperframesAssetManifestItem {
   durationSeconds?: number;

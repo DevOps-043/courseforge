@@ -203,7 +203,7 @@ export function buildLessonsToProcess(
       lesson_title:
         lesson.lesson_title || lesson.title || `Leccion ${index + 1}`,
       lesson_objective:
-        lesson.objective || lesson.summary || lesson.description || "",
+        lesson.oa_text || lesson.objective || lesson.summary || lesson.description || "",
       module_title: lesson.module_title || "",
       component_count: Array.isArray(lesson.components)
         ? lesson.components.length

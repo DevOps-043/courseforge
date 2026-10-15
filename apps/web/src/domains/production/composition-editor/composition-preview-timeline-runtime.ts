@@ -2,6 +2,7 @@ import { scheduleCompositionMotion } from "./composition-motion-timeline";
 import { scheduleCompositionTransitions } from "./composition-transition-timeline";
 import { COMPOSITION_PLAYBACK_AUDIO_ENVELOPE_VERSION } from "./composition-playback-audio-envelope";
 import type { CompositionPreviewTimelineState } from "./composition-preview-timeline-state";
+import { scheduleCaptionEffects } from "./composition-caption-effects-runtime";
 
 /** Shared installer: live updates use exactly the initial preview/render scheduler. */
 export function renderCompositionTimelineInstaller(state: CompositionPreviewTimelineState) {
@@ -11,8 +12,9 @@ export function renderCompositionTimelineInstaller(state: CompositionPreviewTime
     const motionAnimations = ${JSON.stringify(state.motionAnimations).replace(/</g, "\\u003c")};
     const transitionEffects = ${JSON.stringify(state.transitionEffects).replace(/</g, "\\u003c")};
     const volumeAutomations = ${JSON.stringify(state.volumeAutomations).replace(/</g, "\\u003c")};
+    const captionEffects = ${JSON.stringify(state.captionEffects).replace(/</g, "\\u003c")};
     window.__courseforgeInstallTimeline = (state) => {
-      const { clips, motionAnimations, transitionEffects, volumeAutomations } = state;
+      const { clips, motionAnimations, transitionEffects, volumeAutomations, captionEffects } = state;
       const timeline = gsap.timeline({ paused: true });
       for (const clip of clips) {
         if (clip.kind === "AUDIO") continue;
@@ -28,7 +30,7 @@ export function renderCompositionTimelineInstaller(state: CompositionPreviewTime
           timeline.set(cueElement, { autoAlpha: 0 }, clip.runtimeStart);
           timeline.set(cueElement, { autoAlpha: 1 }, cue.start);
           timeline.set(cueElement, { autoAlpha: 0 }, cue.end);
-          for (const word of cue.words) {
+          for (const word of cue.enhanced ? [] : cue.words) {
             const wordElement = document.getElementById(word.elementId);
             if (!wordElement) continue;
             timeline.set(wordElement, { opacity: 0.55 }, clip.runtimeStart);
@@ -51,6 +53,12 @@ export function renderCompositionTimelineInstaller(state: CompositionPreviewTime
         // end frame keeps preview seek and renderSeek identical at boundaries.
         timeline.set(element, { autoAlpha: 0 }, clip.runtimeStart + clip.runtimeDuration);
       }
+      const captionTimeline = gsap.timeline();
+      (${scheduleCaptionEffects.toString()})(captionTimeline, captionEffects, (id) => document.getElementById(id));
+      // Initialize finite caption states before the first distant seek.
+      captionTimeline.render(captionTimeline.duration(), true, true);
+      captionTimeline.render(0, true, true);
+      timeline.add(captionTimeline, 0);
       function addTransitions(targetTimeline, transitions) {
         (${scheduleCompositionTransitions.toString()})(targetTimeline, transitions, (id) => document.getElementById(id));
       }
@@ -104,7 +112,7 @@ export function renderCompositionTimelineInstaller(state: CompositionPreviewTime
       window.__timelines["courseforge-composition"] = timeline;
       return timeline;
     };
-    window.__courseforgeInstallTimeline({ clips, motionAnimations, transitionEffects, volumeAutomations });
+    window.__courseforgeInstallTimeline({ clips, motionAnimations, transitionEffects, volumeAutomations, captionEffects });
     })();
   </script>`;
 }

@@ -5,15 +5,26 @@ import { buildCompositionMotionRuntime, compositionMotionRuntimeSchema } from ".
 import { buildCompositionPlaybackVolumeAutomations } from "./composition-playback-audio-envelope";
 import { buildCompositionTransitionRuntime } from "./composition-transition-runtime";
 import { COMPOSITION_TRANSITION_DIRECTIONS, COMPOSITION_TRANSITION_EASES, COMPOSITION_TRANSITION_TYPES } from "./composition-transition.types";
+import { buildCaptionEffectPlan } from "./composition-caption-effects-plan";
+import { captionHasEffects } from "./composition-caption-effects.service";
+import { CAPTION_EFFECT_LIMITS } from "./composition-caption-effects.types";
 
 const id = z.string().min(1).max(300);
 const seconds = z.number().finite().min(0).max(86_400);
 const opacity = z.number().finite().min(0).max(1);
 const word = z.object({ elementId: id, end: seconds, start: seconds }).strict();
+const captionEffectValues = z.object({
+  opacity: opacity.optional(),
+  x: z.number().finite().min(-8_192).max(8_192).optional(),
+  y: z.number().finite().min(-8_192).max(8_192).optional(),
+  scale: z.number().finite().min(0).max(8).optional(),
+  color: z.string().max(100).optional(),
+  backgroundColor: z.string().max(100).optional(),
+}).strict();
 
 export const compositionPreviewTimelineStateSchema = z.object({
   clips: z.array(z.object({
-    captionCues: z.array(word.extend({ words: z.array(word).max(10_000) })).max(10_000),
+    captionCues: z.array(word.extend({ enhanced: z.boolean().default(false), words: z.array(word).max(10_000) })).max(10_000),
     duration: seconds,
     hfId: id,
     hidden: z.boolean(),
@@ -26,6 +37,14 @@ export const compositionPreviewTimelineStateSchema = z.object({
     start: seconds,
   }).strict()).max(500),
   motionAnimations: compositionMotionRuntimeSchema,
+  captionEffects: z.array(z.object({
+    targetId: id,
+    at: seconds,
+    duration: seconds,
+    from: captionEffectValues,
+    to: captionEffectValues,
+    ease: z.enum(["none", "power2.out", "power2.in"]),
+  }).strict()).max(CAPTION_EFFECT_LIMITS.maxRuntimeTargets * 5).default([]),
   transitionEffects: z.array(z.object({
     audioMode: z.enum(["CUT", "CROSSFADE"]),
     blurPixels: z.number().finite().min(0).max(40).optional(),
@@ -67,6 +86,7 @@ export function buildCompositionPreviewTimelineState(
       const window = runtime.clipWindowsById.get(clip.id);
       return {
         captionCues: clip.source.type === "NATIVE_CAPTIONS" ? clip.source.cues.map((cue) => ({
+          enhanced: captionHasEffects(cue, clip.source.type === "NATIVE_CAPTIONS" ? clip.source.effects : undefined),
           elementId: captionCueElementId(clip.id, cue.id),
           end: clip.startSeconds + cue.endSeconds,
           start: clip.startSeconds + cue.startSeconds,
@@ -89,6 +109,7 @@ export function buildCompositionPreviewTimelineState(
       };
     }),
     motionAnimations: buildCompositionMotionRuntime(document),
+    captionEffects: buildCaptionEffectPlan(document),
     transitionEffects: runtime.items,
     volumeAutomations: buildCompositionPlaybackVolumeAutomations(document, runtime),
   };

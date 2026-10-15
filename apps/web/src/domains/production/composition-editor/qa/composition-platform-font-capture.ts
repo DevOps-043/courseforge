@@ -28,7 +28,7 @@ export function resolveConformanceFontEvent(input: unknown, fonts: ConformanceFo
 /** Start before navigation/load so successful FontFace events cannot be missed. */
 export async function startConformancePlatformFontCapture(client: CompositionQaCdpClient, fonts: ConformanceFontManifest,
   document: CompositionEditorDocument, origin: string) {
-  if (!fonts.length) return {bindings: [] as Array<{elementId: string; fontAssetId: string}>, verify: async (_checkpoint: TextParityEvidence["checkpoints"][number]) => [], close() {}};
+  if (!fonts.length) return {bindings: [] as Array<{elementId: string; fontAssetId: string}>, verify: async (_checkpoint: TextParityEvidence["checkpoints"][number]) => [], assertValid() {}, close() {}};
   if (!client.onEvent) throw new Error("CONFORMANCE_FONT_EVENTS_UNAVAILABLE");
   const bindings = new Map<string, ReturnType<typeof resolveConformanceFontEvent>>();
   const platformIdentities = new Map<string, string>();
@@ -55,9 +55,11 @@ export async function startConformancePlatformFontCapture(client: CompositionQaC
       owners.set(captionCueElementId(clip.id, cue.id), {family: familyKey(clip.source.style.fontFamily), fontAssetId: clip.source.style.fontAssetId});
     }
   }
-  return {bindings: [...owners].map(([elementId, owner]) => ({elementId, fontAssetId: owner.fontAssetId})),
+  // Events can invalidate the witness after its last glyph query, including during final I/O.
+  const assertValid = () => {if (failed) throw new Error("CONFORMANCE_FONT_EVENT_INVALID");};
+  return {bindings: [...owners].map(([elementId, owner]) => ({elementId, fontAssetId: owner.fontAssetId})), assertValid,
     close: unsubscribe, async verify(checkpoint: TextParityEvidence["checkpoints"][number]) {
-    if (failed) throw new Error("CONFORMANCE_FONT_EVENT_INVALID");
+    assertValid();
     const expected = checkpoint.expectedTexts.filter((text) => owners.has(text.elementId));
     if (!expected.length) return [];
     await client.send("DOM.getDocument", {depth: 0});
@@ -83,7 +85,7 @@ export async function startConformancePlatformFontCapture(client: CompositionQaC
           fonts: used.sort((left, right) => left.postScriptName.localeCompare(right.postScriptName))});
       } finally {await client.send("Runtime.releaseObject", {objectId});}
     }
-    if (failed) throw new Error("CONFORMANCE_FONT_EVENT_INVALID");
+    assertValid();
     return witness;
   }};
 }

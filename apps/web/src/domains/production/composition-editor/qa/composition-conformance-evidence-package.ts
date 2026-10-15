@@ -6,12 +6,16 @@ import sharp from "sharp";
 import { z } from "zod";
 import { compositionConformanceContractSchema, COMPOSITION_CONFORMANCE_MAX_CHECKPOINTS } from "../composition-preview-render-conformance";
 import { compositionConformanceCaptureMetadataSchema } from "./composition-conformance-files";
-import { textParityEvidenceHash, validateTextParityEvidence } from "./composition-text-parity-evidence";
+import { textParityEvidenceHash, validateTextParityEvidence, assertRequiredTextPaintMaskEvidence } from "./composition-text-parity-evidence";
 import { assertRequiredFontUsageEvidence, fontUsageEvidenceHash, validateFontUsageEvidence } from "./composition-font-usage-evidence";
 import { browserIdentityHash } from "./composition-browser-identity";
 import { browserExecutableIdentityHash } from "./composition-browser-executable-identity";
 import { eventBatchCaptureLineageSchema, assertEventBatchCaptureLineage } from "../composition-conformance-event-batch-lineage";
 import type { CompositionEditorDocument } from "../composition-document.types";
+import { suppressedTextFrameName, verifyTextPaintMaskPair } from "./composition-text-paint-mask-derivation";
+import { COMPOSITION_TEXT_PARITY_POLICY } from "../composition-text-parity-policy";
+import { validateDeckTextEvidence, hashDeckTextEvidence } from "./composition-deck-text-evidence";
+import { suppressedDeckTextFrameName, verifyDeckTextPaintPair } from "./composition-deck-text-paint-derivation";
 
 export const CONFORMANCE_EVIDENCE_STORAGE = { bucket: "composition-conformance-evidence", maximumBytes: 144 * 1024 * 1024 } as const;
 const MAX_FRAME_BYTES = 20 * 1024 * 1024;
@@ -22,6 +26,7 @@ export const visualCaptureReceiptSchema = z.object({
   status: z.literal("VISUAL_CAPTURED_AUDIO_PENDING"), assetCount: z.number().int().min(0).max(250),
   mediaBytes: z.number().int().min(0).max(2 * 1024 * 1024 * 1024), networkPolicy: z.literal("EXACT_LOCAL_ALLOWLIST_V1"),
   textParitySha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  deckTextSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   fontUsageSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   browserIdentitySha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   browserExecutableIdentitySha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
@@ -66,6 +71,11 @@ export async function validateVisualConformanceCapture(params: {
     throw new Error("CONFORMANCE_BROWSER_EXECUTABLE_PIN_MISMATCH");
   }
   assertRequiredFontUsageEvidence(metadata.fontUsage, contract);
+  validateDeckTextEvidence(metadata.deckText, contract);
+  if (Boolean(metadata.deckText) !== Boolean(receipt.deckTextSha256)) throw new Error("CONFORMANCE_DECK_TEXT_EVIDENCE_PIN_MISSING");
+  if (metadata.deckText && hashDeckTextEvidence(metadata.deckText) !== receipt.deckTextSha256)
+    throw new Error("CONFORMANCE_DECK_TEXT_EVIDENCE_PIN_MISMATCH");
+  assertRequiredTextPaintMaskEvidence(metadata.textParity, contract);
   if (Boolean(metadata.textParity) !== Boolean(receipt.textParitySha256)) throw new Error("CONFORMANCE_TEXT_EVIDENCE_PIN_MISSING");
   if (metadata.textParity) {
     validateTextParityEvidence(metadata.textParity, contract);
@@ -92,6 +102,8 @@ export async function validateVisualConformanceCapture(params: {
   let totalBytes = 0;
   for (const checkpoint of contract.checkpoints) {
     const frame = frames.get(checkpoint.frameIndex)!;
+    const paintedHash = metadata.textParity?.checkpoints.find((entry) => entry.frameIndex === checkpoint.frameIndex)?.paintMaskCapture?.paintedPngSha256;
+    if (paintedHash && paintedHash !== frame.sha256) throw new Error("CONFORMANCE_TEXT_PAINT_CAPTURE_FRAME_MISMATCH");
     const bytes = await boundedFile(join(params.captureDirectory, `frame-${frame.frameIndex}.png`), MAX_FRAME_BYTES);
     totalBytes += bytes.length;
     if (totalBytes > MAX_FRAMES_BYTES || bytes.length !== frame.sizeBytes || createHash("sha256").update(bytes).digest("hex") !== frame.sha256) {
@@ -100,6 +112,25 @@ export async function validateVisualConformanceCapture(params: {
     const image = await sharp(bytes, { limitInputPixels: contract.canvas.width * contract.canvas.height }).metadata();
     if (image.format !== "png" || image.width !== contract.canvas.width || image.height !== contract.canvas.height) throw new Error("CONFORMANCE_EVIDENCE_IMAGE_INVALID");
     images.push({ name: `frame-${frame.frameIndex}.png`, bytes });
+    const textCheckpoint = metadata.textParity?.checkpoints.find((entry) => entry.frameIndex === frame.frameIndex);
+    if (textCheckpoint?.paintMaskCapture) {
+      const name = suppressedTextFrameName(frame.frameIndex);
+      const suppressed = await boundedFile(join(params.captureDirectory, name), COMPOSITION_TEXT_PARITY_POLICY.maximumPaintCapturePngBytes);
+      totalBytes += suppressed.length;
+      if (totalBytes > MAX_FRAMES_BYTES) throw new Error("CONFORMANCE_EVIDENCE_FRAME_MISMATCH");
+      await verifyTextPaintMaskPair({checkpoint: textCheckpoint, paintedPng: bytes, suppressedPng: suppressed,
+        width: contract.canvas.width, height: contract.canvas.height});
+      images.push({name, bytes: suppressed});
+    }
+  }
+  for (const checkpoint of metadata.deckText?.checkpoints ?? []) if (checkpoint.paintCapture) {
+    const painted = images.find((image) => image.name === `frame-${checkpoint.frameIndex}.png`)!.bytes;
+    const name = suppressedDeckTextFrameName(checkpoint.frameIndex);
+    const bytes = await boundedFile(join(params.captureDirectory, name), COMPOSITION_TEXT_PARITY_POLICY.maximumPaintCapturePngBytes);
+    totalBytes += bytes.length;
+    if (totalBytes > MAX_FRAMES_BYTES) throw new Error("CONFORMANCE_EVIDENCE_FRAME_BYTES_LIMIT");
+    await verifyDeckTextPaintPair({checkpoint, paintedPng: painted, suppressedPng: bytes, width: contract.canvas.width, height: contract.canvas.height});
+    images.push({name, bytes});
   }
   return { contract, metadata, receipt, images };
 }

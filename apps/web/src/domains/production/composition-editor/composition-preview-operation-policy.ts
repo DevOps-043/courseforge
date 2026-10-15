@@ -20,6 +20,8 @@ const OPERATION_STRATEGIES: Record<CompositionEditorPatchOperation["type"], Comp
   "clip.add": "LIVE_TIMELINE",
   "clip.audio-fades": "LIVE_TIMELINE",
   "clip.caption-cues": "LIVE_TIMELINE",
+  "clip.volume-envelope": "LIVE_TIMELINE",
+  "clip.caption-effects": "LIVE_TIMELINE",
   "clip.crop": "LIVE_DOM",
   "clip.color-grading": "LIVE_DOM",
   "clip.duration": "LIVE_TIMELINE",

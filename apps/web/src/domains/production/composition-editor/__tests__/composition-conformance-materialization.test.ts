@@ -166,19 +166,68 @@ test("scoped adapter reads exact archive and assets without redirects; rejects c
     createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://example.supabase.co/storage/v1/object/sign/${bucket}/${path}?token=temporary` }, error: null }),
   }) } };
   await withParent(async (parent) => {
+    const readSignals: AbortSignal[] = [];
     const result = await materializeAuthorizedConformanceRevision({ supabase: supabase as never, supabaseUrl: "https://example.supabase.co",
       organizationId: identifier, revisionId: identifier, outputParentDirectory: parent,
       fetchImpl: (async (url, options) => {
         assert.equal(options?.redirect, "error"); assert.ok(options?.signal);
+        readSignals.push(options!.signal as AbortSignal);
         return new Response(Uint8Array.from(String(url).includes(".zip?") ? input.archiveBytes : content));
       }) as typeof fetch,
     });
     assert.deepEqual(filters, [["id", identifier], ["organization_id", identifier]]);
+    assert.ok(readSignals.length >= 2); assert.ok(readSignals.every(signal => signal === readSignals[0]));
     await result.cleanup();
+    const cancellation = new AbortController(); let streamCancelled = false, receivedSignal: AbortSignal | undefined;
+    const reading = materializeAuthorizedConformanceRevision({supabase: supabase as never, supabaseUrl: "https://example.supabase.co",
+      organizationId: identifier, revisionId: identifier, outputParentDirectory: parent, signal: cancellation.signal,
+      fetchImpl: (async (_url, options) => {
+        receivedSignal = options!.signal as AbortSignal;
+        const body = new ReadableStream({start() {queueMicrotask(() => cancellation.abort("private token"));},
+          cancel() {streamCancelled = true;}});
+        return new Response(body);
+      }) as typeof fetch});
+    await assert.rejects(reading, error => error instanceof Error && error.message === "CONFORMANCE_JOB_EXECUTION_CANCELLED");
+    assert.equal(streamCancelled, true); assert.equal(receivedSignal!.aborted, true);
+    assert.equal((receivedSignal!.reason as Error).message, "CONFORMANCE_JOB_EXECUTION_CANCELLED");
+    assert.deepEqual(await readdir(parent), []);
     revision.organization_id = "80000000-0000-4000-8000-000000000001";
     await assert.rejects(materializeAuthorizedConformanceRevision({ supabase: supabase as never, supabaseUrl: "https://example.supabase.co",
       organizationId: identifier, revisionId: identifier, outputParentDirectory: parent,
       fetchImpl: (async () => assert.fail("must not fetch")) as typeof fetch,
     }), /REVISION_MISMATCH/);
+  });
+});
+
+test("pre-aborted materialization does not read assets or create a workspace", async () => {
+  const input = await fixture(), cancellation = new AbortController(); cancellation.abort("private reason");
+  await withParent(async parent => {
+    await assert.rejects(materializeConformanceReference({...input, outputParentDirectory: parent, signal: cancellation.signal,
+      readAsset: async () => assert.fail("must not read asset")}), /CONFORMANCE_JOB_EXECUTION_CANCELLED/);
+    assert.deepEqual(await readdir(parent), []);
+  });
+});
+
+test("abort after asset response cancels its body and removes only owned materialization files", async () => {
+  const input = await fixture(), cancellation = new AbortController(); let bodyCancelled = false;
+  await withParent(async parent => {
+    await assert.rejects(materializeConformanceReference({...input, outputParentDirectory: parent, signal: cancellation.signal,
+      readAsset: async () => {
+        const response = new Response(new ReadableStream({cancel() {bodyCancelled = true;}}));
+        cancellation.abort("private reason"); return response;
+      }}), /CONFORMANCE_JOB_EXECUTION_CANCELLED/);
+    assert.equal(bodyCancelled, true); assert.deepEqual(await readdir(parent), []);
+  });
+});
+
+test("abort during a stalled asset stream interrupts pipeline and cleans its partial file", async () => {
+  const input = await fixture(), cancellation = new AbortController(); let bodyCancelled = false;
+  await withParent(async parent => {
+    await assert.rejects(materializeConformanceReference({...input, outputParentDirectory: parent, signal: cancellation.signal,
+      readAsset: async () => new Response(new ReadableStream({
+        pull() {setTimeout(() => cancellation.abort("private token"), 10);},
+        cancel() {bodyCancelled = true;},
+      }))}), /CONFORMANCE_JOB_EXECUTION_CANCELLED/);
+    assert.equal(bodyCancelled, true); assert.deepEqual(await readdir(parent), []);
   });
 });

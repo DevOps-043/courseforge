@@ -86,7 +86,9 @@ test("source producer freezes the font manifest and its reader requires matching
   const source = await buildConformanceReferenceSource({document, contract, assets: [], fontManifest: [font], fontAssets});
   assert.equal(source.metadata.fontManifestSha256, conformanceFontManifestHash([font]));
   assert.deepEqual(verifyConformanceReferenceSource({...source, fontManifest: [font]}).fontManifest, [font]);
-  assert.throws(() => verifyConformanceReferenceSource(source), /FONT_MANIFEST_MISSING/);
+  const withoutFontManifest = { ...source };
+  delete withoutFontManifest.fontManifest;
+  assert.throws(() => verifyConformanceReferenceSource(withoutFontManifest), /FONT_MANIFEST_MISSING/);
   assert.throws(() => verifyConformanceReferenceSource({...source, fontManifest: [{...font, checksumSha256: "b".repeat(64)}]}), /PIN_MISMATCH/);
   await assert.rejects(buildConformanceReferenceSource({document, contract, assets: [], fontManifest: [], fontAssets}), /DOCUMENT_BINDING_MISMATCH/);
 });

@@ -38,10 +38,13 @@ export async function persistCompositionEventBatchMeasurement(params: {
   const supabase = params.supabase;
   const packet = eventBatchMeasurementPacketSchema.parse(params.packet);
   const visualChecksum = digestSchema.parse(params.visualChecksum);
+  if (packet.identity.visualReferenceSha256 && packet.identity.visualReferenceSha256 !== visualChecksum)
+    throw new Error("CONFORMANCE_EVENT_PACKET_REFERENCE_MISMATCH");
   if (Buffer.byteLength(JSON.stringify(packet)) > EVENT_BATCH_PACKET_MAXIMUM_BYTES) throw new Error("CONFORMANCE_EVENT_PACKET_SIZE_LIMIT");
   await authorizeIdentity(supabase, packet.identity);
   const packetSha256 = hashEventBatchMeasurementPacket(packet);
-  const recorded = await supabase.rpc("record_hyperframes_event_batch_measurement", {
+  const recorded = await supabase.rpc(packet.identity.visualReferenceSha256
+    ? "record_hyperframes_selected_event_batch_measurement" : "record_hyperframes_event_batch_measurement", {
     p_identity: packet.identity, p_packet: packet, p_packet_sha256: packetSha256, p_visual_sha256: visualChecksum,
   });
   if (recorded.error || recorded.data !== packetSha256) throw new Error("CONFORMANCE_EVENT_PACKET_RECORD_FAILED");
@@ -53,7 +56,8 @@ export async function readCompositionEventBatchMeasurement(params: {supabase: Wo
   const supabase = params.supabase;
   const identity = eventBatchMeasurementIdentitySchema.parse(params.identity);
   await authorizeIdentity(supabase, identity);
-  const recorded = await supabase.rpc("read_hyperframes_event_batch_measurement", {p_identity: identity});
+  const recorded = await supabase.rpc(identity.visualReferenceSha256
+    ? "read_hyperframes_selected_event_batch_measurement" : "read_hyperframes_event_batch_measurement", {p_identity: identity});
   if (recorded.error) throw new Error("CONFORMANCE_EVENT_PACKET_READ_FAILED");
   if (recorded.data === null) return null;
   if (recorded.data === undefined || Buffer.byteLength(JSON.stringify(recorded.data)) > EVENT_BATCH_PACKET_MAXIMUM_BYTES + 256) {

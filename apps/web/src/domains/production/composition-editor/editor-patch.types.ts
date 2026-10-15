@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { compositionCaptionEffectsSchema } from "./composition-caption-effects.types";
+import { compositionVolumeEnvelopeSchema } from "./composition-volume-envelope";
 import {
   COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS,
   COMPOSITION_DURATION_SOURCES,
@@ -107,6 +109,8 @@ const clipMediaFitOperationSchema = z.object({
 
 /** Rebinds one timeline clip without changing its placement or edit decisions. */
 const clipReplaceSourceOperationSchema = z.object({
+  /** Overwritten by the server after verifying derivative provenance. */
+  audioProcessingPreviousAssetId: z.string().uuid().optional(),
   productionAssetId: z.string().uuid(),
   mimeType: z.string().regex(/^(audio|image|video)\/[a-z0-9.+-]+$/i),
   sourceDurationSeconds: z.number().finite().positive().max(86_400).optional(),
@@ -137,15 +141,24 @@ const clipAudioFadesOperationSchema = z.object({
   type: z.literal("clip.audio-fades"),
 }).strict();
 
+const clipVolumeEnvelopeOperationSchema = z.object({
+  type: z.literal("clip.volume-envelope"), points: compositionVolumeEnvelopeSchema,
+}).strict();
+
 const clipTextContentOperationSchema = z.object({
   text: z.string().min(1).max(4_000),
   type: z.literal("clip.text-content"),
 }).strict();
 
 const clipCaptionCuesOperationSchema = z.object({
-  cues: z.array(compositionCaptionCueSchema).min(1).max(2_000),
+  cues: z.array(compositionCaptionCueSchema).max(2_000),
   origin: z.enum(["MANUAL", "SRT", "TRANSCRIPT", "VTT"]).optional(),
   type: z.literal("clip.caption-cues"),
+}).strict();
+
+const clipCaptionEffectsOperationSchema = z.object({
+  effects: compositionCaptionEffectsSchema.nullable(),
+  type: z.literal("clip.caption-effects"),
 }).strict();
 
 const clipTextStyleOperationSchema = z.object({
@@ -389,11 +402,13 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipTrimOperationSchema,
   clipSplitOperationSchema,
   clipCaptionCuesOperationSchema,
+  clipCaptionEffectsOperationSchema,
   clipRemoveRangeOperationSchema,
   clipResetAssetOperationSchema,
   clipVisibilityOperationSchema,
   clipVolumeOperationSchema,
   clipAudioFadesOperationSchema,
+  clipVolumeEnvelopeOperationSchema,
   clipTextContentOperationSchema,
   clipTextStyleOperationSchema,
 ]).and(z.object({ clipId: editorIdSchema }).strict());

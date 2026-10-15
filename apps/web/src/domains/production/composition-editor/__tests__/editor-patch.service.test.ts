@@ -66,6 +66,33 @@ const silentBrollDocument = () => createInitialCompositionDocument({
   plan: { accentColor: "#38BDF8", durationSeconds: 10, subtitle: "Prueba", title: "B-roll silencioso" },
 });
 
+test("applies and restores verified voice treatment without moving the paired avatar or trimming edits", () => {
+  const document = linkedAvatarVoiceDocument();
+  const voice = document.clips.find((clip) => clip.kind === "AUDIO")!;
+  const avatar = document.clips.find((clip) => clip.kind === "VIDEO")!;
+  assert.equal(voice.source.type, "PRODUCTION_ASSET");
+  if (voice.source.type !== "PRODUCTION_ASSET") return;
+  const originalId = voice.source.productionAssetId;
+  voice.startSeconds = 2;
+  voice.durationSeconds = 4;
+  voice.sourceOffsetSeconds = 1;
+  voice.volume = 0.8;
+  voice.fadeInSeconds = 0.2;
+  voice.fadeOutSeconds = 0.3;
+  const processedId = "33333333-3333-4333-8333-333333333333";
+  const edited = applyCompositionEditorPatches(document, [{ clipId: voice.id, productionAssetId: processedId,
+    audioProcessingPreviousAssetId: originalId, mimeType: "audio/mp4", sourceDurationSeconds: 8, type: "clip.replace-source" }]);
+  const result = edited.clips.find((clip) => clip.id === voice.id)!;
+  assert.deepEqual(edited.clips.find((clip) => clip.id === avatar.id), avatar);
+  for (const field of ["startSeconds", "durationSeconds", "sourceOffsetSeconds", "volume", "fadeInSeconds", "fadeOutSeconds", "sceneId", "trackId"] as const) {
+    assert.equal(result[field], voice[field]);
+  }
+  const restored = applyCompositionEditorPatches(edited, [{ clipId: voice.id, productionAssetId: originalId,
+    audioProcessingPreviousAssetId: processedId, mimeType: "audio/mpeg", sourceDurationSeconds: 8, type: "clip.replace-source" }]);
+  assert.equal(restored.clips.find((clip) => clip.id === voice.id)?.source.type, "PRODUCTION_ASSET");
+  assert.deepEqual(restored.clips.find((clip) => clip.id === voice.id)?.source, voice.source);
+});
+
 test("reemplaza la fuente de un clip conservando sus decisiones de edición", () => {
   const document = baseDocument();
   const clip = document.clips.find((candidate) => candidate.kind === "VIDEO")!;

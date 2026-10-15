@@ -5,6 +5,8 @@ import { COMPOSITION_COMPILATION_TARGETS, CompositionPreviewCompilerError, Compo
 export { COMPOSITION_COMPILATION_TARGETS, CompositionPreviewCompilerError, CompositionPreviewDependencyError, type CompositionCompilationTarget } from "./composition-compilation.types";
 import { renderCompositionClip, renderCompositionTransitionOverlays, replaceCompositionAssetUrls } from "./composition-clip-renderer.service";
 import { readFile } from "node:fs/promises";
+import { compositionFontReferenceDetails } from "./composition-font-references";
+import { googleFontFaceBindingSchema } from "../fonts/google-font-native-face.contract";
 import { dirname, resolve } from "node:path";
 import {
   COMPOSITION_COLOR_GRADING_RUNTIME_ARTIFACT,
@@ -25,6 +27,27 @@ import {
   repairLegacyAnimatedDeckAppearanceSelectors,
 } from "../animated-deck/animated-deck-appearance.service";
 import type { CompositionCompiledFont } from "../fonts/organization-font.types";
+import { prepareCompositionHtmlEditingDeckStyles } from "./composition-html-editing-deck-styles.server";
+import { renderHtmlComputedLayoutRuntime } from "./composition-html-editing-layout-runtime";
+import { renderCompositionCanvasSnapGeometry } from "./composition-canvas-snap-geometry";
+import { resolveCompositionPreviewCanvasBounds } from "./composition-preview-viewport-geometry";
+import { renderCompositionCanvasVisibleBounds } from "./composition-canvas-visible-bounds";
+import { renderCompositionCanvasKeyboardSelection } from "./composition-canvas-keyboard-selection";
+import { renderCompositionCanvasFocusContinuity } from "./composition-canvas-focus-continuity";
+import { renderCompositionCanvasControlKeyboard } from "./composition-canvas-control-keyboard";
+import { renderCompositionEditorShortcutBridge } from "./composition-editor-shortcut";
+import { resolveCompositionDeckImageAliases } from "./composition-deck-image-aliases.server";
+import {
+  assertCompositionHtmlEditingIdsUnique,
+  assertCompositionHtmlEditingResourcesLocal,
+  compileCompositionHtmlEditingFragments,
+  CompositionHtmlEditingCompilationError,
+  type CompositionHtmlEditingCompilation,
+} from "./composition-html-editing-compilation.server";
+import {
+  restoreCompositionHtmlEditingSnapshot, HtmlEditingSnapshotBundleError,
+  type HtmlEditingFrozenCompilationInput,
+} from "./composition-html-editing-snapshot-bundle.server";
 
 export type CompositionPreviewCompilerDiagnostics = {
   colorGradingRuntime: "AVAILABLE" | "FALLBACK" | "NOT_REQUIRED";
@@ -66,12 +89,35 @@ export async function compileCompositionPreview(params: {
   deckAssetUrls?: Map<string, string>;
   document: CompositionEditorDocument;
   documentHash?: string;
+  htmlEditingCompilation?: CompositionHtmlEditingCompilation;
+  htmlEditingSnapshot?: HtmlEditingFrozenCompilationInput;
   fontAssets?: Map<string, CompositionCompiledFont>;
   onDiagnostics?: (diagnostics: CompositionPreviewCompilerDiagnostics) => void;
   previewGeneration?: number | null;
   audioMetersEnabled?: boolean;
   target?: CompositionCompilationTarget;
 }) {
+  let htmlEditingFragments: ReadonlyMap<string, string>;
+  let htmlEditingDeckStyles: string | null = null;
+  try {
+    if (params.htmlEditingCompilation && params.htmlEditingSnapshot) throw new HtmlEditingSnapshotBundleError("INVALID_BUNDLE");
+    const context = params.htmlEditingSnapshot ? restoreCompositionHtmlEditingSnapshot({ ...params.htmlEditingSnapshot,
+      document: params.document, documentHash: params.documentHash }) : params.htmlEditingCompilation;
+    htmlEditingFragments = compileCompositionHtmlEditingFragments({ ...params, context });
+    if (htmlEditingFragments.size && context) {
+      try {
+        htmlEditingDeckStyles = prepareCompositionHtmlEditingDeckStyles({
+          document: params.document, documentHash: context.documentHash, context, assetUrls: params.assetUrls});
+      } catch {
+        throw new CompositionPreviewCompilerError("La revisión HTML requiere recursos locales y CSS contextual estático admitido y aislado en toda la composición.");
+      }
+    }
+  } catch (error) {
+    if (error instanceof CompositionHtmlEditingCompilationError || error instanceof HtmlEditingSnapshotBundleError) {
+      throw new CompositionPreviewCompilerError(`La compilación de revisiones HTML fue rechazada: ${error.code}. No se exportará el source original.`);
+    }
+    throw error;
+  }
   if (params.previewGeneration !== undefined && params.previewGeneration !== null
     && (!Number.isInteger(params.previewGeneration)
       || params.previewGeneration < 0
@@ -112,9 +158,9 @@ export async function compileCompositionPreview(params: {
   const timelineLayout = buildCompositionTimelineLayout(document);
   const volumeAutomations = buildCompositionPlaybackVolumeAutomations(document, transitionRuntime);
   const automatedClipIds = new Set(volumeAutomations.map((automation) => automation.targetClipId));
-  const deckStyles = document.deckStyles
+  const deckStyles = htmlEditingDeckStyles ?? (document.deckStyles
     ? `${document.deckStyles.fontUrls.map((url) => `@import url(${JSON.stringify(replaceCompositionAssetUrls(url, params.deckAssetUrls))});`).join("\n")}\n${replaceCompositionAssetUrls(repairLegacyAnimatedDeckAppearanceSelectors(document.deckStyles.css), params.deckAssetUrls)}`
-    : "";
+    : "");
   const deckAppearance = normalizeAnimatedDeckAppearance(document.deckStyles?.appearance);
   const fontStyles = renderCompositionFontFaces(document, params.fontAssets);
   const clips = document.clips
@@ -136,10 +182,19 @@ export async function compileCompositionPreview(params: {
       transitionRuntime.audioWindowsByClipId.get(clip.id),
       serializeColorGrading,
       audioMetersEnabled,
+      clip.source.type === "DECK_SLIDE"
+        ? htmlEditingFragments.get(clip.id) ?? replaceCompositionAssetUrls(resolveCompositionDeckImageAliases(clip.source.html, params.assetUrls), params.deckAssetUrls)
+        : undefined,
     ))
     .join("\n");
+  if (htmlEditingFragments.size) {
+    try { assertCompositionHtmlEditingResourcesLocal({ clipsHtml: clips, deckCss: deckStyles, assetUrls: params.assetUrls }); }
+    catch {
+      throw new CompositionPreviewCompilerError("La revisión HTML requiere recursos locales y contenido estático en toda la composición.");
+    }
+  }
   const transitionOverlays = renderCompositionTransitionOverlays(transitionRuntime.items);
-  return `<!doctype html>
+  const html = `<!doctype html>
 <html lang="es" data-color-grading-runtime="${colorGradingRuntimeState.toLowerCase()}"${renderHyperframesCompositionVariables(target, params.assetVariableNames)}>
 <head>
   <meta charset="utf-8" />
@@ -159,6 +214,7 @@ export async function compileCompositionPreview(params: {
     .composition-resize-handle { right: 0; bottom: 0; background: #0891b2; font: 800 14px/1 system-ui, sans-serif; cursor: nwse-resize; transform: scale(var(--editor-control-scale)); transform-origin: bottom right; }
     .composition-selection-marquee { position: absolute; z-index: 2147483646; border: 2px solid rgba(34,211,238,.95); background: rgba(34,211,238,.16); box-shadow: 0 0 0 1px rgba(255,255,255,.5); pointer-events: none; }
     .composition-smart-guide { position: absolute; z-index: 2147483646; background: rgba(244,63,94,.95); box-shadow: 0 0 0 1px rgba(255,255,255,.65); pointer-events: none; }
+    ${isInteractivePreview ? '#composition-root:focus-visible, [data-hf-id]:focus-visible { outline: var(--editor-outline-width) solid #22d3ee; outline-offset: -2px; }' : ""}
     .composition-smart-guide[data-axis="x"] { top: 0; bottom: 0; width: 1px; }
     .composition-smart-guide[data-axis="y"] { right: 0; left: 0; height: 1px; }
     .clip-content[data-crop-mode="true"] { cursor: grab; }
@@ -192,10 +248,18 @@ export async function compileCompositionPreview(params: {
   </div>
   ${animationRuntime ? `<script>${animationRuntime}</script>` : '<script src="assets/gsap.min.js"></script>'}
   ${colorGradingRuntime ? `<script>${colorGradingRuntime}</script>` : ""}
+  ${renderHtmlComputedLayoutRuntime(htmlEditingFragments)}
   ${renderCompositionTimelineInstaller(buildCompositionPreviewTimelineState(document, transitionRuntime))}
-  ${isInteractivePreview ? renderInteractivePreviewController(document, params.documentHash, params.previewGeneration, audioMetersEnabled) : ""}
+  ${isInteractivePreview ? renderInteractivePreviewController(document, params.documentHash, params.previewGeneration, audioMetersEnabled, htmlEditingFragments.size > 0) : ""}
 </body>
 </html>`;
+  if (htmlEditingFragments.size) {
+    try { assertCompositionHtmlEditingIdsUnique(html); }
+    catch {
+      throw new CompositionPreviewCompilerError("La revisión HTML contiene IDs duplicados en la composición final.");
+    }
+  }
+  return html;
 }
 
 function renderHyperframesCompositionVariables(
@@ -212,7 +276,7 @@ function renderHyperframesCompositionVariables(
   return ` data-composition-variables='${escapeAttribute(JSON.stringify(declarations))}'`;
 }
 
-function renderInteractivePreviewController(document: CompositionEditorDocument, documentHash?: string, previewGeneration?: number | null, audioMetersEnabled = false) {
+function renderInteractivePreviewController(document: CompositionEditorDocument, documentHash?: string, previewGeneration?: number | null, audioMetersEnabled = false, htmlLayoutRequired = false) {
   return `<script>
     (() => {
       const root = document.getElementById("composition-root");
@@ -265,6 +329,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
       const MEDIA_FORCED_SEEK_TOLERANCE_SECONDS = ${COMPOSITION_PREVIEW_MEDIA_CONFIG.forcedSeekToleranceSeconds};
       const MEDIA_SEEK_TOLERANCE_SECONDS = ${COMPOSITION_PREVIEW_MEDIA_CONFIG.seekToleranceSeconds};
       let initialMediaReady = false;
+      const htmlLayoutRequired = ${htmlLayoutRequired};
+      const htmlLayout = htmlLayoutRequired ? window.__courseforgeHtmlLayout : null;
+      let htmlLayoutFailureReported = false;
       let lastPrimeTime = Number.NEGATIVE_INFINITY;
       // Browser autoplay policy may reject audible media in the sandboxed iframe.
       // That is an audio-permission issue, not a transport failure: the muted
@@ -358,11 +425,13 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         right: crop.right * nextLayout.width / previousLayout.width,
         top: crop.top * nextLayout.height / previousLayout.height,
       }, nextLayout);
+      const resolvePreviewCanvasBounds = (${resolveCompositionPreviewCanvasBounds.toString()});
       const fitCompositionToViewport = () => {
         if (!root || !viewport) return;
-        const scale = Math.min(viewport.clientWidth / ${document.canvas.width}, viewport.clientHeight / ${document.canvas.height});
-        const safeScale = Math.max(.01, scale);
-        const renderedScale = safeScale * previewUserScale;
+        const bounds = resolvePreviewCanvasBounds({ canvasWidth: canvasWidth, canvasHeight: canvasHeight, viewportWidth: viewport.clientWidth, viewportHeight: viewport.clientHeight, zoom: previewUserScale });
+        if (!bounds) return;
+        const renderedScale = bounds.scale;
+        const safeScale = renderedScale / previewUserScale;
         root.style.setProperty("--preview-scale", String(safeScale));
         root.style.setProperty("--preview-user-scale", String(previewUserScale));
         root.style.setProperty("--editor-control-scale", String(1 / renderedScale));
@@ -442,7 +511,26 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           try { media.load(); } catch (error) { reportMediaError(media, error); }
         });
       };
+      const admitHtmlLayout = () => {
+        if (!htmlLayoutRequired) return true;
+        try {
+          if (!htmlLayout) throw new Error("HTML_LAYOUT_RUNTIME_MISSING");
+          if (htmlLayout.getState() === "PENDING") return false;
+          htmlLayout.assert(); return true;
+        }
+        catch {
+          root?.setAttribute("data-preview-ready", "false");
+          initialMediaReady = false;
+          pause();
+          if (!htmlLayoutFailureReported) {
+            htmlLayoutFailureReported = true;
+            postParentMessage({ type: "courseforge-composition-load-error", code: "COMPILATION_FAILED", documentHash: compiledDocumentHash, previewGeneration });
+          }
+          return false;
+        }
+      };
       const announceInitialReadyIfPossible = () => {
+        if (!admitHtmlLayout()) return false;
         if (initialMediaReady) return true;
         const pending = pendingMediaAt(currentTime);
         if (pending.length > 0) {
@@ -685,10 +773,13 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         });
       };
       const seek = (time, forceMediaSeek = false) => {
+        cancelKeyboardTransform();
         currentTime = Math.max(0, Math.min(duration, Number(time) || 0));
+        if (!admitHtmlLayout()) return;
         timeline.seek(currentTime, false);
         seekDeterministicWaapiAnimations(currentTime);
         applyRuntimeVisibilityOverrides();
+        reconcileCanvasFocus();
         syncMedia(currentTime, forceMediaSeek);
         postParentMessage({ type: "courseforge-composition-time", seconds: currentTime });
       };
@@ -753,6 +844,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         seek(time, true);
       };
       function startPlaybackClock() {
+        if (!admitHtmlLayout()) return;
         void audioMeters.resume();
         if (playbackTimer) window.cancelAnimationFrame(playbackTimer);
         playbackTimer = null;
@@ -775,6 +867,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         postParentMessage({ type: "courseforge-composition-playback", playing: true });
       }
       const play = () => {
+        if (!admitHtmlLayout()) return;
         playRequestedAt = performance.now();
         playbackIntent = true;
         primeMediaForTime(currentTime, true);
@@ -790,8 +883,11 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         syncMedia(currentTime, true);
       });
       bindMediaReadinessListeners();
+      ${renderCompositionCanvasFocusContinuity()}
       const selectTarget = (target, origin = "PREVIEW", requestedHfIds = null) => {
+        cancelKeyboardTransform();
         if (!target) return;
+        const focusToken = readCanvasControlFocus();
         const targetHfId = target.dataset.hfId || null;
         const nextHfIds = new Set(
           Array.isArray(requestedHfIds)
@@ -824,7 +920,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
             cropHandle.className = "composition-editor-control composition-crop-handle";
             cropHandle.dataset.cropEdge = edge;
             cropHandle.setAttribute("aria-label", label);
-            cropHandle.title = label;
+            cropHandle.title = label + ": flechas; Shift paso mayor; Escape cancelar";
             target.appendChild(cropHandle);
           }
         }
@@ -833,24 +929,27 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           moveHandle.type = "button";
           moveHandle.className = "composition-editor-control composition-move-handle";
           moveHandle.setAttribute("aria-label", "Mover elemento");
-          moveHandle.title = "Arrastra para mover";
+          moveHandle.title = "Arrastra o usa flechas para mover; Shift paso mayor; Escape cancelar";
           moveHandle.textContent = "✥";
           target.appendChild(moveHandle);
           const handle = document.createElement("button");
           handle.type = "button";
           handle.className = "composition-editor-control composition-resize-handle";
           handle.setAttribute("aria-label", "Redimensionar elemento");
-          handle.title = "Arrastra para cambiar el tamaño";
+          handle.title = "Arrastra para cambiar el tamaño o usa flechas; Alt libre; Shift paso mayor; Escape cancelar";
           handle.textContent = "↘";
           target.appendChild(handle);
         }
         applyCrop(target, readCrop(target), cropEnabled && canCrop);
         selectedHfId = targetHfId;
         selectedHfIds = nextHfIds;
+        restoreCanvasControlFocus(focusToken, target);
         const box = target.getBoundingClientRect();
         postParentMessage({ type: "courseforge-composition-selection", hfId: selectedHfId, hfIds: [...selectedHfIds], origin, bounds: { height: box.height, width: box.width, x: box.x, y: box.y } });
       };
       const clearTarget = (origin = "PREVIEW") => {
+        cancelKeyboardTransform();
+        const focusToken = readCanvasControlFocus();
         document.querySelectorAll("[data-crop-mode='true']").forEach((node) => {
           if (node instanceof HTMLElement) applyCrop(node, readCrop(node), false);
         });
@@ -859,8 +958,11 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
         selectedHfId = null;
         selectedHfIds = new Set();
+        if (focusToken && document.hasFocus()) root.focus({ preventScroll: true });
         postParentMessage({ type: "courseforge-composition-selection", hfId: null, hfIds: [], origin });
       };
+      ${renderCompositionCanvasSnapGeometry()}
+      ${renderCompositionCanvasVisibleBounds()}
       const clearSmartGuides = () => {
         document.querySelectorAll(".composition-smart-guide").forEach((guide) => guide.remove());
       };
@@ -886,16 +988,19 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         width: Number.parseFloat(target.style.width),
         x: Number.parseFloat(target.style.left),
         y: Number.parseFloat(target.style.top),
+        rotation: Number(target.style.transform.match(/^rotate[(]([-+0-9.eE]+)deg[)]$/)?.[1] || 0),
       });
       const collectSmartGuidePositions = (target, axis) => {
         const canvasPositions = axis === "x" ? [0, canvasWidth / 2, canvasWidth] : [0, canvasHeight / 2, canvasHeight];
         const peerPositions = [...document.querySelectorAll("[data-hf-id]")].flatMap((peer) => {
-          if (!(peer instanceof HTMLElement) || peer === target || getComputedStyle(peer).visibility === "hidden") return [];
-          const box = readLayoutBox(peer);
-          if (Object.values(box).some((value) => !Number.isFinite(value))) return [];
+          if (!(peer instanceof HTMLElement) || peer === target) return [];
+          const style = getComputedStyle(peer);
+          if (style.visibility === "hidden" || style.display === "none" || Number(style.opacity) === 0) return [];
+          const box = compositionCanvasVisibleBounds(readLayoutBox(peer), readCrop(peer));
+          if (!box) return [];
           return axis === "x"
-            ? [box.x, box.x + box.width / 2, box.x + box.width]
-            : [box.y, box.y + box.height / 2, box.y + box.height];
+            ? [box.left, box.centerX, box.right]
+            : [box.top, box.centerY, box.bottom];
         });
         return [...new Set([...canvasPositions, ...peerPositions])];
       };
@@ -911,14 +1016,16 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         return match;
       };
       const resolveSmartMove = (target, layout, x, y, scale) => {
-        const threshold = Math.max(2, 7 / scale);
+        const threshold = canvasSnapTolerance(scale, canvasSnapGeometry.screenTolerancePixels);
+        const box = compositionCanvasVisibleBounds({ ...readLayoutBox(target), x, y }, readCrop(target));
+        if (!box) return { x, y, guideX: undefined, guideY: undefined };
         const xMatch = resolveClosestSmartGuide(
-          [x, x + layout.width / 2, x + layout.width],
+          [box.left, box.centerX, box.right],
           collectSmartGuidePositions(target, "x"),
           threshold,
         );
         const yMatch = resolveClosestSmartGuide(
-          [y, y + layout.height / 2, y + layout.height],
+          [box.top, box.centerY, box.bottom],
           collectSmartGuidePositions(target, "y"),
           threshold,
         );
@@ -930,36 +1037,16 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         };
       };
       const resolveSmartResize = (target, layout, width, height, preserveRatio, scale) => {
-        const threshold = Math.max(2, 7 / scale);
-        const xMatch = resolveClosestSmartGuide(
-          [layout.x + width],
-          collectSmartGuidePositions(target, "x"),
-          threshold,
-        );
-        const yMatch = resolveClosestSmartGuide(
-          [layout.y + height],
-          collectSmartGuidePositions(target, "y"),
-          threshold,
-        );
-        if (!preserveRatio) {
-          return {
-            guideX: xMatch?.guide,
-            guideY: yMatch?.guide,
-            height: height + (yMatch?.delta || 0),
-            width: width + (xMatch?.delta || 0),
-          };
-        }
-        const ratio = layout.width / layout.height;
-        if (xMatch && (!yMatch || Math.abs(xMatch.delta) <= Math.abs(yMatch.delta))) {
-          const snappedWidth = width + xMatch.delta;
-          return { guideX: xMatch.guide, guideY: undefined, height: snappedWidth / ratio, width: snappedWidth };
-        }
-        if (yMatch) {
-          const snappedHeight = height + yMatch.delta;
-          return { guideX: undefined, guideY: yMatch.guide, height: snappedHeight, width: snappedHeight * ratio };
-        }
-        return { guideX: undefined, guideY: undefined, height, width };
+        const threshold = canvasSnapTolerance(scale, canvasSnapGeometry.screenTolerancePixels);
+        return resolveVisibleResizeSnap({
+          layout: { ...layout, rotation: readLayoutBox(target).rotation }, crop: activeTransform.crop,
+          width, height, preserveRatio, threshold,
+          guidesX: collectSmartGuidePositions(target, "x"), guidesY: collectSmartGuidePositions(target, "y"),
+        });
       };
+      ${renderCompositionCanvasKeyboardSelection()}
+      ${renderCompositionCanvasControlKeyboard()}
+      ${renderCompositionEditorShortcutBridge()}
       document.addEventListener("click", (event) => {
         if (suppressNextClick) {
           suppressNextClick = false;
@@ -1068,8 +1155,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           const maxY = canvasHeight - activeTransform.layout.height + activeTransform.crop.bottom;
           const x = Math.max(minX, Math.min(maxX, activeTransform.layout.x + dx));
           const y = Math.max(minY, Math.min(maxY, activeTransform.layout.y + dy));
-          const snappedVisibleX = Math.round((x + activeTransform.crop.left) / 16) * 16;
-          const snappedVisibleY = Math.round((y + activeTransform.crop.top) / 16) * 16;
+          const gridSize = canvasSnapGeometry.gridSizePixels;
+          const snappedVisibleX = Math.round((x + activeTransform.crop.left) / gridSize) * gridSize;
+          const snappedVisibleY = Math.round((y + activeTransform.crop.top) / gridSize) * gridSize;
           const smartMove = snapEnabled ? resolveSmartMove(target, activeTransform.layout, x, y, activeTransform.scale) : null;
           const nextX = snapEnabled
             ? Math.max(minX, Math.min(maxX, smartMove?.guideX === undefined ? snappedVisibleX - activeTransform.crop.left : smartMove.x))
@@ -1079,28 +1167,41 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
             : Math.round(y);
           target.style.left = nextX + "px";
           target.style.top = nextY + "px";
-          showSmartGuides(smartMove?.guideX, smartMove?.guideY);
+          showSmartGuides(
+            smartMove && Math.abs(nextX - smartMove.x) < 1e-6 ? smartMove.guideX : undefined,
+            smartMove && Math.abs(nextY - smartMove.y) < 1e-6 ? smartMove.guideY : undefined,
+          );
           return;
         }
-        const width = Math.max(24, Math.min(canvasWidth - activeTransform.layout.x, activeTransform.layout.width + dx));
-        const height = activeTransform.preserveRatio
-          ? Math.max(24, width * (activeTransform.layout.height / activeTransform.layout.width))
-          : Math.max(24, activeTransform.layout.height + dy);
-        const boundedHeight = Math.min(canvasHeight - activeTransform.layout.y, height);
-        const maxWidth = Math.max(24, canvasWidth - activeTransform.layout.x);
-        const maxHeight = Math.max(24, canvasHeight - activeTransform.layout.y);
+        const maxWidth = canvasWidth - activeTransform.layout.x;
+        const maxHeight = canvasHeight - activeTransform.layout.y;
+        const aspectRatio = activeTransform.preserveRatio ? activeTransform.layout.width / activeTransform.layout.height : null;
+        const resizeBounds = { maxWidth, maxHeight, aspectRatio, minimumSize: canvasSnapGeometry.minimumSizePixels };
+        const requestedSize = boundCanvasResize({ ...resizeBounds, width: activeTransform.layout.width + dx, height: activeTransform.layout.height + dy });
+        if (!requestedSize) { clearSmartGuides(); return; }
+        const { width, height } = requestedSize;
         const smartResize = snapEnabled
-          ? resolveSmartResize(target, activeTransform.layout, width, boundedHeight, activeTransform.preserveRatio, activeTransform.scale)
+          ? resolveSmartResize(target, activeTransform.layout, width, height, activeTransform.preserveRatio, activeTransform.scale)
           : null;
-        const nextWidth = snapEnabled
-          ? Math.min(maxWidth, Math.max(24, smartResize?.guideX === undefined && smartResize?.guideY === undefined ? Math.round(width / 16) * 16 : smartResize.width))
-          : Math.round(width);
-        const nextHeight = snapEnabled
-          ? Math.min(maxHeight, Math.max(24, smartResize?.guideX === undefined && smartResize?.guideY === undefined ? Math.round(boundedHeight / 16) * 16 : smartResize.height))
-          : Math.round(boundedHeight);
+        const gridSize = canvasSnapGeometry.gridSizePixels;
+        const hasGuide = smartResize?.guideX !== undefined || smartResize?.guideY !== undefined;
+        const finalSize = boundCanvasResize({
+          ...resizeBounds,
+          width: snapEnabled ? hasGuide ? smartResize.width : Math.round(width / gridSize) * gridSize : Math.round(width),
+          height: snapEnabled ? hasGuide ? smartResize.height : Math.round(height / gridSize) * gridSize : Math.round(height),
+        });
+        if (!finalSize) { clearSmartGuides(); return; }
+        const nextWidth = finalSize.width;
+        const nextHeight = finalSize.height;
         target.style.width = nextWidth + "px";
         target.style.height = nextHeight + "px";
-        showSmartGuides(smartResize?.guideX, smartResize?.guideY);
+        const visibleBounds = compositionCanvasResizedVisibleBounds(
+          { ...activeTransform.layout, rotation: readLayoutBox(target).rotation }, activeTransform.crop, nextWidth, nextHeight,
+        );
+        showSmartGuides(
+          visibleBounds && Math.abs(visibleBounds.right - smartResize?.guideX) < 1e-6 ? smartResize.guideX : undefined,
+          visibleBounds && Math.abs(visibleBounds.bottom - smartResize?.guideY) < 1e-6 ? smartResize.guideY : undefined,
+        );
         applyCrop(target, scaleCropForLayout(activeTransform.crop, activeTransform.layout, { width: nextWidth, height: nextHeight }), false);
       });
       const finishTransform = (event) => {
@@ -1291,6 +1392,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         }
         try {
           if (message.patch.scene !== undefined) {
+            if (htmlLayoutRequired) throw new Error("CONTROLLED_HTML_REQUIRES_COMPILATION");
             const scene = message.patch.scene;
             if (!root || !Array.isArray(scene.nodes) || scene.nodes.length > 999 || !scene.timeline
               || !Number.isFinite(scene.canvas?.durationSeconds) || scene.canvas.durationSeconds <= 0
@@ -1363,6 +1465,8 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         const message = event.data;
         if (!message || typeof message.type !== "string") return;
         if ((message.protocolVersion ?? ${COMPOSITION_PREVIEW_PROTOCOL_VERSION}) !== ${COMPOSITION_PREVIEW_PROTOCOL_VERSION}) return;
+        cancelKeyboardTransform();
+        if (message.type === "courseforge-composition-restore-focus") restoreCanvasFocusAfterReload(message.hfId);
         if (message.type === "courseforge-composition-visual-patch") { applyVisualPatch(message); return; }
         if (message.type === "courseforge-composition-seek") scrubTo(message.seconds);
         if (message.type === "courseforge-composition-play") play();
@@ -1373,7 +1477,6 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           cropEnabled = message.cropEnabled === true;
           snapEnabled = message.snapEnabled !== false;
           if (editorGrid) editorGrid.setAttribute("data-visible", message.gridVisible === true ? "true" : "false");
-          document.querySelectorAll(".composition-editor-control").forEach((node) => node.remove());
           const selectedTarget = selectedHfId ? document.querySelector('[data-hf-id="' + CSS.escape(selectedHfId) + '"]') : null;
           if (selectedTarget) selectTarget(selectedTarget, "PARENT", [...selectedHfIds]);
         }
@@ -1419,6 +1522,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
       captureDeterministicWaapiAnimations(0);
       seek(0);
       announceInitialReadyIfPossible();
+      if (htmlLayout) htmlLayout.ready.then(() => { seek(currentTime); announceInitialReadyIfPossible(); }, () => admitHtmlLayout());
       window.setTimeout(initializeColorGrading, 250);
     })();
   </script>`;
@@ -1450,17 +1554,18 @@ function renderCompositionFontFaces(
   document: CompositionEditorDocument,
   fontAssets: Map<string, CompositionCompiledFont> | undefined,
 ) {
-  const references = new Map<string, string>();
-  for (const clip of document.clips) {
-    if (clip.source.type !== "NATIVE_TEXT" && clip.source.type !== "NATIVE_CAPTIONS") continue;
-    const { fontAssetId, fontFamily } = clip.source.style;
-    if (fontAssetId) references.set(fontAssetId, fontFamily);
-  }
-  return [...references].map(([assetId, family]) => {
+  let references: ReturnType<typeof compositionFontReferenceDetails>;
+  try { references = compositionFontReferenceDetails(document); }
+  catch { throw new CompositionPreviewCompilerError("Las referencias tipográficas de la composición no son válidas.", 409); }
+  return [...references].map(([assetId, reference]) => {
+    const family = reference.fontFamily;
     const font = fontAssets?.get(assetId);
     if (!font) throw new CompositionPreviewCompilerError(`No se resolvió la fuente personalizada ${family}.`, 409);
     if (font.family !== family) throw new CompositionPreviewCompilerError(`La fuente ${font.family} no coincide con la familia declarada ${family}.`, 409);
-    return `@font-face { font-family: '${escapeCssString(font.family)}'; src: url("${escapeCssUrl(font.sourceUrl)}") format('${font.format}'); font-display: block; }`;
+    const face = font.googleFace ? googleFontFaceBindingSchema.parse(font.googleFace) : undefined;
+    if (JSON.stringify(face) !== JSON.stringify(reference.googleFace)) throw new CompositionPreviewCompilerError("La variante tipográfica no coincide con la referencia guardada.", 409);
+    const descriptors = face ? ` font-style: ${face.style}; font-weight: ${face.weight.minimum}${face.weight.maximum === face.weight.minimum ? "" : ` ${face.weight.maximum}`};${face.unicodeRange ? ` unicode-range: ${face.unicodeRange};` : ""}` : "";
+    return `@font-face { font-family: '${escapeCssString(font.family)}'; src: url("${escapeCssUrl(font.sourceUrl)}") format('${font.format}'); font-display: block;${descriptors} }`;
   }).join("\n");
 }
 

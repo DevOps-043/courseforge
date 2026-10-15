@@ -30,10 +30,14 @@ async function main() {
     bundle: true, entryPoints: [resolve(process.cwd(), "src/domains/production/composition-editor/qa/composition-editor-latency-smoke.fixture.tsx")],
     format: "iife", logLevel: "silent", outfile: resolve(output, "fixture.js"), platform: "browser", target: ["chrome120"],
     tsconfig: resolve(process.cwd(), "tsconfig.json"), define: { "process.env": "{}" },
-    // Uploads are outside this test; fail if the fixture ever reaches live Storage.
-    plugins: [{ name: "isolate-storage", setup(builder) {
+    // Next replaces Server Actions with RPC proxies; esbuild needs an explicit test boundary.
+    // This fixture must never upload to Storage or mutate an authenticated session.
+    plugins: [{ name: "isolate-external-services", setup(builder) {
       builder.onLoad({ filter: /utils[\\/]supabase[\\/]client\.ts$/ }, () => ({
         contents: 'export function createClient() { throw new Error("UNEXPECTED_STORAGE_ACCESS_IN_LATENCY_TEST"); }', loader: "ts",
+      }));
+      builder.onLoad({ filter: /app[\\/]login[\\/]actions\.ts$/ }, () => ({
+        contents: 'async function unexpectedAuthAction() { throw new Error("UNEXPECTED_AUTH_ACTION_IN_LATENCY_TEST"); } export { unexpectedAuthAction as loginAction, unexpectedAuthAction as logoutAction };', loader: "ts",
       }));
     } }],
   });

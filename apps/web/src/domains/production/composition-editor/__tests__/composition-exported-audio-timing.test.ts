@@ -120,6 +120,9 @@ test("measurement binds reference hash/revision, detects mutation and rejects in
     await writeFile(referencePath, referenceBytes); await writeFile(referenceMetadataPath, JSON.stringify(metadata));
     const decoded = pcm(envelope(13));
     assert.equal((await measureExportedAudioTiming(input, async () => decoded)).status, "PASS");
+    await assert.rejects(measureExportedAudioTiming(input, async () => {
+      throw new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED");
+    }), {message: "CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED"});
     await writeFile(referenceMetadataPath, JSON.stringify({ ...metadata, documentHash: "b".repeat(64) }));
     assert.equal((await measureExportedAudioTiming(input, async () => assert.fail("must not decode"))).reason, "AUDIO_TIMING_REFERENCE_REVISION_MISMATCH");
     await writeFile(referenceMetadataPath, JSON.stringify({ ...metadata, audioSha256: "b".repeat(64) }));

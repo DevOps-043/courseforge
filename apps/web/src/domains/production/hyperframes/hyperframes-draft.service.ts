@@ -18,6 +18,8 @@ import {
 import { buildDeterministicPlan } from "./hyperframes-plan.service";
 import { buildCompositionNarrativeScenes, buildSceneVisualCatalog } from "../composition-editor/composition-narrative-source.service";
 import type { CompositionNarrativeScene } from "../composition-editor/composition-narrative.types";
+import { readGeneratedCourseDeckEditorial, GeneratedDeckReadError } from "../slides/generation/course-deck-editorial-reader.server";
+import { generatedDeckInitialSource, generatedDeckInitialNarrativeScenes, instantiateGeneratedDeckDocument } from "../composition-editor/composition-generated-deck-import.server";
 import {
   extractHyperframesAnimatedDeck,
   isAutomaticTimelineSourceAsset,
@@ -25,6 +27,7 @@ import {
 } from "./hyperframes-source-asset.service";
 
 const DRAFT_PROJECT_PREFIX = "video-composition-drafts";
+const GENERATED_DECK_FONT_UNAVAILABLE_MESSAGE = "Las diapositivas usan una fuente personalizada pendiente de vinculación al editor. No se sustituirá la tipografía ni se creará un borrador con campos incompletos.";
 
 export class HyperframesDraftError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -229,6 +232,8 @@ export async function initializeHyperframesDraft(params: {
     .select("id").eq("backing_component_id", composition.material_component_id).eq("organization_id", params.organizationId).maybeSingle();
   if (standaloneError) throw standaloneError;
   const persistedDocument = await loadOrCreateInitialDocument({
+    generatedComponentId: component.assets?.slides?.editable_deck != null ? composition.material_component_id : undefined,
+    narrativeAssets: component.assets,
     manualSourceInsertion: Boolean(standaloneProject),
     preassemblyVersion: params.preassemblyVersion,
     narrativeScenes: buildCompositionNarrativeScenes(component.assets, buildSceneVisualCatalog(animatedDeck)),
@@ -267,6 +272,8 @@ function positiveMetadataDimension(value: unknown) {
 }
 
 async function loadOrCreateInitialDocument(params: {
+  generatedComponentId?: string;
+  narrativeAssets?: Parameters<typeof buildCompositionNarrativeScenes>[0];
   manualSourceInsertion?: boolean;
   preassemblyVersion?: string;
   narrativeScenes?: CompositionNarrativeScene[];
@@ -281,6 +288,10 @@ async function loadOrCreateInitialDocument(params: {
 }) {
   try {
     const current = await getCurrentCompositionDocument(params);
+    const preserveDeckSources = Boolean(params.generatedComponentId || current.document.htmlEditing?.items.length);
+    if (preserveDeckSources && params.preassemblyVersion) {
+      throw new HyperframesDraftError("El reensamble de diapositivas editables requiere conservar sus fuentes registradas. No se ha modificado el borrador.", 409);
+    }
     if (params.preassemblyVersion) {
       if (params.preassemblyVersion !== current.documentHash) throw new CompositionDocumentConflictError(current);
       if (!canPreassembleScenes(params.narrativeScenes, params.assets)) {
@@ -294,8 +305,10 @@ async function loadOrCreateInitialDocument(params: {
       params.manualSourceInsertion ? { ...current.document, sourceInsertionMode: "MANUAL" } : current.document,
       params.assets,
       params.deckDependencyAssetIds,
-      params.animatedDeck,
-      params.narrativeScenes,
+      // An existing draft is not an implicit migration target, even when its
+      // Production material has since been regenerated with editorial fields.
+      preserveDeckSources ? null : params.animatedDeck,
+      preserveDeckSources ? undefined : params.narrativeScenes,
       Boolean(params.preassemblyVersion),
     );
     if (params.manualSourceInsertion && current.document.sourceInsertionMode !== "MANUAL" && operations.length === 0) {
@@ -331,16 +344,34 @@ async function loadOrCreateInitialDocument(params: {
     if (!(error instanceof CompositionDocumentError) || error.status !== 404) throw error;
   }
 
+  const verified = params.generatedComponentId && !params.manualSourceInsertion ? await readGeneratedCourseDeckEditorial({
+    componentId: params.generatedComponentId, organizationId: params.organizationId, supabase: params.supabase,
+  }).catch((error: unknown) => {
+    if (error instanceof GeneratedDeckReadError && error.code === "FONT_BINDING_REQUIRED")
+      throw new HyperframesDraftError(GENERATED_DECK_FONT_UNAVAILABLE_MESSAGE, 422);
+    throw error;
+  }) : null;
+  if (params.generatedComponentId && !params.manualSourceInsertion && !verified) throw new GeneratedDeckReadError("UNAVAILABLE");
+  if (verified && !verified.fontBindings) {
+    throw new HyperframesDraftError(GENERATED_DECK_FONT_UNAVAILABLE_MESSAGE, 422);
+  }
+  if (verified && params.animatedDeck?.slides.some(slide => slide.htmlAssetId)) {
+    throw new HyperframesDraftError("Esta composición mezcla HTML importado con diapositivas generadas. Requiere una importación editorial explícita; no se omitirán fuentes existentes.", 422);
+  }
+  const initialDeck = verified ? generatedDeckInitialSource(verified) : params.animatedDeck;
+  const initialNarrative = verified && params.narrativeAssets ? buildCompositionNarrativeScenes(params.narrativeAssets,
+    buildSceneVisualCatalog(verified.presentationSource())) : params.narrativeScenes;
   const plan = buildDeterministicPlan({ assetCount: params.assets.length, title: params.compositionName });
   let document;
   try {
     document = createInitialCompositionDocument({
       ...(params.manualSourceInsertion ? { sourceInsertionMode: "MANUAL" as const } : {}),
-      narrativeScenes: params.narrativeScenes,
-      animatedDeck: params.animatedDeck,
+      narrativeScenes: verified ? generatedDeckInitialNarrativeScenes(initialNarrative, verified) : params.narrativeScenes,
+      animatedDeck: initialDeck,
       assets: params.assets,
       plan,
     });
+    if (verified) document = instantiateGeneratedDeckDocument(document, verified);
   } catch (error) {
     if (error instanceof CompositionDurationResolutionError) {
       throw new HyperframesDraftError(error.message, 422);

@@ -1,3 +1,7 @@
+import { HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT } from "./html-editing/html-editing-reference.contract";
+import { retainCompositionNativeFragment } from "./composition-native-fragment.service";
+import { areCaptionEffectsEnabled } from "./composition-caption-effects.types";
+import { invalidateChangedCaptionText } from "./composition-caption-effects.service";
 import {
   COMPOSITION_DOCUMENT_FORMAT,
   NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT,
@@ -26,6 +30,7 @@ import {
   scaleCompositionCropInsets,
 } from "./composition-visual-crop.service";
 import { compositionClipHasConfigurableAudio } from "./composition-clip-audio.service";
+import { areCompositionVolumeEnvelopeEditsEnabled } from "./composition-volume-envelope";
 import { compositionClipExclusionKey } from "./composition-source-selection";
 import { resolveAvatarAudioLink } from "./composition-avatar-audio-link.service";
 import {
@@ -151,9 +156,11 @@ function assertDocumentTransitionsOrThrow(document: CompositionEditorDocument) {
   }
 }
 
-function assertDerivableMediaClip(clip: CompositionEditorDocument["clips"][number]) {
-  if (clip.source.type !== "PRODUCTION_ASSET" || (clip.kind !== "VIDEO" && clip.kind !== "AUDIO")) {
-    throw new CompositionEditorPatchError("Solo los clips de video o audio pueden dividirse o recortarse por intervalos.");
+function assertDerivableClip(clip: CompositionEditorDocument["clips"][number]) {
+  const nativeOverlay = clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS";
+  const productionMedia = clip.source.type === "PRODUCTION_ASSET" && (clip.kind === "VIDEO" || clip.kind === "AUDIO");
+  if (!nativeOverlay && !productionMedia) {
+    throw new CompositionEditorPatchError("Solo los clips de video, audio, texto o captions pueden dividirse o recortarse por intervalos.");
   }
 }
 
@@ -717,7 +724,9 @@ export function applyCompositionEditorPatches(
       if (clip.source.type !== "PRODUCTION_ASSET" || clip.source.placement === "INTRO") {
         throw new CompositionEditorPatchError("Este clip no admite reemplazo directo de su fuente.");
       }
-      if (clip.sceneId && resolveAvatarAudioLink(next, clip.id).status !== "NONE") {
+      const isProcessedAudioReplacement = clip.kind === "AUDIO"
+        && operation.audioProcessingPreviousAssetId === clip.source.productionAssetId;
+      if (clip.sceneId && resolveAvatarAudioLink(next, clip.id).status !== "NONE" && !isProcessedAudioReplacement) {
         throw new CompositionEditorPatchError("Reemplaza la escena avatar-voz desde su flujo coordinado para conservar la sincronía.");
       }
       const expectedMimePrefix = clip.kind === "AUDIO" ? "audio/" : clip.kind === "VIDEO" ? "video/" : clip.kind === "IMAGE" ? "image/" : null;
@@ -850,6 +859,7 @@ export function applyCompositionEditorPatches(
       delete clip.playbackRate;
       delete clip.freezeTailSeconds;
       delete clip.volume;
+      delete clip.volumeEnvelope;
       delete clip.fadeInSeconds;
       delete clip.fadeOutSeconds;
       next.clips = next.clips.filter((candidate) => candidate.id === clip.id || !siblingIds.has(candidate.id));
@@ -869,7 +879,7 @@ export function applyCompositionEditorPatches(
         throw new CompositionEditorPatchError("Restablece la velocidad o la congelación antes de dividir este clip.");
       }
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes dividir un clip de un track bloqueado.");
-      assertDerivableMediaClip(clip);
+      assertDerivableClip(clip);
       assertClipCanCreateDerivedFragment(next, clip.id);
       assertNewDerivedClipIdentity(next, operation.newClipId, operation.newHfId);
       const splitAtSeconds = quantizeToDocumentFrame(operation.atSeconds, next.canvas.fps);
@@ -911,6 +921,8 @@ export function applyCompositionEditorPatches(
           },
         ],
       }, "corte");
+      retainCompositionNativeFragment(rightClip, splitOffset, clip.durationSeconds);
+      retainCompositionNativeFragment(clip, 0, leftClipDuration);
       clip.durationSeconds = leftClipDuration;
       clip.timingSource = "USER_EDITED";
       next.clips.push(rightClip);
@@ -924,7 +936,7 @@ export function applyCompositionEditorPatches(
         throw new CompositionEditorPatchError("Restablece la velocidad o la congelación antes de eliminar un intervalo de este clip.");
       }
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes eliminar un intervalo de un track bloqueado.");
-      assertDerivableMediaClip(clip);
+      assertDerivableClip(clip);
       const clipEnd = clip.startSeconds + clip.durationSeconds;
       const rangeStartSeconds = Math.max(clip.startSeconds, quantizeToDocumentFrame(operation.startSeconds, next.canvas.fps));
       const rangeEndSeconds = Math.min(clipEnd, quantizeToDocumentFrame(operation.endSeconds, next.canvas.fps));
@@ -962,11 +974,13 @@ export function applyCompositionEditorPatches(
             targetClipId: clip.id,
           }],
         }, "intervalo");
+        retainCompositionNativeFragment(clip, rangeEndSeconds - clip.startSeconds, clip.durationSeconds);
         clip.durationSeconds = retainedDuration;
         clip.sourceOffsetSeconds = normalizeVideoSourceOffset(
           clip,
           quantizeToDocumentFrame((clip.sourceOffsetSeconds || 0) + (rangeEndSeconds - clip.startSeconds), next.canvas.fps),
         );
+        if (clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS") delete clip.sourceOffsetSeconds;
         clip.startSeconds = quantizeToDocumentFrame(operation.ripple ? clip.startSeconds : rangeEndSeconds, next.canvas.fps);
         clip.timingSource = "USER_EDITED";
         continue;
@@ -985,6 +999,7 @@ export function applyCompositionEditorPatches(
             targetClipId: clip.id,
           }],
         }, "intervalo");
+        retainCompositionNativeFragment(clip, 0, retainedDuration);
         clip.durationSeconds = retainedDuration;
         clip.timingSource = "USER_EDITED";
         continue;
@@ -1031,6 +1046,8 @@ export function applyCompositionEditorPatches(
           },
         ],
       }, "intervalo");
+      retainCompositionNativeFragment(rightClip, rangeEndSeconds - clip.startSeconds, clip.durationSeconds);
+      retainCompositionNativeFragment(clip, 0, leftClipDuration);
       clip.durationSeconds = leftClipDuration;
       clip.timingSource = "USER_EDITED";
       next.clips.push(rightClip);
@@ -1079,6 +1096,7 @@ export function applyCompositionEditorPatches(
     if (operation.type === "clip.duration") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes cambiar la duración de un track bloqueado.");
       if (clip.freezeTailSeconds !== undefined) throw new CompositionEditorPatchError("Desactiva la congelación antes de cambiar la duración.");
+      retainCompositionNativeFragment(clip, 0, operation.durationSeconds);
       clip.durationSeconds = operation.durationSeconds;
       clip.timingSource = "USER_EDITED";
     }
@@ -1144,8 +1162,13 @@ export function applyCompositionEditorPatches(
     if (operation.type === "clip.trim") {
       if (clip.playbackRate !== undefined || clip.freezeTailSeconds !== undefined) throw new CompositionEditorPatchError("Restablece la velocidad o la congelación antes de recortar este clip.");
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes recortar un track bloqueado.");
+      if (clip.source.type === "NATIVE_CAPTIONS") {
+        const retainedStart = operation.startSeconds - clip.startSeconds;
+        retainCompositionNativeFragment(clip, retainedStart, retainedStart + operation.durationSeconds);
+      }
       clip.durationSeconds = operation.durationSeconds;
       clip.sourceOffsetSeconds = normalizeVideoSourceOffset(clip, operation.sourceOffsetSeconds);
+      if (clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS") delete clip.sourceOffsetSeconds;
       clip.startSeconds = operation.startSeconds;
       clip.timingSource = "USER_EDITED";
     }
@@ -1210,6 +1233,16 @@ export function applyCompositionEditorPatches(
       clip.volume = operation.volume;
     }
 
+    if (operation.type === "clip.volume-envelope") {
+      if (operation.points.length && !areCompositionVolumeEnvelopeEditsEnabled()) {
+        throw new CompositionEditorPatchError("La edición de curvas de volumen no está habilitada en este entorno.");
+      }
+      if (currentTrack.locked || !compositionClipHasConfigurableAudio(clip, currentTrack)) {
+        throw new CompositionEditorPatchError("La curva de volumen requiere un clip con audio y una pista desbloqueada.");
+      }
+      clip.volumeEnvelope = operation.points;
+    }
+
     if (operation.type === "clip.audio-fades") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes cambiar los fades de un track bloqueado.");
       if (!compositionClipHasConfigurableAudio(clip, currentTrack)) {
@@ -1235,8 +1268,25 @@ export function applyCompositionEditorPatches(
       if (clip.source.type !== "NATIVE_CAPTIONS") {
         throw new CompositionEditorPatchError("Esta operación solo está disponible para capas de captions.");
       }
-      clip.source.cues = operation.cues;
+      const previous = new Map(clip.source.cues.map((cue) => [cue.id, cue]));
+      const changesCaptionEffects = operation.cues.some((cue) => {
+        const retained = previous.get(cue.id);
+        return (cue.effects !== undefined && JSON.stringify(cue.effects) !== JSON.stringify(retained?.effects))
+          || (cue.emphasis !== undefined && JSON.stringify(cue.emphasis) !== JSON.stringify(retained?.emphasis));
+      });
+      if (changesCaptionEffects && source !== "USER") throw new CompositionEditorPatchError("Los efectos de captions requieren una acción del usuario.");
+      if (changesCaptionEffects && !areCaptionEffectsEnabled()) throw new CompositionEditorPatchError("La edición de efectos de captions está desactivada.");
+      clip.source.cues = operation.cues.map((cue) => invalidateChangedCaptionText(previous.get(cue.id), cue));
       if (operation.origin) clip.source.origin = operation.origin;
+    }
+
+    if (operation.type === "clip.caption-effects") {
+      if (source !== "USER") throw new CompositionEditorPatchError("Los efectos de captions requieren una acción del usuario.");
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes editar efectos en una pista bloqueada.");
+      if (clip.source.type !== "NATIVE_CAPTIONS") throw new CompositionEditorPatchError("Esta operación requiere una capa de captions.");
+      if (operation.effects && !areCaptionEffectsEnabled()) throw new CompositionEditorPatchError("La edición de efectos de captions está desactivada.");
+      if (operation.effects === null) delete clip.source.effects;
+      else clip.source.effects = operation.effects;
     }
 
     if (operation.type === "clip.text-style") {
@@ -1252,6 +1302,7 @@ export function applyCompositionEditorPatches(
 
     if (operation.type === "clip.template") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes aplicar una plantilla a un track bloqueado.");
+      retainCompositionNativeFragment(clip, 0, operation.durationSeconds);
       clip.durationSeconds = operation.durationSeconds;
       clip.layout = operation.layout;
       clip.startSeconds = operation.startSeconds;
@@ -1264,7 +1315,12 @@ export function applyCompositionEditorPatches(
   }
 
   // Every newly appended document uses the current motion contract, including restores.
-  next.format = next.clips.some((clip) => clip.kind === "TEXT" || clip.kind === "CAPTION")
+  if (next.htmlEditing) {
+    next.htmlEditing.items = next.htmlEditing.items.filter(reference => next.clips.some(clip => clip.id === reference.clipId));
+    if (!next.htmlEditing.items.length) delete next.htmlEditing;
+  }
+  next.format = next.htmlEditing ? HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT
+    : next.clips.some((clip) => clip.kind === "TEXT" || clip.kind === "CAPTION")
     ? NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT
     : COMPOSITION_DOCUMENT_FORMAT;
   next.motion.schemaVersion = 2;

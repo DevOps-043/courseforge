@@ -7,6 +7,7 @@ import {
 import {
   HEYGEN_API_BASE_URL,
   HEYGEN_DEFAULT_PAGE_SIZE,
+  HEYGEN_SPEECH_ENGINE,
   HEYGEN_REQUEST_TIMEOUT_MS,
   type HeygenCreateVideoRequest,
   type HeygenCreateVideoResponse,
@@ -126,7 +127,7 @@ export class HeygenClient {
     return this.requestJson({
       method: "GET",
       path: withQuery("/v3/voices", {
-        engine: "starfish",
+        engine: HEYGEN_SPEECH_ENGINE,
         gender: params.gender,
         language: params.language,
         limit: 100,
@@ -268,7 +269,7 @@ export class HeygenClient {
     payload: HeygenGenerateSpeechRequest,
   ): Promise<HeygenGeneratedSpeech> {
     const raw = await this.requestJson({
-      body: payload,
+      body: { ...payload, engine: HEYGEN_SPEECH_ENGINE },
       headers: { "Content-Type": "application/json" },
       method: "POST",
       path: "/v3/voices/speech",

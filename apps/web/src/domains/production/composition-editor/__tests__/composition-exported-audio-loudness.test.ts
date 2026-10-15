@@ -19,7 +19,7 @@ test("audio failure invalidates the combined report even with passing visual che
     assert.equal(evaluateExportedVideoConformanceStatus({ audioStatus: "SIGNAL_ABOVE_FLOOR_NOT_FULLY_EVALUATED", audioLoudnessStatus, visualStatus: "PASS" }), "FAIL");
   }
   assert.equal(evaluateExportedVideoConformanceStatus({ audioStatus: "MISSING_REQUIRED_TRACK", audioLoudnessStatus: "NOT_APPLICABLE", visualStatus: "PASS" }), "FAIL");
-  assert.equal(evaluateExportedVideoConformanceStatus({ audioStatus: "EXPECTATION_UNKNOWN", audioLoudnessStatus: "NOT_APPLICABLE", visualStatus: "PASS" }), "PASS");
+  assert.equal(evaluateExportedVideoConformanceStatus({ audioStatus: "EXPECTATION_UNKNOWN", audioLoudnessStatus: "NOT_APPLICABLE", visualStatus: "PASS" }), "INCOMPLETE");
   assert.equal(evaluateExportedVideoConformanceStatus({ audioStatus: "SIGNAL_ABOVE_FLOOR_NOT_FULLY_EVALUATED", audioLoudnessStatus: "PASS", visualStatus: "FAIL" }), "FAIL");
 });
 

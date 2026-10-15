@@ -859,6 +859,14 @@ function renderRuntime(deck: CourseDeckSpec) {
 </script>`;
 }
 
+/** Server-owned markup shared by the presentation and editorial producers. */
+export function renderCourseDeckSource(deck: CourseDeckSpec) {
+  const sortedSlides = [...deck.slides].sort((left, right) => left.order - right.order);
+  return { css: renderCss(deck), slides: sortedSlides.map((slide, index) => ({
+    slide, html: renderSlide(slide, deck, index === 0),
+  })) };
+}
+
 export function renderCourseDeckHtml(deck: CourseDeckSpec) {
   const sortedSlides = [...deck.slides].sort((left, right) => left.order - right.order);
   const slides = sortedSlides

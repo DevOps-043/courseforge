@@ -8,6 +8,11 @@ import { buildCompositionPreviewTimelineState } from "../composition-preview-tim
 import { CompositionPreviewAssetUrlCache } from "../composition-preview-asset-urls.client";
 import { createCompositionPreviewParentCommand } from "../composition-preview-protocol";
 import { buildCompositionPreviewVisualPatch } from "../composition-preview-visual-patch";
+import { createCaptionEffectsFixture } from "./composition-caption-effects.fixtures";
+import { buildCaptionEffectPlan } from "../composition-caption-effects-plan";
+import { buildCompositionPlaybackVolumeAutomations, resolvePlaybackVolume } from "../composition-playback-audio-envelope";
+import { createHtmlEditingRevisionFixture } from "./composition-html-editing-test-fixtures";
+import { bindHtmlEditingRevisionToComposition } from "../composition-html-editing-document.server";
 
 const assetId = "00000000-0000-4000-8000-000000000041";
 const replacementId = "00000000-0000-4000-8000-000000000042";
@@ -84,4 +89,35 @@ test("resolves only new assets via HEAD and reuses bounded signed URLs", async (
   await cache.resolveNewAssets(params);
   assert.equal(requests, 1);
   await assert.rejects(new CompositionPreviewAssetUrlCache().resolveNewAssets({ ...params, fetcher: (async () => new Response(null, { status: 403 })) as typeof fetch }));
+});
+
+test("preserves enhanced captions and their effect scheduler in live scene patches", () => {
+  const document = createCaptionEffectsFixture();
+  const scene = buildCompositionPreviewScenePatch({ beforeDocument: document, document, assetUrls: new Map(), audioMetersEnabled: false });
+  assert.ok(scene);
+  assert.deepEqual(scene.timeline.captionEffects, buildCaptionEffectPlan(document));
+  assert.ok(scene.timeline.clips[0]!.captionCues.every((cue) => cue.enhanced));
+  assert.match(scene.nodes[0]!.html, /captions-caption-first-effect/);
+  assert.equal(createCompositionPreviewParentCommand({ baseDocumentHash: "a".repeat(64), patch: { changes: [], scene }, sequence: 1, type: "courseforge-composition-visual-patch" })?.type, "courseforge-composition-visual-patch");
+});
+
+test("preserves authored volume curves after trimming the source window", () => {
+  const before = fixture();
+  const clip = before.clips[0]!;
+  const document = applyCompositionEditorPatches(before, [
+    { type: "clip.volume", clipId: clip.id, volume: 0.8 },
+    { type: "clip.trim", clipId: clip.id, startSeconds: 1, durationSeconds: 4, sourceOffsetSeconds: 2 },
+  ]);
+  document.clips[0]!.volumeEnvelope = [{ sourceTimeSeconds: 0, gain: 1 }, { sourceTimeSeconds: 4, gain: 0.5 }, { sourceTimeSeconds: 8, gain: 1 }];
+  const scene = buildCompositionPreviewScenePatch({ beforeDocument: before, document, assetUrls: new Map(), audioMetersEnabled: false });
+  assert.ok(scene);
+  assert.deepEqual(scene.timeline.volumeAutomations, buildCompositionPlaybackVolumeAutomations(document));
+  const automation = scene.timeline.volumeAutomations.find((item) => item.targetClipId === clip.id)!;
+  assert.ok(resolvePlaybackVolume(automation.points, 3, automation.baselineVolume) < automation.baselineVolume);
+});
+
+test("keeps controlled HTML revisions on the authenticated compilation path", () => {
+  const fixture = createHtmlEditingRevisionFixture();
+  const native = bindHtmlEditingRevisionToComposition({ ...fixture.authority, document: fixture.document, revision: fixture.next.revision, revisionSha256: fixture.next.sha256 });
+  assert.equal(buildCompositionPreviewScenePatch({ beforeDocument: native.document, document: native.document, assetUrls: new Map(), audioMetersEnabled: false }), null);
 });

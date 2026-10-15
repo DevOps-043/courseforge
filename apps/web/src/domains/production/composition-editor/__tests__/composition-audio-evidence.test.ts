@@ -263,6 +263,30 @@ test("persisted-pair comparator receives verified paths and closes audio for res
     assert.equal(cleaned, true);
   }
 });
+
+test("uncertain decoder closure retains audio instead of cleaning inputs used by a live process", async () => {
+  let cleaned = false;
+  const dependencies = {
+    readAudio: async () => ({audioReferencePath: "owned-wav", audioReferenceMetadataPath: "owned-metadata",
+      receipt: {visualChecksum, organizationId: identifier, revisionId: identifier},
+      cleanup: async () => {cleaned = true;}}),
+    compare: async () => {throw new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED");},
+  } as unknown as NonNullable<Parameters<typeof compareVideoWithPersistedConformanceReferences>[1]>;
+  await assert.rejects(compareVideoWithPersistedConformanceReferences({...pipelineInput, checksum: visualChecksum,
+    audioChecksum: "a".repeat(64), videoPath: "bound-video", renderReceiptPath: "bound-receipt"}, dependencies), /TERMINATION_UNCONFIRMED/);
+  assert.equal(cleaned, false);
+});
+
+test("uncertain audio preparation retains source and does not persist partial evidence", async () => {
+  const calls: string[] = [];
+  const dependencies = {
+    materialize: async () => ({cleanup: async () => {calls.push("cleanup");}}),
+    createAudio: async () => {throw new Error("CONTROLLED_RENDER_EXECUTOR_TERMINATION_UNCONFIRMED");},
+    persist: async () => {calls.push("persist"); return {};},
+  } as unknown as NonNullable<Parameters<typeof prepareAndPersistAudioConformanceReference>[1]>;
+  await assert.rejects(prepareAndPersistAudioConformanceReference(pipelineInput, dependencies), /TERMINATION_UNCONFIRMED/);
+  assert.deepEqual(calls, []);
+});
 test("coordinador playback mantiene INCOMPLETE/FAIL del gate aunque métricas del MP4 pasen", async () => {
   for (const [drift, expected] of [[2, "PASS"], [15, "INCOMPLETE"], [40, "FAIL"]] as const) {
     let cleaned = false;
@@ -299,4 +323,26 @@ test("failed pipeline cleanup does not skip disposal of the independent source w
     persist: async () => ({}) } as unknown as NonNullable<Parameters<typeof prepareAndPersistAudioConformanceReference>[1]>;
   await assert.rejects(prepareAndPersistAudioConformanceReference(pipelineInput, dependencies), /CLEANUP_FAILED/);
   assert.deepEqual(calls, ["audio", "source"]);
+});
+
+test("cancellation after audio creation blocks persistence and cleans both owned workspaces", async () => {
+  const calls: string[] = [], cancellation = new AbortController();
+  const dependencies = {materialize: async () => ({cleanup: async () => {calls.push("source");}}),
+    createAudio: async () => {
+      cancellation.abort("private reason"); return {directory: "audio", cleanup: async () => {calls.push("audio");}};
+    }, persist: async () => {assert.fail("cancelled audio must not persist");}} as never;
+  await assert.rejects(prepareAndPersistAudioConformanceReference({...pipelineInput, signal: cancellation.signal}, dependencies),
+    /CONFORMANCE_JOB_EXECUTION_CANCELLED/);
+  assert.deepEqual(calls, ["audio", "source"]);
+});
+
+test("cancellation after reading the audio reference skips comparison and releases its workspace", async () => {
+  let cleaned = false; const cancellation = new AbortController();
+  const dependencies = {readAudio: async () => {
+    cancellation.abort("private reason"); return {cleanup: async () => {cleaned = true;}};
+  }, compare: async () => {assert.fail("cancelled reference must not start comparison");}} as never;
+  await assert.rejects(compareVideoWithPersistedConformanceReferences({...pipelineInput, checksum: visualChecksum,
+    audioChecksum: "a".repeat(64), videoPath: "verified", renderReceiptPath: "internal", signal: cancellation.signal}, dependencies),
+    /CONFORMANCE_JOB_EXECUTION_CANCELLED/);
+  assert.equal(cleaned, true);
 });

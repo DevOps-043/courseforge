@@ -1,0 +1,1108 @@
+{
+  "date": "2026-10-09",
+  "staging": "c3f79e8f9bb20e0aa5d4b31e7075c334b7b2f5f1",
+  "snapshotPublicTableCount": 86,
+  "recentCount": 47,
+  "migrations": [
+    {
+      "name": "20260611144100_create_user_google_credentials.sql",
+      "commit": "256d6c56 2026-06-11T15:14:36-06:00 feat: implement user profile management with Google Drive integration support",
+      "tables": [
+        "public.user_google_credentials"
+      ],
+      "functions": [],
+      "absentPublicTables": [
+        "public.user_google_credentials"
+      ],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "AUSENCIA en public: public.user_google_credentials"
+    },
+    {
+      "name": "20260723170000_create_render_worker_job_recovery_states.sql",
+      "commit": "91c93aad 2026-07-23T16:38:17-06:00 Add worker local recovery contracts",
+      "tables": [
+        "public.render_worker_job_recovery_states"
+      ],
+      "functions": [],
+      "absentPublicTables": [
+        "public.render_worker_job_recovery_states"
+      ],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "AUSENCIA en public: public.render_worker_job_recovery_states"
+    },
+    {
+      "name": "20260905100000_harden_sound_effect_asset_integrity.sql",
+      "commit": "d1107f8d 2026-09-04T21:05:04-06:00 feat: implement admin library management, production composition services, and refined curation settings",
+      "tables": [],
+      "functions": [
+        "public.prevent_ready_sound_effect_binary_mutation"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [
+        {
+          "table": "video_composition_sound_effect_assets",
+          "column": "source_storage_bucket"
+        }
+      ],
+      "absentPublicColumns": [
+        {
+          "table": "video_composition_sound_effect_assets",
+          "column": "source_storage_bucket"
+        }
+      ],
+      "prepared": false,
+      "status": "COLUMNAS AUSENTES: video_composition_sound_effect_assets.source_storage_bucket"
+    },
+    {
+      "name": "20260910120000_durable_scorm_import_jobs.sql",
+      "commit": "05287141 2026-09-14T15:54:46-06:00 feat: add video production studio, composition editor, and backend provider integrations",
+      "tables": [],
+      "functions": [
+        "public.claim_scorm_import_job",
+        "public.heartbeat_scorm_import_job",
+        "public.create_scorm_import_artifact",
+        "public.reset_scorm_material_projection"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [
+        {
+          "table": "scorm_imports",
+          "column": "processing_attempt"
+        },
+        {
+          "table": "scorm_imports",
+          "column": "processing_started_at"
+        },
+        {
+          "table": "scorm_imports",
+          "column": "processing_heartbeat_at"
+        },
+        {
+          "table": "scorm_imports",
+          "column": "lease_expires_at"
+        },
+        {
+          "table": "scorm_imports",
+          "column": "updated_at"
+        }
+      ],
+      "absentPublicColumns": [
+        {
+          "table": "scorm_imports",
+          "column": "processing_attempt"
+        },
+        {
+          "table": "scorm_imports",
+          "column": "processing_started_at"
+        },
+        {
+          "table": "scorm_imports",
+          "column": "processing_heartbeat_at"
+        },
+        {
+          "table": "scorm_imports",
+          "column": "lease_expires_at"
+        },
+        {
+          "table": "scorm_imports",
+          "column": "updated_at"
+        }
+      ],
+      "prepared": false,
+      "status": "COLUMNAS AUSENTES: scorm_imports.processing_attempt, scorm_imports.processing_started_at, scorm_imports.processing_heartbeat_at, scorm_imports.lease_expires_at, scorm_imports.updated_at"
+    },
+    {
+      "name": "20260910140000_add_operational_correlation_ids.sql",
+      "commit": "05287141 2026-09-14T15:54:46-06:00 feat: add video production studio, composition editor, and backend provider integrations",
+      "tables": [],
+      "functions": [],
+      "absentPublicTables": [],
+      "addedColumns": [
+        {
+          "table": "scorm_imports",
+          "column": "correlation_id"
+        },
+        {
+          "table": "publication_requests",
+          "column": "correlation_id"
+        }
+      ],
+      "absentPublicColumns": [
+        {
+          "table": "scorm_imports",
+          "column": "correlation_id"
+        },
+        {
+          "table": "publication_requests",
+          "column": "correlation_id"
+        }
+      ],
+      "prepared": false,
+      "status": "COLUMNAS AUSENTES: scorm_imports.correlation_id, publication_requests.correlation_id"
+    },
+    {
+      "name": "20260919120000_harden_organization_fonts_for_video.sql",
+      "commit": "3389c706 2026-09-19T13:45:25-06:00 feat: add composition editor studio, font asset management, and video preview pipelines",
+      "tables": [],
+      "functions": [],
+      "absentPublicTables": [],
+      "addedColumns": [
+        {
+          "table": "organization_slide_fonts",
+          "column": "checksum_sha256"
+        },
+        {
+          "table": "organization_slide_fonts",
+          "column": "file_size_bytes"
+        },
+        {
+          "table": "organization_slide_fonts",
+          "column": "mime_type"
+        },
+        {
+          "table": "organization_slide_fonts",
+          "column": "status"
+        },
+        {
+          "table": "organization_slide_fonts",
+          "column": "storage_bucket"
+        }
+      ],
+      "absentPublicColumns": [
+        {
+          "table": "organization_slide_fonts",
+          "column": "checksum_sha256"
+        },
+        {
+          "table": "organization_slide_fonts",
+          "column": "file_size_bytes"
+        },
+        {
+          "table": "organization_slide_fonts",
+          "column": "mime_type"
+        },
+        {
+          "table": "organization_slide_fonts",
+          "column": "status"
+        },
+        {
+          "table": "organization_slide_fonts",
+          "column": "storage_bucket"
+        }
+      ],
+      "prepared": false,
+      "status": "COLUMNAS AUSENTES: organization_slide_fonts.checksum_sha256, organization_slide_fonts.file_size_bytes, organization_slide_fonts.mime_type, organization_slide_fonts.status, organization_slide_fonts.storage_bucket"
+    },
+    {
+      "name": "20260919140000_reconcile_heygen_workspace_catalog.sql",
+      "commit": "1e2d33eb 2026-09-19T19:56:41-06:00 feat: add HeyGen integration with catalog synchronization, repository, and UI components",
+      "tables": [
+        "public.heygen_provider_assets",
+        "public.heygen_catalog_sync_runs"
+      ],
+      "functions": [
+        "public.reconcile_heygen_catalog_snapshot"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [
+        {
+          "table": "heygen_workspace_connections",
+          "column": "last_sync_request_id"
+        },
+        {
+          "table": "heygen_avatar_presets",
+          "column": "provider_state"
+        },
+        {
+          "table": "heygen_avatar_presets",
+          "column": "ownership"
+        },
+        {
+          "table": "heygen_avatar_presets",
+          "column": "last_seen_at"
+        },
+        {
+          "table": "heygen_avatar_presets",
+          "column": "missing_since"
+        },
+        {
+          "table": "heygen_voice_presets",
+          "column": "provider_state"
+        },
+        {
+          "table": "heygen_voice_presets",
+          "column": "ownership"
+        },
+        {
+          "table": "heygen_voice_presets",
+          "column": "last_seen_at"
+        },
+        {
+          "table": "heygen_voice_presets",
+          "column": "missing_since"
+        }
+      ],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "TABLAS PUBLIC PRESENTES; resto por verificar"
+    },
+    {
+      "name": "20260920004500_reconcile_heygen_core_catalog.sql",
+      "commit": "1e2d33eb 2026-09-19T19:56:41-06:00 feat: add HeyGen integration with catalog synchronization, repository, and UI components",
+      "tables": [],
+      "functions": [
+        "public.reconcile_heygen_core_catalog_snapshot"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20260920011500_reconcile_private_heygen_catalog.sql",
+      "commit": "1e2d33eb 2026-09-19T19:56:41-06:00 feat: add HeyGen integration with catalog synchronization, repository, and UI components",
+      "tables": [],
+      "functions": [
+        "public.reconcile_heygen_private_catalog_snapshot"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20260920020000_make_heygen_catalog_visibility_durable.sql",
+      "commit": "1e2d33eb 2026-09-19T19:56:41-06:00 feat: add HeyGen integration with catalog synchronization, repository, and UI components",
+      "tables": [
+        "public.heygen_catalog_exclusions"
+      ],
+      "functions": [
+        "public.set_heygen_catalog_preset_archived",
+        "public.reconcile_heygen_private_catalog_snapshot"
+      ],
+      "absentPublicTables": [
+        "public.heygen_catalog_exclusions"
+      ],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "AUSENCIA en public: public.heygen_catalog_exclusions"
+    },
+    {
+      "name": "20260921120000_add_audio_processing_job_leases.sql",
+      "commit": "cf01439a 2026-09-22T09:16:49-06:00 feat: add deepfilter neural audio processing pipeline, background workers, and slide generation services",
+      "tables": [],
+      "functions": [
+        "public.claim_audio_processing_jobs",
+        "public.complete_audio_processing_job",
+        "public.fail_audio_processing_job"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [
+        {
+          "table": "production_jobs",
+          "column": "audio_processing_lease_token"
+        },
+        {
+          "table": "production_jobs",
+          "column": "audio_processing_lease_expires_at"
+        }
+      ],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20260922120000_route_audio_processing_jobs_by_profile.sql",
+      "commit": "29095ddd 2026-09-22T14:32:04-06:00 feat(audio-processing): add native RNNoise audio processing pipeline, worker, API routes, and UI components",
+      "tables": [],
+      "functions": [
+        "public.claim_audio_processing_jobs_by_profile",
+        "public.claim_audio_processing_jobs"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20260923090000_create_asset_access_audit_events.sql",
+      "commit": "21b1ff60 2026-09-23T18:39:05-06:00 feat: add material downloads panel, audio model compliance docs, and verification workflows",
+      "tables": [
+        "public.asset_access_audit_events"
+      ],
+      "functions": [],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "TABLAS PUBLIC PRESENTES; resto por verificar"
+    },
+    {
+      "name": "20260925120000_allow_standalone_source_formats.sql",
+      "commit": "5e28cd8a 2026-09-25T14:13:22-06:00 feat: add standalone assembly studio, media composition editor, hyperframes pipeline, and signed upload API",
+      "tables": [],
+      "functions": [],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20260929120000_record_hyperframes_final_video_checksum.sql",
+      "commit": "7e16e8c3 2026-10-01T10:42:50-06:00 feat: add Soflia multimedia composition editor with audio-video integrity workers and conformance QA pipelines",
+      "tables": [],
+      "functions": [
+        "public.record_hyperframes_final_video_checksum",
+        "private.protect_hyperframes_final_video_integrity"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20260930120000_queue_hyperframes_video_integrity.sql",
+      "commit": "7e16e8c3 2026-10-01T10:42:50-06:00 feat: add Soflia multimedia composition editor with audio-video integrity workers and conformance QA pipelines",
+      "tables": [
+        "private.hyperframes_video_integrity_jobs"
+      ],
+      "functions": [
+        "private.enqueue_hyperframes_video_integrity",
+        "public.claim_hyperframes_video_integrity_job",
+        "public.finish_hyperframes_video_integrity_job"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20260930130000_persist_visual_conformance_evidence.sql",
+      "commit": "7e16e8c3 2026-10-01T10:42:50-06:00 feat: add Soflia multimedia composition editor with audio-video integrity workers and conformance QA pipelines",
+      "tables": [
+        "private.hyperframes_visual_conformance_evidence"
+      ],
+      "functions": [
+        "public.record_hyperframes_visual_conformance_evidence"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20260930140000_read_visual_conformance_evidence.sql",
+      "commit": "7e16e8c3 2026-10-01T10:42:50-06:00 feat: add Soflia multimedia composition editor with audio-video integrity workers and conformance QA pipelines",
+      "tables": [],
+      "functions": [
+        "public.read_hyperframes_visual_conformance_evidence"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20260930150000_persist_audio_conformance_evidence.sql",
+      "commit": "7e16e8c3 2026-10-01T10:42:50-06:00 feat: add Soflia multimedia composition editor with audio-video integrity workers and conformance QA pipelines",
+      "tables": [
+        "private.hyperframes_audio_conformance_evidence"
+      ],
+      "functions": [
+        "public.record_hyperframes_audio_conformance_evidence",
+        "public.read_hyperframes_audio_conformance_evidence"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20260930160000_queue_full_conformance_reports.sql",
+      "commit": "7e16e8c3 2026-10-01T10:42:50-06:00 feat: add Soflia multimedia composition editor with audio-video integrity workers and conformance QA pipelines",
+      "tables": [
+        "private.hyperframes_conformance_jobs"
+      ],
+      "functions": [
+        "private.enqueue_hyperframes_full_conformance",
+        "public.claim_hyperframes_conformance_job",
+        "public.renew_hyperframes_conformance_job",
+        "public.finish_hyperframes_conformance_job",
+        "public.read_hyperframes_conformance_report"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261001120000_extend_chunked_audio_evidence.sql",
+      "commit": "7e16e8c3 2026-10-01T10:42:50-06:00 feat: add Soflia multimedia composition editor with audio-video integrity workers and conformance QA pipelines",
+      "tables": [],
+      "functions": [
+        "public.record_hyperframes_audio_conformance_evidence"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261001130000_persist_playback_audio_evidence.sql",
+      "commit": "7e16e8c3 2026-10-01T10:42:50-06:00 feat: add Soflia multimedia composition editor with audio-video integrity workers and conformance QA pipelines",
+      "tables": [],
+      "functions": [
+        "public.record_hyperframes_audio_conformance_evidence"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261001140000_persist_event_visual_conformance_evidence.sql",
+      "commit": "7e16e8c3 2026-10-01T10:42:50-06:00 feat: add Soflia multimedia composition editor with audio-video integrity workers and conformance QA pipelines",
+      "tables": [
+        "private.hyperframes_event_visual_conformance_evidence"
+      ],
+      "functions": [
+        "public.record_hyperframes_event_visual_conformance_evidence",
+        "public.read_hyperframes_event_visual_conformance_evidence"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261001150000_persist_event_batch_measurements.sql",
+      "commit": "7e16e8c3 2026-10-01T10:42:50-06:00 feat: add Soflia multimedia composition editor with audio-video integrity workers and conformance QA pipelines",
+      "tables": [
+        "private.hyperframes_event_batch_measurements"
+      ],
+      "functions": [
+        "public.record_hyperframes_event_batch_measurement",
+        "public.read_hyperframes_event_batch_measurement"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261001160000_bind_event_summary_to_job_finalization.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "private.verify_hyperframes_event_summary",
+        "private.verify_hyperframes_deck_summary",
+        "public.finish_hyperframes_conformance_job"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261002160000_bind_controlled_execution_summary.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.finish_hyperframes_conformance_job"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261003160000_bind_conformance_report_attempt.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.finish_hyperframes_conformance_job"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261003170000_composition_render_execution_authority.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [
+        "private.composition_render_supervisor_keys",
+        "private.composition_render_executions"
+      ],
+      "functions": [
+        "private.guard_render_supervisor_key_identity",
+        "private.composition_render_execution_context",
+        "public.issue_composition_render_execution",
+        "public.read_composition_render_execution",
+        "public.consume_composition_render_execution",
+        "public.cancel_composition_render_execution"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261004160000_recover_consumed_render_execution.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.read_consumed_composition_render_execution"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261004170000_finalize_controlled_composition_render.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.finalize_controlled_composition_render"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261005160000_controlled_render_upload_sessions.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [
+        "private.composition_render_upload_sessions"
+      ],
+      "functions": [
+        "private.assert_controlled_render_upload_authority",
+        "public.read_controlled_render_upload",
+        "public.save_controlled_render_upload"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261005170000_check_controlled_render_video_authority.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.check_controlled_render_video_authority",
+        "public.finish_hyperframes_video_integrity_job"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261005180000_controlled_render_worker_queue.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [
+        "private.controlled_render_worker_jobs"
+      ],
+      "functions": [
+        "public.enqueue_controlled_render_worker_job",
+        "public.claim_controlled_render_worker_job",
+        "public.renew_controlled_render_worker_job",
+        "public.finish_controlled_render_worker_job"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261005190000_controlled_render_worker_fences.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "private.assert_controlled_render_worker_lease",
+        "public.issue_composition_render_execution",
+        "public.consume_composition_render_execution",
+        "public.cancel_composition_render_execution",
+        "public.read_controlled_render_upload",
+        "public.save_controlled_render_upload",
+        "public.finalize_controlled_composition_render"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261005200000_html_editing_revision_store.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [
+        "private.composition_html_templates",
+        "private.composition_html_revisions"
+      ],
+      "functions": [
+        "private.assert_html_editing_actor",
+        "private.html_editing_grants",
+        "public.register_html_editing_template",
+        "public.read_html_editing_revision",
+        "public.revoke_html_editing_template"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261005210000_append_html_editing_native_document.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.append_html_editing_revision"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261005220000_read_exact_html_editing_compilation.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.read_html_editing_compilation"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261005230000_controlled_html_editing_authority.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.read_controlled_render_html_editing_authority"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006000000_html_snapshot_resource_validation.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "private.html_snapshot_resource_bindings"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006010000_commit_html_editing_snapshot.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [
+        "private.composition_html_snapshot_intents",
+        "private.composition_html_snapshot_operations"
+      ],
+      "functions": [
+        "public.commit_html_editing_snapshot"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006020000_read_html_snapshot_operation.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.read_html_editing_snapshot_operation"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006030000_html_snapshot_durable_intents.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.record_html_editing_snapshot_intent",
+        "public.read_html_editing_snapshot_intent"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006040000_narrative_extraction_atomic_receipts.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [
+        "public.narrative_extraction_receipts"
+      ],
+      "functions": [
+        "public.read_narrative_extraction_receipt",
+        "public.commit_narrative_voice_extraction"
+      ],
+      "absentPublicTables": [
+        "public.narrative_extraction_receipts"
+      ],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "AUSENCIA en public: public.narrative_extraction_receipts"
+    },
+    {
+      "name": "20261006050000_html_editing_bootstrap_registration.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.register_html_editing_template_v2"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006060000_read_html_editing_bootstrap_context.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.read_html_editing_bootstrap_context"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006070000_read_html_editing_restore_revision.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "public.read_html_editing_restore_revision"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006080000_html_editing_operation_receipts.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [
+        "private.composition_html_operation_receipts"
+      ],
+      "functions": [
+        "public.commit_html_editing_operation",
+        "public.read_html_editing_operation"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006090000_html_editing_initialization_receipts.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [
+        "private.composition_html_initialization_receipts"
+      ],
+      "functions": [
+        "public.commit_html_editing_initialization_operation",
+        "public.read_html_editing_initialization_operation"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006100000_narrative_fragment_resource_guards.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "private.validate_narrative_fragment_resources"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006110000_narrative_fragment_caption_guard.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "private.validate_narrative_fragment_caption"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006120000_narrative_fragment_clip_guard.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "private.validate_narrative_fragment_clip"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006130000_narrative_fragment_selection_guard.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "private.narrative_fragment_selected_clips"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006140000_narrative_fragment_document_delta.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [],
+      "functions": [
+        "private.narrative_fragment_document_delta"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261006150000_narrative_fragment_atomic_receipts.sql",
+      "commit": "96a191b9 2026-10-06T13:13:00-06:00 feat: endurecer conformidad preview-render y documentar desarrollo paralelo",
+      "tables": [
+        "public.narrative_fragment_receipts"
+      ],
+      "functions": [
+        "public.read_narrative_fragment_receipt",
+        "public.commit_narrative_fragment"
+      ],
+      "absentPublicTables": [
+        "public.narrative_fragment_receipts"
+      ],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "AUSENCIA en public: public.narrative_fragment_receipts"
+    },
+    {
+      "name": "20261008100000_html_editing_legacy_adoption.sql",
+      "commit": "2fdef765 2026-10-09T14:33:05-06:00 feat: Sistema semicompleto",
+      "tables": [
+        "private.composition_html_legacy_candidates",
+        "private.composition_html_legacy_adoption_receipts"
+      ],
+      "functions": [
+        "public.record_html_editing_legacy_candidate",
+        "public.read_html_editing_legacy_candidate",
+        "public.revoke_html_editing_legacy_candidate",
+        "public.commit_html_editing_legacy_adoption",
+        "public.read_html_editing_legacy_adoption_operation"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261008190000_bind_selected_event_measurements.sql",
+      "commit": "2fdef765 2026-10-09T14:33:05-06:00 feat: Sistema semicompleto",
+      "tables": [],
+      "functions": [
+        "public.record_hyperframes_selected_event_batch_measurement",
+        "public.read_hyperframes_selected_event_batch_measurement"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261008200000_support_silent_conformance_reports.sql",
+      "commit": "2fdef765 2026-10-09T14:33:05-06:00 feat: Sistema semicompleto",
+      "tables": [],
+      "functions": [
+        "private.verify_hyperframes_silent_audio_report"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261008210000_reserve_conformance_render_inputs.sql",
+      "commit": "2fdef765 2026-10-09T14:33:05-06:00 feat: Sistema semicompleto",
+      "tables": [
+        "private.hyperframes_conformance_render_reservations"
+      ],
+      "functions": [
+        "public.register_hyperframes_conformance_render_reservation",
+        "public.read_hyperframes_conformance_render_reservation",
+        "public.finish_hyperframes_conformance_job"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261008220000_defer_conformance_render_reservations.sql",
+      "commit": "2fdef765 2026-10-09T14:33:05-06:00 feat: Sistema semicompleto",
+      "tables": [
+        "private.hyperframes_conformance_render_outbox"
+      ],
+      "functions": [
+        "private.attach_hyperframes_conformance_render_outbox",
+        "public.stage_hyperframes_conformance_render_reservation",
+        "private.attach_conformance_outbox_after_job_insert"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [],
+      "absentPublicColumns": [],
+      "prepared": true,
+      "status": "NO DETERMINABLE con BD.sql"
+    },
+    {
+      "name": "20261009010000_provided_syllabus_imports.sql",
+      "commit": "2fdef765 2026-10-09T14:33:05-06:00 feat: Sistema semicompleto",
+      "tables": [
+        "public.syllabus_source_documents",
+        "public.syllabus_imports",
+        "public.syllabus_import_revisions"
+      ],
+      "functions": [
+        "public.guard_syllabus_document_quota",
+        "public.guard_syllabus_import_quota",
+        "public.guard_syllabus_import_original",
+        "public.version_syllabus_content",
+        "public.invalidate_syllabus_dependents",
+        "public.transition_syllabus_import",
+        "public.guard_provided_syllabus_fidelity",
+        "public.guard_provided_syllabus_dependency"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [
+        {
+          "table": "syllabus",
+          "column": "input_mode"
+        },
+        {
+          "table": "syllabus",
+          "column": "content_version"
+        },
+        {
+          "table": "syllabus",
+          "column": "active_import_id"
+        },
+        {
+          "table": "instructional_plans",
+          "column": "syllabus_content_version"
+        },
+        {
+          "table": "curation",
+          "column": "syllabus_content_version"
+        },
+        {
+          "table": "materials",
+          "column": "syllabus_content_version"
+        },
+        {
+          "table": "publication_requests",
+          "column": "syllabus_content_version"
+        }
+      ],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "ESTRUCTURA PUBLIC PRESENTE; RPC/triggers/RLS por verificar"
+    },
+    {
+      "name": "20261009090000_fix_voice_audio_processing_compatibility.sql",
+      "commit": "2fdef765 2026-10-09T14:33:05-06:00 feat: Sistema semicompleto",
+      "tables": [],
+      "functions": [
+        "public.complete_audio_processing_job",
+        "public.claim_audio_processing_jobs_by_profile"
+      ],
+      "absentPublicTables": [],
+      "addedColumns": [
+        {
+          "table": "production_jobs",
+          "column": "audio_processing_attempts"
+        }
+      ],
+      "absentPublicColumns": [],
+      "prepared": false,
+      "status": "COLUMNA PRESENTE; RPC/MIME por verificar"
+    }
+  ]
+}

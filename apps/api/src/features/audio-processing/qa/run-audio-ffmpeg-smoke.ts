@@ -8,6 +8,7 @@ import { buildLoudnessAnalysisArgs, parseLoudnessAnalysis, requirePassingAudioLo
 import { AUDIO_WAVEFORM_SAMPLE_RATE_HZ, buildWaveformDerivative, buildWaveformExtractionArgs } from "../audio-waveform";
 import { buildFfmpegArgs, buildNormalizeToWavArgs } from "../audio-worker";
 import { resolveWorkerAudioProfilePolicy } from "../worker-capabilities";
+import { probeAudioSource } from "../audio-source-probe";
 
 const execFileAsync = promisify(execFile);
 const FFMPEG_SMOKE_TIMEOUT_MS = 60_000;
@@ -27,6 +28,7 @@ async function main() {
   const normalizedPath = join(workDirectory, "normalized.wav");
   const outputPath = join(workDirectory, "processed.m4a");
   const waveformPath = join(workDirectory, "waveform.pcm");
+  const formatPaths = ["mp3", "m4a", "aac"].map((extension) => join(workDirectory, `fixture.${extension}`));
   try {
     const policy = resolveWorkerAudioProfilePolicy("voice-course-v1");
 
@@ -35,6 +37,13 @@ async function main() {
       "-i", "sine=frequency=1000:sample_rate=48000:duration=6",
       "-ac", "1", "-c:a", "pcm_s16le", "-y", sourcePath,
     ]);
+    await probeAudioSource(sourcePath);
+    for (const [index, path] of formatPaths.entries()) {
+      await runFfmpeg(["-hide_banner", "-nostdin", "-v", "error", "-i", sourcePath,
+        "-c:a", index === 0 ? "libmp3lame" : "aac", "-y", path]);
+      await probeAudioSource(path);
+      await runFfmpeg(buildNormalizeToWavArgs(path, normalizedPath));
+    }
     await runFfmpeg(buildNormalizeToWavArgs(sourcePath, normalizedPath));
     await runFfmpeg(buildFfmpegArgs(normalizedPath, outputPath, policy));
     const { stderr } = await runFfmpeg(buildLoudnessAnalysisArgs(outputPath, policy.loudness), 512 * 1024);
@@ -47,12 +56,13 @@ async function main() {
     assert.ok(waveform.levels.length > 0, "AUDIO_WAVEFORM_LEVELS_MISSING");
     process.stdout.write(JSON.stringify({
       ffmpegSmoke: "passed",
+      compatibleFormats: ["wav", "mp3", "m4a", "aac"],
       integratedLufs: analysis.integrated_lufs,
       truePeakDbtp: analysis.true_peak_dbtp,
       waveformLevels: waveform.levels.length,
     }) + "\n");
   } finally {
-    await Promise.all([sourcePath, normalizedPath, outputPath, waveformPath].map((path) => rm(path, { force: true })));
+    await Promise.all([sourcePath, normalizedPath, outputPath, waveformPath, ...formatPaths].map((path) => rm(path, { force: true })));
     await rmdir(workDirectory);
   }
 }

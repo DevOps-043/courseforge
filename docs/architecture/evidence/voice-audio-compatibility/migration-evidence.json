@@ -1,0 +1,11 @@
+{
+  "migration": "passed",
+  "engine": "isolated PostgreSQL WASM (PGlite 0.3.14)",
+  "precision": "6375 ms retained",
+  "legacyWorker": "supported",
+  "expiredOrReusedLease": "rejected",
+  "foreignOutputPath": "rejected",
+  "grants": "service_role only",
+  "bucketVisibility": "preserved",
+  "claimAttempts": "incremented atomically; active lease prevents duplicate claims"
+}

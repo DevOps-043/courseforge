@@ -1,3 +1,5 @@
+import type { AudioSourceMimeType } from "./audio-source-contract";
+
 export const AUDIO_PROCESSING_PROFILE_IDS = [
   "voice-course-v1",
   "voice-clean-neural-dfn3-v1",
@@ -44,7 +46,7 @@ export interface AudioProcessingProfile {
 export interface AudioProcessingSource {
   assetId: string;
   checksum: string;
-  mimeType: "audio/mpeg" | "audio/mp3" | "audio/wav" | "audio/x-wav";
+  mimeType: AudioSourceMimeType;
   storageBucket: string;
   storagePath: string;
 }
@@ -72,7 +74,9 @@ export interface AudioLoudnessAnalysis {
 
 export interface AudioWaveformManifest {
   checksum: string;
-  contractVersion: 1;
+  contractVersion: 1 | 2;
+  channelCount?: number;
+  sourceChecksum?: string;
   durationSeconds: number;
   levelCount: number;
   sampleRateHz: number;
@@ -87,7 +91,8 @@ export interface AudioWaveformLevel {
 }
 
 export interface AudioWaveformDerivative {
-  contractVersion: 1;
+  contractVersion: 1 | 2;
+  channels?: { levels: AudioWaveformLevel[] }[];
   durationSeconds: number;
   levels: AudioWaveformLevel[];
   sampleRateHz: number;
@@ -95,6 +100,11 @@ export interface AudioWaveformDerivative {
 
 /** A single server-selected LOD for responsive timeline rendering. */
 export interface AudioWaveformPreview {
+  contractVersion?: 1 | 2;
+  checksum?: string;
+  /** Source time of the first bucket in this window. Absent for legacy full-source responses. */
+  offsetSeconds?: number;
+  channels?: { min: number[]; max: number[] }[];
   bucketSizeSamples: number;
   durationSeconds: number;
   max: number[];

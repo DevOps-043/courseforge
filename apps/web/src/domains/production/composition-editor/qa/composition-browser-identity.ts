@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import {captureBrowserVersionSchema} from "../composition-render-execution-contract";
 import type { CompositionQaCdpClient } from "./composition-qa-browser";
 
-const boundedIdentity = z.string().min(1).max(512).regex(/^[\x20-\x7e]+$/);
-export const browserVersionSchema = z.object({protocolVersion: boundedIdentity, product: boundedIdentity,
-  revision: boundedIdentity, userAgent: boundedIdentity, jsVersion: boundedIdentity}).strict();
+export const browserVersionSchema = captureBrowserVersionSchema;
 export const browserIdentitySchema = z.object({policy: z.literal("CDP_BROWSER_VERSION_FORWARD_REVERSE_V1"),
   scope: z.literal("CAPTURE_BROWSER_SELF_REPORTED_VERSION_ONLY"), version: browserVersionSchema,
 }).strict();

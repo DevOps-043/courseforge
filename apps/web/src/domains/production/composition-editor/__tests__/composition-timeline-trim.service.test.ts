@@ -22,3 +22,11 @@ test("conserva el límite temporal de audio y video al ajustar el borde izquierd
   assert.equal(resolveCompositionTimelineTrimStartSourceOffset(trimmedVideo, 8), 1);
   assert.equal(resolveCompositionTimelineTrimStartSourceOffset(trimmedVideo, 12), 5);
 });
+
+test("texto y captions pueden extender el borde izquierdo sin consumir material multimedia", () => {
+  for (const kind of ["TEXT", "CAPTION"] as const) {
+    const overlay = { kind, startSeconds: 10 };
+    assert.equal(resolveCompositionTimelineTrimStartMinimum(overlay), 0);
+    assert.equal(resolveCompositionTimelineTrimStartSourceOffset(overlay, 6), 0);
+  }
+});
