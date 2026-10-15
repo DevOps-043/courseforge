@@ -15,6 +15,18 @@ Aceptada e implementada para texto/captions nativos y tipografías privadas de o
 - El editor ofrece presets visuales explícitos (`Transparente`, `Caja sólida`, `Minimal`) que solo aplican overrides de estilo; la fuente seleccionada y el contenido permanecen intactos.
 - Los captions generados desde timestamps por palabra incluyen resaltado karaoke seek-safe; SRT/VTT conservan el modo frase sin inventar precisión por palabra.
 
+## Cortes de texto y captions en el timeline
+
+La configuración de animación por frase, karaoke y énfasis de palabras se documenta en [CAPTION_ANIMATION_DELIVERY.md](CAPTION_ANIMATION_DELIVERY.md). Es opcional y mantiene el renderer anterior cuando no existe configuración nueva.
+
+Las operaciones existentes `clip.split` y `clip.remove-range` aceptan capas `TEXT`/`NATIVE_TEXT` y `CAPTION`/`NATIVE_CAPTIONS`. Selecciona la capa, coloca el cursor dentro de ella y usa **Dividir**. Cada fragmento conserva contenido, estilo, posición y pista, con identidad propia para editarlo o moverlo después. La eliminación de intervalos usa las marcas existentes y conserva la opción ripple del comando.
+
+Los captions se intersectan con cada intervalo conservado y sus tiempos, incluidos los de palabras karaoke, se recalculan respecto al inicio del fragmento. Una frase atravesada por el corte conserva su texto completo en ambos segmentos, sin regenerar la transcripción. Un fragmento que solo cubre una pausa puede tener cero cues; no muestra texto y admite agregar captions desde el inspector. Las importaciones SRT/VTT continúan rechazando archivos sin subtítulos.
+
+Se conservan las protecciones de pistas bloqueadas, un frame mínimo por fragmento y conflictos con animaciones que atraviesen el corte. No requiere migraciones de base de datos. Preview y exportación consumen los mismos cues persistidos.
+
+Validación: `npm run test:composition-native-fragments` desde `apps/web`. Cubre división, independencia de estilo, cortes repetidos, pausas, palabras atravesadas, eliminación al inicio/centro/final con y sin ripple, límites, bloqueo de pistas y paridad del timing compilado entre preview y exportación. QA manual: dividir una capa, mover y editar el segundo fragmento, guardar/recargar y comprobar deshacer/rehacer y el video exportado.
+
 ## Tipografías
 
 El editor mantiene familias incluidas (`Inter`, `Montserrat`, `Roboto`, `Arial` y `Georgia`) y ofrece fuentes privadas de la organización mediante el dominio compartido `organization-fonts`:

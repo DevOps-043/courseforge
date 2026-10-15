@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { compositionCaptionEffectsSchema } from "./composition-caption-effects.types";
 import { compositionVolumeEnvelopeSchema } from "./composition-volume-envelope";
 import {
   COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS,
@@ -150,9 +151,14 @@ const clipTextContentOperationSchema = z.object({
 }).strict();
 
 const clipCaptionCuesOperationSchema = z.object({
-  cues: z.array(compositionCaptionCueSchema).min(1).max(2_000),
+  cues: z.array(compositionCaptionCueSchema).max(2_000),
   origin: z.enum(["MANUAL", "SRT", "TRANSCRIPT", "VTT"]).optional(),
   type: z.literal("clip.caption-cues"),
+}).strict();
+
+const clipCaptionEffectsOperationSchema = z.object({
+  effects: compositionCaptionEffectsSchema.nullable(),
+  type: z.literal("clip.caption-effects"),
 }).strict();
 
 const clipTextStyleOperationSchema = z.object({
@@ -396,6 +402,7 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipTrimOperationSchema,
   clipSplitOperationSchema,
   clipCaptionCuesOperationSchema,
+  clipCaptionEffectsOperationSchema,
   clipRemoveRangeOperationSchema,
   clipResetAssetOperationSchema,
   clipVisibilityOperationSchema,

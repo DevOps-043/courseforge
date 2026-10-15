@@ -1,4 +1,7 @@
 import { readFile } from "node:fs/promises";
+import { buildCaptionEffectPlan } from "./composition-caption-effects-plan";
+import { captionHasEffects } from "./composition-caption-effects.service";
+import { scheduleCaptionEffects } from "./composition-caption-effects-runtime";
 import { compositionFontReferenceDetails } from "./composition-font-references";
 import { googleFontFaceBindingSchema } from "../fonts/google-font-native-face.contract";
 import { dirname, resolve } from "node:path";
@@ -481,6 +484,7 @@ function renderTimelineInitializer(
     return {
     captionCues: clip.source.type === "NATIVE_CAPTIONS"
       ? clip.source.cues.map((cue) => ({
+        enhanced: captionHasEffects(cue, clip.source.type === "NATIVE_CAPTIONS" ? clip.source.effects : undefined),
         elementId: captionCueElementId(clip.id, cue.id),
         end: clip.startSeconds + cue.endSeconds,
         start: clip.startSeconds + cue.startSeconds,
@@ -522,7 +526,7 @@ function renderTimelineInitializer(
           timeline.set(cueElement, { autoAlpha: 0 }, clip.runtimeStart);
           timeline.set(cueElement, { autoAlpha: 1 }, cue.start);
           timeline.set(cueElement, { autoAlpha: 0 }, cue.end);
-          for (const word of cue.words) {
+          for (const word of cue.enhanced ? [] : cue.words) {
             const wordElement = document.getElementById(word.elementId);
             if (!wordElement) continue;
             timeline.set(wordElement, { opacity: 0.55 }, clip.runtimeStart);
@@ -545,6 +549,13 @@ function renderTimelineInitializer(
         // end frame keeps preview seek and renderSeek identical at boundaries.
         timeline.set(element, { autoAlpha: 0 }, clip.runtimeStart + clip.runtimeDuration);
       }
+      const captionTimeline = gsap.timeline();
+      (${scheduleCaptionEffects.toString()})(captionTimeline, ${JSON.stringify(buildCaptionEffectPlan(document))}, (id) => document.getElementById(id));
+      // Initialize finite caption states once. Otherwise the first distant seek
+      // pays CSSPlugin initialization for every preceding word synchronously.
+      captionTimeline.render(captionTimeline.duration(), true, true);
+      captionTimeline.render(0, true, true);
+      timeline.add(captionTimeline, 0);
       function addTransitions(targetTimeline, transitions) {
         (${scheduleCompositionTransitions.toString()})(targetTimeline, transitions, (id) => document.getElementById(id));
       }

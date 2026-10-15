@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { courseSourceReferenceSchema } from "./course-source-reference.contract";
 import { googleFontNativePinSchema } from "../../fonts/google-font-native-face.contract";
 
 export const COURSE_DECK_SCHEMA_VERSION = "course-deck-v1";
@@ -57,7 +58,7 @@ export const courseVisualAssetSchema = z.object({
   purpose: courseVisualAssetPurposeSchema,
   reason: z.string().max(360),
   slot: courseVisualAssetSlotSchema,
-  sourceRefs: z.array(z.string().min(1).max(180)).max(8).default([]),
+  sourceRefs: z.array(courseSourceReferenceSchema).max(8).default([]),
   status: courseVisualAssetStatusSchema,
   storagePath: z.string().max(500).optional(),
   url: z.string().url().max(2000).optional(),
@@ -77,7 +78,7 @@ const baseChartSchema = z.object({
   id: z.string().min(1).max(80),
   title: z.string().min(1).max(140),
   subtitle: z.string().max(180).optional(),
-  sourceRefs: z.array(z.string().min(1).max(120)).default([]),
+  sourceRefs: z.array(courseSourceReferenceSchema).default([]),
   unit: z.string().max(32).optional(),
 });
 
@@ -118,7 +119,7 @@ export const slideBodyBlockSchema = z.object({
 
 export const slideCitationSchema = z.object({
   label: z.string().min(1).max(120),
-  sourceRef: z.string().min(1).max(180),
+  sourceRef: courseSourceReferenceSchema,
 });
 
 export const courseSlideSpecSchema = z.object({
@@ -142,7 +143,7 @@ export const courseSlideSpecSchema = z.object({
   validationHints: z.object({
     learningObjectiveId: z.string().max(120).optional(),
     mustKeepClaims: z.array(z.string().min(1).max(240)).default([]),
-    sourceRefs: z.array(z.string().min(1).max(120)).default([]),
+    sourceRefs: z.array(courseSourceReferenceSchema).default([]),
     targetSlideCount: z.number().int().min(1).max(24).optional(),
   }).default({
     mustKeepClaims: [],

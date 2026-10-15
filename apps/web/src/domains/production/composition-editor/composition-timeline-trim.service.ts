@@ -8,7 +8,7 @@ import type { CompositionClip } from "./composition-document.types";
 export function resolveCompositionTimelineTrimStartMinimum(
   clip: Pick<CompositionClip, "kind" | "sourceOffsetSeconds" | "startSeconds">,
 ) {
-  if (clip.kind === "DECK_SLIDE") return 0;
+  if (clip.kind === "DECK_SLIDE" || clip.kind === "TEXT" || clip.kind === "CAPTION") return 0;
   return Math.max(0, clip.startSeconds - (clip.sourceOffsetSeconds || 0));
 }
 
@@ -17,7 +17,7 @@ export function resolveCompositionTimelineTrimStartSourceOffset(
   clip: Pick<CompositionClip, "kind" | "sourceOffsetSeconds" | "startSeconds">,
   nextStartSeconds: number,
 ) {
-  if (clip.kind === "DECK_SLIDE") return 0;
+  if (clip.kind === "DECK_SLIDE" || clip.kind === "TEXT" || clip.kind === "CAPTION") return 0;
   return Math.max(
     0,
     (clip.sourceOffsetSeconds || 0) + nextStartSeconds - clip.startSeconds,

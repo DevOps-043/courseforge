@@ -1,0 +1,130 @@
+name: Process shared audio queue
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Worker code and secrets to use (the Supabase queue is shared).
+        required: true
+        default: staging
+        type: choice
+        options: [staging, main]
+  schedule:
+    - cron: '7,17,27,37,47,57 * * * *'
+
+permissions:
+  contents: read
+
+# Both branches consume the same database. Never cancel an in-flight lease.
+concurrency:
+  group: audio-worker-shared-supabase-queue
+  cancel-in-progress: false
+
+jobs:
+  process:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || vars.AUDIO_WORKER_SCHEDULE_ENABLED == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || vars.AUDIO_WORKER_ACTIVE_ENVIRONMENT || 'staging' }}
+    steps:
+      - name: Select trusted source branch
+        id: source
+        env:
+          WORKER_ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || vars.AUDIO_WORKER_ACTIVE_ENVIRONMENT || 'staging' }}
+          WORKER_ENABLED: ${{ vars.AUDIO_WORKER_ENABLED }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$WORKER_ENVIRONMENT" in staging|main) ;; *) echo 'Invalid worker environment.' >&2; exit 1 ;; esac
+          echo "branch=$WORKER_ENVIRONMENT" >> "$GITHUB_OUTPUT"
+          echo "enabled=$([[ "$WORKER_ENABLED" == 'true' ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.source.outputs.enabled == 'true'
+        with:
+          ref: ${{ steps.source.outputs.branch }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        if: steps.source.outputs.enabled == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate environment configuration
+        if: steps.source.outputs.enabled == 'true'
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EXPECTED_SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          FFMPEG_PACKAGE_VERSION: ${{ vars.FFMPEG_PACKAGE_VERSION }}
+        run: |
+          node <<'NODE'
+          const env = process.env;
+          for (const name of ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'EXPECTED_SUPABASE_PROJECT_REF', 'FFMPEG_PACKAGE_VERSION']) {
+            if (!env[name]?.trim()) throw new Error(`Missing configuration: ${name}`);
+          }
+          if (!/^[a-z0-9]+$/.test(env.EXPECTED_SUPABASE_PROJECT_REF) ||
+              env.NEXT_PUBLIC_SUPABASE_URL !== `https://${env.EXPECTED_SUPABASE_PROJECT_REF}.supabase.co`)
+            throw new Error('Supabase project does not match the approved environment.');
+          if (!/^[A-Za-z0-9.+:~\-]+$/.test(env.FFMPEG_PACKAGE_VERSION))
+            throw new Error('Invalid approved FFmpeg version.');
+          NODE
+
+      - name: Check queue before installing build dependencies
+        id: queue
+        if: steps.source.outputs.enabled == 'true'
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          async function checkQueue() {
+            const url = new URL('/rest/v1/production_jobs', process.env.NEXT_PUBLIC_SUPABASE_URL);
+            url.search = new URLSearchParams({
+              select: 'id', limit: '1', job_type: 'eq.AUDIO_PROCESSING', provider: 'eq.ffmpeg',
+              status: 'in.(PENDING,RETRY_SCHEDULED,RUNNING)',
+              'input_snapshot->profile->>id': 'eq.waveform-analysis-v2',
+              or: `(audio_processing_lease_expires_at.is.null,audio_processing_lease_expires_at.lte.${new Date().toISOString()})`,
+            });
+            const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+            const response = await fetch(url, { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(30000) });
+            if (!response.ok) throw new Error('Audio queue preflight failed.');
+            const jobs = await response.json();
+            if (!Array.isArray(jobs)) throw new Error('Unexpected queue response.');
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `has_work=${jobs.length > 0}\n`);
+            console.log(jobs.length ? 'Eligible waveform work found.' : 'No eligible waveform work; skipping build.');
+          }
+          checkQueue().catch(() => { console.error('Audio queue preflight failed.'); process.exitCode = 1; });
+          NODE
+
+      - name: Install approved FFmpeg package
+        if: steps.queue.outputs.has_work == 'true'
+        env:
+          FFMPEG_PACKAGE_VERSION: ${{ vars.FFMPEG_PACKAGE_VERSION }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y "ffmpeg=$FFMPEG_PACKAGE_VERSION"
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Build and test worker without runtime secrets
+        if: steps.queue.outputs.has_work == 'true'
+        run: |
+          npm ci --workspace=apps/api --include-workspace-root=false
+          npm run build --workspace=apps/api
+          npm run test:audio-processing --workspace=apps/api
+          node apps/api/dist/features/audio-processing/qa/run-waveform-ffmpeg-smoke.js
+
+      - name: Process bounded waveform batch
+        if: steps.queue.outputs.has_work == 'true'
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          AUDIO_BATCH_MAX_JOBS: '12'
+          AUDIO_BATCH_MAX_MILLISECONDS: '1200000'
+        run: npm run process:audio-queue --workspace=apps/api

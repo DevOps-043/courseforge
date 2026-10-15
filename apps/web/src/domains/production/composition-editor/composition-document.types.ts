@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { buildCaptionEffectPlan } from "./composition-caption-effects-plan";
 import { compositionVolumeEnvelopeSchema } from "./composition-volume-envelope";
 import { compositionDeckFontReferencesSchema } from "./composition-font-references";
 import { HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT, htmlEditingReferencesSchema } from "./html-editing/html-editing-reference.contract";
@@ -371,6 +372,8 @@ export const compositionEditorDocumentSchema = z.object({
     title: z.string().min(1).max(100),
   }).strict(),
 }).strict().superRefine((document, context) => {
+  try { buildCaptionEffectPlan(document); }
+  catch { context.addIssue({ code: "custom", message: "La composición excede el presupuesto de efectos de captions. Reduce las frases animadas o divide la composición." }); }
   if (document.sourceInsertionMode !== "MANUAL" && (!document.clips.length || !document.tracks.length)) {
     context.addIssue({ code: "custom", message: "La composición debe conservar al menos un clip y una pista." });
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { waveformJobStatus, waveformReadFailure, waveformStatusNotices, type WaveformReadStatus } from "@/domains/production/audio-processing/audio-waveform-status.client";
 import type { AudioWaveformPreview } from "@/domains/production/audio-processing/audio-processing.types";
 import type { CompositionStudioAsset } from "./composition-studio.types";
 import type { CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
@@ -11,14 +12,13 @@ const ANALYSIS_WAIT_MS = 10 * 60 * 1000;
 interface WaveformReadSnapshot {
   scopeKey: string;
   waveforms: Record<string, AudioWaveformPreview>;
-  failedAssetIds: string[];
-  pendingAssetIds: string[];
+  statuses: Record<string, WaveformReadStatus>;
 }
 function initialSnapshot(
   scopeKey: string,
   ids: string[],
 ): WaveformReadSnapshot {
-  return { scopeKey, waveforms: {}, failedAssetIds: [], pendingAssetIds: ids };
+  return { scopeKey, waveforms: {}, statuses: Object.fromEntries(ids.map((id) => [id, "CHECKING" as const])) };
 }
 
 export function useCompositionWaveforms(
@@ -54,7 +54,7 @@ export function useCompositionWaveforms(
       ),
     [assets, assetIds],
   );
-  const [retryVersion, setRetryVersion] = useState(0);
+  const [{ version: retryVersion, retryFailed }, setRetryState] = useState({ version: 0, retryFailed: false });
   const scopeKey = JSON.stringify([
     componentId,
     retryVersion,
@@ -90,10 +90,13 @@ export function useCompositionWaveforms(
           ),
         );
     };
+    const storeStatus = (assetId: string, status: WaveformReadStatus) =>
+      update((current) => ({ ...current, statuses: { ...current.statuses, [assetId]: status } }));
     const storeWaveform = (assetId: string, waveform: AudioWaveformPreview) =>
       update((current) => ({
         ...current,
         waveforms: { ...current.waveforms, [assetId]: waveform },
+        statuses: { ...current.statuses, [assetId]: "READY" },
       }));
     const readNext = async () => {
       while (!controller.signal.aborted && nextIndex < referenced.length) {
@@ -108,6 +111,7 @@ export function useCompositionWaveforms(
               AbortSignal.timeout(30_000),
             ]),
           });
+        let lastStatus: WaveformReadStatus = "CHECKING";
         try {
           const response = await fetchForScope(`${endpoint}?${query}`);
           if (response.ok) {
@@ -123,13 +127,15 @@ export function useCompositionWaveforms(
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               componentId,
-              retryFailed: retryVersion > 0,
+              retryFailed,
             }),
           });
           if (!queued.ok) throw new Error("WAVEFORM_QUEUE_FAILED");
           const { data: job } = (await queued.json()) as {
-            data: { jobId: string };
+            data: { jobId: string; status: string };
           };
+          lastStatus = waveformJobStatus(job.status);
+          storeStatus(asset.id, lastStatus);
           const deadline = Date.now() + ANALYSIS_WAIT_MS;
           while (!controller.signal.aborted) {
             if (Date.now() >= deadline)
@@ -146,23 +152,13 @@ export function useCompositionWaveforms(
               storeWaveform(asset.id, payload.data);
               break;
             }
-            if (payload.status === "NO_AUDIO") break;
-            if (["FAILED", "CANCELLED"].includes(payload.status || ""))
-              throw new Error("WAVEFORM_ANALYSIS_FAILED");
+            lastStatus = waveformJobStatus(payload.status);
+            storeStatus(asset.id, lastStatus);
+            if (["NO_AUDIO", "ANALYSIS_FAILED", "CANCELLED", "REQUEST_FAILED"].includes(lastStatus)) break;
             await waitForPoll(controller.signal);
           }
-        } catch {
-          update((current) => ({
-            ...current,
-            failedAssetIds: [...current.failedAssetIds, asset.id],
-          }));
-        } finally {
-          update((current) => ({
-            ...current,
-            pendingAssetIds: current.pendingAssetIds.filter(
-              (id) => id !== asset.id,
-            ),
-          }));
+        } catch (error) {
+          storeStatus(asset.id, waveformReadFailure(error, lastStatus));
         }
       }
     };
@@ -173,7 +169,7 @@ export function useCompositionWaveforms(
       ),
     );
     return () => controller.abort();
-  }, [componentId, referenced, retryVersion, scopeKey]);
+  }, [componentId, referenced, retryVersion, retryFailed, scopeKey]);
 
   const visible =
     readState.scopeKey === scopeKey
@@ -183,10 +179,9 @@ export function useCompositionWaveforms(
           componentId ? referenced.map((asset) => asset.id) : [],
         );
   return {
-    failedAssetIds: visible.failedAssetIds,
-    pendingAssetIds: visible.pendingAssetIds,
+    notices: waveformStatusNotices(visible.statuses),
     waveforms: visible.waveforms,
-    retry: () => setRetryVersion((version) => version + 1),
+    retry: (retryFailed = false) => setRetryState((current) => ({ version: current.version + 1, retryFailed })),
   };
 }
 

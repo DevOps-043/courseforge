@@ -2122,7 +2122,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
       );
       if (saved) {
         selectClip(plan.hfId);
-        toast.success(`${plan.cueCount} captions sincronizados con la voz.`);
+        toast.success(`${plan.cueCount} captions sincronizados con la voz.${plan.discardedCueCustomizations ? ` Se restablecieron los efectos individuales de ${plan.discardedCueCustomizations} frases; los efectos de capa se conservaron.` : ""}`);
       }
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "No se pudieron generar captions desde la voz.");
@@ -2787,11 +2787,11 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
 
   function markSelectedIntervalStart() {
     if (!selectedClip) {
-      setSaveError("Selecciona primero el clip de video o audio que deseas recortar.");
+      setSaveError("Selecciona primero el clip de video, audio, texto o captions que deseas recortar.");
       return;
     }
-    if (selectedClip.kind !== "VIDEO" && selectedClip.kind !== "AUDIO") {
-      setSaveError("La eliminación de intervalos solo está disponible para clips de video o audio.");
+    if (selectedClip.kind !== "VIDEO" && selectedClip.kind !== "AUDIO" && selectedClip.kind !== "TEXT" && selectedClip.kind !== "CAPTION") {
+      setSaveError("La eliminación de intervalos está disponible para clips de video, audio, texto o captions.");
       return;
     }
     const clipEnd = selectedClip.startSeconds + selectedClip.durationSeconds;

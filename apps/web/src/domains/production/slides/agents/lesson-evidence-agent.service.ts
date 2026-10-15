@@ -3,6 +3,7 @@ import {
   type SlideSourceInsight,
   type SlideSourcePack,
 } from "../content/slide-source-pack.service";
+import { courseSourceReferenceSchema } from "../specs/course-source-reference.contract";
 
 type SourceInsightType = SlideSourceInsight["type"];
 
@@ -30,19 +31,15 @@ const SOURCE_REF_KEYS = new Set([
   "sourceRefsUsed",
 ]);
 
-function compactText(value: unknown): string {
-  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
-}
-
 function pushSourceRef(target: Set<string>, value: unknown) {
   if (Array.isArray(value)) {
     value.forEach((item) => pushSourceRef(target, item));
     return;
   }
 
-  const compact = compactText(value);
-  if (compact) {
-    target.add(compact.slice(0, 180));
+  const reference = typeof value === "string" ? value.trim() : "";
+  if (reference) {
+    target.add(courseSourceReferenceSchema.parse(reference));
   }
 }
 

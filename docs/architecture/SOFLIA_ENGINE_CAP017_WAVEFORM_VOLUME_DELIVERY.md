@@ -94,3 +94,17 @@ Para esta última prueba se descargó y verificó una copia temporal de FFmpeg 9
 - La cancelación del navegador cancela consultas; el trabajo idempotente ya encolado puede terminar para reutilizar su derivado. No se cancela un análisis compartido al desmontar una vista.
 - No hay prueba de carga de 100 000 usuarios. La decodificación se desacopla mediante cola y workers; dimensionar almacenamiento, pool, backpressure y capacidad con mediciones de uso real. El presupuesto de caché es por proceso y no equivale a un caché distribuido.
 - Para SFX, branding y borradores independientes, añadir resolutores autorizados específicos sobre sus registros/enlaces. No ampliar la consulta de production_assets ni asumir ownership por UUID.
+
+## Estados de consulta en el editor
+
+La interfaz distingue la consulta inicial, `PENDING` (esperando worker), `RUNNING` (analizando) y `RETRY_SCHEDULED` (esperando reintento automático). Un HTTP 200 no implica que exista una waveform: el estado del trabajo determina el aviso.
+
+El límite de consulta de 10 minutos no marca el trabajo como fallido ni lo cancela. Si el último estado fue `PENDING`, se informa que sigue en cola; si estaba procesándose o esperando un reintento, se informa que puede continuar en segundo plano. Los errores de red, el timeout de una solicitud y el fallo al encolar tienen mensajes separados de `FAILED` y `CANCELLED`.
+
+“Volver a consultar” reutiliza el trabajo idempotente sin solicitar reinicio de trabajos fallidos. “Reintentar análisis” permite el reintento mediante el contrato existente. Los avisos se agrupan por estado y muestran la cantidad de recursos afectados. Esta mejora de interfaz no arranca ni despliega el worker.
+
+### Operación local del worker
+
+`npm run dev` no inicia el worker. Compilar con `npm run build -w apps/api` y ejecutar por separado `npm run start:audio-worker -w apps/api`, con `ffmpeg` y `ffprobe` disponibles en el PATH del proceso. El entrypoint carga `apps/web/.env.local` desde su ubicación en `src/features/audio-processing` o `dist/features/audio-processing`, respetando variables de entorno ya proporcionadas.
+
+El evento `audio_processing_worker_started` confirma el arranque e informa perfiles, intervalo y tamaño de lote sin credenciales. `audio_processing_batch` confirma la finalización de cada lote. Para la sesión local iniciada durante este diagnóstico, los logs están en `.tmp/audio-worker-live.out.log` y `.tmp/audio-worker-live.err.log`; FFmpeg se agregó únicamente al PATH del proceso. Este proceso local no despliega ni mantiene un worker en staging.

@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { areCaptionEffectsEnabled, type CompositionCaptionEffects } from "@/domains/production/composition-editor/composition-caption-effects.types";
+import { invalidateChangedCaptionText, retainCaptionCueWordWindow } from "@/domains/production/composition-editor/composition-caption-effects.service";
+import { CompositionCaptionEffectsControls } from "./CompositionCaptionEffectsControls";
 import { FileUp, Plus, Save, Subtitles, Trash2, Type } from "lucide-react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
@@ -48,6 +51,7 @@ export function CompositionTextControls({
   const [cues, setCues] = useState<CompositionCaptionCue[]>([]);
   const [captionOrigin, setCaptionOrigin] = useState<"MANUAL" | "SRT" | "TRANSCRIPT" | "VTT">("MANUAL");
   const [captionPreset, setCaptionPreset] = useState<CompositionCaptionPresetId | "">("");
+  const [captionEffects, setCaptionEffects] = useState<CompositionCaptionEffects | undefined>();
   const [captionImportSummary, setCaptionImportSummary] = useState<string | null>(null);
   const [isImportingCaptions, setIsImportingCaptions] = useState(false);
   const [style, setStyle] = useState<CompositionTextLayerStyle | null>(null);
@@ -65,6 +69,7 @@ export function CompositionTextControls({
     setText(source.type === "NATIVE_TEXT" ? source.text : "");
     setCues(source.type === "NATIVE_CAPTIONS" ? source.cues : []);
     setCaptionOrigin(source.type === "NATIVE_CAPTIONS" ? source.origin : "MANUAL");
+    setCaptionEffects(source.type === "NATIVE_CAPTIONS" ? source.effects : undefined);
     setCaptionPreset("");
     setCaptionImportSummary(null);
     setError(null);
@@ -160,7 +165,8 @@ export function CompositionTextControls({
         setError("Revisa texto y tiempos: los captions no deben solaparse ni exceder la capa.");
         return;
       }
-      operations.push({ clipId: clip.id, cues: ordered, origin: captionOrigin, type: "clip.caption-cues" });
+      operations.push({ clipId: clip.id, cues: ordered.map(retainCaptionCueWordWindow), origin: captionOrigin, type: "clip.caption-cues" });
+      if (areCaptionEffectsEnabled()) operations.push({ clipId: clip.id, effects: captionEffects || null, type: "clip.caption-effects" });
     }
     setError(null);
     await onPatch(operations, `Actualizó contenido y estilo de ${clip.label}.`);
@@ -189,8 +195,10 @@ export function CompositionTextControls({
           <option value="">Aplicar un preset…</option>
           {listCompositionCaptionPresets().map((preset) => <option key={preset.id} value={preset.id}>{preset.label} · {preset.description}</option>)}
         </select></label>
+        {(areCaptionEffectsEnabled() || source.type === "NATIVE_CAPTIONS" && source.effects) && <CompositionCaptionEffectsControls effects={captionEffects} cues={cues} disabled={disabled || !areCaptionEffectsEnabled()} onEffectsChange={setCaptionEffects} onCuesChange={setCues} />}
+        <p className="text-[10px] text-slate-500">Cambiar el texto retira los timestamps por palabra y las palabras clave de esa frase. Al acortar sus tiempos, se recortan las palabras fuera del intervalo.</p>
         {cues.map((cue, index) => <div key={cue.id} className="rounded-md border border-slate-200 p-2 dark:border-white/10">
-          <textarea aria-label={`Texto del caption ${index + 1}`} dir="auto" style={{ unicodeBidi: "plaintext" }} value={cue.text} disabled={disabled} onChange={(event) => setCues((current) => current.map((item) => item.id === cue.id ? { ...item, text: event.target.value } : item))} className="min-h-14 w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs dark:border-white/10 dark:bg-slate-950" />
+          <textarea aria-label={`Texto del caption ${index + 1}`} dir="auto" style={{ unicodeBidi: "plaintext" }} value={cue.text} disabled={disabled} onChange={(event) => setCues((current) => current.map((item) => item.id === cue.id ? invalidateChangedCaptionText(item, { ...item, text: event.target.value }) : item))} className="min-h-14 w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs dark:border-white/10 dark:bg-slate-950" />
           <div className="mt-2 grid grid-cols-2 gap-2"><NumberField label="Inicio (s)" value={cue.startSeconds} disabled={disabled} onChange={(value) => setCues((current) => current.map((item) => item.id === cue.id ? { ...item, startSeconds: value } : item))} /><NumberField label="Fin (s)" value={cue.endSeconds} disabled={disabled} onChange={(value) => setCues((current) => current.map((item) => item.id === cue.id ? { ...item, endSeconds: value } : item))} /></div>
           <div className="mt-1 flex items-center justify-between"><p className="text-[9px] text-slate-400">Caption {index + 1}</p><button type="button" aria-label={`Eliminar caption ${index + 1}`} disabled={disabled || cues.length === 1} onClick={() => setCues((current) => current.filter((item) => item.id !== cue.id))} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 dark:hover:bg-red-500/10"><Trash2 size={12} /></button></div>
         </div>)}

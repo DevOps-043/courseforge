@@ -87,7 +87,34 @@ presentationPlan?: Record<string, TextPresentation>, allowOffcanvasPaintSeeds = 
         }
         return overlayOpacity >= 1;
       });
-      presentation = {effectiveOpacity, opaqueOverlayIds};
+      const captionEffects = presentationPlan[elementId]?.captionEffects;
+      if (captionEffects) for (const expected of captionEffects) {
+        const target = document.getElementById(expected.elementId);
+        if (!target || (target !== element && !element.contains(target))) throw new Error("CONFORMANCE_CAPTION_EFFECT_STRUCTURE_MISMATCH");
+        const style = getComputedStyle(target);
+        const matrix = new DOMMatrixReadOnly(style.transform === "none" ? undefined : style.transform);
+        const near = (actual: number, wanted: number) => Number.isFinite(actual) && Math.abs(actual - wanted) <= 0.0001;
+        const colorParts = (value: string) => {
+          const values = value.match(/[\d.]+/g)?.map(Number) || [];
+          if (values.length === 3) values.push(1);
+          return values;
+        };
+        const sameColor = (actual: string, wanted: string | undefined) => {
+          if (wanted === undefined) return true;
+          const actualParts = colorParts(actual), wantedParts = colorParts(wanted);
+          return actualParts.length === 4 && wantedParts.length === 4 && actualParts.every((value, index) => near(value, wantedParts[index]!));
+        };
+        if (!near(Number(style.opacity), expected.opacity) || !near(matrix.a, expected.scale) || !near(matrix.d, expected.scale)
+          || !near(matrix.b, 0) || !near(matrix.c, 0) || !near(matrix.e, expected.x) || !near(matrix.f, expected.y)
+          || !sameColor(style.color, expected.color) || !sameColor(style.backgroundColor, expected.backgroundColor)) {
+          throw new Error(`CONFORMANCE_CAPTION_EFFECT_APPEARANCE_MISMATCH:${JSON.stringify({
+            elementId: expected.elementId, expected,
+            observed: { opacity: style.opacity, matrix: [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f],
+              color: style.color, backgroundColor: style.backgroundColor },
+          })}`);
+        }
+      }
+      presentation = {effectiveOpacity, opaqueOverlayIds, ...(captionEffects ? { captionEffects } : {})};
     }
     return {elementId, text, left, top, width: right - left, height: bottom - top,
       observedBounds: {left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom},
@@ -123,7 +150,7 @@ export async function captureTextParityCheckpoint(client: CompositionQaCdpClient
       maximumTextCharactersPerCheckpoint: policy.maximumTextCharactersPerCheckpoint,
       maximumOverlayAncestorChecksPerCheckpoint: policy.maximumOverlayAncestorChecksPerCheckpoint})},${JSON.stringify(visibilityPlan) ?? "undefined"},${JSON.stringify(presentationPlan) ?? "undefined"},${allowOffcanvasPaintSeeds === true})`});
   const raw = (response.result as {value?: unknown} | undefined)?.value;
-  if (response.exceptionDetails || !Array.isArray(raw) || raw.length !== plan.expectedTexts.length) throw new Error("CONFORMANCE_TEXT_CAPTURE_RUNTIME_FAILED");
+  if (response.exceptionDetails || !Array.isArray(raw) || raw.length !== plan.expectedTexts.length) throw new Error("CONFORMANCE_TEXT_CAPTURE_RUNTIME_FAILED", { cause: response.exceptionDetails });
   const rows = z.array(domRowSchema).max(policy.maximumRegions).parse(raw);
   if (rows.reduce((characters, row) => characters + ("text" in row ? row.text.length : 0), 0) > policy.maximumTextCharactersPerCheckpoint) {
     throw new Error("CONFORMANCE_TEXT_CAPTURE_SIZE_LIMIT");

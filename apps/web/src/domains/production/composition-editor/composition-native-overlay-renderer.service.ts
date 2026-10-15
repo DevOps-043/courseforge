@@ -1,5 +1,8 @@
 import type { CompositionClip } from "./composition-document.types";
 import type { CompositionTextLayerStyle } from "./composition-text-layer.types";
+import { CAPTION_EFFECT_METRICS } from "./composition-caption-effects.types";
+import { captionHasEffects, resolveCaptionEffects } from "./composition-caption-effects.service";
+import { buildCaptionTextParts, captionColorWithOpacity, captionEffectElementId, captionPartElementId } from "./composition-caption-effects-plan";
 import { COMPOSITION_NATIVE_TEXT_BIDI, COMPOSITION_NATIVE_TEXT_DIRECTION, resolveCompositionCaptionWordGaps, resolveCompositionTextLanguage } from "./composition-text-presentation";
 
 export function renderCompositionNativeOverlay(params: {
@@ -16,12 +19,26 @@ export function renderCompositionNativeOverlay(params: {
     const style = clip.source.style;
     const language = resolveCompositionTextLanguage(clip.source.language);
     const languageAttribute = language ? ` lang="${escapeAttribute(language)}"` : "";
-    const cues = clip.source.cues.map((cue) => (
+    const cues = clip.source.cues.map((cue) => captionHasEffects(cue, clip.source.type === "NATIVE_CAPTIONS" ? clip.source.effects : undefined) ? (
+      `<div id="${escapeAttribute(captionCueElementId(clip.id, cue.id))}" class="composition-caption-cue" dir="${COMPOSITION_NATIVE_TEXT_DIRECTION}"${languageAttribute} style="box-sizing:border-box;overflow:hidden;position:absolute;inset:0;visibility:hidden;opacity:0;"><div id="${escapeAttribute(captionEffectElementId(clip.id, cue.id))}" style="${renderTextStyle(style)};position:absolute;inset:0;transform-origin:50% 50%;"><div>${renderCaptionEffectsText(clip, cue)}</div></div></div>`
+    ) : (
       `<div id="${escapeAttribute(captionCueElementId(clip.id, cue.id))}" class="composition-caption-cue" dir="${COMPOSITION_NATIVE_TEXT_DIRECTION}"${languageAttribute} style="${renderTextStyle(style)};position:absolute;inset:0;visibility:hidden;opacity:0;">${renderCaptionCueText(clip.id, cue)}</div>`
     )).join("");
     return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${params.visualTiming}><div ${params.commonAttributes} class="clip-content composition-native-overlay"><div id="${params.motionId}" class="motion-subject composition-native-caption" style="position:absolute;inset:0;">${cues}</div></div></section>`;
   }
   throw new Error(`La capa ${clip.id} no tiene una fuente de texto compatible.`);
+}
+
+function renderCaptionEffectsText(clip: CompositionClip, cue: Extract<CompositionClip["source"], { type: "NATIVE_CAPTIONS" }>['cues'][number]) {
+  if (clip.source.type !== "NATIVE_CAPTIONS") return "";
+  const source = clip.source;
+  const effects = resolveCaptionEffects(cue, source.effects);
+  return buildCaptionTextParts(cue).map((part, index) => {
+    const color = captionColorWithOpacity(part.emphasis?.color || source.style.color, source.style.textOpacity);
+    const opacity = part.word && effects.karaoke !== "NONE" ? (effects.karaoke === "LEGACY" ? CAPTION_EFFECT_METRICS.legacyInactiveOpacity : effects.inactiveOpacity) : 1;
+    const css = `color:${color};opacity:${opacity};background-color:${part.emphasis?.backgroundColor || "transparent"};${part.word ? "display:inline-block;transform-origin:50% 50%;" : ""}`;
+    return `<span id="${escapeAttribute(captionPartElementId(clip.id, cue.id, index))}" style="${css}">${escapeHtml(part.text)}</span>`;
+  }).join("");
 }
 
 export function captionCueElementId(clipId: string, cueId: string) {

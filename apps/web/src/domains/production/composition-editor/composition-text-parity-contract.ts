@@ -9,6 +9,11 @@ export const NATIVE_TEXT_GEOMETRY_POLICY = "NATIVE_TRANSFORM_CLIP_GEOMETRY_GSAP_
 export const NATIVE_TEXT_PAINT_MASK_POLICY = "NATIVE_TEXT_PAINT_SUPPRESSION_RESTORED_V1" as const;
 export type NativeTextVisibilityPolicy = typeof NATIVE_MOTION_VISIBILITY_POLICY | typeof NATIVE_TRANSITION_VISIBILITY_POLICY | typeof NATIVE_TEXT_APPEARANCE_POLICY | typeof NATIVE_TEXT_GEOMETRY_POLICY;
 export const textPresentationSchema = z.object({effectiveOpacity: z.number().finite().min(0).max(1),
+  captionEffects: z.array(z.object({
+    elementId: z.string().min(1).max(320), opacity: z.number().finite().min(0).max(1),
+    x: z.number().finite(), y: z.number().finite(), scale: z.number().finite().positive(),
+    color: z.string().max(80).optional(), backgroundColor: z.string().max(80).optional(),
+  }).strict()).max(500).optional(),
   opaqueOverlayIds: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,135}$/i)).max(499)
     .refine((ids) => new Set(ids).size === ids.length),
   paintPose: nativeTextPaintPoseSchema.optional(),

@@ -21,6 +21,7 @@ const OPERATION_STRATEGIES: Record<CompositionEditorPatchOperation["type"], Comp
   "clip.audio-fades": "FULL_RELOAD",
   "clip.volume-envelope": "FULL_RELOAD",
   "clip.caption-cues": "FULL_RELOAD",
+  "clip.caption-effects": "FULL_RELOAD",
   "clip.crop": "LIVE_DOM",
   "clip.color-grading": "LIVE_DOM",
   "clip.duration": "LIVE_TIMELINE",
