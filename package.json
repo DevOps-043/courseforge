@@ -54,9 +54,18 @@
     "docs:audit": "powershell -ExecutionPolicy Bypass -File scripts/audit-documentation.ps1",
     "compliance:sbom": "powershell -ExecutionPolicy Bypass -File scripts/generate-sbom.ps1",
     "compliance:check": "node scripts/check-third-party-compliance.mjs",
-    "compliance:verify": "npm run compliance:sbom && npm run compliance:check"
+    "compliance:verify": "npm run compliance:sbom && npm run compliance:check",
+    "adapters:sync": "node scripts/ai/sync-agent-adapters.mjs",
+    "adapters:check": "node scripts/ai/sync-agent-adapters.mjs --check",
+    "harness:validate": "node scripts/quality/validate-harness.mjs",
+    "docs:check": "node scripts/quality/check-doc-links.mjs",
+    "openspec:validate": "openspec validate --all --strict --no-interactive",
+    "test:harness": "node --test scripts/quality/harness.test.mjs",
+    "verify:harness": "node scripts/quality/run-gate.mjs --harness-only",
+    "verify:pr": "node scripts/quality/run-gate.mjs"
   },
   "devDependencies": {
+    "@fission-ai/openspec": "1.8.0",
     "@netlify/functions": "^5.1.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/dotenv": "^6.1.1",

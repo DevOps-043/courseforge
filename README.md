@@ -2,6 +2,12 @@
 
 > Plataforma multi-tenant de ingenieria instruccional con IA.
 
+El [arnés de desarrollo](docs/architecture/development-harness.md) organiza el
+trabajo asistido por agentes. Lee [AGENTS.md](AGENTS.md), la
+[guía operativa](docs/operations/harness-quickstart.md) y el
+[contexto canónico](docs/architecture/system-context.md). Las instrucciones por
+herramienta apuntan a esas fuentes; el estado de cambios vive en OpenSpec.
+
 SofLIA - Engine crea cursos completos a partir de una idea o de un paquete SCORM: investiga, estructura, planifica, cura fuentes, genera materiales, produce assets visuales, ensambla videos con Remotion y publica el resultado hacia SofLIA.
 
 El producto ya no es solo un generador de cursos. Es un flujo operativo con aprobaciones humanas, contratos de datos, configuracion por organizacion, importacion de assets externos y una capa de produccion visual que puede renderizar localmente, en AWS Lambda o mediante worker de escritorio.
@@ -525,4 +531,4 @@ npm run lint --workspace=apps/api
 - Propagar `organization_id` en rutas, acciones, OAuth state, credenciales y jobs.
 - Mantener los contratos publicables de `SOFLIA_DIALOGUE`.
 - Separar preview interno, preview externo sandbox y render final al diagnosticar produccion visual.
-- Aplicar [el protocolo de investigacion y sincronizacion](docs/PROTOCOLO_DE_INVESTIGACION_Y_SINCRONIZACION.md) antes de declarar vigente esta documentacion o `CLAUDE.md`.
+- Aplicar [el protocolo de investigacion y sincronizacion](docs/PROTOCOLO_DE_INVESTIGACION_Y_SINCRONIZACION.md) antes de declarar vigente esta documentacion o el contexto operativo en `docs/architecture/system-context.md`.
