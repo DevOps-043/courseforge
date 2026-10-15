@@ -5,7 +5,7 @@ import { processAudioProcessingBatch } from "./audio-worker";
 import { configureManagedDeepFilterRuntime } from "./deepfilter-runtime-config";
 import { supportedAudioProfileIds } from "./worker-capabilities";
 
-dotenv.config({ path: path.join(__dirname, "../../../web/.env.local") });
+dotenv.config({ path: path.join(__dirname, "../../../../web/.env.local") });
 dotenv.config();
 
 const supabaseUrl = requiredEnvironment("NEXT_PUBLIC_SUPABASE_URL");
@@ -20,6 +20,7 @@ process.on("SIGINT", () => { stopping = true; });
 process.on("SIGTERM", () => { stopping = true; });
 
 async function run() {
+  console.info("audio_processing_worker_started", { supportedProfiles, pollMilliseconds, batchSize });
   while (!stopping) {
     try {
       const result = await processAudioProcessingBatch(supabase, supportedProfiles, batchSize);

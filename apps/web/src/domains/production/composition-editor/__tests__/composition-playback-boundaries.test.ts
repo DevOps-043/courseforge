@@ -95,11 +95,11 @@ function controlledBrowser(datasetStart = "0", extraMedia = false) {
     loop: false, paused: false, muted: false, volume: 1, duration: 2, currentTime: 0});
   const extra = Object.assign(new Target(), {...media, id: "unexpected", listeners: new Map()});
   const browserWindow = Object.assign(new Target(), {postMessage() {}, __courseforgePlaybackCapture: undefined as any});
-  let clock: AudioContextFake;
+  let updateClock: (seconds: number) => void;
   class AudioContextFake {
     sampleRate = rate; currentTime = 0.05; state = "running"; destination = {};
     audioWorklet = {async addModule() {}};
-    constructor() {clock = this;}
+    constructor() {updateClock = (seconds) => {this.currentTime = seconds;};}
     async suspend() {} async resume() {} async close() {this.state = "closed";}
     createMediaElementSource() {return {connect() {}, disconnect() {}};}
   }
@@ -109,7 +109,7 @@ function controlledBrowser(datasetStart = "0", extraMedia = false) {
       AudioContext: AudioContextFake, AudioWorkletNode: WorkletFake});
   const message = (type: string, payload: object) => browserWindow.emit("message", {source: browserWindow,
     data: {protocolVersion: COMPOSITION_PREVIEW_PROTOCOL_VERSION, type: `courseforge-composition-${type}`, ...payload}});
-  return {install, media, extra, browserWindow, message, setClock: (seconds: number) => {clock!.currentTime = seconds;}};
+  return {install, media, extra, browserWindow, message, setClock: (seconds: number) => {updateClock(seconds);}};
 }
 
 test("installed runtime emits window-bound native events and removes listeners on stop", async () => {
