@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "development": [
+    {
+      "id": "spec-analyst",
+      "source": "development/spec-analyst.md",
+      "skills": [
+        "enrich-requirement",
+        "update-project-docs"
+      ]
+    },
+    {
+      "id": "web-job-engineer",
+      "source": "development/web-job-engineer.md",
+      "skills": [
+        "api-job-change",
+        "verify-change"
+      ]
+    },
+    {
+      "id": "tenant-security-reviewer",
+      "source": "development/tenant-security-reviewer.md",
+      "skills": [
+        "tenant-security-change",
+        "adversarial-review"
+      ]
+    },
+    {
+      "id": "multimedia-engineer",
+      "source": "development/multimedia-engineer.md",
+      "skills": [
+        "multimedia-production-change",
+        "verify-change"
+      ]
+    },
+    {
+      "id": "delivery-verifier",
+      "source": "development/delivery-verifier.md",
+      "skills": [
+        "verify-change",
+        "adversarial-review",
+        "prepare-pull-request",
+        "using-git-worktrees"
+      ]
+    }
+  ],
+  "runtime": {
+    "defaultPolicy": "deny",
+    "developmentSkillsExposed": []
+  }
+}
