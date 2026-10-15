@@ -53,8 +53,8 @@ async function main() {
     await evaluate(browser.client, `replaceButton(${JSON.stringify(REPLACEMENT_ID)}).click()`);
     await waitFor(browser.client, `document.querySelector('#source-id')?.textContent === ${JSON.stringify(REPLACEMENT_ID)}`, "reemplazo aplicado");
     await assertValue(browser.client, "document.querySelector('#timing-layout').textContent", originalTimingLayout, "timing y layout conservados");
-    await assertValue(browser.client, "document.querySelector('#preview-strategy').textContent", "FULL_RELOAD", "recarga de preview");
-    await assertValue(browser.client, "document.querySelector('#preview-revision').textContent", "1", "revisión de preview");
+    await assertValue(browser.client, "document.querySelector('#preview-strategy').textContent", "LIVE_TIMELINE", "actualización local de preview");
+    await assertValue(browser.client, "document.querySelector('#preview-revision').textContent", "0", "sin navegación de preview");
     await assertValue(browser.client, "document.querySelector('#replacement-error').textContent", "", "sin error de dominio");
     await evaluate(browser.client, `document.querySelector('[data-asset-id="${REPLACEMENT_ID}"] button').click()`);
     await assertValue(browser.client, "document.querySelector('#last-selected-hf-id').textContent", "asset-original", "selección del clip reemplazado");
@@ -64,13 +64,13 @@ async function main() {
     await assertValue(browser.client, "document.querySelector('#timing-layout').textContent", originalTimingLayout, "undo conserva edición");
     await evaluate(browser.client, "document.querySelector('#redo-replacement').click()");
     await waitFor(browser.client, `document.querySelector('#source-id')?.textContent === ${JSON.stringify(REPLACEMENT_ID)}`, "redo");
-    await assertValue(browser.client, "document.querySelector('#preview-revision').textContent", "3", "revisión después de redo");
+    await assertValue(browser.client, "document.querySelector('#preview-revision').textContent", "2", "revisión después de redo");
 
     await evaluate(browser.client, "document.querySelector('#simulate-missing-source').click()");
     await waitFor(browser.client, "document.querySelector('[role=status]')?.textContent.includes('fuente de este clip no está disponible')", "aviso de fuente ausente");
     await assertValue(browser.client, `Boolean(Array.from(document.querySelectorAll('[data-asset-id="${ORIGINAL_ID}"] button')).find((button) => button.textContent.includes('Revincular'))?.disabled)`, false, "relink compatible disponible");
 
-    process.stdout.write(`${JSON.stringify({ browserPath: browser.browserPath, librarySearchAndFilter: "passed", replacementGuards: "passed", relinkAffordance: "passed", sourceAndEdits: "passed", selectionAfterReplacement: "passed", previewReload: "passed", undoRedo: "passed" }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ browserPath: browser.browserPath, librarySearchAndFilter: "passed", replacementGuards: "passed", relinkAffordance: "passed", sourceAndEdits: "passed", selectionAfterReplacement: "passed", livePreviewStrategy: "passed", undoRedo: "passed" }, null, 2)}\n`);
   } finally {
     await browser.close();
   }

@@ -17,43 +17,43 @@ const OPERATION_STRATEGIES: Record<CompositionEditorPatchOperation["type"], Comp
   "animation.update-keyframe": "LIVE_TIMELINE",
   "animation.update-timing": "LIVE_TIMELINE",
   "audio-mix.update": "LIVE_TIMELINE",
-  "clip.add": "FULL_RELOAD",
-  "clip.audio-fades": "FULL_RELOAD",
-  "clip.caption-cues": "FULL_RELOAD",
+  "clip.add": "LIVE_TIMELINE",
+  "clip.audio-fades": "LIVE_TIMELINE",
+  "clip.caption-cues": "LIVE_TIMELINE",
   "clip.crop": "LIVE_DOM",
   "clip.color-grading": "LIVE_DOM",
   "clip.duration": "LIVE_TIMELINE",
-  "clip.playback-rate": "FULL_RELOAD",
-  "clip.freeze-tail": "FULL_RELOAD",
-  "clip.duplicate": "FULL_RELOAD",
+  "clip.playback-rate": "LIVE_TIMELINE",
+  "clip.freeze-tail": "LIVE_TIMELINE",
+  "clip.duplicate": "LIVE_TIMELINE",
   "clip.estimated-timing": "LIVE_TIMELINE",
   "clip.layout": "LIVE_DOM",
   "clip.media-fit": "LIVE_DOM",
   "clip.move": "LIVE_TIMELINE",
-  "clip.remove": "FULL_RELOAD",
-  "clip.remove-range": "FULL_RELOAD",
-  "clip.replace-source": "FULL_RELOAD",
-  "clip.reset-asset": "FULL_RELOAD",
-  "clip.split": "FULL_RELOAD",
+  "clip.remove": "LIVE_TIMELINE",
+  "clip.remove-range": "LIVE_TIMELINE",
+  "clip.replace-source": "LIVE_TIMELINE",
+  "clip.reset-asset": "LIVE_TIMELINE",
+  "clip.split": "LIVE_TIMELINE",
   "clip.template": "LIVE_TIMELINE",
-  "clip.text-content": "FULL_RELOAD",
-  "clip.text-style": "FULL_RELOAD",
+  "clip.text-content": "LIVE_TIMELINE",
+  "clip.text-style": "LIVE_TIMELINE",
   "clip.trim": "LIVE_TIMELINE",
   "clip.visibility": "LIVE_DOM",
   "clip.volume": "LIVE_DOM",
   "composition.canvas-duration": "LIVE_TIMELINE",
-  "composition.canvas-size": "FULL_RELOAD",
+  "composition.canvas-size": "LIVE_TIMELINE",
   "document.reconcile": "FULL_RELOAD",
   "document.restore": "FULL_RELOAD",
-  "group.add-clips": "FULL_RELOAD",
-  "group.create": "FULL_RELOAD",
+  "group.add-clips": "LIVE_TIMELINE",
+  "group.create": "LIVE_TIMELINE",
   "group.move": "LIVE_TIMELINE",
-  "group.remove-clips": "FULL_RELOAD",
-  "group.ungroup": "FULL_RELOAD",
-  "transition.add": "FULL_RELOAD",
-  "transition.remove": "FULL_RELOAD",
-  "transition.update": "FULL_RELOAD",
-  "track.update": "FULL_RELOAD",
+  "group.remove-clips": "LIVE_TIMELINE",
+  "group.ungroup": "LIVE_TIMELINE",
+  "transition.add": "LIVE_TIMELINE",
+  "transition.remove": "LIVE_TIMELINE",
+  "transition.update": "LIVE_TIMELINE",
+  "track.update": "LIVE_TIMELINE",
 };
 
 const STRATEGY_PRIORITY: Record<CompositionPreviewUpdateStrategy, number> = {
@@ -80,11 +80,11 @@ export function classifyCompositionPreviewOperations(
 }
 
 /**
- * The iframe can apply only visual DOM patches in place. Timeline and
- * structural changes must rebuild the compiled preview to remain truthful.
+ * DOM patches and supported scene projections keep the iframe mounted.
+ * Unsupported operations still use the authenticated compiler.
  */
 export function requiresCompositionPreviewReload(
   strategy: CompositionPreviewUpdateStrategy,
 ): boolean {
-  return strategy !== "LIVE_DOM";
+  return strategy === "FULL_RELOAD";
 }

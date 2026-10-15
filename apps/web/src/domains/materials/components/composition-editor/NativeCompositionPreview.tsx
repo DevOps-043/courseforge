@@ -45,6 +45,8 @@ import {
 import { CompositionNarrativePanel } from "./CompositionNarrativePanel";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
 import { applyCompositionEditorPatches, ensureCanvasDurationForClipPatches } from "@/domains/production/composition-editor/editor-patch.service";
+import { buildCompositionPreviewScenePatch } from "@/domains/production/composition-editor/composition-preview-scene-patch";
+import { CompositionPreviewAssetUrlCache } from "@/domains/production/composition-editor/composition-preview-asset-urls.client";
 import { resolveAvatarAudioLink } from "@/domains/production/composition-editor/composition-avatar-audio-link.service";
 import { getCompositionTrackDefinition, resolveCompositionTrackDefinition } from "@/domains/production/composition-editor/composition-track-registry";
 import {
@@ -307,6 +309,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const timelineFrameStepRef = useRef(1);
   const timelineKeyboardEditModeRef = useRef<CompositionTimelineKeyboardEditMode>("SLIDE");
   const runtimePatchCoordinatorRef = useRef<CompositionPreviewRuntimePatchCoordinator | null>(null);
+  const [previewAssetUrlCache] = useState(() => new CompositionPreviewAssetUrlCache());
   const previewSyncStateRef = useRef(INITIAL_COMPOSITION_PREVIEW_SYNC_STATE);
   const renderPollInFlightRef = useRef(false);
   const onVideoCompletedRef = useRef(onVideoCompleted);
@@ -1230,7 +1233,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     ? "Preview de preset"
     : agentProposal
       ? "Propuesta sin guardar"
-      : saving || (!previewReady && previewMediaState === "PREPARING")
+      : !previewReady && previewMediaState === "PREPARING"
         ? "Actualizando preview…"
         : previewDirty
           ? "Cambios pendientes"
@@ -1526,23 +1529,6 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       setSaveError(caught instanceof Error ? caught.message : "El cambio solicitado no es válido.");
       return false;
     }
-    let recoveryEntryId = options.recoveryEntryId;
-    if (!options.skipRecoveryJournal) {
-      try {
-        const recoveryEntry = await createCompositionRecoveryEntry({
-          baseDocumentHash: currentPayload.documentHash,
-          draftId,
-          operations: effectiveOperations,
-          source,
-          summary,
-          targetDocument: optimisticDocument,
-        });
-        writeCompositionRecoveryEntry(window.localStorage, recoveryEntry);
-        recoveryEntryId = recoveryEntry.entryId;
-      } catch (recoveryError) {
-        console.warn("[CompositionRecovery] No se pudo registrar el cambio pendiente.", recoveryError);
-      }
-    }
     const updateStrategy = classifyCompositionPreviewOperations(effectiveOperations);
     const requiresCompiledPreviewReload = requiresCompositionPreviewReload(updateStrategy);
     if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
@@ -1550,9 +1536,16 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "SAVE_STARTED" });
     }
     const isMotionEdit = effectiveOperations.length > 0 && effectiveOperations.every((operation) => operation.type.startsWith("animation."));
-    const visualPatch = updateStrategy === "LIVE_DOM" || isMotionEdit
+    const domPatch = updateStrategy === "LIVE_DOM" || isMotionEdit
       ? buildCompositionPreviewVisualPatch({ document: optimisticDocument, operations: effectiveOperations })
       : null;
+    const scenePatch = COMPOSITION_PREVIEW_SYNC_V2_ENABLED && !domPatch && !requiresCompiledPreviewReload ? buildCompositionPreviewScenePatch({
+      assetUrls: new Map(),
+      audioMetersEnabled: areCompositionAudioMetersEnabled(),
+      beforeDocument: currentPayload.document,
+      document: optimisticDocument,
+    }) : null;
+    const visualPatch = domPatch || (scenePatch ? { changes: [], scene: scenePatch } : null);
     const runtimeBaseHash = previewRuntimeBaseHashRef.current;
     const canApplyIncrementally = (COMPOSITION_PREVIEW_SYNC_V2_ENABLED || isMotionEdit)
       && agentProposal === null
@@ -1562,13 +1555,31 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       && runtimeBaseHash !== null
       && previewDocumentHashRef.current === currentPayload.documentHash;
     const runtimePatchGeneration = previewGenerationRef.current;
-    const runtimePatchPromise = canApplyIncrementally
-      ? runtimePatchCoordinatorRef.current!.dispatch({
-        baseDocumentHash: runtimeBaseHash,
-        patch: visualPatch,
-        send: postPreviewMessage,
-      })
-      : null;
+    const runtimePatchPromise = canApplyIncrementally ? (async () => {
+      try {
+        const assetUrls = scenePatch ? await previewAssetUrlCache.resolveNewAssets({
+          assets,
+          beforeDocument: currentPayload.document,
+          document: optimisticDocument,
+        }) : null;
+        if (previewGenerationRef.current !== runtimePatchGeneration) throw new Error("PREVIEW_GENERATION_CHANGED");
+        const outcome = await runtimePatchCoordinatorRef.current!.dispatch({
+          baseDocumentHash: runtimeBaseHash,
+          patch: scenePatch && assetUrls ? { changes: [], scene: { ...scenePatch, assetUrls: Object.fromEntries(assetUrls) } } : visualPatch,
+          send: postPreviewMessage,
+        });
+        if (canCommitCompositionPreviewRuntimePatch({
+          applied: outcome.applied,
+          dispatchedGeneration: runtimePatchGeneration,
+          currentGeneration: previewGenerationRef.current,
+          failedGeneration: failedPreviewGenerationRef.current,
+        })) setPreviewDirty(false);
+        return outcome;
+      } catch {
+        // The saved document still has the authenticated compiler as fallback.
+        return { applied: false, code: "SEND_REJECTED" as const, durationMs: 0, sequence: 0 };
+      }
+    })() : null;
     if (!runtimePatchPromise) {
       postPreviewMessage({ type: "courseforge-composition-pause" });
       setPlaying(false);
@@ -1591,6 +1602,26 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     const optimisticPayload = { ...currentPayload, document: optimisticDocument };
     payloadRef.current = optimisticPayload;
     setPayload(optimisticPayload);
+    // Render before journal hashing or network I/O. Persistence stays serialized.
+    let recoveryEntryId = options.recoveryEntryId;
+    if (!options.skipRecoveryJournal) {
+      try {
+        const recoveryEntry = await createCompositionRecoveryEntry({
+          baseDocumentHash: currentPayload.documentHash,
+          draftId,
+          operations: effectiveOperations,
+          source,
+          summary,
+          targetDocument: optimisticDocument,
+        });
+        writeCompositionRecoveryEntry(window.localStorage, recoveryEntry);
+        recoveryEntryId = recoveryEntry.entryId;
+        // Recovery replays interrupted sessions, never a failed save in this session.
+        recoveryAttemptedEntryRef.current = recoveryEntry.entryId;
+      } catch (recoveryError) {
+        console.warn("[CompositionRecovery] No se pudo registrar el cambio pendiente.", recoveryError);
+      }
+    }
     const requestBody = JSON.stringify({ operations: effectiveOperations, source, summary });
     const requestStartedAt = performance.now();
     let saveOutcome: "CONFLICT" | "ERROR" | "SUCCESS" = "ERROR";
@@ -1691,10 +1722,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         }
       } else {
         setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
-        // Timeline and structural operations cannot be applied to the iframe
-        // with a visual DOM patch. Also recover any visual edit made while the
-        // iframe was unavailable. In both cases the saved document must become
-        // the source of a fresh preview without requiring user interaction.
+        // Unsupported dependencies and edits made before the runtime is ready
+        // recover from the saved document without requiring user interaction.
         if (requiresCompiledPreviewReload || !canApplyIncrementally) {
           scheduleSavedPreviewReload(playing || previewMediaState === "BUFFERING");
         }

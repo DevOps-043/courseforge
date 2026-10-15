@@ -1,9 +1,9 @@
 /**
  * Safe rollout switch for the preview synchronization controller.
- * The implementation stays opt-in until DEV/QA validates runtime parity and fallback telemetry.
+ * Enabled by default; deployments can explicitly opt out during incident recovery.
  */
 export const COMPOSITION_PREVIEW_SYNC_V2_ENABLED = (
-  process.env.NEXT_PUBLIC_COMPOSITION_PREVIEW_SYNC_V2_ENABLED === "true"
+  process.env.NEXT_PUBLIC_COMPOSITION_PREVIEW_SYNC_V2_ENABLED !== "false"
 );
 
 export const COMPOSITION_PREVIEW_SAVE_QUEUE_CONFIG = {

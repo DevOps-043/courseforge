@@ -803,7 +803,7 @@ test("creates a separate synchronized audio element for an avatar video", async 
   assert.match(html, /mediaParticipatesInPlayback/);
   assert.match(html, /Number\(media\.dataset\.volume \|\| 0\) > 0/);
   assert.match(html, /id="asset-00000000-0000-4000-8000-000000000005-media"/);
-  assert.doesNotMatch(html, /media\.getAttribute\("src"\)/);
+  assert.match(html, /assetUrls\.set\(media\.dataset\.previewAssetId/);
   assert.match(html, /data-volume="0\.35"/);
 
   const renderHtml = await compileCompositionPreview({
