@@ -8,6 +8,7 @@ export const COMPOSITION_PREVIEW_SYNC_V2_ENABLED = (
 
 export const COMPOSITION_PREVIEW_SAVE_QUEUE_CONFIG = {
   maxPendingCommands: 50,
+  requestTimeoutMs: 30_000,
 } as const;
 
 export const COMPOSITION_PREVIEW_RUNTIME_PATCH_CONFIG = {

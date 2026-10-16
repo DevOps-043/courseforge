@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { join } from "node:path";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 import { compositionCanvasVisibleBounds, compositionCanvasResizedVisibleBounds, resolveCompositionVisibleResizeSnap, renderCompositionCanvasVisibleBounds } from "../composition-canvas-visible-bounds";
@@ -61,4 +64,19 @@ test("runtime geometry and resize solver have no hidden module dependencies", ()
   const result = runInNewContext(`${renderCompositionCanvasVisibleBounds()} resolveVisibleResizeSnap(${JSON.stringify(input)});`);
   const bounds = compositionCanvasResizedVisibleBounds(input.layout, crop, result.width, result.height)!;
   near(bounds.right, 242);
+});
+
+test("el runtime serializado funciona después de minificar el módulo de producción", async () => {
+  const { minify } = createRequire(__filename)("next/dist/compiled/terser") as {
+    minify: (source: string, options: { mangle: boolean; toplevel: boolean }) => Promise<{ code: string }>;
+  };
+  const source = readFileSync(join(__dirname, "../composition-canvas-visible-bounds.js"), "utf8");
+  const minified = await minify(source, { mangle: true, toplevel: true });
+  const moduleScope = { exports: {} as { renderCompositionCanvasVisibleBounds: () => string } };
+  runInNewContext(minified.code, moduleScope);
+  const runtime = moduleScope.exports.renderCompositionCanvasVisibleBounds();
+  const input = { layout, crop, width: 200, height: 100, preserveRatio: true, guidesX: [261], guidesY: [], threshold: 7 };
+  const result = runInNewContext(`${runtime} resolveVisibleResizeSnap(${JSON.stringify(input)});`);
+  const bounds = compositionCanvasResizedVisibleBounds(layout, crop, result.width, result.height)!;
+  near(bounds.right, 261);
 });

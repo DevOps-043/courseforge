@@ -1,6 +1,7 @@
 "use client";
 
 import { COMPOSITION_CANVAS_FORMATS, resolveCompositionCanvasFormat } from "@/domains/production/composition-editor/composition-canvas-format";
+import { requestCompositionDocumentSave } from "@/domains/production/composition-editor/composition-document-save-request";
 import { createHtmlEditingPreviewSession } from "@/domains/production/composition-editor/composition-html-editing-preview-channel.contract";
 import { buildHtmlEditingPreviewPageUrl, createHtmlEditingPreviewHost, isHtmlEditingPreviewPageUrl } from "@/domains/production/composition-editor/composition-html-editing-preview-host.client";
 import { captureHtmlEditingPreviewSource, resolveHtmlEditingPreviewChannel, resolveHtmlEditingPublishedPreviewRevision } from "@/domains/production/composition-editor/composition-html-editing-preview-selection";
@@ -1896,7 +1897,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     const requestStartedAt = performance.now();
     let saveOutcome: "CONFLICT" | "ERROR" | "SUCCESS" = "ERROR";
     try {
-      const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/document`, {
+      const { response, body: responseBody } = await requestCompositionDocumentSave(`/api/production/hyperframes/drafts/${draftId}/document`, {
         body: requestBody,
         headers: {
           "Content-Type": "application/json",
@@ -1905,7 +1906,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         },
         method: "PUT",
       });
-      const body = await response.json();
+      const body = responseBody as { data?: DocumentPayload; error?: string };
       if (response.status === 409 && body.data) {
         saveOutcome = "CONFLICT";
         if (!options.preservePreviewRuntime) pendingEditTelemetryRef.current = priorPendingEditTelemetry;

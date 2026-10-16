@@ -123,6 +123,18 @@ service role, SQL manual o un bug del backend.
 
 ## 6. Contrato del preview
 
+- Los helpers que se serializan como JavaScript para el iframe deben conservar
+  todas sus dependencias dentro de la misma función/factoría serializada. Una
+  referencia a otro símbolo del módulo puede romperse al minificar el servidor.
+  La geometría de recorte y snap se prueba después de minificar el módulo.
+- El arrastre y la selección rectangular usan el ancho vigente del lienzo después
+  de cada patch de escena; el tirador proporcional admite desplazamiento en ambos
+  ejes. Regresión local: `qa/run-composition-resize-format-smoke.ts` del dominio.
+- El PUT del editor limita petición y lectura de respuesta a 30 segundos. Un
+  timeout libera la cola, conserva el cambio para recuperación y comunica que el
+  resultado remoto es incierto; no provoca reintentos automáticos. Las siguientes
+  escrituras conservan las precondiciones de versión para detectar conflictos.
+
 - Resuelve solo assets vinculados al borrador y permitidos para la organizacion.
 - Los SFX nuevos deben estar `READY`; los snapshots historicos pueden conservar
   assets archivados si su identidad inmutable ya fue congelada.
@@ -332,6 +344,11 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-16: corregida la escala del arrastre tras cambiar orientación y el
+  tirador proporcional vertical; eliminado el cierre externo de la geometría
+  serializada que producía ReferenceError en staging tras minificar; añadido
+  límite de espera del guardado del editor.
 
 - 2026-09-04: se verifico la correccion P0 de extremo a extremo en la UI con el
   mismo reintento que habia fallado; el clip SFX quedo persistido y visible en

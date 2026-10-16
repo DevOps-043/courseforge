@@ -1084,7 +1084,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         const target = cropHandle?.parentElement || handle?.parentElement || event.target.closest("[data-hf-id]");
         if (!target) {
           const rootBox = root.getBoundingClientRect();
-          const scale = rootBox.width / ${document.canvas.width};
+          const scale = rootBox.width / canvasWidth;
           if (!Number.isFinite(scale) || scale <= 0) return;
           const marquee = document.createElement("div");
           marquee.className = "composition-selection-marquee";
@@ -1104,7 +1104,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         if (!(target instanceof HTMLElement) || event.ctrlKey || event.metaKey || event.shiftKey) return;
         selectTarget(target);
         const rootBox = root.getBoundingClientRect();
-        const scale = rootBox.width / ${document.canvas.width};
+        const scale = rootBox.width / canvasWidth;
         if (!Number.isFinite(scale) || scale <= 0) return;
         const layout = {
           height: Number.parseFloat(target.style.height),
@@ -1177,7 +1177,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         const maxHeight = canvasHeight - activeTransform.layout.y;
         const aspectRatio = activeTransform.preserveRatio ? activeTransform.layout.width / activeTransform.layout.height : null;
         const resizeBounds = { maxWidth, maxHeight, aspectRatio, minimumSize: canvasSnapGeometry.minimumSizePixels };
-        const requestedSize = boundCanvasResize({ ...resizeBounds, width: activeTransform.layout.width + dx, height: activeTransform.layout.height + dy });
+        // El eje con mayor desplazamiento proporcional gobierna el tirador de esquina.
+        const proportionalDx = aspectRatio === null ? dx : Math.abs(dx) >= Math.abs(dy * aspectRatio) ? dx : dy * aspectRatio;
+        const requestedSize = boundCanvasResize({ ...resizeBounds, width: activeTransform.layout.width + proportionalDx, height: activeTransform.layout.height + dy });
         if (!requestedSize) { clearSmartGuides(); return; }
         const { width, height } = requestedSize;
         const smartResize = snapEnabled
