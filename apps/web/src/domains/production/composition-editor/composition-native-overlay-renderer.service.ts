@@ -22,7 +22,8 @@ export function renderCompositionNativeOverlay(params: {
     const cues = clip.source.cues.map((cue) => captionHasEffects(cue, clip.source.type === "NATIVE_CAPTIONS" ? clip.source.effects : undefined) ? (
       `<div id="${escapeAttribute(captionCueElementId(clip.id, cue.id))}" class="composition-caption-cue" dir="${COMPOSITION_NATIVE_TEXT_DIRECTION}"${languageAttribute} style="box-sizing:border-box;overflow:hidden;position:absolute;inset:0;visibility:hidden;opacity:0;"><div id="${escapeAttribute(captionEffectElementId(clip.id, cue.id))}" style="${renderTextStyle(style)};position:absolute;inset:0;transform-origin:50% 50%;"><div>${renderCaptionEffectsText(clip, cue)}</div></div></div>`
     ) : (
-      `<div id="${escapeAttribute(captionCueElementId(clip.id, cue.id))}" class="composition-caption-cue" dir="${COMPOSITION_NATIVE_TEXT_DIRECTION}"${languageAttribute} style="${renderTextStyle(style)};position:absolute;inset:0;visibility:hidden;opacity:0;">${renderCaptionCueText(clip.id, cue)}</div>`
+      // El flex exterior alinea el párrafo; sus palabras deben permanecer en flujo inline dentro del bloque.
+      `<div id="${escapeAttribute(captionCueElementId(clip.id, cue.id))}" class="composition-caption-cue" dir="${COMPOSITION_NATIVE_TEXT_DIRECTION}"${languageAttribute} style="${renderTextStyle(style)};position:absolute;inset:0;visibility:hidden;opacity:0;"><div class="composition-caption-paragraph" style="min-width:0;flex-shrink:0;unicode-bidi:${COMPOSITION_NATIVE_TEXT_BIDI};">${renderCaptionCueText(clip.id, cue)}</div></div>`
     )).join("");
     return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${params.visualTiming}><div ${params.commonAttributes} class="clip-content composition-native-overlay"><div id="${params.motionId}" class="motion-subject composition-native-caption" style="position:absolute;inset:0;">${cues}</div></div></section>`;
   }

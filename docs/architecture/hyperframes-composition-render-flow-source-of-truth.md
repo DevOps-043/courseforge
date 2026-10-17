@@ -123,6 +123,11 @@ service role, SQL manual o un bug del backend.
 
 ## 6. Contrato del preview
 
+- En captions sin efectos, la alineación vertical pertenece al contenedor flex;
+  el texto y los spans sincronizados se agrupan en un bloque de párrafo interior.
+  Las palabras conservan sus IDs y tiempos y se distribuyen en flujo inline,
+  con ajuste de líneas al ancho disponible, tanto en preview como en render.
+  Regresión: `npm run qa:composition-caption-layout --workspace=apps/web`.
 - Los helpers que se serializan como JavaScript para el iframe deben conservar
   todas sus dependencias dentro de la misma función/factoría serializada. Una
   referencia a otro símbolo del módulo puede romperse al minificar el servidor.
@@ -345,6 +350,9 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-10-16: corregidos captions sincronizados sin efectos que apilaban cada
+  palabra como un flex item en columna. El bloque de párrafo conserva karaoke,
+  alineación, Unicode y escapes; no requiere migración de documentos.
 - 2026-10-16: corregida la escala del arrastre tras cambiar orientación y el
   tirador proporcional vertical; eliminado el cierre externo de la geometría
   serializada que producía ReferenceError en staging tras minificar; añadido
