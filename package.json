@@ -94,7 +94,7 @@
     "harness:validate": "node scripts/quality/validate-harness.mjs",
     "docs:check": "node scripts/quality/check-doc-links.mjs",
     "openspec:validate": "openspec validate --all --strict --no-interactive",
-    "test:harness": "node --test scripts/quality/harness.test.mjs",
+    "test:harness": "node --test scripts/quality/harness.test.mjs scripts/capture-background-deployment.test.mjs",
     "verify:harness": "node scripts/quality/run-gate.mjs --harness-only",
     "verify:pr": "node scripts/quality/run-gate.mjs"
   },

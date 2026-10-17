@@ -4,7 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 
-const LOCAL_FUNCTIONS_BASE_URL = "http://localhost:8888";
+import { resolveBackgroundFunctionOrigin } from "../../../src/lib/server/background-function-origin";
 
 function getRequiredEnv(name: string) {
   const value = process.env[name];
@@ -130,12 +130,7 @@ export function resolveAiModel(modelName: string) {
 }
 
 export function getFunctionsBaseUrl() {
-  const candidate = getOptionalEnv("URL") || getOptionalEnv("DEPLOY_URL");
-  if (!candidate) {
-    return LOCAL_FUNCTIONS_BASE_URL;
-  }
-
-  return candidate.startsWith("http") ? candidate : `https://${candidate}`;
+  return resolveBackgroundFunctionOrigin(process.env);
 }
 
 export interface ModelSettingResult {

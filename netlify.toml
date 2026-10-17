@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build -w apps/web"
+  command = "node scripts/capture-background-deployment.mjs && npm run build -w apps/web"
   publish = "apps/web/.next"
 
 [dev]

@@ -11,12 +11,10 @@ import {
 } from "@/lib/server/tenant-context";
 import { REVIEWER_ROLE_SET } from "@/lib/pipeline-constants";
 import {
-  getAppUrl,
-  getDeploymentSiteUrl,
   getSupabaseServiceRoleKey,
   getSupabaseUrl,
-  isProductionEnvironment,
 } from "@/lib/server/env";
+import { resolveBackgroundFunctionOrigin } from "./background-function-origin";
 
 interface AuthenticatedUserLike {
   id: string;
@@ -106,18 +104,7 @@ export async function getAccessToken(supabase: SupabaseAuthLike) {
 }
 
 export function getBackgroundFunctionsBaseUrl() {
-  const candidate = getDeploymentSiteUrl(getAppUrl() || "http://localhost:8888");
-
-  if (candidate) {
-    const normalized = candidate.replace(/\/$/, "");
-    if (!isProductionEnvironment() && normalized.includes("localhost:3000")) {
-      return "http://localhost:8888";
-    }
-
-    return normalized.startsWith("http") ? normalized : `https://${normalized}`;
-  }
-
-  return "http://localhost:8888";
+  return resolveBackgroundFunctionOrigin(process.env);
 }
 
 export async function assertArtifactOrgAccess(
