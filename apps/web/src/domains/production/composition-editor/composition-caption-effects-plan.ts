@@ -1,6 +1,6 @@
 import type { CompositionClip, CompositionEditorDocument } from "./composition-document.types";
 import type { CompositionCaptionCue } from "./composition-text-layer.types";
-import { CAPTION_EFFECT_LIMITS, CAPTION_EFFECT_METRICS } from "./composition-caption-effects.types";
+import { CAPTION_EFFECT_COLORS, CAPTION_EFFECT_LIMITS, CAPTION_EFFECT_METRICS } from "./composition-caption-effects.types";
 import { captionHasEffects, resolveCaptionEffects, resolveCaptionWordRanges } from "./composition-caption-effects.service";
 
 export type CaptionEffectValues = { opacity?: number; x?: number; y?: number; scale?: number; color?: string; backgroundColor?: string };
@@ -60,7 +60,10 @@ export function buildCaptionEffectPlanForClip(clip: CompositionClip): CaptionEff
       const wordStart = clip.startSeconds + part.word.startSeconds;
       const wordEnd = clip.startSeconds + part.word.endSeconds;
       const active = { ...baseline, opacity: 1,
-        color: karaoke === "COLOR" ? captionColorWithOpacity(effects.activeColor, source.style.textOpacity) : baseColor };
+        color: karaoke === "COLOR" || karaoke === "BACKGROUND" ? captionColorWithOpacity(effects.activeColor, source.style.textOpacity) : baseColor,
+        backgroundColor: karaoke === "BACKGROUND"
+          ? captionColorWithOpacity(effects.activeBackgroundColor || CAPTION_EFFECT_COLORS.highlightBackground, 1)
+          : baseline.backgroundColor };
       steps.push({ targetId, at: wordStart, duration: 0, from: active, to: active, ease: "none" });
       if (effects.pulse) {
         const halfDuration = (wordEnd - wordStart) / 2;

@@ -10,6 +10,7 @@
     "lint:report": "eslint .",
     "test:composition-native-fragments": "tsc -p tsconfig.hyperframes-test.json && node --test .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-native-fragment.service.test.js",
     "test:composition-caption-effects": "tsc -p tsconfig.hyperframes-test.json && node --test .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-caption-effects.test.js",
+    "test:composition-caption-presets": "tsc -p tsconfig.hyperframes-test.json && node --test .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-caption-animation-presets.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-caption-effects.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-native-overlay.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-transcript-caption.service.test.js",
     "qa:composition-caption-effects": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-caption-effects-smoke.js",
     "qa:composition-caption-layout": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-caption-layout-smoke.js",
     "test:syllabus-import": "tsc -p tsconfig.syllabus-duration-test.json && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/syllabus-import.test.js",

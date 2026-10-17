@@ -123,6 +123,16 @@ service role, SQL manual o un bug del backend.
 
 ## 6. Contrato del preview
 
+- Los presets de animación Educativo, Lectura guiada y Social aplican settings de
+  efectos a la capa sin modificar texto, tiempos o personalizaciones por frase.
+  Los presets visuales permanecen independientes. Social usa karaoke `BACKGROUND`
+  con texto/fondo activos y posiciones estables; `activeBackgroundColor` es opcional
+  y validado como hexadecimal. Los lectores previos a esta ampliación no conocen
+  el nuevo enum: desplegar juntos servidor, compilador y UI, sin degradar el lector
+  después de persistirlo. No se requiere SQL. Los bloques generados desde voz ya
+  son breves; no se resegmentan automáticamente captions manuales o importados.
+  Pruebas: `test:composition-caption-presets` y `qa:composition-caption-layout`
+  del workspace web.
 - En captions sin efectos, la alineación vertical pertenece al contenedor flex;
   el texto y los spans sincronizados se agrupan en un bloque de párrafo interior.
   Las palabras conservan sus IDs y tiempos y se distribuyen en flujo inline,
@@ -350,6 +360,8 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-10-17: añadidos presets de animación específicos y resaltado sincronizado
+  de fondo para Social, conservando posición, énfasis, timestamps y lectura V1.
 - 2026-10-16: corregidos captions sincronizados sin efectos que apilaban cada
   palabra como un flex item en columna. El bloque de párrafo conserva karaoke,
   alineación, Unicode y escapes; no requiere migración de documentos.

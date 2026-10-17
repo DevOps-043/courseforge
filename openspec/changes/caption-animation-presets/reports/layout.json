@@ -1,0 +1,612 @@
+[
+  {
+    "target": "INTERACTIVE_PREVIEW",
+    "profile": "ORIGINAL",
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 217.40625,
+          "width": 78.203125,
+          "height": 45,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 217.40625,
+          "width": 128.03125,
+          "height": 45,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 217.40625,
+          "width": 85.0625,
+          "height": 45,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 217.40625,
+          "width": 109.234375,
+          "height": 45,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 217.40625,
+          "width": 294.8125,
+          "height": 45,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  },
+  {
+    "target": "HYPERFRAMES_RENDER",
+    "profile": "ORIGINAL",
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 217.40625,
+          "width": 78.203125,
+          "height": 45,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 217.40625,
+          "width": 128.03125,
+          "height": 45,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 217.40625,
+          "width": 85.0625,
+          "height": 45,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 217.40625,
+          "width": 109.234375,
+          "height": 45,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 217.40625,
+          "width": 294.8125,
+          "height": 45,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  },
+  {
+    "target": "INTERACTIVE_PREVIEW",
+    "profile": "EFFECTS",
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 222.40625,
+          "width": 78.203125,
+          "height": 35.1875,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 222.40625,
+          "width": 128.03125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(250, 204, 21)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 222.40625,
+          "width": 85.0625,
+          "height": 35.1875,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 222.40625,
+          "width": 109.234375,
+          "height": 35.1875,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 222.40625,
+          "width": 294.8125,
+          "height": 35.1875,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  },
+  {
+    "target": "HYPERFRAMES_RENDER",
+    "profile": "EFFECTS",
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 222.40625,
+          "width": 78.203125,
+          "height": 35.1875,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 222.40625,
+          "width": 128.03125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(250, 204, 21)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 222.40625,
+          "width": 85.0625,
+          "height": 35.1875,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 222.40625,
+          "width": 109.234375,
+          "height": 35.1875,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 222.40625,
+          "width": 294.8125,
+          "height": 35.1875,
+          "opacity": "0.55",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  },
+  {
+    "target": "INTERACTIVE_PREVIEW",
+    "profile": "EDUCATIONAL",
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 222.40625,
+          "width": 78.203125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 222.40625,
+          "width": 128.03125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 222.40625,
+          "width": 85.0625,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 222.40625,
+          "width": 109.234375,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 222.40625,
+          "width": 294.8125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  },
+  {
+    "target": "HYPERFRAMES_RENDER",
+    "profile": "EDUCATIONAL",
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 222.40625,
+          "width": 78.203125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 222.40625,
+          "width": 128.03125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 222.40625,
+          "width": 85.0625,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 222.40625,
+          "width": 109.234375,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 222.40625,
+          "width": 294.8125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  },
+  {
+    "target": "INTERACTIVE_PREVIEW",
+    "profile": "GUIDED_READING",
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 222.40625,
+          "width": 78.203125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 222.40625,
+          "width": 128.03125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(250, 204, 21)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 222.40625,
+          "width": 85.0625,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 222.40625,
+          "width": 109.234375,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 222.40625,
+          "width": 294.8125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  },
+  {
+    "target": "HYPERFRAMES_RENDER",
+    "profile": "GUIDED_READING",
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 222.40625,
+          "width": 78.203125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 222.40625,
+          "width": 128.03125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(250, 204, 21)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 222.40625,
+          "width": 85.0625,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 222.40625,
+          "width": 109.234375,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 222.40625,
+          "width": 294.8125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  },
+  {
+    "target": "INTERACTIVE_PREVIEW",
+    "profile": "SOCIAL",
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 222.40625,
+          "width": 78.203125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 222.40625,
+          "width": 128.03125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(15, 23, 42)",
+          "background": "rgb(250, 204, 21)"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 222.40625,
+          "width": 85.0625,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 222.40625,
+          "width": 109.234375,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 222.40625,
+          "width": 294.8125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  },
+  {
+    "target": "HYPERFRAMES_RENDER",
+    "profile": "SOCIAL",
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 222.40625,
+          "width": 78.203125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 222.40625,
+          "width": 128.03125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(15, 23, 42)",
+          "background": "rgb(250, 204, 21)"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 222.40625,
+          "width": 85.0625,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 222.40625,
+          "width": 109.234375,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 222.40625,
+          "width": 294.8125,
+          "height": 35.1875,
+          "opacity": "1",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgba(0, 0, 0, 0)"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  }
+]

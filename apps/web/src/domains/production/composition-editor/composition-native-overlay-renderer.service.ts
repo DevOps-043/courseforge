@@ -37,7 +37,8 @@ function renderCaptionEffectsText(clip: CompositionClip, cue: Extract<Compositio
   return buildCaptionTextParts(cue).map((part, index) => {
     const color = captionColorWithOpacity(part.emphasis?.color || source.style.color, source.style.textOpacity);
     const opacity = part.word && effects.karaoke !== "NONE" ? (effects.karaoke === "LEGACY" ? CAPTION_EFFECT_METRICS.legacyInactiveOpacity : effects.inactiveOpacity) : 1;
-    const css = `color:${color};opacity:${opacity};background-color:${part.emphasis?.backgroundColor || "transparent"};${part.word ? "display:inline-block;transform-origin:50% 50%;" : ""}`;
+    const highlightShape = effects.karaoke === "BACKGROUND" && part.word ? `border-radius:${CAPTION_EFFECT_METRICS.highlightRadiusPixels}px;` : "";
+    const css = `color:${color};opacity:${opacity};background-color:${part.emphasis?.backgroundColor || "transparent"};${highlightShape}${part.word ? "display:inline-block;transform-origin:50% 50%;" : ""}`;
     return `<span id="${escapeAttribute(captionPartElementId(clip.id, cue.id, index))}" style="${css}">${escapeHtml(part.text)}</span>`;
   }).join("");
 }
