@@ -18,11 +18,12 @@ interface UseCompositionPresetControllerOptions {
   isSaveInFlight: () => boolean;
   onDocumentApplied: (payload: CompositionDocumentPayload) => void;
   onError: (message: string | null) => void;
+  onPreviewDismissed: () => void;
   onSavingChange: (saving: boolean) => void;
   saving: boolean;
 }
 
-export function useCompositionPresetController({ agentProposalActive, draftId, getCurrentPayload, isSaveInFlight, onDocumentApplied, onError, onSavingChange, saving }: UseCompositionPresetControllerOptions) {
+export function useCompositionPresetController({ agentProposalActive, draftId, getCurrentPayload, isSaveInFlight, onDocumentApplied, onError, onPreviewDismissed, onSavingChange, saving }: UseCompositionPresetControllerOptions) {
   const [presetPanelOpen, setPresetPanelOpen] = useState(false);
   const [presetEntries, setPresetEntries] = useState<CompositionPresetCatalogEntry[]>([]);
   const [presetCatalogLoading, setPresetCatalogLoading] = useState(false);
@@ -125,14 +126,15 @@ export function useCompositionPresetController({ agentProposalActive, draftId, g
 
   const dismissCompositionPresetPreview = useCallback(async () => {
     const preview = presetPreview;
+    if (!preview || presetBusy || saving || isSaveInFlight()) return;
+    onPreviewDismissed();
     setPresetPreview(null);
-    if (!preview) return;
     try {
       await fetch(`/api/production/hyperframes/drafts/${draftId}/preset-applications/${preview.applicationId}`, { method: "DELETE" });
     } catch {
       // The durable preview expires and cannot mutate the document without its unguessable id.
     }
-  }, [draftId, presetPreview]);
+  }, [draftId, isSaveInFlight, onPreviewDismissed, presetBusy, presetPreview, saving]);
 
   const undoLastCompositionPreset = useCallback(async () => {
     const applied = lastAppliedPreset;

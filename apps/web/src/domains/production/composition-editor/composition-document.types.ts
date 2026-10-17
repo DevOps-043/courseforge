@@ -1,4 +1,10 @@
 import { z } from "zod";
+import { buildCaptionEffectPlan } from "./composition-caption-effects-plan";
+import { compositionVolumeEnvelopeSchema } from "./composition-volume-envelope";
+import { compositionDeckFontReferencesSchema } from "./composition-font-references";
+import { HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT, htmlEditingReferencesSchema } from "./html-editing/html-editing-reference.contract";
+import { COMPOSITION_VIDEO_PLAYBACK_RATES, videoRateSourceWindowFits } from "./composition-video-rate";
+import { COMPOSITION_VIDEO_FREEZE_TOLERANCE_SECONDS, COMPOSITION_VIDEO_MAX_FREEZE_SECONDS, resolveVideoFreezeTailSeconds } from "./composition-video-freeze";
 import { ANIMATED_DECK_APPEARANCES } from "../animated-deck/animated-deck-appearance.service";
 import {
   COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS,
@@ -148,6 +154,7 @@ export const compositionAudioMixSchema = z.object({
 });
 
 const deckSourceSchema = z.object({
+  fontBindings: compositionDeckFontReferencesSchema.optional(),
     htmlAssetId: z.string().uuid().optional(),
     sourceSlideIndex: z.number().int().min(0).max(1000).optional(),
     sourceWidth: z.number().int().positive().max(8192).optional(),
@@ -193,6 +200,8 @@ const soundEffectAssetSourceSchema = z.object({
 }).strict();
 
 export const compositionClipSchema = z.object({
+  /** Source-anchored gain points survive trim/split without destructive audio edits. */
+  volumeEnvelope: compositionVolumeEnvelopeSchema.optional(),
   colorGrading: compositionColorGradingSchema.optional(),
   sceneId: z.string().min(1).max(160).optional(),
   crop: compositionVisualCropSchema.optional(),
@@ -218,6 +227,10 @@ export const compositionClipSchema = z.object({
   ]),
   sourceDurationSeconds: sourceMediaSecondsSchema.positive().optional(),
   sourceOffsetSeconds: sourceMediaSecondsSchema.optional(),
+  /** Source seconds consumed per timeline second; only bounded silent video supports this. */
+  playbackRate: z.union(COMPOSITION_VIDEO_PLAYBACK_RATES.map((rate) => z.literal(rate))).optional(),
+  /** Seconds for which a non-looping silent video holds its final source frame. */
+  freezeTailSeconds: z.number().finite().positive().max(COMPOSITION_VIDEO_MAX_FREEZE_SECONDS).optional(),
   startSeconds: boundedSecondsSchema,
   timingSource: z.enum(["ESTIMATED", "USER_EDITED"]),
   trackId: editorIdSchema,
@@ -245,6 +258,36 @@ export const compositionClipSchema = z.object({
     && (clip.sourceOffsetSeconds || 0) + clip.durationSeconds > clip.sourceDurationSeconds + 0.001
   ) {
     context.addIssue({ code: "custom", message: "El recorte de audio excede la duración disponible del asset." });
+  }
+  if (clip.playbackRate !== undefined && (
+    clip.kind !== "VIDEO"
+    || clip.source.type !== "PRODUCTION_ASSET"
+    || clip.source.hasAudio !== false
+    || clip.sourceDurationSeconds === undefined
+    || !videoRateSourceWindowFits({
+      clipDurationSeconds: clip.durationSeconds,
+      playbackRate: clip.playbackRate,
+      sourceDurationSeconds: clip.sourceDurationSeconds || 0,
+      sourceOffsetSeconds: clip.sourceOffsetSeconds || 0,
+    })
+  )) {
+    context.addIssue({ code: "custom", message: "La velocidad requiere video sin audio y un rango de fuente suficiente." });
+  }
+  const resolvedFreezeTailSeconds = clip.sourceDurationSeconds === undefined ? null : resolveVideoFreezeTailSeconds({
+    clipDurationSeconds: clip.durationSeconds,
+    sourceDurationSeconds: clip.sourceDurationSeconds,
+    sourceOffsetSeconds: clip.sourceOffsetSeconds || 0,
+  });
+  if (clip.freezeTailSeconds !== undefined && (
+    clip.kind !== "VIDEO"
+    || clip.source.type !== "PRODUCTION_ASSET"
+    || clip.source.hasAudio !== false
+    || clip.playbackRate !== undefined
+    || clip.sourceDurationSeconds === undefined
+    || resolvedFreezeTailSeconds === null
+    || Math.abs(resolvedFreezeTailSeconds - clip.freezeTailSeconds) > COMPOSITION_VIDEO_FREEZE_TOLERANCE_SECONDS
+  )) {
+    context.addIssue({ code: "custom", message: "La congelación requiere el último frame de un video sin audio y una duración de cola válida." });
   }
   if (clip.kind === "DECK_SLIDE" && clip.source.type !== "DECK_SLIDE") {
     context.addIssue({ code: "custom", message: "Un clip de deck debe conservar su fuente HTML." });
@@ -316,7 +359,8 @@ export const compositionEditorDocumentSchema = z.object({
   }).strict(),
   clips: z.array(compositionClipSchema).max(500),
   deckStyles: deckStylesSchema.nullable(),
-  format: z.enum([LEGACY_COMPOSITION_DOCUMENT_FORMAT, COMPOSITION_DOCUMENT_FORMAT, NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT]),
+  format: z.enum([LEGACY_COMPOSITION_DOCUMENT_FORMAT, COMPOSITION_DOCUMENT_FORMAT, NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT, HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT]),
+  htmlEditing: htmlEditingReferencesSchema.optional(),
   groups: z.array(compositionGroupSchema).max(250).optional(),
   motion: compositionMotionSchema,
   /** Optional for backward compatibility; new transition edits initialize V1. */
@@ -328,14 +372,26 @@ export const compositionEditorDocumentSchema = z.object({
     title: z.string().min(1).max(100),
   }).strict(),
 }).strict().superRefine((document, context) => {
+  try { buildCaptionEffectPlan(document); }
+  catch { context.addIssue({ code: "custom", message: "La composición excede el presupuesto de efectos de captions. Reduce las frases animadas o divide la composición." }); }
   if (document.sourceInsertionMode !== "MANUAL" && (!document.clips.length || !document.tracks.length)) {
     context.addIssue({ code: "custom", message: "La composición debe conservar al menos un clip y una pista." });
   }
   const hasNativeText = document.clips.some((clip) => clip.kind === "TEXT" || clip.kind === "CAPTION");
-  if (hasNativeText && document.format !== NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT) {
+  if (hasNativeText && document.format !== NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT && document.format !== HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT) {
     context.addIssue({ code: "custom", message: "Las capas de texto y captions requieren el contrato courseforge-composition-v3." });
   }
+  if (document.htmlEditing && document.format !== HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT) {
+    context.addIssue({ code: "custom", message: "Las revisiones HTML requieren el contrato courseforge-composition-v4." });
+  }
+  for (const reference of document.htmlEditing?.items || []) {
+    const clip = document.clips.find(candidate => candidate.id === reference.clipId);
+    if (!clip || clip.kind !== "DECK_SLIDE" || clip.source.type !== "DECK_SLIDE") {
+      context.addIssue({ code: "custom", message: "La revisión HTML debe pertenecer a un clip de deck existente." });
+    }
+  }
   const trackIds = new Set(document.tracks.map((track) => track.id));
+  const tracksById = new Map(document.tracks.map((track) => [track.id, track]));
   const clipIds = new Set<string>();
   const hfIds = new Set<string>();
   for (const clip of document.clips) {
@@ -363,6 +419,26 @@ export const compositionEditorDocumentSchema = z.object({
     if (hfIds.has(clip.hfId)) context.addIssue({ code: "custom", message: `El id visual ${clip.hfId} está duplicado.` });
     clipIds.add(clip.id);
     hfIds.add(clip.hfId);
+    if (clip.playbackRate !== undefined && (
+      clip.sceneId !== undefined
+      || (tracksById.get(clip.trackId)?.semanticRole !== "BROLL"
+        && tracksById.get(clip.trackId)?.semanticRole !== "VISUAL")
+    )) {
+      context.addIssue({ code: "custom", message: `El clip ${clip.id} con velocidad ajustada debe ser B-roll independiente.` });
+    }
+    if (clip.playbackRate !== undefined && document.transitions?.items.some((transition) => (
+      transition.fromClipId === clip.id || transition.toClipId === clip.id
+    ))) {
+      context.addIssue({ code: "custom", message: `El clip ${clip.id} con velocidad ajustada no admite transiciones.` });
+    }
+    if (clip.freezeTailSeconds !== undefined && (
+      clip.sceneId !== undefined
+      || (tracksById.get(clip.trackId)?.semanticRole !== "BROLL"
+        && tracksById.get(clip.trackId)?.semanticRole !== "VISUAL")
+      || document.transitions?.items.some((transition) => transition.fromClipId === clip.id || transition.toClipId === clip.id)
+    )) {
+      context.addIssue({ code: "custom", message: `El clip ${clip.id} congelado debe ser B-roll independiente y sin transiciones.` });
+    }
   }
   const groupIds = new Set<string>();
   const groupedClipIds = new Set<string>();

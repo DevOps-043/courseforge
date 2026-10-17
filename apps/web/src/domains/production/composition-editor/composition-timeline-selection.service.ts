@@ -20,6 +20,7 @@ export interface CompositionTimelineSelectionSyncDecision {
 export interface CompositionPreviewSelectionEventInput {
   clips: ReadonlyArray<CompositionTimelineSelectionClip>;
   hfId: string | null;
+  hfIds?: ReadonlyArray<string>;
   origin: CompositionPreviewSelectionOrigin;
 }
 
@@ -27,6 +28,7 @@ export interface CompositionPreviewSelectionEventDecision {
   nextClipIds: string[] | null;
   shouldClearGroup: boolean;
   shouldOpenProperties: boolean;
+  shouldOpenSelection: boolean;
 }
 
 /**
@@ -37,17 +39,22 @@ export interface CompositionPreviewSelectionEventDecision {
 export function resolveCompositionPreviewSelectionEvent({
   clips,
   hfId,
+  hfIds,
   origin,
 }: CompositionPreviewSelectionEventInput): CompositionPreviewSelectionEventDecision {
   if (origin === "PARENT") {
-    return { nextClipIds: null, shouldClearGroup: false, shouldOpenProperties: false };
+    return { nextClipIds: null, shouldClearGroup: false, shouldOpenProperties: false, shouldOpenSelection: false };
   }
 
+  const requestedHfIds = hfIds === undefined ? (hfId ? [hfId] : []) : [...new Set(hfIds)];
+  const requestedHfIdSet = new Set(requestedHfIds);
+  const nextClipIds = clips.filter((clip) => requestedHfIdSet.has(clip.hfId)).map((clip) => clip.id);
   const selectedClip = hfId ? clips.find((clip) => clip.hfId === hfId) : null;
   return {
-    nextClipIds: selectedClip ? [selectedClip.id] : [],
+    nextClipIds,
     shouldClearGroup: true,
-    shouldOpenProperties: Boolean(selectedClip),
+    shouldOpenProperties: Boolean(selectedClip) && nextClipIds.length === 1,
+    shouldOpenSelection: nextClipIds.length > 1,
   };
 }
 

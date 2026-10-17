@@ -38,6 +38,30 @@ export const INITIAL_COMPOSITION_PREVIEW_SYNC_STATE: CompositionPreviewSyncState
   renderedDocumentHash: null,
 };
 
+export function shouldReportCompositionPreviewReadyTimeout(params: {
+  expectedDocumentHash: string;
+  previewReady: boolean;
+  state: CompositionPreviewSyncState;
+}) {
+  return !params.previewReady
+    && params.state.phase === "VISUAL_SYNC_PENDING"
+    && params.state.pendingRenderDocumentHash === params.expectedDocumentHash;
+}
+
+/** A completed iframe navigation without a runtime signal can fail before the media-ready timeout. */
+export function shouldReportCompositionPreviewRuntimeHandshakeFailure(params: {
+  expectedDocumentHash: string;
+  expectedGeneration: number;
+  frameGeneration: number | null;
+  observedRuntimeGeneration: number | null;
+  previewReady: boolean;
+  state: CompositionPreviewSyncState;
+}) {
+  return params.frameGeneration === params.expectedGeneration
+    && params.observedRuntimeGeneration !== params.expectedGeneration
+    && shouldReportCompositionPreviewReadyTimeout(params);
+}
+
 export function transitionCompositionPreviewSyncState(
   state: CompositionPreviewSyncState,
   event: CompositionPreviewSyncEvent,
@@ -63,6 +87,7 @@ export function transitionCompositionPreviewSyncState(
     case "PREVIEW_RELOAD_STARTED":
       return { ...state, pendingRenderDocumentHash: event.documentHash, phase: "VISUAL_SYNC_PENDING" };
     case "PREVIEW_READY":
+      if (state.pendingRenderDocumentHash !== event.documentHash) return state;
       return {
         ...state,
         pendingRenderDocumentHash: null,

@@ -88,8 +88,13 @@ CREATE TABLE public.syllabus (
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   upstream_dirty boolean DEFAULT false,
   upstream_dirty_source text,
+  input_mode text NOT NULL DEFAULT 'IDEA'::text CHECK (input_mode = ANY (ARRAY['IDEA'::text, 'DOCUMENT_BASED'::text, 'PROVIDED_SYLLABUS'::text])),
+  content_version integer NOT NULL DEFAULT 0,
+  active_import_id uuid,
   CONSTRAINT syllabus_pkey PRIMARY KEY (id),
-  CONSTRAINT syllabus_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
+  CONSTRAINT syllabus_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id),
+  CONSTRAINT syllabus_active_import_fk FOREIGN KEY (active_import_id) REFERENCES public.syllabus_imports(id),
+  CONSTRAINT syllabus_active_import_fk FOREIGN KEY (artifact_id) REFERENCES public.syllabus_imports(artifact_id)
 );
 CREATE TABLE public.instructional_plans (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -107,6 +112,7 @@ CREATE TABLE public.instructional_plans (
   upstream_dirty boolean DEFAULT false,
   upstream_dirty_source text,
   last_error jsonb,
+  syllabus_content_version integer,
   CONSTRAINT instructional_plans_pkey PRIMARY KEY (id),
   CONSTRAINT instructional_plans_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
 );
@@ -133,13 +139,14 @@ CREATE TABLE public.system_prompts (
 CREATE TABLE public.curation (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   artifact_id uuid NOT NULL UNIQUE,
-  attempt_number integer NOT NULL DEFAULT 1 CHECK (attempt_number = ANY (ARRAY[1, 2])),
+  attempt_number integer NOT NULL DEFAULT 1 CHECK (attempt_number >= 1),
   state text NOT NULL DEFAULT 'PHASE2_DRAFT'::text,
   qa_decision jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   upstream_dirty boolean DEFAULT false,
   upstream_dirty_source text,
+  syllabus_content_version integer,
   CONSTRAINT curation_pkey PRIMARY KEY (id),
   CONSTRAINT curation_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
 );
@@ -223,6 +230,7 @@ CREATE TABLE public.materials (
   dod jsonb DEFAULT '{"checklist": [], "automatic_checks": []}'::jsonb,
   upstream_dirty boolean DEFAULT false,
   upstream_dirty_source text,
+  syllabus_content_version integer,
   CONSTRAINT materials_pkey PRIMARY KEY (id),
   CONSTRAINT materials_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
 );
@@ -281,6 +289,16 @@ CREATE TABLE public.publication_requests (
   selected_lessons jsonb,
   upstream_dirty boolean DEFAULT false,
   upstream_dirty_source text,
+  outbox_payload jsonb,
+  outbox_payload_hash text,
+  idempotency_key text,
+  publish_step text,
+  publish_attempt integer NOT NULL DEFAULT 0 CHECK (publish_attempt >= 0),
+  publish_started_at timestamp with time zone,
+  publish_heartbeat_at timestamp with time zone,
+  publish_lease_expires_at timestamp with time zone,
+  publish_last_error text,
+  syllabus_content_version integer,
   CONSTRAINT publication_requests_pkey PRIMARY KEY (id),
   CONSTRAINT publication_requests_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id)
 );
@@ -385,6 +403,9 @@ CREATE TABLE public.production_jobs (
   lease_expires_at timestamp with time zone,
   assigned_strategy text NOT NULL DEFAULT 'AUTO'::text CHECK (assigned_strategy = ANY (ARRAY['AUTO'::text, 'MANUAL'::text, 'LEGACY'::text])),
   render_batch_id uuid,
+  audio_processing_lease_token uuid,
+  audio_processing_lease_expires_at timestamp with time zone,
+  audio_processing_attempts integer NOT NULL DEFAULT 0,
   CONSTRAINT production_jobs_pkey PRIMARY KEY (id),
   CONSTRAINT production_jobs_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id),
   CONSTRAINT production_jobs_material_lesson_id_fkey FOREIGN KEY (material_lesson_id) REFERENCES public.material_lessons(id),
@@ -885,12 +906,13 @@ CREATE TABLE public.heygen_workspace_connections (
   default_callback_url text,
   webhook_endpoint_id text,
   webhook_secret_ref text,
-  last_sync_status text NOT NULL DEFAULT 'NEVER_SYNCED'::text CHECK (last_sync_status = ANY (ARRAY['NEVER_SYNCED'::text, 'SUCCEEDED'::text, 'FAILED'::text])),
+  last_sync_status text NOT NULL DEFAULT 'NEVER_SYNCED'::text CHECK (last_sync_status = ANY (ARRAY['NEVER_SYNCED'::text, 'RUNNING'::text, 'SUCCEEDED'::text, 'PARTIAL'::text, 'FAILED'::text])),
   last_sync_error text,
   last_synced_at timestamp with time zone,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  last_sync_request_id text,
   CONSTRAINT heygen_workspace_connections_pkey PRIMARY KEY (id),
   CONSTRAINT heygen_workspace_connections_organization_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
 );
@@ -912,6 +934,10 @@ CREATE TABLE public.heygen_avatar_presets (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   archived_at timestamp with time zone,
+  provider_state text NOT NULL DEFAULT 'AVAILABLE'::text CHECK (provider_state = ANY (ARRAY['AVAILABLE'::text, 'PROCESSING'::text, 'FAILED'::text, 'MISSING'::text])),
+  ownership text,
+  last_seen_at timestamp with time zone,
+  missing_since timestamp with time zone,
   CONSTRAINT heygen_avatar_presets_pkey PRIMARY KEY (id),
   CONSTRAINT heygen_avatar_presets_organization_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
 );
@@ -930,6 +956,10 @@ CREATE TABLE public.heygen_voice_presets (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   archived_at timestamp with time zone,
+  provider_state text NOT NULL DEFAULT 'AVAILABLE'::text CHECK (provider_state = ANY (ARRAY['AVAILABLE'::text, 'FAILED'::text, 'MISSING'::text])),
+  ownership text,
+  last_seen_at timestamp with time zone,
+  missing_since timestamp with time zone,
   CONSTRAINT heygen_voice_presets_pkey PRIMARY KEY (id),
   CONSTRAINT heygen_voice_presets_organization_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
 );
@@ -1511,4 +1541,190 @@ CREATE TABLE public.video_composition_sound_effect_assets (
   CONSTRAINT video_composition_sound_effect_ass_composition_revision_id_fkey FOREIGN KEY (composition_revision_id) REFERENCES public.video_composition_revisions(id),
   CONSTRAINT video_composition_sound_effect_asset_sound_effect_asset_id_fkey FOREIGN KEY (sound_effect_asset_id) REFERENCES public.sound_effect_assets(id),
   CONSTRAINT video_composition_sound_effect_assets_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
+);
+CREATE TABLE public.background_request_nonces (
+  nonce text NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  consumed_at timestamp with time zone NOT NULL DEFAULT clock_timestamp(),
+  CONSTRAINT background_request_nonces_pkey PRIMARY KEY (nonce)
+);
+CREATE TABLE public.api_rate_limits (
+  rate_key text NOT NULL,
+  window_started_at timestamp with time zone NOT NULL DEFAULT now(),
+  request_count integer NOT NULL DEFAULT 0 CHECK (request_count >= 0),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT api_rate_limits_pkey PRIMARY KEY (rate_key)
+);
+CREATE TABLE public.ai_usage_events (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  event_key text NOT NULL UNIQUE,
+  provider_request_id text,
+  provider text NOT NULL CHECK (provider = ANY (ARRAY['openai'::text, 'gemini'::text])),
+  model text NOT NULL,
+  pipeline_step text NOT NULL,
+  operation text NOT NULL,
+  organization_id uuid,
+  artifact_id uuid,
+  lesson_id text,
+  run_id text,
+  user_id uuid,
+  attempt integer NOT NULL DEFAULT 1 CHECK (attempt >= 1),
+  status text NOT NULL CHECK (status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'incomplete'::text])),
+  input_tokens bigint NOT NULL DEFAULT 0 CHECK (input_tokens >= 0),
+  cached_input_tokens bigint NOT NULL DEFAULT 0 CHECK (cached_input_tokens >= 0),
+  output_tokens bigint NOT NULL DEFAULT 0 CHECK (output_tokens >= 0),
+  reasoning_tokens bigint NOT NULL DEFAULT 0 CHECK (reasoning_tokens >= 0),
+  total_tokens bigint NOT NULL DEFAULT 0 CHECK (total_tokens >= 0),
+  web_search_calls integer NOT NULL DEFAULT 0 CHECK (web_search_calls >= 0),
+  latency_ms integer CHECK (latency_ms IS NULL OR latency_ms >= 0),
+  estimated_cost_usd numeric,
+  pricing_version text,
+  error_code text,
+  occurred_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ai_usage_events_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.ai_pricing_versions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  version text NOT NULL,
+  provider text NOT NULL CHECK (provider = ANY (ARRAY['openai'::text, 'gemini'::text])),
+  model_pattern text NOT NULL,
+  input_per_million_usd numeric,
+  cached_input_per_million_usd numeric,
+  output_per_million_usd numeric,
+  web_search_call_usd numeric,
+  effective_from timestamp with time zone NOT NULL,
+  effective_to timestamp with time zone,
+  source_url text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ai_pricing_versions_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.ai_provider_cost_daily (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  provider text NOT NULL CHECK (provider = ANY (ARRAY['openai'::text, 'gemini'::text])),
+  usage_date date NOT NULL,
+  project_id text,
+  line_item text,
+  amount_usd numeric NOT NULL DEFAULT 0,
+  source text NOT NULL,
+  synced_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ai_provider_cost_daily_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.ai_usage_reconciliation (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  provider text NOT NULL CHECK (provider = ANY (ARRAY['openai'::text, 'gemini'::text])),
+  usage_date date NOT NULL,
+  local_input_tokens bigint NOT NULL DEFAULT 0,
+  local_output_tokens bigint NOT NULL DEFAULT 0,
+  provider_input_tokens bigint,
+  provider_output_tokens bigint,
+  local_estimated_cost_usd numeric,
+  provider_actual_cost_usd numeric,
+  variance_percent numeric,
+  reconciled_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ai_usage_reconciliation_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.heygen_provider_assets (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL,
+  heygen_asset_id text NOT NULL,
+  name text,
+  mime_type text,
+  size_bytes bigint CHECK (size_bytes IS NULL OR size_bytes >= 0),
+  provider_url text,
+  provider_state text NOT NULL DEFAULT 'AVAILABLE'::text CHECK (provider_state = ANY (ARRAY['AVAILABLE'::text, 'PROCESSING'::text, 'FAILED'::text, 'MISSING'::text])),
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  last_seen_at timestamp with time zone,
+  missing_since timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT heygen_provider_assets_pkey PRIMARY KEY (id),
+  CONSTRAINT heygen_provider_assets_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
+);
+CREATE TABLE public.heygen_catalog_sync_runs (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL,
+  status text NOT NULL DEFAULT 'RUNNING'::text CHECK (status = ANY (ARRAY['RUNNING'::text, 'SUCCEEDED'::text, 'PARTIAL'::text, 'FAILED'::text])),
+  request_id text,
+  account_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+  avatar_count integer NOT NULL DEFAULT 0,
+  voice_count integer NOT NULL DEFAULT 0,
+  asset_count integer NOT NULL DEFAULT 0,
+  missing_avatar_count integer NOT NULL DEFAULT 0,
+  missing_voice_count integer NOT NULL DEFAULT 0,
+  missing_asset_count integer NOT NULL DEFAULT 0,
+  error_message text,
+  started_at timestamp with time zone NOT NULL DEFAULT now(),
+  completed_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT heygen_catalog_sync_runs_pkey PRIMARY KEY (id),
+  CONSTRAINT heygen_catalog_sync_runs_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
+);
+CREATE TABLE public.asset_access_audit_events (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL,
+  actor_id uuid,
+  event_type text NOT NULL CHECK (event_type = ANY (ARRAY['DOWNLOAD'::text, 'EXPORT_JSON'::text, 'EXPORT_ZIP'::text])),
+  resource_type text NOT NULL CHECK (resource_type = ANY (ARRAY['MATERIAL_COMPONENT'::text, 'PRODUCTION_ASSET'::text, 'SOUND_EFFECT'::text])),
+  resource_id text NOT NULL CHECK (char_length(resource_id) >= 1 AND char_length(resource_id) <= 128),
+  request_id text NOT NULL CHECK (char_length(request_id) >= 1 AND char_length(request_id) <= 128),
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT asset_access_audit_events_pkey PRIMARY KEY (id),
+  CONSTRAINT asset_access_audit_events_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
+);
+CREATE TABLE public.syllabus_source_documents (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  artifact_id uuid NOT NULL,
+  created_by uuid,
+  filename text NOT NULL CHECK (length(filename) >= 1 AND length(filename) <= 255),
+  mime_type text NOT NULL CHECK (mime_type = ANY (ARRAY['application/pdf'::text, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'::text, 'application/vnd.openxmlformats-officedocument.presentationml.presentation'::text, 'text/plain'::text])),
+  size_bytes integer NOT NULL CHECK (size_bytes >= 1 AND size_bytes <= 15728640),
+  content_sha256 text NOT NULL CHECK (content_sha256 ~ '^[0-9a-f]{64}$'::text),
+  extracted_text text NOT NULL CHECK (length(extracted_text) >= 1 AND length(extracted_text) <= 40000),
+  extraction_version text NOT NULL DEFAULT '1'::text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT syllabus_source_documents_pkey PRIMARY KEY (id),
+  CONSTRAINT syllabus_source_documents_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id),
+  CONSTRAINT syllabus_source_documents_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.syllabus_imports (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  artifact_id uuid NOT NULL,
+  created_by uuid,
+  primary_document_id uuid NOT NULL,
+  support_document_ids ARRAY NOT NULL DEFAULT '{}'::uuid[],
+  idempotency_key uuid NOT NULL,
+  status text NOT NULL DEFAULT 'PARSING'::text CHECK (status = ANY (ARRAY['PARSING'::text, 'REVIEW_REQUIRED'::text, 'CONFIRMED'::text, 'ENRICHING'::text, 'FAILED'::text])),
+  revision integer NOT NULL DEFAULT 1 CHECK (revision > 0),
+  candidate_outline jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(candidate_outline) = 'array'::text),
+  extracted_outline jsonb,
+  confirmed_outline jsonb,
+  confirmed_revision integer,
+  issues jsonb NOT NULL DEFAULT '[]'::jsonb,
+  unassigned_topics jsonb NOT NULL DEFAULT '[]'::jsonb,
+  proposals jsonb NOT NULL DEFAULT '[]'::jsonb,
+  operation text CHECK (operation = ANY (ARRAY['parse'::text, 'enrich'::text, 'propose'::text])),
+  lease_expires_at timestamp with time zone,
+  attempt_count integer NOT NULL DEFAULT 1,
+  error_message text,
+  source_syllabus_version integer NOT NULL DEFAULT 0,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT syllabus_imports_pkey PRIMARY KEY (id),
+  CONSTRAINT syllabus_imports_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.artifacts(id),
+  CONSTRAINT syllabus_imports_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id),
+  CONSTRAINT syllabus_imports_primary_document_id_artifact_id_fkey FOREIGN KEY (primary_document_id) REFERENCES public.syllabus_source_documents(id),
+  CONSTRAINT syllabus_imports_primary_document_id_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.syllabus_source_documents(artifact_id)
+);
+CREATE TABLE public.syllabus_import_revisions (
+  import_id uuid NOT NULL,
+  revision integer NOT NULL,
+  actor_id uuid,
+  outline jsonb NOT NULL,
+  decision jsonb NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT syllabus_import_revisions_pkey PRIMARY KEY (import_id, revision),
+  CONSTRAINT syllabus_import_revisions_import_id_fkey FOREIGN KEY (import_id) REFERENCES public.syllabus_imports(id),
+  CONSTRAINT syllabus_import_revisions_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.profiles(id)
 );

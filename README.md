@@ -2,7 +2,13 @@
 
 > Plataforma multi-tenant de ingenieria instruccional con IA.
 
-SofLIA - Engine crea cursos completos a partir de una idea o de un paquete SCORM: investiga, estructura, planifica, cura fuentes, genera materiales, produce assets visuales y de audio, ensambla videos en un editor de composicion nativo, los renderiza con HyperFrames Cloud y publica el resultado hacia SofLIA.
+El [arnés de desarrollo](docs/architecture/development-harness.md) organiza el
+trabajo asistido por agentes. Lee [AGENTS.md](AGENTS.md), la
+[guía operativa](docs/operations/harness-quickstart.md) y el
+[contexto canónico](docs/architecture/system-context.md). Las instrucciones por
+herramienta apuntan a esas fuentes; el estado de cambios vive en OpenSpec.
+
+SofLIA - Engine crea cursos completos a partir de una idea o de un paquete SCORM: investiga, estructura, planifica, cura fuentes, genera materiales, produce assets visuales, ensambla videos con Remotion y publica el resultado hacia SofLIA.
 
 El producto es un flujo operativo con aprobaciones humanas, contratos de datos versionados, configuracion por organizacion, importacion de assets externos, monitoreo de consumo de IA y una capa de produccion audiovisual (editor de composicion, HeyGen, slides, efectos de sonido y procesamiento de audio).
 
@@ -25,6 +31,10 @@ El producto es un flujo operativo con aprobaciones humanas, contratos de datos v
 ---
 
 ## Stack
+
+La voz de catalogo HeyGen usa Starfish explicitamente tanto al listar voces como al sintetizar audio; no depende del motor guardado en HeyGen. Diagnostico y validacion del incidente `locale`: [auditoria de voz](docs/architecture/heygen-speech-engine-audit-2026-10-13.md).
+
+La sincronizacion del catalogo HeyGen requiere la cadena completa de funciones SQL de reconciliacion. Para el fallo `42883` por dependencia ausente, ver [contrato y reparacion](docs/heygen_catalog_sync_source_of_truth.md).
 
 | Capa | Tecnologia |
 | --- | --- |
@@ -532,6 +542,5 @@ npm run verify:deepfilter-artifacts --workspace=apps/api
 - No asumir que un template Remotion subido se ejecuta directamente: debe pasar por validacion, aprobacion y build cuando aplique.
 - Propagar `organization_id` en rutas, acciones, OAuth state, credenciales y jobs.
 - Mantener los contratos publicables de `SOFLIA_DIALOGUE`.
-- Mantener `document.motion` como fuente canonica de motion y actualizar la fuente de verdad HyperFrames con cada cambio de documento, medios, preview o render.
-- Registrar descargas y exportaciones de assets en `asset_access_audit_events`; no exponer rutas de storage ni URLs firmadas en exportaciones.
-- Aplicar [el protocolo de investigacion y sincronizacion](docs/PROTOCOLO_DE_INVESTIGACION_Y_SINCRONIZACION.md) antes de declarar vigente esta documentacion o `CLAUDE.md`.
+- Separar preview interno, preview externo sandbox y render final al diagnosticar produccion visual.
+- Aplicar [el protocolo de investigacion y sincronizacion](docs/PROTOCOLO_DE_INVESTIGACION_Y_SINCRONIZACION.md) antes de declarar vigente esta documentacion o el contexto operativo en `docs/architecture/system-context.md`.

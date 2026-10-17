@@ -37,13 +37,15 @@ export async function extractSyllabusSourceDocument(
   ) {
     text = await extractPptxText(bytes);
   } else {
-    text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+    catch { throw new Error("El archivo TXT debe contener texto UTF-8 válido."); }
+    if (text.includes("\0")) throw new Error("El archivo TXT contiene datos binarios.");
   }
 
-  const normalizedText = normalizeDocumentText(text).slice(
-    0,
-    SYLLABUS_SOURCE_DOCUMENT_MAX_CHARACTERS,
-  );
+  const normalizedText = normalizeDocumentText(text);
+  if (normalizedText.length > SYLLABUS_SOURCE_DOCUMENT_MAX_CHARACTERS) {
+    throw new Error(`${file.name}: el texto excede 40,000 caracteres. Divide el documento antes de subirlo; no se importará un temario parcial.`);
+  }
   if (normalizedText.length < MINIMUM_USABLE_CHARACTERS) {
     throw new Error(
       `${file.name}: no contiene suficiente texto extraíble. Si es un PDF escaneado, aplica OCR antes de subirlo.`,
@@ -79,7 +81,7 @@ async function extractDocxText(bytes: Uint8Array) {
   const zip = await loadOfficeArchive(bytes, "DOCX");
   const documentEntry = zip.file("word/document.xml");
   assertOfficeEntrySize(documentEntry, "El contenido XML del DOCX");
-  const documentXml = await documentEntry?.async("string");
+  const documentXml = documentEntry ? await readOfficeEntry(documentEntry) : undefined;
   if (!documentXml) throw new Error("El DOCX no contiene word/document.xml.");
 
   return extractXmlText(
@@ -113,7 +115,7 @@ async function extractPptxText(bytes: Uint8Array) {
 
   const slides: string[] = [];
   for (const [index, entry] of slideEntries.entries()) {
-    const xml = await entry?.async("string");
+    const xml = entry ? await readOfficeEntry(entry) : undefined;
     if (!xml) continue;
     slides.push(`Diapositiva ${index + 1}\n${extractXmlText(xml)}`);
   }
@@ -139,10 +141,41 @@ function getOfficeEntrySize(entry: JSZip.JSZipObject | null) {
 
 async function loadOfficeArchive(bytes: Uint8Array, label: string) {
   try {
-    return await JSZip.loadAsync(bytes, { checkCRC32: true });
+    // CRC verification decompresses every archive entry before size checks.
+    // Read only the necessary XML through a bounded stream instead.
+    return await JSZip.loadAsync(bytes, { checkCRC32: false });
   } catch {
     throw new Error(`El archivo ${label} está dañado o no es un documento válido.`);
   }
+}
+
+async function readOfficeEntry(entry: JSZip.JSZipObject): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    // JSZip exposes this bounded reader at runtime but omits it from JSZipObject types.
+    const stream = (entry as JSZip.JSZipObject & {
+      internalStream(type: "uint8array"): {
+        on(event: "data", callback: (chunk: Uint8Array) => void): unknown;
+        on(event: "error", callback: (error: Error) => void): unknown;
+        on(event: "end", callback: () => void): unknown;
+        pause(): void;
+        resume(): void;
+      };
+    }).internalStream("uint8array");
+    stream.on("data", (chunk: Uint8Array) => {
+      totalBytes += chunk.byteLength;
+      if (totalBytes > MAX_OFFICE_XML_BYTES) {
+        stream.pause(); chunks.length = 0;
+        reject(new Error("El contenido descomprimido del documento excede el límite permitido."));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    stream.on("error", reject);
+    stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    stream.resume();
+  });
 }
 
 function extractXmlText(xml: string) {

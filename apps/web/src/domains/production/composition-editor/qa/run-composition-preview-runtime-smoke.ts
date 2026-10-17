@@ -1,8 +1,12 @@
-import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { access, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  captureCompositionQaScreenshot,
+  compositionQaDelay,
+  launchCompositionQaBrowser,
+  type CompositionQaCdpClient,
+} from "./composition-qa-browser";
 type SmokeFixture = {
   marker: string;
   path: string;
@@ -28,202 +32,84 @@ const smokeFixtures: readonly SmokeFixture[] = [
     screenshotPath: ".tmp/composition-caption-qa-interactive/caption-karaoke-seek-smoke.png",
   },
 ];
-const CDP_COMMAND_TIMEOUT_MS = 20_000;
-
 async function main() {
-  const browserPath = await resolveChromePath();
   const gpuEnabled = process.argv.includes("--gpu");
-  const results: Record<string, boolean | number | string> = { browserPath, gpuEnabled };
+  const results: Record<string, boolean | number | string> = { gpuEnabled };
   for (const fixture of smokeFixtures) {
     const fixturePath = resolve(process.cwd(), fixture.path);
     await access(fixturePath);
-    const metrics = await runSmokeFixture({ browserPath, fixturePath, gpuEnabled, marker: fixture.marker });
+    const metrics = await runSmokeFixture({ fixturePath, gpuEnabled, marker: fixture.marker });
+    results.browserPath = metrics.browserPath;
     results[fixture.result] = "passed";
     if (fixture.screenshotPath && metrics.screenshot) {
-      await writeFile(resolve(process.cwd(), fixture.screenshotPath), metrics.screenshot, "base64");
+      await writeFile(resolve(process.cwd(), fixture.screenshotPath), metrics.screenshot);
       results.captionRuntimeScreenshot = fixture.screenshotPath;
     }
     if (metrics.colorPatchDurationMs !== null) {
       results.colorPatchDispatchMs1080p = metrics.colorPatchDurationMs;
     }
     if (metrics.colorRuntimeState) results.colorRuntimeState = metrics.colorRuntimeState;
+    if (metrics.smartGuideSmoke) results.smartGuideSmoke = "passed";
   }
   process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);
 }
 
 async function runSmokeFixture(params: {
-  browserPath: string;
   fixturePath: string;
   gpuEnabled: boolean;
   marker: string;
 }) {
-  const profilePath = await mkdtemp(join(tmpdir(), "courseforge-preview-smoke-"));
-  let browserProcess: ChildProcess | null = null;
-  let client: CdpClient | null = null;
+  const browser = await launchCompositionQaBrowser({
+    gpuEnabled: params.gpuEnabled,
+    profilePrefix: "courseforge-preview-smoke-",
+  });
   try {
-    browserProcess = spawn(params.browserPath, [
-      "--headless=new",
-      "--disable-background-networking",
-      "--disable-component-update",
-      "--disable-default-apps",
-      "--disable-extensions",
-      // The default integration smoke owns the deterministic fail-open
-      // contract. --gpu opts into the 1080p active-shader dispatch probe.
-      ...(params.gpuEnabled
-        ? ["--enable-unsafe-swiftshader", "--use-angle=swiftshader"]
-        : ["--disable-gpu", "--disable-software-rasterizer"]),
-      "--disable-sync",
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--allow-file-access-from-files",
-      "--remote-debugging-port=0",
-      `--user-data-dir=${profilePath}`,
-    ], {
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    const port = await readDevToolsPort(profilePath);
-    const websocketUrl = await resolvePageWebsocketUrl(port);
-    client = await openCdpClient(websocketUrl);
-    await client.send("Page.enable");
-    await client.send("Runtime.enable");
-    await client.send("Page.navigate", { url: pathToFileURL(params.fixturePath).href });
-    const metrics = await waitForMarker(client, params.marker, params.fixturePath);
+    await browser.client.send("Page.navigate", { url: pathToFileURL(params.fixturePath).href });
+    const metrics = await waitForMarker(browser.client, params.marker, params.fixturePath);
+    const smartGuideSmoke = params.marker.includes("runtime-patch-smoke")
+      ? await runSmartGuideSmoke(browser.client)
+      : false;
     const screenshot = params.marker.includes("caption-runtime-smoke")
-      ? await captureScreenshot(client)
+      ? await captureCompositionQaScreenshot(browser.client)
       : null;
-    return { ...metrics, screenshot };
+    return { ...metrics, browserPath: browser.browserPath, screenshot, smartGuideSmoke };
   } finally {
-    if (client) {
-      await client.send("Browser.close").catch(() => undefined);
-      client.close();
-    }
-    if (browserProcess) await terminateBrowserProcess(browserProcess);
-    await rm(profilePath, {
-      force: true,
-      maxRetries: process.platform === "win32" ? 10 : 0,
-      recursive: true,
-      retryDelay: 200,
-    });
+    await browser.close();
   }
 }
 
-async function terminateBrowserProcess(browserProcess: ChildProcess): Promise<void> {
-  if (browserProcess.exitCode !== null || browserProcess.signalCode !== null) return;
-  if (process.platform !== "win32" || !browserProcess.pid) {
-    browserProcess.kill("SIGKILL");
-    return;
-  }
-  await new Promise<void>((resolveTermination) => {
-    execFile(
-      "taskkill",
-      ["/PID", String(browserProcess.pid), "/T", "/F"],
-      { windowsHide: true },
-      () => resolveTermination(),
-    );
-  });
+async function runSmartGuideSmoke(client: CompositionQaCdpClient) {
+  const target = await evaluateRuntimeValue<{ x: number; y: number } | null>(client, `(() => {
+    const candidates = [...document.querySelectorAll("[data-hf-id]")]
+      .filter((node) => node instanceof HTMLElement && getComputedStyle(node).visibility !== "hidden")
+      .map((node) => ({ node, box: node.getBoundingClientRect() }))
+      .filter(({ box }) => box.width > 20 && box.height > 20)
+      .sort((left, right) => left.box.width * left.box.height - right.box.width * right.box.height);
+    const box = candidates[0]?.box;
+    return box ? { x: box.left + box.width / 2, y: box.top + box.height / 2 } : null;
+  })()`);
+  if (!target) throw new Error("El smoke de guías magnéticas no encontró un elemento visual activo.");
+  await client.send("Input.dispatchMouseEvent", { button: "left", buttons: 1, clickCount: 1, type: "mousePressed", x: target.x, y: target.y });
+  await client.send("Input.dispatchMouseEvent", { button: "left", buttons: 1, type: "mouseMoved", x: target.x + 3, y: target.y + 2 });
+  const guideCount = await evaluateRuntimeValue<number>(client, `document.querySelectorAll(".composition-smart-guide").length`);
+  await client.send("Input.dispatchMouseEvent", { button: "left", buttons: 0, clickCount: 1, type: "mouseReleased", x: target.x + 3, y: target.y + 2 });
+  const remainingGuideCount = await evaluateRuntimeValue<number>(client, `document.querySelectorAll(".composition-smart-guide").length`);
+  if (guideCount < 1) throw new Error("El movimiento no mostró ninguna guía magnética.");
+  if (remainingGuideCount !== 0) throw new Error("Las guías magnéticas no se limpiaron al confirmar el movimiento.");
+  return true;
 }
 
-type CdpClient = {
-  close: () => void;
-  send: (method: string, params?: Record<string, unknown>) => Promise<Record<string, unknown>>;
-};
-
-async function readDevToolsPort(profilePath: string): Promise<number> {
-  const activePortPath = join(profilePath, "DevToolsActivePort");
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    try {
-      const [portText] = (await readFile(activePortPath, "utf8")).trim().split(/\r?\n/);
-      const port = Number(portText);
-      if (Number.isInteger(port) && port > 0) return port;
-    } catch {
-      // Chromium creates DevToolsActivePort asynchronously after startup.
-    }
-    await delay(100);
-  }
-  throw new Error("Chromium no expuso DevToolsActivePort dentro del tiempo esperado.");
-}
-
-async function resolvePageWebsocketUrl(port: number): Promise<string> {
-  const endpoint = `http://127.0.0.1:${port}`;
-  const listResponse = await fetch(`${endpoint}/json/list`, { signal: AbortSignal.timeout(5_000) });
-  const targets = await listResponse.json() as Array<{ type?: string; webSocketDebuggerUrl?: string }>;
-  const existingPage = targets.find((target) => target.type === "page" && target.webSocketDebuggerUrl);
-  if (existingPage?.webSocketDebuggerUrl) return existingPage.webSocketDebuggerUrl;
-
-  const createResponse = await fetch(`${endpoint}/json/new?about:blank`, {
-    method: "PUT",
-    signal: AbortSignal.timeout(5_000),
-  });
-  const createdPage = await createResponse.json() as { webSocketDebuggerUrl?: string };
-  if (!createdPage.webSocketDebuggerUrl) {
-    throw new Error("Chromium no expuso un target de página para el smoke test.");
-  }
-  return createdPage.webSocketDebuggerUrl;
-}
-
-async function openCdpClient(websocketUrl: string): Promise<CdpClient> {
-  const socket = new WebSocket(websocketUrl);
-  const pending = new Map<number, {
-    reject: (error: Error) => void;
-    resolve: (value: Record<string, unknown>) => void;
-  }>();
-  let sequence = 0;
-
-  await new Promise<void>((resolveConnection, rejectConnection) => {
-    const timeout = setTimeout(
-      () => rejectConnection(new Error("Chromium DevTools no abrió el WebSocket dentro del tiempo esperado.")),
-      5_000,
-    );
-    socket.addEventListener("open", () => {
-      clearTimeout(timeout);
-      resolveConnection();
-    }, { once: true });
-    socket.addEventListener("error", () => {
-      clearTimeout(timeout);
-      rejectConnection(new Error("No se pudo conectar a Chromium DevTools."));
-    }, { once: true });
-  });
-  socket.addEventListener("message", (event) => {
-    const message = JSON.parse(String(event.data)) as {
-      error?: { message?: string };
-      id?: number;
-      result?: Record<string, unknown>;
-    };
-    if (message.id === undefined) return;
-    const request = pending.get(message.id);
-    if (!request) return;
-    pending.delete(message.id);
-    if (message.error) request.reject(new Error(message.error.message ?? "Error desconocido de Chromium DevTools."));
-    else request.resolve(message.result ?? {});
-  });
-
-  return {
-    close: () => socket.close(),
-    send: (method, params = {}) => new Promise((resolveRequest, rejectRequest) => {
-      sequence += 1;
-      const requestId = sequence;
-      const timeout = setTimeout(() => {
-        pending.delete(requestId);
-        rejectRequest(new Error(`Chromium DevTools no respondió a ${method} dentro del tiempo esperado.`));
-      }, CDP_COMMAND_TIMEOUT_MS);
-      pending.set(requestId, {
-        reject: (error) => {
-          clearTimeout(timeout);
-          rejectRequest(error);
-        },
-        resolve: (value) => {
-          clearTimeout(timeout);
-          resolveRequest(value);
-        },
-      });
-      socket.send(JSON.stringify({ id: requestId, method, params }));
-    }),
-  };
+async function evaluateRuntimeValue<T>(client: CompositionQaCdpClient, expression: string): Promise<T> {
+  const evaluation = await client.send("Runtime.evaluate", { expression, returnByValue: true });
+  const exceptionDetails = evaluation.exceptionDetails as { exception?: { description?: string }; text?: string } | undefined;
+  if (exceptionDetails) throw new Error(exceptionDetails.exception?.description || exceptionDetails.text || "Error en smoke interactivo.");
+  const result = evaluation.result as { description?: string; value?: T } | undefined;
+  if (!result || !("value" in result)) throw new Error(result?.description || "El smoke interactivo no devolvió un valor.");
+  return result.value as T;
 }
 
 async function waitForMarker(
-  client: CdpClient,
+  client: CompositionQaCdpClient,
   marker: string,
   fixturePath: string,
 ): Promise<{ colorPatchDurationMs: number | null; colorRuntimeState: string | null }> {
@@ -255,53 +141,9 @@ async function waitForMarker(
     if (state?.value === "failed") {
       throw new Error(`El fixture ${fixturePath} falló: ${state.error ?? "sin detalle"}`);
     }
-    await delay(100);
+    await compositionQaDelay(100);
   }
   throw new Error(`El fixture ${fixturePath} no alcanzó ${marker} dentro del tiempo esperado.`);
-}
-
-async function captureScreenshot(client: CdpClient) {
-  const result = await client.send("Page.captureScreenshot", { format: "png" });
-  const data = result.data;
-  if (typeof data !== "string" || data.length === 0) {
-    throw new Error("Chromium no devolvió el snapshot PNG del smoke de captions.");
-  }
-  return data;
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
-}
-
-async function resolveChromePath() {
-  const configuredPath = process.env.CHROME_PATH?.trim();
-  const candidates = [
-    configuredPath,
-    ...(process.platform === "win32" ? [
-      "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-      "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-      "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-    ] : process.platform === "darwin" ? [
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    ] : [
-      "/usr/bin/google-chrome",
-      "/usr/bin/google-chrome-stable",
-      "/usr/bin/chromium",
-      "/usr/bin/chromium-browser",
-    ]),
-  ].filter((candidate): candidate is string => Boolean(candidate));
-
-  for (const candidate of candidates) {
-    try {
-      await access(candidate);
-      return candidate;
-    } catch {
-      // Continue through the bounded platform-specific candidate list.
-    }
-  }
-  throw new Error("No se encontró Chrome/Chromium. Define CHROME_PATH para ejecutar el smoke test del preview.");
 }
 
 void main().catch((error: unknown) => {

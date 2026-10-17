@@ -9,17 +9,22 @@ import {
 test("classifies visual, timeline and structural operations explicitly", () => {
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.layout" }), "LIVE_DOM");
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.trim" }), "LIVE_TIMELINE");
+  assert.equal(classifyCompositionPreviewOperation({ type: "animation.insert-path-point" }), "LIVE_TIMELINE");
+  assert.equal(classifyCompositionPreviewOperation({ type: "animation.remove-path-point" }), "LIVE_TIMELINE");
+  assert.equal(classifyCompositionPreviewOperation({ type: "clip.playback-rate" }), "LIVE_TIMELINE");
+  assert.equal(classifyCompositionPreviewOperation({ type: "clip.freeze-tail" }), "LIVE_TIMELINE");
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.color-grading" }), "LIVE_DOM");
-  assert.equal(classifyCompositionPreviewOperation({ type: "clip.audio-fades" }), "FULL_RELOAD");
-  assert.equal(classifyCompositionPreviewOperation({ type: "clip.add" }), "FULL_RELOAD");
+  assert.equal(classifyCompositionPreviewOperation({ type: "clip.audio-fades" }), "LIVE_TIMELINE");
+  assert.equal(classifyCompositionPreviewOperation({ type: "clip.add" }), "LIVE_TIMELINE");
+  assert.equal(classifyCompositionPreviewOperation({ type: "clip.replace-source" }), "LIVE_TIMELINE");
   assert.equal(classifyCompositionPreviewOperation({ type: "document.reconcile" }), "FULL_RELOAD");
-  assert.equal(classifyCompositionPreviewOperation({ type: "track.update" }), "FULL_RELOAD");
+  assert.equal(classifyCompositionPreviewOperation({ type: "track.update" }), "LIVE_TIMELINE");
   assert.equal(classifyCompositionPreviewOperation({ type: "future.unknown" }), "FULL_RELOAD");
 });
 
-test("requires a compiled preview refresh for timeline and structural changes", () => {
+test("requires canonical compilation only for unsupported operations", () => {
   assert.equal(requiresCompositionPreviewReload("LIVE_DOM"), false);
-  assert.equal(requiresCompositionPreviewReload("LIVE_TIMELINE"), true);
+  assert.equal(requiresCompositionPreviewReload("LIVE_TIMELINE"), false);
   assert.equal(requiresCompositionPreviewReload("FULL_RELOAD"), true);
 });
 

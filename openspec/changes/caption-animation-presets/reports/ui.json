@@ -1,0 +1,9 @@
+{
+  "presets": [
+    "EDUCATIONAL",
+    "GUIDED_READING",
+    "SOCIAL"
+  ],
+  "cueOverridesPreserved": true,
+  "disabledRespected": true
+}

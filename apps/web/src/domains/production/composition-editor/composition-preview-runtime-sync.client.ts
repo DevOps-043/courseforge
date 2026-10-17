@@ -9,6 +9,18 @@ export interface CompositionPreviewRuntimePatchOutcome {
   sequence: number;
 }
 
+/** An ACK resolved before persistence completes still belongs to its original iframe. */
+export function canCommitCompositionPreviewRuntimePatch(input: {
+  applied: boolean;
+  dispatchedGeneration: number;
+  currentGeneration: number;
+  failedGeneration: number | null;
+}) {
+  return input.applied
+    && input.dispatchedGeneration === input.currentGeneration
+    && input.failedGeneration !== input.currentGeneration;
+}
+
 type PendingPatch = {
   resolve: (outcome: CompositionPreviewRuntimePatchOutcome) => void;
   startedAt: number;
@@ -38,13 +50,17 @@ export class CompositionPreviewRuntimePatchCoordinator {
         resolve({ applied: false, code: "TIMEOUT", durationMs: performance.now() - startedAt, sequence });
       }, this.acknowledgementTimeoutMs);
       this.pending.set(sequence, { resolve, startedAt, timeout });
-      const sent = params.send({
-        baseDocumentHash: params.baseDocumentHash,
-        patch: params.patch,
-        sequence,
-        type: "courseforge-composition-visual-patch",
-      });
-      if (!sent) this.resolvePending(sequence, false, "SEND_REJECTED");
+      try {
+        const sent = params.send({
+          baseDocumentHash: params.baseDocumentHash,
+          patch: params.patch,
+          sequence,
+          type: "courseforge-composition-visual-patch",
+        });
+        if (!sent) this.resolvePending(sequence, false, "SEND_REJECTED");
+      } catch {
+        this.resolvePending(sequence, false, "SEND_REJECTED");
+      }
     });
   }
 

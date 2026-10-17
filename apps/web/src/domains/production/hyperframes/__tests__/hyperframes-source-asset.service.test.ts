@@ -52,6 +52,11 @@ describe("HyperFrames source assets", () => {
       hasActiveReference: false,
       qaStatus: "ARCHIVED",
     }), false);
+    assert.equal(shouldExposeProductionRegistryAsset({
+      assetType: "PROCESSED_AUDIO",
+      hasActiveReference: false,
+      qaStatus: "READY_FOR_QA",
+    }), true);
     assert.equal(isAutomaticTimelineSourceAsset({
       metadata: { historical_only: true },
       sourceType: "PRODUCTION_MEDIA",
@@ -60,6 +65,10 @@ describe("HyperFrames source assets", () => {
       metadata: {},
       sourceType: "PRODUCTION_MEDIA",
     }), true);
+    assert.equal(isAutomaticTimelineSourceAsset({
+      metadata: { editor_library_only: true },
+      sourceType: "PRODUCTION_MEDIA",
+    }), false);
   });
 
   it("keeps a ready animated deck as HTML rather than slide images", () => {

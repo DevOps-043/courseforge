@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useCompositionPanelFocus } from "./useCompositionPanelFocus";
+import styles from "./CompositionStudio.module.css";
 import { Check, Loader2, RotateCcw, Save, Sparkles, WandSparkles, X } from "lucide-react";
 import type { CompositionPresetCatalogEntry } from "@/domains/production/composition-editor/composition-preset.types";
 
@@ -58,6 +60,8 @@ export function CompositionPresetPanel({
   const [description, setDescription] = useState("");
   const [instruction, setInstruction] = useState("");
   const [creating, setCreating] = useState(false);
+  const panelRef = useRef<HTMLElement>(null);
+  useCompositionPanelFocus({ open, panelRef, kind: "MODAL", onClose, canClose: !activePreview });
   if (!open) return null;
 
   const create = async () => {
@@ -80,7 +84,7 @@ export function CompositionPresetPanel({
 
   return (
     <div className="fixed inset-0 z-[100] flex justify-end bg-slate-950/55 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !activePreview) onClose(); }}>
-      <aside className="flex h-full w-full max-w-md flex-col border-l border-white/10 bg-white shadow-2xl dark:bg-slate-950" role="dialog" aria-modal="true" aria-labelledby="composition-presets-title">
+      <aside ref={panelRef} tabIndex={-1} className={`flex h-full w-full max-w-md flex-col border-l border-white/10 bg-white shadow-2xl dark:bg-slate-950 ${styles.keyboardPanel}`} role="dialog" aria-modal="true" aria-labelledby="composition-presets-title">
         <header className="flex items-start justify-between border-b border-slate-200 px-5 py-4 dark:border-white/10">
           <div>
             <h2 id="composition-presets-title" className="flex items-center gap-2 text-base font-bold text-slate-950 dark:text-white"><WandSparkles size={17} /> Presets de edición</h2>

@@ -1,4 +1,5 @@
 import { DEFAULT_COMPOSITION_RENDER_FPS } from "../composition-editor/composition-document.types.constants";
+import { AUDIO_SOURCE_MIME_TYPES } from "../audio-processing/audio-source-contract";
 import {
   HYPERFRAMES_ASSET_DELIVERY_MODES,
   HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES,
@@ -26,10 +27,10 @@ if (HYPERFRAMES_DURABLE_RENDER_PROFILE.fps !== DEFAULT_COMPOSITION_RENDER_FPS) {
 
 const ALLOWED_MEDIA = {
   audio: {
-    extensions: new Set(["mp3", "wav"]),
-    mimeTypes: new Set(["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav"]),
+    extensions: new Set(["mp3", "wav", "m4a", "aac"]),
+    mimeTypes: new Set<string>(AUDIO_SOURCE_MIME_TYPES),
     maxBytes: HYPERFRAMES_AUDIO_MAX_BYTES,
-    summary: "MP3 o WAV",
+    summary: "MP3, WAV, M4A o AAC",
   },
   font: {
     extensions: new Set(["otf", "ttf", "woff", "woff2"]),

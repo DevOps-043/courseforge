@@ -57,6 +57,7 @@ export interface SyllabusContextLike {
 }
 
 export interface LessonPlanLike {
+  oa_text?: string | null;
   lesson_id?: string | null;
   id?: string | null;
   lesson_title?: string | null;

@@ -1,4 +1,5 @@
 import { Handler } from "@netlify/functions";
+import { readSyllabusWithOrigin } from "../../src/domains/syllabus/services/syllabus-workflow-read";
 import {
   createGeminiClient,
   createOpenAiClient,
@@ -133,15 +134,12 @@ export const handler: Handler = async (event) => {
   const supabase = createServiceRoleClient();
   let activeIteration = iterationNumber;
   try {
-    const { data: currentSyllabus, error: syllabusLookupError } = await supabase
-      .from("syllabus")
-      .select("iteration_count")
-      .eq("artifact_id", artifactId)
-      .maybeSingle();
+    const { data: currentSyllabus, error: syllabusLookupError } = await readSyllabusWithOrigin(supabase, artifactId, "iteration_count,state");
 
     if (syllabusLookupError) {
       throw syllabusLookupError;
     }
+    if (currentSyllabus?.input_mode === "PROVIDED_SYLLABUS") return { statusCode: 409, body: "Use the confirmed syllabus import instead of free generation" };
 
     if (
       iterationNumber === undefined &&

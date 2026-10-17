@@ -8,6 +8,7 @@ import {
   compositionPreviewTelemetryBatchSchema,
   summarizeCompositionPreviewMetricContexts,
   summarizeCompositionPreviewMetrics,
+  summarizeCompositionPreviewSyncEvents,
 } from "@/domains/production/composition-editor/composition-preview-telemetry";
 import { createClient } from "@/utils/supabase/server";
 import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
@@ -39,6 +40,7 @@ export async function POST(request: Request, context: RouteContext) {
     const slowMetrics = batch.metrics.filter((metric) => (
       metric.durationMs >= COMPOSITION_PREVIEW_SLOW_THRESHOLD_MS[metric.name]
     ));
+    const syncEvents = summarizeCompositionPreviewSyncEvents(batch.metrics);
     const logContext = {
       draftId,
       event: "composition_preview_metrics",
@@ -49,8 +51,10 @@ export async function POST(request: Request, context: RouteContext) {
       slowMetricNames: [...new Set(slowMetrics.map((metric) => metric.name))],
       dimensions: summarizeCompositionPreviewMetricContexts(batch.metrics),
       summary: summarizeCompositionPreviewMetrics(batch.metrics),
+      syncEvents,
     };
     if (slowMetrics.length > 0) logger.warn("production.hyperframes.draft.preview_metrics_slow", logContext);
+    else if (Object.values(syncEvents).some((count) => count > 0)) logger.warn("production.hyperframes.draft.preview_sync_attention", logContext);
     else logger.info("production.hyperframes.draft.preview_metrics_received", logContext);
     return new NextResponse(null, { status: 202, headers: { "Cache-Control": "private, no-store", "x-request-id": requestId } });
   } catch (error) {

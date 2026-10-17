@@ -1,0 +1,19 @@
+schema: spec-driven
+context: |
+  Coursegen / Courseforge (SofLIA Engine) es un monorepo npm con Next.js 16,
+  React 19, TypeScript, Netlify Functions y API Express auxiliar/legada.
+  Producción multimedia usa dominios composition-editor, HyperFrames y Remotion.
+  Las reglas viven en AGENTS.md, docs/standards/ y ai-specs/policies/.
+  Leer docs/architecture/system-context.md y la fuente de verdad del dominio.
+  Mantener español, aislamiento por organización, Auth Bridge y aprobación
+  humana para publicaciones, despliegues o acciones destructivas.
+  Las skills de desarrollo nunca se cargan como herramientas de Lia/bundle-agent.
+rules:
+  proposal:
+    - Explicar problema, alcance y no objetivos; identificar dominios y efectos externos.
+  design:
+    - Registrar alternativas, compatibilidad, permisos, rollback y evidencia primaria.
+  specs:
+    - Escribir requisitos con escenarios observables, errores y permisos cuando apliquen.
+  tasks:
+    - Crear unidades pequeñas e incluir pruebas, documentación y revisión adversarial.

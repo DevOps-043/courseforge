@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
   devIndicators: {
     position: "bottom-right",
   },
-  serverExternalPackages: ["@google/genai", "@remotion/bundler", "@remotion/renderer", "esbuild"],
+  serverExternalPackages: ["@google/genai", "@remotion/bundler", "@remotion/renderer", "esbuild", "fontkit"],
   experimental: {
     serverActions: {
       allowedOrigins: allowedServerActionOrigins,

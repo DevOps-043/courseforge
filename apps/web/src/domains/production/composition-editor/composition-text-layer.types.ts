@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { CAPTION_EFFECT_LIMITS, compositionCaptionEffectsSchema, compositionCaptionEffectsOverrideSchema, compositionCaptionEmphasisSchema } from "./composition-caption-effects.types";
+import { captionEmphasisIssues } from "./composition-caption-effects.service";
 
 export const COMPOSITION_TEXT_ALIGNMENTS = ["LEFT", "CENTER", "RIGHT"] as const;
 export const COMPOSITION_TEXT_VERTICAL_ALIGNMENTS = ["TOP", "MIDDLE", "BOTTOM"] as const;
@@ -48,10 +50,13 @@ export const compositionNativeTextSourceSchema = z.object({
 }).strict();
 
 export const compositionCaptionCueSchema = z.object({
+  effects: compositionCaptionEffectsOverrideSchema.optional(),
+  emphasis: z.array(compositionCaptionEmphasisSchema).max(CAPTION_EFFECT_LIMITS.maxEmphasisRanges).optional(),
   endSeconds: finiteNumberSchema.positive().max(86_400),
   id: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i),
   startSeconds: finiteNumberSchema.min(0).max(86_400),
-  text: z.string().trim().min(1).max(1_000),
+  // Text offsets belong to the authored string; trimming would invalidate emphasis ranges.
+  text: z.string().min(1).max(1_000).refine((text) => text.trim().length > 0, "El caption no puede quedar vacío."),
   words: z.array(z.object({
     endSeconds: finiteNumberSchema.positive().max(86_400),
     id: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i),
@@ -59,6 +64,9 @@ export const compositionCaptionCueSchema = z.object({
     text: z.string().trim().min(1).max(200),
   }).strict()).max(20).optional(),
 }).strict().superRefine((cue, context) => {
+  if (captionEmphasisIssues(cue.text, cue.emphasis || [])) {
+    context.addIssue({ code: "custom", message: "El énfasis debe quedar dentro del texto, sin solaparse ni dividir caracteres Unicode." });
+  }
   if (cue.endSeconds <= cue.startSeconds) {
     context.addIssue({ code: "custom", message: "El final de cada caption debe ser posterior a su inicio." });
   }
@@ -81,7 +89,9 @@ export const compositionCaptionCueSchema = z.object({
 });
 
 export const compositionNativeCaptionSourceSchema = z.object({
-  cues: z.array(compositionCaptionCueSchema).min(1).max(2_000),
+  effects: compositionCaptionEffectsSchema.optional(),
+  // A retained fragment can cover only a silent gap between captions.
+  cues: z.array(compositionCaptionCueSchema).max(2_000),
   language: z.string().trim().min(2).max(35).optional(),
   origin: z.enum(["MANUAL", "SRT", "TRANSCRIPT", "VTT"]).default("MANUAL"),
   style: compositionTextLayerStyleSchema,

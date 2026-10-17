@@ -34,7 +34,7 @@ $content = (@(
   "Generada: $generatedAt",
   "Rango: ``$resolvedBase...$head`` (solicitado: ``$BaseRef``)",
   "",
-  "Este archivo es evidencia generada. Siga ``docs/PROTOCOLO_DE_INVESTIGACION_Y_SINCRONIZACION.md`` para decidir cambios en ``README.md`` y ``CLAUDE.md``.",
+  "Este archivo es evidencia generada. Siga ``docs/PROTOCOLO_DE_INVESTIGACION_Y_SINCRONIZACION.md`` para decidir cambios en ``README.md`` y ``docs/architecture/system-context.md``.",
   "",
   "## Cambios Git",
   "",
@@ -63,7 +63,7 @@ $content = (@(
   "## Decision de sincronizacion",
   "",
   "- [ ] Revisar cada cambio funcional contra README.md.",
-  "- [ ] Revisar cada dependencia, variable y regla operativa contra CLAUDE.md.",
+  "- [ ] Revisar cada dependencia, variable y regla operativa contra docs/architecture/system-context.md.",
   "- [ ] Registrar evidencia y pendientes antes de cerrar."
 ) | ForEach-Object {
   if ($_ -is [System.Array]) { $_ } else { $_ }

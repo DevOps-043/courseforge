@@ -1,3 +1,7 @@
+import { HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT } from "./html-editing/html-editing-reference.contract";
+import { retainCompositionNativeFragment } from "./composition-native-fragment.service";
+import { areCaptionEffectsEnabled } from "./composition-caption-effects.types";
+import { invalidateChangedCaptionText } from "./composition-caption-effects.service";
 import {
   COMPOSITION_DOCUMENT_FORMAT,
   NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT,
@@ -11,6 +15,11 @@ import {
   getCompositionMotionPresetDefinition,
 } from "./composition-motion-preset.service";
 import {
+  COMPOSITION_MOTION_MAX_ANIMATIONS,
+  COMPOSITION_SIMPLE_PATH_MAX_KEYFRAMES,
+  COMPOSITION_SIMPLE_PATH_MIN_OFFSET_GAP,
+} from "./composition-motion.types";
+import {
   resolveDefaultCompositionClipLayout,
   resolveDefaultCompositionMediaFit,
 } from "./composition-default-layout.service";
@@ -21,6 +30,7 @@ import {
   scaleCompositionCropInsets,
 } from "./composition-visual-crop.service";
 import { compositionClipHasConfigurableAudio } from "./composition-clip-audio.service";
+import { areCompositionVolumeEnvelopeEditsEnabled } from "./composition-volume-envelope";
 import { compositionClipExclusionKey } from "./composition-source-selection";
 import { resolveAvatarAudioLink } from "./composition-avatar-audio-link.service";
 import {
@@ -41,6 +51,10 @@ import {
   type CompositionTransition,
 } from "./composition-transition.types";
 import { normalizeCompositionColorGrading } from "./composition-color-grading.types";
+import { areCompositionSimplePathsEnabled } from "./composition-advanced-capabilities";
+import { areCompositionVideoRatesEnabled, isCompositionVideoFreezeEnabled } from "./composition-advanced-capabilities";
+import { videoRateSourceWindowFits } from "./composition-video-rate";
+import { resolveVideoFreezeTailSeconds } from "./composition-video-freeze";
 
 export class CompositionEditorPatchError extends Error {
   constructor(message: string) {
@@ -142,9 +156,11 @@ function assertDocumentTransitionsOrThrow(document: CompositionEditorDocument) {
   }
 }
 
-function assertDerivableMediaClip(clip: CompositionEditorDocument["clips"][number]) {
-  if (clip.source.type !== "PRODUCTION_ASSET" || (clip.kind !== "VIDEO" && clip.kind !== "AUDIO")) {
-    throw new CompositionEditorPatchError("Solo los clips de video o audio pueden dividirse o recortarse por intervalos.");
+function assertDerivableClip(clip: CompositionEditorDocument["clips"][number]) {
+  const nativeOverlay = clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS";
+  const productionMedia = clip.source.type === "PRODUCTION_ASSET" && (clip.kind === "VIDEO" || clip.kind === "AUDIO");
+  if (!nativeOverlay && !productionMedia) {
+    throw new CompositionEditorPatchError("Solo los clips de video, audio, texto o captions pueden dividirse o recortarse por intervalos.");
   }
 }
 
@@ -274,6 +290,14 @@ export function ensureCanvasDurationForClipPatches(
         durationSeconds: operation.clip.durationSeconds,
         startSeconds: operation.clip.startSeconds,
       });
+    } else if (operation.type === "clip.duplicate") {
+      const sourceTiming = timings.get(operation.clipId);
+      if (sourceTiming) {
+        timings.set(operation.newClipId, {
+          durationSeconds: sourceTiming.durationSeconds,
+          startSeconds: operation.startSeconds,
+        });
+      }
     } else if (operation.type === "clip.remove") {
       timings.delete(operation.clipId);
       groups = groups.flatMap((group) => {
@@ -326,6 +350,7 @@ export function applyCompositionEditorPatches(
   source: "AGENT" | "SYSTEM" | "USER" = "USER",
 ) {
   let next = structuredClone(document);
+  const originalSceneIds = new Set(document.clips.flatMap((clip) => clip.sceneId ? [clip.sceneId] : []));
   next.format = COMPOSITION_DOCUMENT_FORMAT;
   next.motion.schemaVersion = 2;
 
@@ -439,7 +464,7 @@ export function applyCompositionEditorPatches(
       });
       continue;
     }
-    if (operation.type === "animation.remove" || operation.type === "animation.update-keyframe" || operation.type === "animation.update-timing") {
+    if (operation.type === "animation.remove" || operation.type === "animation.insert-path-point" || operation.type === "animation.remove-path-point" || operation.type === "animation.update-keyframe" || operation.type === "animation.update-timing") {
       const animationIndex = next.motion.animations.findIndex((candidate) => candidate.id === operation.animationId);
       if (animationIndex < 0) throw new CompositionEditorPatchError("La animación que intentas editar ya no existe.");
       const animation = next.motion.animations[animationIndex]!;
@@ -448,6 +473,42 @@ export function applyCompositionEditorPatches(
       if (track?.locked) throw new CompositionEditorPatchError("No puedes editar animaciones de un track bloqueado.");
       if (operation.type === "animation.remove") {
         next.motion.animations.splice(animationIndex, 1);
+      } else if (operation.type === "animation.remove-path-point") {
+        if (!areCompositionSimplePathsEnabled()) {
+          throw new CompositionEditorPatchError("Los paths simples no están habilitados en este entorno.");
+        }
+        if (animation.propertyGroup !== "POSITION" || animation.loop
+          || operation.keyframeIndex >= animation.keyframes.length - 1) {
+          throw new CompositionEditorPatchError("Solo puedes quitar puntos interiores de paths no repetibles.");
+        }
+        animation.keyframes.splice(operation.keyframeIndex, 1);
+        animation.origin = source === "AGENT" ? "AGENT" : "USER";
+      } else if (operation.type === "animation.insert-path-point") {
+        if (!areCompositionSimplePathsEnabled()) {
+          throw new CompositionEditorPatchError("Los paths simples no están habilitados en este entorno.");
+        }
+        if (animation.propertyGroup !== "POSITION" || animation.loop) {
+          throw new CompositionEditorPatchError("Solo puedes añadir puntos a animaciones de posición no repetibles.");
+        }
+        if (animation.keyframes.length >= COMPOSITION_SIMPLE_PATH_MAX_KEYFRAMES) {
+          throw new CompositionEditorPatchError("El path simple alcanzó el máximo de puntos permitido.");
+        }
+        const insertionIndex = animation.keyframes.findIndex((keyframe) => keyframe.offset > operation.offset);
+        const previous = animation.keyframes[insertionIndex - 1];
+        const following = animation.keyframes[insertionIndex];
+        if (
+          !previous || !following
+          || operation.offset - previous.offset < COMPOSITION_SIMPLE_PATH_MIN_OFFSET_GAP
+          || following.offset - operation.offset < COMPOSITION_SIMPLE_PATH_MIN_OFFSET_GAP
+        ) {
+          throw new CompositionEditorPatchError("El punto debe estar separado de las poses vecinas.");
+        }
+        animation.keyframes.splice(insertionIndex, 0, {
+          ease: "none",
+          offset: operation.offset,
+          values: operation.values,
+        });
+        animation.origin = source === "AGENT" ? "AGENT" : "USER";
       } else if (operation.type === "animation.update-timing") {
         const timing = { ...animation.timing, ...operation.timing };
         if (animation.preset) {
@@ -468,6 +529,19 @@ export function applyCompositionEditorPatches(
         }
         const keyframe = animation.keyframes[operation.keyframeIndex];
         if (!keyframe) throw new CompositionEditorPatchError("El keyframe que intentas editar ya no existe.");
+        if (operation.offset !== undefined) {
+          if (!areCompositionSimplePathsEnabled()) {
+            throw new CompositionEditorPatchError("Los paths simples no están habilitados en este entorno.");
+          }
+          const previous = animation.keyframes[operation.keyframeIndex - 1];
+          const following = animation.keyframes[operation.keyframeIndex + 1];
+          if (animation.propertyGroup !== "POSITION" || !previous || !following
+            || operation.offset - previous.offset < COMPOSITION_SIMPLE_PATH_MIN_OFFSET_GAP
+            || following.offset - operation.offset < COMPOSITION_SIMPLE_PATH_MIN_OFFSET_GAP) {
+            throw new CompositionEditorPatchError("El tiempo de paso debe quedar entre las poses vecinas con separación suficiente.");
+          }
+          keyframe.offset = operation.offset;
+        }
         if (operation.values) keyframe.values = operation.values;
         if (operation.ease === null) delete keyframe.ease;
         else if (operation.ease) keyframe.ease = operation.ease;
@@ -599,6 +673,15 @@ export function applyCompositionEditorPatches(
     }
 
     if (operation.type === "clip.add") {
+      if (operation.clip.freezeTailSeconds !== undefined && (!isCompositionVideoFreezeEnabled() || source !== "USER")) {
+        throw new CompositionEditorPatchError("Añadir un clip congelado requiere la opción experimental y una acción explícita del usuario.");
+      }
+      if (operation.clip.playbackRate !== undefined && !areCompositionVideoRatesEnabled()) {
+        throw new CompositionEditorPatchError("La velocidad experimental no está habilitada en este entorno.");
+      }
+      if (operation.clip.playbackRate !== undefined && source !== "USER") {
+        throw new CompositionEditorPatchError("Añadir un clip con velocidad ajustada requiere una acción explícita del usuario.");
+      }
       if (operation.clip.id !== operation.clipId) {
         throw new CompositionEditorPatchError("El identificador del nuevo clip no coincide con la operación.");
       }
@@ -633,6 +716,101 @@ export function applyCompositionEditorPatches(
 
     const currentTrack = next.tracks.find((track) => track.id === clip.trackId);
     if (!currentTrack) throw new CompositionEditorPatchError("El clip no tiene un track válido.");
+
+    if (operation.type === "clip.replace-source") {
+      if (clip.freezeTailSeconds !== undefined) throw new CompositionEditorPatchError("Desactiva la congelación antes de reemplazar la fuente.");
+      if (source !== "USER") throw new CompositionEditorPatchError("Reemplazar un medio requiere una acción explícita del usuario.");
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes reemplazar un medio de un track bloqueado.");
+      if (clip.source.type !== "PRODUCTION_ASSET" || clip.source.placement === "INTRO") {
+        throw new CompositionEditorPatchError("Este clip no admite reemplazo directo de su fuente.");
+      }
+      const isProcessedAudioReplacement = clip.kind === "AUDIO"
+        && operation.audioProcessingPreviousAssetId === clip.source.productionAssetId;
+      if (clip.sceneId && resolveAvatarAudioLink(next, clip.id).status !== "NONE" && !isProcessedAudioReplacement) {
+        throw new CompositionEditorPatchError("Reemplaza la escena avatar-voz desde su flujo coordinado para conservar la sincronía.");
+      }
+      const expectedMimePrefix = clip.kind === "AUDIO" ? "audio/" : clip.kind === "VIDEO" ? "video/" : clip.kind === "IMAGE" ? "image/" : null;
+      if (!expectedMimePrefix || !operation.mimeType.startsWith(expectedMimePrefix)) {
+        throw new CompositionEditorPatchError("El medio nuevo debe ser del mismo tipo que el clip.");
+      }
+      if (clip.kind === "VIDEO" && (clip.volume !== undefined || clip.fadeInSeconds !== undefined || clip.fadeOutSeconds !== undefined) && operation.hasAudio !== true) {
+        throw new CompositionEditorPatchError("El medio nuevo debe tener audio confirmado para conservar el volumen y los fades del clip.");
+      }
+      if (operation.productionAssetId === clip.source.productionAssetId) {
+        throw new CompositionEditorPatchError("El clip ya utiliza ese medio.");
+      }
+      if (clip.kind !== "IMAGE") {
+        if (!operation.sourceDurationSeconds || (clip.sourceOffsetSeconds || 0) + clip.durationSeconds > operation.sourceDurationSeconds + CLIP_BOUNDARY_EPSILON_SECONDS) {
+          throw new CompositionEditorPatchError("El medio nuevo no cubre el recorte y la duración del clip.");
+        }
+      }
+      clip.source = {
+        type: "PRODUCTION_ASSET",
+        productionAssetId: operation.productionAssetId,
+        ...(operation.hasAudio !== undefined ? { hasAudio: operation.hasAudio } : {}),
+        ...(operation.sourceHeight ? { sourceHeight: operation.sourceHeight } : {}),
+        ...(operation.sourceWidth ? { sourceWidth: operation.sourceWidth } : {}),
+      };
+      if (operation.sourceDurationSeconds) clip.sourceDurationSeconds = operation.sourceDurationSeconds;
+      else delete clip.sourceDurationSeconds;
+      continue;
+    }
+
+    if (operation.type === "clip.duplicate") {
+      if (clip.freezeTailSeconds !== undefined && !isCompositionVideoFreezeEnabled()) {
+        throw new CompositionEditorPatchError("La congelación experimental no está habilitada en este entorno.");
+      }
+      if (clip.playbackRate !== undefined && !areCompositionVideoRatesEnabled()) {
+        throw new CompositionEditorPatchError("La velocidad experimental no está habilitada en este entorno.");
+      }
+      if (source !== "USER") {
+        throw new CompositionEditorPatchError("Duplicar clips requiere una acción explícita del usuario.");
+      }
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes duplicar un clip de un track bloqueado.");
+      if (next.clips.length >= 500) throw new CompositionEditorPatchError("La composición alcanzó el máximo de 500 clips.");
+      if (next.clips.some((candidate) => candidate.id === operation.newClipId || candidate.hfId === operation.newHfId)) {
+        throw new CompositionEditorPatchError("El identificador del clip duplicado ya existe.");
+      }
+      if (clip.sceneId && !operation.newSceneId) {
+        throw new CompositionEditorPatchError("Un clip asociado a una escena requiere una nueva identidad de escena al duplicarse.");
+      }
+      if (operation.newSceneId && originalSceneIds.has(operation.newSceneId)) {
+        throw new CompositionEditorPatchError("La escena duplicada debe usar una identidad nueva.");
+      }
+      const sourceAnimations = next.motion.animations.filter((animation) => animation.target.clipId === clip.id);
+      const animationIdMap = new Map(operation.animationIds.map((entry) => [entry.sourceAnimationId, entry.newAnimationId]));
+      if (
+        animationIdMap.size !== operation.animationIds.length
+        || sourceAnimations.length !== animationIdMap.size
+        || sourceAnimations.some((animation) => !animationIdMap.has(animation.id))
+      ) {
+        throw new CompositionEditorPatchError("La duplicación debe asignar exactamente una identidad nueva a cada animación del clip.");
+      }
+      const newAnimationIds = new Set(operation.animationIds.map((entry) => entry.newAnimationId));
+      if (
+        newAnimationIds.size !== operation.animationIds.length
+        || next.motion.animations.some((animation) => newAnimationIds.has(animation.id))
+      ) {
+        throw new CompositionEditorPatchError("Una animación duplicada reutiliza un identificador existente.");
+      }
+      if (next.motion.animations.length + sourceAnimations.length > COMPOSITION_MOTION_MAX_ANIMATIONS) {
+        throw new CompositionEditorPatchError("La duplicación excede el máximo de animaciones permitido.");
+      }
+      const duplicate = structuredClone(clip);
+      duplicate.id = operation.newClipId;
+      duplicate.hfId = operation.newHfId;
+      duplicate.startSeconds = operation.startSeconds;
+      duplicate.timingSource = "USER_EDITED";
+      if (operation.newSceneId) duplicate.sceneId = operation.newSceneId;
+      else delete duplicate.sceneId;
+      next.clips.push(duplicate);
+      next.motion.animations.push(...sourceAnimations.map((animation) => ({
+        ...structuredClone(animation),
+        id: animationIdMap.get(animation.id)!,
+        target: { ...animation.target, clipId: duplicate.id },
+      })));
+      continue;
+    }
 
     if (operation.type === "clip.reset-asset") {
       if (source !== "USER") {
@@ -678,7 +856,10 @@ export function applyCompositionEditorPatches(
       clip.mediaFit = resolveDefaultCompositionMediaFit({ clipKind: clip.kind, track: currentTrack });
       delete clip.crop;
       delete clip.colorGrading;
+      delete clip.playbackRate;
+      delete clip.freezeTailSeconds;
       delete clip.volume;
+      delete clip.volumeEnvelope;
       delete clip.fadeInSeconds;
       delete clip.fadeOutSeconds;
       next.clips = next.clips.filter((candidate) => candidate.id === clip.id || !siblingIds.has(candidate.id));
@@ -694,8 +875,11 @@ export function applyCompositionEditorPatches(
     }
 
     if (operation.type === "clip.split") {
+      if (clip.playbackRate !== undefined || clip.freezeTailSeconds !== undefined) {
+        throw new CompositionEditorPatchError("Restablece la velocidad o la congelación antes de dividir este clip.");
+      }
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes dividir un clip de un track bloqueado.");
-      assertDerivableMediaClip(clip);
+      assertDerivableClip(clip);
       assertClipCanCreateDerivedFragment(next, clip.id);
       assertNewDerivedClipIdentity(next, operation.newClipId, operation.newHfId);
       const splitAtSeconds = quantizeToDocumentFrame(operation.atSeconds, next.canvas.fps);
@@ -737,6 +921,8 @@ export function applyCompositionEditorPatches(
           },
         ],
       }, "corte");
+      retainCompositionNativeFragment(rightClip, splitOffset, clip.durationSeconds);
+      retainCompositionNativeFragment(clip, 0, leftClipDuration);
       clip.durationSeconds = leftClipDuration;
       clip.timingSource = "USER_EDITED";
       next.clips.push(rightClip);
@@ -746,8 +932,11 @@ export function applyCompositionEditorPatches(
     }
 
     if (operation.type === "clip.remove-range") {
+      if (clip.playbackRate !== undefined || clip.freezeTailSeconds !== undefined) {
+        throw new CompositionEditorPatchError("Restablece la velocidad o la congelación antes de eliminar un intervalo de este clip.");
+      }
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes eliminar un intervalo de un track bloqueado.");
-      assertDerivableMediaClip(clip);
+      assertDerivableClip(clip);
       const clipEnd = clip.startSeconds + clip.durationSeconds;
       const rangeStartSeconds = Math.max(clip.startSeconds, quantizeToDocumentFrame(operation.startSeconds, next.canvas.fps));
       const rangeEndSeconds = Math.min(clipEnd, quantizeToDocumentFrame(operation.endSeconds, next.canvas.fps));
@@ -785,11 +974,13 @@ export function applyCompositionEditorPatches(
             targetClipId: clip.id,
           }],
         }, "intervalo");
+        retainCompositionNativeFragment(clip, rangeEndSeconds - clip.startSeconds, clip.durationSeconds);
         clip.durationSeconds = retainedDuration;
         clip.sourceOffsetSeconds = normalizeVideoSourceOffset(
           clip,
           quantizeToDocumentFrame((clip.sourceOffsetSeconds || 0) + (rangeEndSeconds - clip.startSeconds), next.canvas.fps),
         );
+        if (clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS") delete clip.sourceOffsetSeconds;
         clip.startSeconds = quantizeToDocumentFrame(operation.ripple ? clip.startSeconds : rangeEndSeconds, next.canvas.fps);
         clip.timingSource = "USER_EDITED";
         continue;
@@ -808,6 +999,7 @@ export function applyCompositionEditorPatches(
             targetClipId: clip.id,
           }],
         }, "intervalo");
+        retainCompositionNativeFragment(clip, 0, retainedDuration);
         clip.durationSeconds = retainedDuration;
         clip.timingSource = "USER_EDITED";
         continue;
@@ -854,6 +1046,8 @@ export function applyCompositionEditorPatches(
           },
         ],
       }, "intervalo");
+      retainCompositionNativeFragment(rightClip, rangeEndSeconds - clip.startSeconds, clip.durationSeconds);
+      retainCompositionNativeFragment(clip, 0, leftClipDuration);
       clip.durationSeconds = leftClipDuration;
       clip.timingSource = "USER_EDITED";
       next.clips.push(rightClip);
@@ -901,8 +1095,58 @@ export function applyCompositionEditorPatches(
 
     if (operation.type === "clip.duration") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes cambiar la duración de un track bloqueado.");
+      if (clip.freezeTailSeconds !== undefined) throw new CompositionEditorPatchError("Desactiva la congelación antes de cambiar la duración.");
+      retainCompositionNativeFragment(clip, 0, operation.durationSeconds);
       clip.durationSeconds = operation.durationSeconds;
       clip.timingSource = "USER_EDITED";
+    }
+
+    if (operation.type === "clip.playback-rate") {
+      if (source !== "USER") throw new CompositionEditorPatchError("Cambiar la velocidad requiere una acción explícita del usuario.");
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes cambiar la velocidad de un track bloqueado.");
+      if (operation.playbackRate === 1) {
+        delete clip.playbackRate;
+      } else {
+        if (clip.freezeTailSeconds !== undefined) throw new CompositionEditorPatchError("Desactiva la congelación antes de cambiar la velocidad.");
+        if (!areCompositionVideoRatesEnabled()) throw new CompositionEditorPatchError("La velocidad experimental no está habilitada en este entorno.");
+        if (clip.kind !== "VIDEO" || clip.source.type !== "PRODUCTION_ASSET"
+          || clip.source.hasAudio !== false
+          || (currentTrack.semanticRole !== "BROLL" && currentTrack.semanticRole !== "VISUAL")
+          || !clip.sourceDurationSeconds
+          || clip.sceneId !== undefined
+          || next.transitions?.items.some((transition) => transition.fromClipId === clip.id || transition.toClipId === clip.id)
+          || !videoRateSourceWindowFits({
+            clipDurationSeconds: clip.durationSeconds,
+            playbackRate: operation.playbackRate,
+            sourceDurationSeconds: clip.sourceDurationSeconds,
+            sourceOffsetSeconds: clip.sourceOffsetSeconds || 0,
+          })) {
+          throw new CompositionEditorPatchError("La velocidad requiere B-roll sin audio, fuente suficiente y ninguna transición.");
+        }
+        clip.playbackRate = operation.playbackRate;
+      }
+    }
+
+    if (operation.type === "clip.freeze-tail") {
+      if (source !== "USER") throw new CompositionEditorPatchError("Congelar un video requiere una acción explícita del usuario.");
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes congelar un track bloqueado.");
+      if (!operation.enabled) {
+        delete clip.freezeTailSeconds;
+      } else {
+        if (!isCompositionVideoFreezeEnabled()) throw new CompositionEditorPatchError("La congelación experimental no está habilitada en este entorno.");
+        const tailSeconds = clip.sourceDurationSeconds === undefined ? null : resolveVideoFreezeTailSeconds({
+          clipDurationSeconds: clip.durationSeconds,
+          sourceDurationSeconds: clip.sourceDurationSeconds,
+          sourceOffsetSeconds: clip.sourceOffsetSeconds || 0,
+        });
+        if (clip.kind !== "VIDEO" || clip.source.type !== "PRODUCTION_ASSET" || clip.source.hasAudio !== false
+          || (currentTrack.semanticRole !== "BROLL" && currentTrack.semanticRole !== "VISUAL")
+          || clip.sceneId !== undefined || clip.playbackRate !== undefined || tailSeconds === null
+          || next.transitions?.items.some((transition) => transition.fromClipId === clip.id || transition.toClipId === clip.id)) {
+          throw new CompositionEditorPatchError("La congelación requiere B-roll sin audio, cola de hasta 3 s y ninguna transición o cambio de velocidad.");
+        }
+        clip.freezeTailSeconds = tailSeconds;
+      }
     }
 
     if (operation.type === "clip.estimated-timing") {
@@ -916,9 +1160,15 @@ export function applyCompositionEditorPatches(
     }
 
     if (operation.type === "clip.trim") {
+      if (clip.playbackRate !== undefined || clip.freezeTailSeconds !== undefined) throw new CompositionEditorPatchError("Restablece la velocidad o la congelación antes de recortar este clip.");
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes recortar un track bloqueado.");
+      if (clip.source.type === "NATIVE_CAPTIONS") {
+        const retainedStart = operation.startSeconds - clip.startSeconds;
+        retainCompositionNativeFragment(clip, retainedStart, retainedStart + operation.durationSeconds);
+      }
       clip.durationSeconds = operation.durationSeconds;
       clip.sourceOffsetSeconds = normalizeVideoSourceOffset(clip, operation.sourceOffsetSeconds);
+      if (clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS") delete clip.sourceOffsetSeconds;
       clip.startSeconds = operation.startSeconds;
       clip.timingSource = "USER_EDITED";
     }
@@ -983,6 +1233,16 @@ export function applyCompositionEditorPatches(
       clip.volume = operation.volume;
     }
 
+    if (operation.type === "clip.volume-envelope") {
+      if (operation.points.length && !areCompositionVolumeEnvelopeEditsEnabled()) {
+        throw new CompositionEditorPatchError("La edición de curvas de volumen no está habilitada en este entorno.");
+      }
+      if (currentTrack.locked || !compositionClipHasConfigurableAudio(clip, currentTrack)) {
+        throw new CompositionEditorPatchError("La curva de volumen requiere un clip con audio y una pista desbloqueada.");
+      }
+      clip.volumeEnvelope = operation.points;
+    }
+
     if (operation.type === "clip.audio-fades") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes cambiar los fades de un track bloqueado.");
       if (!compositionClipHasConfigurableAudio(clip, currentTrack)) {
@@ -1008,8 +1268,25 @@ export function applyCompositionEditorPatches(
       if (clip.source.type !== "NATIVE_CAPTIONS") {
         throw new CompositionEditorPatchError("Esta operación solo está disponible para capas de captions.");
       }
-      clip.source.cues = operation.cues;
+      const previous = new Map(clip.source.cues.map((cue) => [cue.id, cue]));
+      const changesCaptionEffects = operation.cues.some((cue) => {
+        const retained = previous.get(cue.id);
+        return (cue.effects !== undefined && JSON.stringify(cue.effects) !== JSON.stringify(retained?.effects))
+          || (cue.emphasis !== undefined && JSON.stringify(cue.emphasis) !== JSON.stringify(retained?.emphasis));
+      });
+      if (changesCaptionEffects && source !== "USER") throw new CompositionEditorPatchError("Los efectos de captions requieren una acción del usuario.");
+      if (changesCaptionEffects && !areCaptionEffectsEnabled()) throw new CompositionEditorPatchError("La edición de efectos de captions está desactivada.");
+      clip.source.cues = operation.cues.map((cue) => invalidateChangedCaptionText(previous.get(cue.id), cue));
       if (operation.origin) clip.source.origin = operation.origin;
+    }
+
+    if (operation.type === "clip.caption-effects") {
+      if (source !== "USER") throw new CompositionEditorPatchError("Los efectos de captions requieren una acción del usuario.");
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes editar efectos en una pista bloqueada.");
+      if (clip.source.type !== "NATIVE_CAPTIONS") throw new CompositionEditorPatchError("Esta operación requiere una capa de captions.");
+      if (operation.effects && !areCaptionEffectsEnabled()) throw new CompositionEditorPatchError("La edición de efectos de captions está desactivada.");
+      if (operation.effects === null) delete clip.source.effects;
+      else clip.source.effects = operation.effects;
     }
 
     if (operation.type === "clip.text-style") {
@@ -1025,6 +1302,7 @@ export function applyCompositionEditorPatches(
 
     if (operation.type === "clip.template") {
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes aplicar una plantilla a un track bloqueado.");
+      retainCompositionNativeFragment(clip, 0, operation.durationSeconds);
       clip.durationSeconds = operation.durationSeconds;
       clip.layout = operation.layout;
       clip.startSeconds = operation.startSeconds;
@@ -1037,7 +1315,12 @@ export function applyCompositionEditorPatches(
   }
 
   // Every newly appended document uses the current motion contract, including restores.
-  next.format = next.clips.some((clip) => clip.kind === "TEXT" || clip.kind === "CAPTION")
+  if (next.htmlEditing) {
+    next.htmlEditing.items = next.htmlEditing.items.filter(reference => next.clips.some(clip => clip.id === reference.clipId));
+    if (!next.htmlEditing.items.length) delete next.htmlEditing;
+  }
+  next.format = next.htmlEditing ? HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT
+    : next.clips.some((clip) => clip.kind === "TEXT" || clip.kind === "CAPTION")
     ? NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT
     : COMPOSITION_DOCUMENT_FORMAT;
   next.motion.schemaVersion = 2;

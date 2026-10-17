@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
+import { useCompositionPanelFocus } from "./useCompositionPanelFocus";
 import { AlertTriangle, CheckCircle2, Clapperboard, History, Loader2, Send, Trash2, X } from "lucide-react";
 import { EngineSelect } from "@/components/ui/EngineSelect";
 import { renderStageLabel } from "@/domains/production/hyperframes/hyperframes-render-diagnostics";
@@ -42,6 +43,7 @@ interface CompositionDeliveryPanelProps {
   busy: boolean;
   compact?: boolean;
   diagnostics: ReactNode;
+  recovery?: ReactNode;
   durationSeconds: number;
   error: string | null;
   history: CompositionSnapshotEntry[] | null;
@@ -61,7 +63,9 @@ interface CompositionDeliveryPanelProps {
   selectedRenderProfileId: HyperframesRenderProfileId;
 }
 
-export function CompositionDeliveryPanel({ canvas, diagnostics, importStatus, assembly, busy, compact = false, durationSeconds, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: CompositionDeliveryPanelProps) {
+export function CompositionDeliveryPanel({ canvas, diagnostics, recovery, importStatus, assembly, busy, compact = false, durationSeconds, error, notice, history, historyOpen, onApprove, onDeleteAndRender, onHistoryToggle, onPrepare, onProfileChange, onRender, onRestore, priorCompletedVideo, providerStatus, renderStatus, selectedRenderProfileId }: CompositionDeliveryPanelProps) {
+  const historyRef = useRef<HTMLElement>(null);
+  useCompositionPanelFocus({ open: historyOpen, panelRef: historyRef, kind: "MODAL", onClose: onHistoryToggle });
   const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
   const renderBudget = estimateHyperframesRenderBudget({ durationSeconds, renderProfile: selectedProfile });
   const profileMatchesAssembly = !assembly || sameHyperframesRenderSettings(assembly.renderProfile, selectedProfile);
@@ -115,6 +119,7 @@ export function CompositionDeliveryPanel({ canvas, diagnostics, importStatus, as
     </div>
 
     {diagnostics}
+    {recovery}
     {(notice || !profileMatchesAssembly || label || priorCompletedVideo || error || renderBudget.recommendedSegmentCount > 1) && <div className={styles.deliveryMessages}>
       {notice && <p role="status" data-tone="success"><CheckCircle2 size={12} />{notice}</p>}
       {!profileMatchesAssembly && <p role="status" data-tone="warning"><AlertTriangle size={12} />El formato cambió. Crea una nueva versión antes de aprobar o renderizar.</p>}
@@ -126,7 +131,7 @@ export function CompositionDeliveryPanel({ canvas, diagnostics, importStatus, as
 
     {historyOpen && <>
       <button type="button" className={styles.snapshotBackdrop} aria-label="Cerrar versiones" onClick={onHistoryToggle} />
-      <aside className={styles.snapshotHistory} role="dialog" aria-modal="true" aria-labelledby="snapshot-history-title">
+      <aside ref={historyRef} tabIndex={-1} className={`${styles.snapshotHistory} ${styles.keyboardPanel}`} role="dialog" aria-modal="true" aria-labelledby="snapshot-history-title">
         <div className={styles.snapshotHistoryHeader}><div><strong id="snapshot-history-title">Versiones de salida</strong><span>{history?.length || 0} snapshots disponibles</span></div><button type="button" aria-label="Cerrar versiones" onClick={onHistoryToggle}><X size={15} /></button></div>
         <p className={styles.snapshotEmpty}>Restaurar reemplaza el timeline editable y la salida activa con el contenido de esa versión.</p>
         {history && history.length > 0 ? <div className={styles.snapshotList}>{history.map((snapshot) => {

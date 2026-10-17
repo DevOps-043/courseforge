@@ -13,6 +13,7 @@ export type Esp02StepState =
   | "STEP_ESCALATED";
 
 export interface SyllabusLesson {
+  topics?: string[];
   id?: string; // Opcional al generar, obligatorio al guardar
   title: string;
   objective_specific: string;
@@ -48,6 +49,9 @@ export interface SyllabusValidationReport {
 }
 
 export interface SyllabusGenerationMetadata {
+  import_baseline?: import("../import/syllabus-import.schema").ImportOutline;
+  import_id?: string;
+  import_revision?: number;
   files?: SourceFile[];
   source_documents?: SyllabusSourceDocument[];
   notes?: string;
@@ -80,6 +84,9 @@ export interface SyllabusQaState {
 }
 
 export interface TemarioEsp02 {
+  input_mode?: import("../import/syllabus-import.schema").SyllabusInputMode;
+  active_import_id?: string | null;
+  content_version?: number;
   route: Esp02Route;
   state?: Esp02StepState;
   generation_metadata?: SyllabusGenerationMetadata;

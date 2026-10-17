@@ -1,4 +1,10 @@
+import { createOperationalLogger } from "../../../../lib/server/operational-logger";
 import { HeygenClient } from "./heygen.client";
+import {
+  describeHeygenCatalogSyncFailure,
+  HeygenCatalogSyncFailureError,
+  type HeygenCatalogSyncStage,
+} from "./heygen-catalog-errors";
 import {
   normalizeAvatarLooks,
   normalizeVoices,
@@ -50,6 +56,12 @@ export class HeygenCatalogService {
       }
     }
     const syncedAt = new Date().toISOString();
+    let stage: HeygenCatalogSyncStage = "provider_catalog";
+    const logger = createOperationalLogger("production.heygen.catalog", {
+      correlationId: requestId || syncRunId,
+      organizationId,
+      syncRunId,
+    });
 
     try {
       const [account, apiKey, avatarResponse, voiceResponse] = await Promise.all([
@@ -69,6 +81,7 @@ export class HeygenCatalogService {
         });
         throw new HeygenCatalogSyncIncompleteError(message);
       }
+      stage = "normalize_catalog";
       const avatars = normalizeAvatarLooks(avatarResponse);
       const voices = normalizeVoices(voiceResponse);
       const accountSnapshot = {
@@ -81,6 +94,7 @@ export class HeygenCatalogService {
         username: account?.username || null,
         wallet: account?.wallet || null,
       };
+      stage = "reconcile_catalog";
       const reconciliation = await this.repository.reconcileCatalogSnapshot({
         accountSnapshot,
         avatars: avatars.map((avatar) => ({
@@ -110,6 +124,7 @@ export class HeygenCatalogService {
           voice_type: voice.type,
         })),
       });
+      stage = "read_presets";
       const [avatarRows, voiceRows] = await Promise.all([
         this.repository.listAvatarPresets(organizationId),
         this.repository.listVoicePresets(organizationId),
@@ -125,6 +140,7 @@ export class HeygenCatalogService {
         is_default: boolean;
       }>;
 
+      stage = "select_defaults";
       const defaultAvatarPresetId = await this.ensureDefaultAvatarPreset({
         avatarRows: activeAvatarRows,
         organizationId,
@@ -154,11 +170,24 @@ export class HeygenCatalogService {
       };
     } catch (error) {
       if (!(error instanceof HeygenCatalogSyncIncompleteError)) {
-        await this.repository.markCatalogSyncIncomplete({
-          errorMessage: getErrorMessage(error), organizationId, status: "FAILED", syncRunId, syncedAt,
-        });
+        const failure = describeHeygenCatalogSyncFailure(error, stage);
+        logger.error("production.heygen.catalog.failed", failure);
+        try {
+          await this.repository.markCatalogSyncIncomplete({
+            errorMessage: failure.message, organizationId, status: "FAILED", syncRunId,
+            syncedAt: new Date().toISOString(),
+          });
+        } catch (persistenceError) {
+          // A second database failure must not replace the original sync error.
+          logger.error("production.heygen.catalog.failure_persistence_failed", {
+            ...describeHeygenCatalogSyncFailure(persistenceError, "reconcile_catalog"),
+            originalFailure: failure,
+          });
+        }
       }
-      throw error;
+      throw error instanceof Error
+        ? error
+        : new HeygenCatalogSyncFailureError(describeHeygenCatalogSyncFailure(error, stage));
     }
   }
 
@@ -232,10 +261,6 @@ export class HeygenCatalogSyncInProgressError extends Error {
 
 function readOwnership(metadata: Record<string, unknown>) {
   return typeof metadata.ownership === "string" ? metadata.ownership : null;
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Error desconocido al sincronizar HeyGen.";
 }
 
 function isUniqueViolation(error: unknown) {

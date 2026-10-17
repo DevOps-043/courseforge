@@ -10,6 +10,7 @@ import { createClient } from "@/utils/supabase/server";
 import { API_ERROR_CODE } from "@/lib/server/api-contract";
 import { apiErrorResponse } from "@/lib/server/api-response";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+import { readLegacyRevisionPreview } from "@/domains/production/composition-editor/composition-html-editing-legacy-preview-policy";
 
 interface RouteContext { params: Promise<{ revisionId: string }>; }
 
@@ -37,9 +38,14 @@ export async function GET(request: Request, context: RouteContext) {
       .eq("organization_id", tenant.organizationId)
       .maybeSingle();
     if (error) throw error;
-    const previewHtml = readPreviewHtml(data?.manifest);
-    if (!previewHtml) return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Preview de video no disponible.", requestId, status: 404 });
-    return new NextResponse(previewHtml, {
+    const preview = readLegacyRevisionPreview(data?.manifest);
+    if (preview.kind === "html-editing-required") {
+      return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest,
+        message: "Esta revisión HTML editable requiere un preview autorizado de snapshot; no está disponible mediante la ruta legacy.",
+        requestId, retryable: false, status: 422 });
+    }
+    if (preview.kind === "unavailable") return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Preview de video no disponible.", requestId, status: 404 });
+    return new NextResponse(preview.html, {
       headers: {
         "Cache-Control": "private, no-store",
         "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src https: data:; media-src https: data:",
@@ -55,10 +61,4 @@ export async function GET(request: Request, context: RouteContext) {
     logger.error("production.hyperframes.revision.preview_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar el preview de video.", requestId, retryable: true, status: 500 });
   }
-}
-
-function readPreviewHtml(manifest: unknown) {
-  if (!manifest || typeof manifest !== "object") return null;
-  const value = (manifest as Record<string, unknown>).preview_html;
-  return typeof value === "string" && value.length > 0 && value.length <= 200_000 ? value : null;
 }

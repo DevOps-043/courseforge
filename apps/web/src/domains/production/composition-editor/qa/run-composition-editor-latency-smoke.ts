@@ -1,0 +1,141 @@
+import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { build } from "esbuild";
+import { createInitialCompositionDocument } from "../composition-document.factory";
+import { compileCompositionPreview } from "../composition-preview-compiler.service";
+import { applyCompositionEditorPatches } from "../editor-patch.service";
+import type { CompositionEditorPatchOperation } from "../editor-patch.types";
+import { compositionQaDelay, launchCompositionQaBrowser, type CompositionQaCdpClient } from "./composition-qa-browser";
+
+async function evaluate<T>(client: CompositionQaCdpClient, expression: string): Promise<T> {
+  const result = await client.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+  if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
+  return (result.result as { value: T }).value;
+}
+
+async function waitFor(check: () => Promise<boolean>, label: string) {
+  const deadline = Date.now() + 15_000;
+  while (!await check()) {
+    if (Date.now() > deadline) throw new Error(`LATENCY_SMOKE_TIMEOUT: ${label}`);
+    await compositionQaDelay(50);
+  }
+}
+
+async function main() {
+  const output = resolve(process.cwd(), ".tmp/composition-editor-latency-qa");
+  await mkdir(output, { recursive: true });
+  await build({
+    bundle: true, entryPoints: [resolve(process.cwd(), "src/domains/production/composition-editor/qa/composition-editor-latency-smoke.fixture.tsx")],
+    format: "iife", logLevel: "silent", outfile: resolve(output, "fixture.js"), platform: "browser", target: ["chrome120"],
+    tsconfig: resolve(process.cwd(), "tsconfig.json"), define: { "process.env": "{}" },
+    // Next replaces Server Actions with RPC proxies; esbuild needs an explicit test boundary.
+    // This fixture must never upload to Storage or mutate an authenticated session.
+    plugins: [{ name: "isolate-external-services", setup(builder) {
+      builder.onLoad({ filter: /utils[\\/]supabase[\\/]client\.ts$/ }, () => ({
+        contents: 'export function createClient() { throw new Error("UNEXPECTED_STORAGE_ACCESS_IN_LATENCY_TEST"); }', loader: "ts",
+      }));
+      builder.onLoad({ filter: /app[\\/]login[\\/]actions\.ts$/ }, () => ({
+        contents: 'async function unexpectedAuthAction() { throw new Error("UNEXPECTED_AUTH_ACTION_IN_LATENCY_TEST"); } export { unexpectedAuthAction as loginAction, unexpectedAuthAction as logoutAction };', loader: "ts",
+      }));
+    } }],
+  });
+  const [bundle, css] = await Promise.all([readFile(resolve(output, "fixture.js")), readFile(resolve(output, "fixture.css"))]);
+  let persisted = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "d".repeat(64), durationSeconds: 5, fileSizeBytes: 4, mimeType: "video/mp4", productionAssetId: "44444444-4444-4444-8444-444444444444", publicUrl: null, storageBucket: "production-assets", storagePath: "seed.mp4", timelineRole: "BROLL" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 5, subtitle: "", title: "Latency smoke" },
+  });
+  persisted.clips = [];
+  let documentHash = "a".repeat(64);
+  let version = 1;
+  let previewRequests = 0;
+  const pendingSaves: Array<(status: number) => void> = [];
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url || "/", "http://localhost");
+    const json = (body: unknown, status = 200) => { response.writeHead(status, { "Content-Type": "application/json" }); response.end(JSON.stringify(body)); };
+    try {
+      if (url.pathname.endsWith("/document")) {
+        if (request.method === "PUT") {
+          const chunks: Buffer[] = [];
+          for await (const chunk of request) chunks.push(Buffer.from(chunk));
+          const body = JSON.parse(Buffer.concat(chunks).toString()) as { operations: CompositionEditorPatchOperation[] };
+          assert.equal(request.headers["if-match"], `"${documentHash}"`);
+          pendingSaves.push((status) => {
+            if (status === 200) {
+              persisted = applyCompositionEditorPatches(persisted, body.operations);
+              documentHash = "b".repeat(64); version += 1;
+              json({ data: { document: persisted, documentHash, version } });
+            } else if (status === 409) {
+              documentHash = "c".repeat(64);
+              json({ data: { document: persisted, documentHash, version }, error: "Conflicto simulado QA" }, 409);
+            } else json({ error: "Fallo simulado QA" }, 500);
+          });
+        } else json({ data: { document: persisted, documentHash, version } });
+      } else if (url.pathname.endsWith("/preview")) {
+        previewRequests += 1;
+        const html = await compileCompositionPreview({ document: persisted, documentHash, previewGeneration: Number(url.searchParams.get("r") || "0"), assetUrls: new Map() });
+        const reporter = `<script>(() => {
+          const report = () => parent.postMessage({ type: "qa-scene-state", layers: document.querySelectorAll('[data-hf-id]').length, boot: performance.timeOrigin }, '*');
+          addEventListener('message', (event) => { if (event.data?.type === 'courseforge-composition-visual-patch') setTimeout(report, 0); });
+          setTimeout(report, 100);
+        })();</script>`;
+        response.writeHead(200, { "Content-Type": "text/html" }); response.end(html.replace("</body>", `${reporter}</body>`));
+      } else if (url.pathname === "/fixture.js") { response.setHeader("Content-Type", "text/javascript"); response.end(bundle); }
+      else if (url.pathname === "/fixture.css") { response.setHeader("Content-Type", "text/css"); response.end(css); }
+      else if (url.pathname.endsWith("/revisions")) json({ data: { snapshots: [], activeRevisionId: null } });
+      else if (url.pathname.endsWith("/branding")) json({ data: { hasIntro: false, hasOutro: false, outros: [], selectedOutroAssetId: null } });
+      else if (url.pathname.startsWith("/api/")) json({ data: [], success: true });
+      else { response.setHeader("Content-Type", "text/html"); response.end('<!doctype html><link rel="stylesheet" href="/fixture.css"><output id="scene-state"></output><div id="root"></div><script src="/fixture.js"></script>'); }
+    } catch (error) { json({ error: String(error) }, 500); }
+  });
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const browser = await launchCompositionQaBrowser({ profilePrefix: "courseforge-editor-latency-" }).catch((error) => { server.close(); throw error; });
+  const exceptions: unknown[] = [];
+  browser.client.onEvent?.("Runtime.exceptionThrown", (event) => { if (exceptions.length < 5) exceptions.push(event.exceptionDetails); });
+  try {
+    await browser.client.send("Page.navigate", { url: `http://127.0.0.1:${(server.address() as { port: number }).port}` });
+    const state = () => evaluate<{ layers: number; boot: number }>(browser.client, "JSON.parse(document.querySelector('#scene-state').textContent || '{}')");
+    await waitFor(async () => (await state()).layers === 0, "initial preview");
+    await evaluate(browser.client, `Array.from(document.querySelectorAll('[role=tab]')).find((button) => button.textContent.trim() === 'Texto').click(); true`);
+    await waitFor(() => evaluate(browser.client, `Array.from(document.querySelectorAll('button')).some((button) => button.textContent.includes('Capa de texto'))`), "text library tab");
+    const addText = () => evaluate(browser.client, `Array.from(document.querySelectorAll('button')).find((button) => button.textContent.includes('Capa de texto')).click(); true`);
+    const initialBoot = (await state()).boot;
+    const initialRequests = previewRequests;
+    await addText();
+    await waitFor(async () => pendingSaves.length === 1 && (await state()).layers === 1, "local preview before slow save");
+    assert.equal(persisted.clips.length, 0);
+    assert.equal((await state()).boot, initialBoot);
+    assert.equal(previewRequests, initialRequests);
+    assert.equal(await evaluate(browser.client, 'document.querySelector(\'[aria-label="Posición del preview"]\').disabled'), false, "El guardado no debe bloquear el scrub local.");
+    pendingSaves.shift()!(200);
+    await waitFor(async () => await evaluate(browser.client, "!document.body.textContent.includes('Guardando')"), "save acknowledgement");
+    assert.equal(previewRequests, initialRequests, "El ACK del guardado no debe navegar el iframe.");
+    await addText();
+    await waitFor(async () => pendingSaves.length === 1 && (await state()).layers === 2, "second optimistic edit");
+    pendingSaves.shift()!(500);
+    await waitFor(async () => (await state()).layers === 1 && previewRequests > initialRequests, "rollback after save failure");
+    assert.equal(persisted.clips.length, 1);
+    assert.equal(await evaluate(browser.client, "document.body.textContent.includes('Fallo simulado QA')"), true);
+    assert.equal(pendingSaves.length, 0, "El journal no debe reintentar un error de esta sesión.");
+    await addText();
+    await waitFor(async () => pendingSaves.length === 1 && (await state()).layers === 2, "optimistic edit before conflict");
+    const beforeConflict = previewRequests;
+    pendingSaves.shift()!(409);
+    await waitFor(async () => (await state()).layers === 1 && previewRequests > beforeConflict, "conflict recovery");
+    assert.equal(await evaluate(browser.client, "document.body.textContent.includes('Conflicto simulado QA')"), true);
+    const report = { slowSavePreviewBeforePersistence: "passed", reloadAfterSuccess: false, saveFailureRollback: "passed", conflictRecovery: "passed" };
+    await writeFile(resolve(output, "report.json"), JSON.stringify(report, null, 2));
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } catch (error) {
+    process.stderr.write(`${JSON.stringify({ previewRequests, exceptions, body: await evaluate(browser.client, "document.body.innerText.slice(0, 1200)") }, null, 2)}\n`);
+    throw error;
+  } finally {
+    pendingSaves.splice(0).forEach((finish) => finish(500));
+    await browser.close();
+    await new Promise<void>((done, reject) => server.close((error) => error ? reject(error) : done()));
+  }
+}
+
+void main().catch((error) => { process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`); process.exitCode = 1; });

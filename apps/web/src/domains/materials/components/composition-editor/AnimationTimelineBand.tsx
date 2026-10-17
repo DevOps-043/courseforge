@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
+import { formatCompositionUiNumber } from "@/domains/production/composition-editor/composition-ui-presentation";
 import {
   getCompositionMotionPhase,
   getCompositionMotionPresetDefinition,
@@ -180,7 +181,9 @@ export function AnimationTimelineBand({
     event: KeyboardEvent<HTMLDivElement>,
     kind: CompositionAnimationTimelineEditKind,
   ) => {
-    if (disabled || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
+    if (disabled || event.defaultPrevented || event.nativeEvent.isComposing
+      || event.ctrlKey || event.metaKey || event.altKey || event.repeat
+      || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
     event.preventDefault();
     event.stopPropagation();
     const timing = buildCompositionAnimationTimelineEdit({
@@ -231,7 +234,7 @@ export function AnimationTimelineBand({
         aria-valuemin={0}
         aria-valuemax={clip.durationSeconds}
         aria-valuenow={window.start}
-        aria-valuetext={`${window.start.toFixed(2)} a ${window.end.toFixed(2)} segundos dentro del clip`}
+        aria-valuetext={`${formatCompositionUiNumber(window.start)} a ${formatCompositionUiNumber(window.end)} segundos dentro del clip`}
         data-animation-id={animation.id}
         onClick={(event) => {
           event.preventDefault();

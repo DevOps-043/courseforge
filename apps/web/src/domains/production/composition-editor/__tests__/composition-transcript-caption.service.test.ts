@@ -8,6 +8,7 @@ import {
   createCompositionTranscriptCaptionPlan,
 } from "../composition-transcript-caption.service";
 import { applyCompositionEditorPatches } from "../editor-patch.service";
+import { DEFAULT_CAPTION_EFFECTS } from "../composition-caption-effects.types";
 
 function scene(words: CompositionSceneSummary["wordCues"]): CompositionSceneSummary {
   return {
@@ -111,4 +112,22 @@ test("does not overwrite a manual caption layer", () => {
     id: "generated-caption",
     scenes: [scene([{ word: "Hola", start: 0, end: 0.5 }])],
   }), /capa manual o importada/);
+});
+
+test("regeneration preserves layer effects, reports discarded cue overrides and protects split layers", () => {
+  const scenes = [scene([{ word: "Hola", start: 0.2, end: 0.8 }])];
+  const plan = createCompositionTranscriptCaptionPlan({ document: document(), id: "generated", scenes });
+  const generated = applyCompositionEditorPatches(document(), plan.operations);
+  const clip = generated.clips.find((candidate) => candidate.id === "generated")!;
+  if (clip.source.type !== "NATIVE_CAPTIONS") throw new Error("Expected captions");
+  clip.source.effects = { ...DEFAULT_CAPTION_EFFECTS, entry: "FADE" };
+  clip.source.cues[0]!.effects = { entry: "POP" };
+  const regenerated = createCompositionTranscriptCaptionPlan({ document: generated, id: "unused", scenes });
+  assert.equal(regenerated.discardedCueCustomizations, 1);
+  const updated = applyCompositionEditorPatches(generated, regenerated.operations);
+  const updatedClip = updated.clips.find((candidate) => candidate.id === "generated")!;
+  assert.ok(updatedClip.source.type === "NATIVE_CAPTIONS");
+  assert.deepEqual(updatedClip.source.effects, clip.source.effects);
+  const split = applyCompositionEditorPatches(updated, [{ type: "clip.split", clipId: "generated", atSeconds: 1, newClipId: "right", newHfId: "right" }]);
+  assert.throws(() => createCompositionTranscriptCaptionPlan({ document: split, id: "unused", scenes }), /recortes/);
 });

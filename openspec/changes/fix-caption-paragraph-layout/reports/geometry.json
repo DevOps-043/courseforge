@@ -1,0 +1,206 @@
+[
+  {
+    "target": "INTERACTIVE_PREVIEW",
+    "effectsEnabled": false,
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 217.40625,
+          "width": 78.203125,
+          "height": 45,
+          "opacity": "0.55"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 217.40625,
+          "width": 128.03125,
+          "height": 45,
+          "opacity": "1"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 217.40625,
+          "width": 85.0625,
+          "height": 45,
+          "opacity": "0.55"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 217.40625,
+          "width": 109.234375,
+          "height": 45,
+          "opacity": "0.55"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 217.40625,
+          "width": 294.8125,
+          "height": 45,
+          "opacity": "0.55"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  },
+  {
+    "target": "HYPERFRAMES_RENDER",
+    "effectsEnabled": false,
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 217.40625,
+          "width": 78.203125,
+          "height": 45,
+          "opacity": "0.55"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 217.40625,
+          "width": 128.03125,
+          "height": 45,
+          "opacity": "1"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 217.40625,
+          "width": 85.0625,
+          "height": 45,
+          "opacity": "0.55"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 217.40625,
+          "width": 109.234375,
+          "height": 45,
+          "opacity": "0.55"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 217.40625,
+          "width": 294.8125,
+          "height": 45,
+          "opacity": "0.55"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  },
+  {
+    "target": "INTERACTIVE_PREVIEW",
+    "effectsEnabled": true,
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 222.40625,
+          "width": 78.203125,
+          "height": 35.1875,
+          "opacity": "0.55"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 222.40625,
+          "width": 128.03125,
+          "height": 35.1875,
+          "opacity": "1"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 222.40625,
+          "width": 85.0625,
+          "height": 35.1875,
+          "opacity": "0.55"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 222.40625,
+          "width": 109.234375,
+          "height": 35.1875,
+          "opacity": "0.55"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 222.40625,
+          "width": 294.8125,
+          "height": 35.1875,
+          "opacity": "0.55"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  },
+  {
+    "target": "HYPERFRAMES_RENDER",
+    "effectsEnabled": true,
+    "wide": {
+      "text": "Este diálogo debe leerse horizontalmente.",
+      "words": [
+        {
+          "text": "Este",
+          "x": 170.984375,
+          "y": 222.40625,
+          "width": 78.203125,
+          "height": 35.1875,
+          "opacity": "0.55"
+        },
+        {
+          "text": "diálogo",
+          "x": 259.859375,
+          "y": 222.40625,
+          "width": 128.03125,
+          "height": 35.1875,
+          "opacity": "1"
+        },
+        {
+          "text": "debe",
+          "x": 398.5625,
+          "y": 222.40625,
+          "width": 85.0625,
+          "height": 35.1875,
+          "opacity": "0.55"
+        },
+        {
+          "text": "leerse",
+          "x": 494.296875,
+          "y": 222.40625,
+          "width": 109.234375,
+          "height": 35.1875,
+          "opacity": "0.55"
+        },
+        {
+          "text": "horizontalmente.",
+          "x": 614.203125,
+          "y": 222.40625,
+          "width": 294.8125,
+          "height": 35.1875,
+          "opacity": "0.55"
+        }
+      ]
+    },
+    "narrowLines": 3,
+    "resizeAndReverseSeek": "PASS"
+  }
+]

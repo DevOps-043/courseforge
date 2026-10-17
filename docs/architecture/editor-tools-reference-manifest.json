@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-10-02",
+  "purpose": "Isolated source research; not production dependencies",
+  "localRoot": ".tmp/editor-research/2026-10-02",
+  "executionStatus": "NOT_INSTALLED_NOT_EXECUTED",
+  "repositories": [
+    {
+      "name": "opencut-classic",
+      "url": "https://github.com/OpenCut-app/opencut-classic.git",
+      "commit": "cf5e79e919144200294fb9fed22a222592a0aeea",
+      "license": "MIT",
+      "licenseFile": "LICENSE",
+      "licenseSha256": "8117f9bb64534f7530fc6139b014fd1c1465f7981f93d1871789150fa3f59d3d",
+      "decision": "ARCHITECTURE_REFERENCE_NOT_EDITOR_REPLACEMENT"
+    },
+    {
+      "name": "grapesjs",
+      "url": "https://github.com/GrapesJS/grapesjs.git",
+      "commit": "7fe07c839c37cf724346a7b5948551570e61680b",
+      "license": "BSD-3-Clause",
+      "licenseFile": "packages/core/LICENSE",
+      "licenseSha256": "d97c2d9bed28459b20848d3d673d6b040b1373dc10cc30bb4780808863d92925",
+      "decision": "PROPERTY_MODEL_REFERENCE_LIMITED_HTML_SPIKE_CANDIDATE"
+    },
+    {
+      "name": "moveable",
+      "url": "https://github.com/daybrush/moveable.git",
+      "commit": "75069102f30c88cd89ecaaa8ca7e5f7434e54807",
+      "license": "MIT",
+      "licenseFile": "LICENSE",
+      "licenseSha256": "7b9832bcf1e6434d2d90fe529595ccc8dc1ac37d55a6ec87c7676177c812ce8f",
+      "decision": "INTERACTION_ADAPTER_CANDIDATE_REACT19_COMPATIBILITY_UNVERIFIED"
+    },
+    {
+      "name": "wavesurfer",
+      "url": "https://github.com/katspaugh/wavesurfer.js.git",
+      "commit": "69974d0265f1bfd489cbb7ed5dd0efc829bfb240",
+      "license": "BSD-3-Clause",
+      "licenseFile": "LICENSE",
+      "licenseSha256": "f82930c7b02344417df75b0fc16d9d7d59cfb833babd6c23b7987a309ac27452",
+      "decision": "REGION_EDITOR_CANDIDATE_KEEP_EXISTING_PLAYBACK_CLOCK"
+    },
+    {
+      "name": "twick",
+      "url": "https://github.com/ncounterspecialist/twick.git",
+      "commit": "3044c23e282b87c639c3f0b3fd5fb3fd972aa04c",
+      "license": "Sustainable Use License v1.0",
+      "licenseFile": "LICENSE.md",
+      "licenseSha256": "3eedbb4b925045a9ff73de61e99e5b8a49ddcdd8a6e3866a3572cb3851afc30c",
+      "decision": "RESEARCH_ONLY_NO_ADOPTION_PENDING_LICENSE_CLARIFICATION"
+    }
+  ]
+}

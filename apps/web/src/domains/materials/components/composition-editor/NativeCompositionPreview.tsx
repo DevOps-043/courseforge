@@ -1,6 +1,12 @@
 "use client";
 
 import { COMPOSITION_CANVAS_FORMATS, resolveCompositionCanvasFormat } from "@/domains/production/composition-editor/composition-canvas-format";
+import { requestCompositionDocumentSave } from "@/domains/production/composition-editor/composition-document-save-request";
+import { createHtmlEditingPreviewSession } from "@/domains/production/composition-editor/composition-html-editing-preview-channel.contract";
+import { buildHtmlEditingPreviewPageUrl, createHtmlEditingPreviewHost, isHtmlEditingPreviewPageUrl } from "@/domains/production/composition-editor/composition-html-editing-preview-host.client";
+import { captureHtmlEditingPreviewSource, resolveHtmlEditingPreviewChannel, resolveHtmlEditingPublishedPreviewRevision } from "@/domains/production/composition-editor/composition-html-editing-preview-selection";
+import {readHtmlPreviewCandidateQuery} from "@/domains/production/composition-editor/composition-html-editing-preview-candidate.contract";
+import {useCompositionHtmlCandidatePreview} from "./useCompositionHtmlCandidatePreview";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
@@ -10,9 +16,56 @@ import type { CompositionClip, CompositionEditorDocument, CompositionTrack } fro
 import { formatCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import { resolveCompositionAnimationWindow } from "@/domains/production/composition-editor/composition-motion-scheduling.service";
 import { resolveCompositionPreviewSelectionEvent } from "@/domains/production/composition-editor/composition-timeline-selection.service";
+import {
+  buildCompositionDeleteSelectionPlan,
+  buildCompositionDuplicateSelectionPlan,
+} from "@/domains/production/composition-editor/composition-timeline-batch.service";
+import {
+  createCompositionSelectionClipboardEntry,
+  resolveCompositionSelectionClipboardEntry,
+  type CompositionSelectionClipboardEntry,
+} from "@/domains/production/composition-editor/composition-selection-clipboard";
+import {
+  buildCompositionSelectionAlignmentPlan,
+  buildCompositionSelectionDistributionPlan,
+  type CompositionSelectionAlignment,
+  type CompositionSelectionAlignmentTarget,
+  type CompositionSelectionDistributionAxis,
+} from "@/domains/production/composition-editor/composition-selection-layout.service";
+import {
+  buildCompositionAssetPlacementEditPlan,
+  buildCompositionRollEditPlan,
+  buildCompositionSlideEditPlan,
+  type CompositionAssetInsertionMode,
+} from "@/domains/production/composition-editor/composition-timeline-edit.service";
+import {
+  resolveCompositionTimelineKeyboardCommand,
+  type CompositionTimelineKeyboardEditMode,
+} from "@/domains/production/composition-editor/composition-timeline-interaction.service";
+import {
+  readCompositionEditorPreferences,
+  resolveBrowserCompositionEditorPreferenceStorage,
+  writeCompositionEditorPreferences,
+  type CompositionEditorPreferences,
+} from "@/domains/production/composition-editor/composition-editor-preferences";
 import { CompositionNarrativePanel } from "./CompositionNarrativePanel";
+import { CompositionNarrativeExtractionHost, useNarrativeExtractionHost } from "./CompositionNarrativeExtractionHost";
+import { acceptsNarrativeExtractionReload } from "@/domains/production/composition-editor/composition-narrative-reload-policy";
+import type { NarrativeEditorReload } from "@/domains/production/composition-editor/composition-narrative-editor-controller";
+import { CompositionHtmlSnapshotRecoveryPanel } from "./CompositionHtmlSnapshotRecoveryPanel";
+import { CompositionHtmlEditorialInspector } from "./CompositionHtmlEditorialInspector";
+import { CompositionHtmlRecoveryCenter } from "./CompositionHtmlRecoveryCenter";
+import { useAuthStore } from "@/core/stores/authStore";
+import { useOrganizationStore } from "@/core/stores/organizationStore";
+import { CompositionHtmlEditorialNativeHost } from "@/domains/production/composition-editor/composition-html-editing-native-host.client";
+import { projectCurrentHtmlReferencesIntoHistory } from "@/domains/production/composition-editor/composition-html-editing-history-projection.client";
+import { htmlSnapshotLocatorScopeSchema, resolveHtmlSnapshotLocatorStorage } from "@/domains/production/composition-editor/composition-html-snapshot-locator.client";
+import { resolveHtmlSnapshotPublicationLock } from "@/domains/production/composition-editor/composition-html-snapshot-publication-lock.client";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
 import { applyCompositionEditorPatches, ensureCanvasDurationForClipPatches } from "@/domains/production/composition-editor/editor-patch.service";
+import { buildCompositionPreviewScenePatch } from "@/domains/production/composition-editor/composition-preview-scene-patch";
+import { CompositionPreviewAssetUrlCache } from "@/domains/production/composition-editor/composition-preview-asset-urls.client";
+import { resolveAvatarAudioLink } from "@/domains/production/composition-editor/composition-avatar-audio-link.service";
 import { getCompositionTrackDefinition, resolveCompositionTrackDefinition } from "@/domains/production/composition-editor/composition-track-registry";
 import {
   resolveDefaultCompositionClipLayout,
@@ -29,6 +82,8 @@ import {
 } from "@/domains/production/composition-editor/composition-native-overlay.factory";
 import { reconcileProductionIntroDocument } from "@/domains/production/composition-editor/composition-production-intro.service";
 import { deriveCompositionScenes } from "@/domains/production/composition-editor/composition-scene.service";
+import { resolveNarrativeRangePreview, shouldStopNarrativeRangePreview, NARRATIVE_RANGE_PREVIEW_TIMEOUT_MARGIN_MS,
+  type NarrativeRangePreview, type NarrativeRangeSelection } from "@/domains/production/composition-editor/composition-narrative-range.service";
 import { createCompositionTranscriptCaptionPlan } from "@/domains/production/composition-editor/composition-transcript-caption.service";
 import {
   COMPOSITION_VERSION_FALLBACK_HEADER,
@@ -41,17 +96,38 @@ import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import { COMPOSITION_PREVIEW_TELEMETRY_CONFIG } from "@/domains/production/composition-editor/composition-preview-telemetry";
 import { clampPreviewPlayhead, classifyPreviewTimeMessage, isPreviewRefreshRequired } from "@/domains/production/composition-editor/composition-preview-playhead.service";
 import { CompositionSaveQueue } from "@/domains/production/composition-editor/composition-save-queue";
-import { CompositionPreviewRuntimePatchCoordinator } from "@/domains/production/composition-editor/composition-preview-runtime-sync.client";
+import { canCommitCompositionPreviewRuntimePatch, CompositionPreviewRuntimePatchCoordinator } from "@/domains/production/composition-editor/composition-preview-runtime-sync.client";
+import {
+  CompositionCommandHistory,
+  type CompositionCommandHistorySnapshot,
+} from "@/domains/production/composition-editor/composition-command-history";
+import {
+  clearCompositionRecoveryEntry,
+  createCompositionRecoveryEntry,
+  resolveCompositionRecovery,
+  writeCompositionRecoveryEntry,
+  type CompositionRecoveryEntry,
+} from "@/domains/production/composition-editor/composition-recovery-journal";
 import { readCompositionApiResponse } from "@/domains/production/composition-editor/composition-editor-api.client";
 import {
   INITIAL_COMPOSITION_PREVIEW_SYNC_STATE,
+  shouldReportCompositionPreviewReadyTimeout,
+  shouldReportCompositionPreviewRuntimeHandshakeFailure,
   transitionCompositionPreviewSyncState,
 } from "@/domains/production/composition-editor/composition-preview-sync-state";
-import { COMPOSITION_PREVIEW_SYNC_V2_ENABLED } from "@/domains/production/composition-editor/composition-preview-sync.config";
+import { COMPOSITION_PREVIEW_DOCUMENT_READY_CONFIG, COMPOSITION_PREVIEW_SYNC_V2_ENABLED } from "@/domains/production/composition-editor/composition-preview-sync.config";
+import { resolveCompositionPreviewLoadErrorPresentation } from "@/domains/production/composition-editor/composition-preview-load-error";
+import { classifyCompositionPreviewMessage } from "@/domains/production/composition-editor/composition-preview-message-policy";
+import { acceptsCompositionPreviewShortcut, resolveCompositionEditorShortcut, type CompositionEditorShortcut } from "@/domains/production/composition-editor/composition-editor-shortcut";
+import {
+  applyCompositionPreviewTerminalFailure,
+  type TerminalPreviewFailure,
+} from "@/domains/production/composition-editor/composition-preview-terminal-failure";
 import {
   createCompositionPreviewParentCommand,
   parseCompositionPreviewIframeMessage,
   type CompositionColorGradingRuntimeStatus,
+  type CompositionPreviewLoadErrorCode,
   type CompositionPreviewParentCommandInput,
 } from "@/domains/production/composition-editor/composition-preview-protocol";
 import {
@@ -59,7 +135,7 @@ import {
   requiresCompositionPreviewReload,
 } from "@/domains/production/composition-editor/composition-preview-operation-policy";
 import { buildCompositionPreviewVisualPatch } from "@/domains/production/composition-editor/composition-preview-visual-patch";
-import { buildCompositionComparisonPreviewUrl } from "@/domains/production/composition-editor/composition-preview-comparison";
+import { COMPOSITION_PREVIEW_MAX_GENERATION, buildCompositionComparisonPreviewUrl, buildCompositionSavedPreviewUrl, readCompositionPreviewGeneration } from "@/domains/production/composition-editor/composition-preview-comparison";
 import { createClient as createBrowserSupabaseClient } from "@/utils/supabase/client";
 import {
   DEFAULT_HYPERFRAMES_RENDER_PROFILE_ID,
@@ -75,11 +151,21 @@ import {
   type SoundEffectCatalogItem,
 } from "./CompositionStudioLibrary";
 import { CompositionInspector } from "./CompositionInspector";
+import { CompositionAudioDiagnostics } from "./CompositionAudioDiagnostics";
+import { CompositionAudioMeters } from "./CompositionAudioMeters";
+import { areCompositionAudioMetersEnabled } from "@/domains/production/composition-editor/composition-audio-meter-runtime";
+import type { CompositionAudioMeterMessage } from "@/domains/production/composition-editor/composition-preview-protocol";
 import {
   CompositionInspectorTabs,
   type CompositionInspectorTab,
 } from "./CompositionInspectorTabs";
 import { CompositionSelectionPanel } from "./CompositionSelectionPanel";
+import { CompositionCommandPalette } from "./CompositionCommandPalette";
+import {
+  buildCompositionCommandPaletteItems,
+  executeCompositionEditorCommand,
+} from "@/domains/production/composition-editor/composition-editor-command-actions";
+import type { CompositionEditorCommandId } from "@/domains/production/composition-editor/composition-editor-command-palette";
 import { TransitionControls } from "./TransitionControls";
 import {
   CompositionDeliveryPanel,
@@ -104,7 +190,18 @@ import type { CompositionDocumentPayload, CompositionStudioAsset, CompositionStu
 export type { CompositionStudioAsset, CompositionStudioLesson } from "./composition-studio.types";
 
 type DocumentPayload = CompositionDocumentPayload;
-type SavePatchOptions = { preservePreviewRuntime?: boolean };
+type SavePatchOptions = {
+  historyMode?: "RECORD" | "REDO" | "UNDO";
+  preservePreviewRuntime?: boolean;
+  recoveryEntryId?: string;
+  skipRecoveryJournal?: boolean;
+};
+type SavePatchHandler = (
+  operations: CompositionEditorPatchOperation[],
+  summary: string,
+  source?: "AGENT" | "USER",
+  options?: SavePatchOptions,
+) => Promise<boolean>;
 type PreviewReloadReason = "EDIT_SAVED" | "DIRTY_PLAYBACK" | "MANUAL" | "MEDIA_RECOVERY" | "SAVE_RECOVERY";
 type PendingEditTelemetry = {
   operationCount: number;
@@ -141,7 +238,7 @@ const DURATION_SOURCE_LABELS: Record<NonNullable<CompositionEditorDocument["canv
 
 interface NativeCompositionPreviewProps {
   assets: CompositionStudioAsset[];
-  componentId: string;
+  componentId: string | null;
   compositionId: string;
   draftId: string;
   lessons: CompositionStudioLesson[];
@@ -176,9 +273,27 @@ type HistoricalRecoveryResponse = {
 };
 
 /** The native assembly studio: library, full preview, timeline and contextual inspector. */
-export function NativeCompositionPreview({ assets, componentId, compositionId, draftId, lessons, onAssetsChanged, onContinueToPublication, onRefreshProductionAssets, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
+export function NativeCompositionPreview(props: NativeCompositionPreviewProps) {
+  return <CompositionNarrativeExtractionHost draftId={props.draftId} enabled={process.env.NEXT_PUBLIC_NARRATIVE_EXTRACTION_ENABLED === "true"}
+    fragmentEnabled={process.env.NEXT_PUBLIC_NARRATIVE_FRAGMENT_ENABLED === "true"}><NativeCompositionPreviewSession {...props} /></CompositionNarrativeExtractionHost>;
+}
+
+function NativeCompositionPreviewSession({ assets, componentId, compositionId, draftId, lessons, onAssetsChanged, onContinueToPublication, onRefreshProductionAssets, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
+  const narrativeExtractionHost = useNarrativeExtractionHost();
+  const narrativeExtractionHostRef = useRef(narrativeExtractionHost);
+  useEffect(() => { narrativeExtractionHostRef.current = narrativeExtractionHost; }, [narrativeExtractionHost]);
+  const narrativeExtractionBeforeRef = useRef<DocumentPayload | null>(null);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const previewFocusRestoredRef = useRef(false);
+  const executeEditorShortcutRef = useRef<((command: CompositionEditorShortcut) => void) | null>(null);
   const comparisonBaselineFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const editorPreferencesRef = useRef<CompositionEditorPreferences | null>(null);
+  if (!editorPreferencesRef.current) {
+    editorPreferencesRef.current = readCompositionEditorPreferences(
+      resolveBrowserCompositionEditorPreferenceStorage(),
+    );
+  }
+  const initialEditorPreferences = editorPreferencesRef.current;
   const {
     changePreviewZoom,
     directEditingEnabled,
@@ -210,82 +325,232 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const payloadRef = useRef<DocumentPayload | null>(null);
   const saveInFlightRef = useRef(false);
   const saveQueueRef = useRef<CompositionSaveQueue<() => Promise<boolean>> | null>(null);
+  const htmlEditorialHostRef = useRef<CompositionHtmlEditorialNativeHost | null>(null);
+  const refreshHtmlAnchorRef = useRef<(signal: AbortSignal, isCurrent: () => boolean) => Promise<void>>(async () => {});
+  const nativeBypassPendingRef = useRef(0);
+  const presetWritePendingRef = useRef(false);
+  const nativeMountedRef = useRef(true);
+  const [htmlEditorialBusy, setHtmlEditorialBusy] = useState(false);
+  const commandHistoryRef = useRef<CompositionCommandHistory | null>(null);
+  const externalMutationBasePayloadRef = useRef<CompositionDocumentPayload | null>(null);
+  const agentMutationPreviewRef = useRef<{ generation: number; ready: boolean; source: string | null } | null>(null);
+  const recoveryAttemptedEntryRef = useRef<string | null>(null);
+  const savePatchRef = useRef<SavePatchHandler | null>(null);
+  const undoLastEditRef = useRef<(() => Promise<void>) | null>(null);
+  const redoLastEditRef = useRef<(() => Promise<void>) | null>(null);
+  const copyTimelineSelectionRef = useRef<(() => void) | null>(null);
+  const pasteTimelineClipboardRef = useRef<(() => Promise<void>) | null>(null);
+  const duplicateTimelineSelectionRef = useRef<(() => Promise<void>) | null>(null);
+  const deleteTimelineSelectionRef = useRef<((ripple: boolean) => Promise<void>) | null>(null);
+  const rollTimelineSelectionRef = useRef<((edge: "LEFT" | "RIGHT", deltaFrames: number) => Promise<void>) | null>(null);
+  const slideTimelineSelectionRef = useRef<((deltaFrames: number) => Promise<void>) | null>(null);
+  const timelineFrameStepRef = useRef(1);
+  const timelineKeyboardEditModeRef = useRef<CompositionTimelineKeyboardEditMode>("SLIDE");
   const runtimePatchCoordinatorRef = useRef<CompositionPreviewRuntimePatchCoordinator | null>(null);
+  const [previewAssetUrlCache] = useState(() => new CompositionPreviewAssetUrlCache());
   const previewSyncStateRef = useRef(INITIAL_COMPOSITION_PREVIEW_SYNC_STATE);
   const renderPollInFlightRef = useRef(false);
   const onVideoCompletedRef = useRef(onVideoCompleted);
   const mediaRecoveryHashRef = useRef<string | null>(null);
   const playheadSecondsRef = useRef(0);
+  const timelineClipboardRef = useRef<CompositionSelectionClipboardEntry | null>(null);
   const pendingSeekSecondsRef = useRef<number | null>(null);
   const pendingPreviewRestoreSecondsRef = useRef<number | null>(null);
   const previewDocumentHashRef = useRef<string | null>(null);
   const previewRuntimeBaseHashRef = useRef<string | null>(null);
   const previewReloadRequestRef = useRef(0);
+  const previewGenerationRef = useRef(0);
+  const htmlPreviewHostRef = useRef<ReturnType<typeof createHtmlEditingPreviewHost> | null>(null);
+  const htmlBaselineHostRef = useRef<ReturnType<typeof createHtmlEditingPreviewHost> | null>(null);
+  const htmlPortMessageRef = useRef<((source: Window, message: unknown) => void) | null>(null);
+  const postPreviewMessage = useCallback((message: CompositionPreviewParentCommandInput) => {
+    if (isHtmlEditingPreviewPageUrl(frameRef.current?.src || "")) return htmlPreviewHostRef.current?.send(message) ?? false;
+    const command = createCompositionPreviewParentCommand(message), target = frameRef.current?.contentWindow;
+    if (!command || !target) return false;
+    target.postMessage(command, "*"); return true;
+  }, []);
+  const postComparisonBaselineMessage = useCallback((message: CompositionPreviewParentCommandInput) => {
+    if (isHtmlEditingPreviewPageUrl(comparisonBaselineFrameRef.current?.src || "")) return htmlBaselineHostRef.current?.send(message) ?? false;
+    const command = createCompositionPreviewParentCommand(message), target = comparisonBaselineFrameRef.current?.contentWindow;
+    if (!command || !target) return false;
+    target.postMessage(command, "*"); return true;
+  }, []);
+  const failedPreviewGenerationRef = useRef<number | null>(null);
+  const previewRuntimeHandshakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewRuntimeSignalGenerationRef = useRef<number | null>(null);
   const autoPlayAfterPreviewRefreshRef = useRef(false);
   const previewTelemetryRef = useRef<CompositionPreviewTelemetryBuffer | null>(null);
   const previewReloadTelemetryRef = useRef<{ reason: PreviewReloadReason; startedAt: number } | null>(null);
   const pendingEditTelemetryRef = useRef<PendingEditTelemetry | null>(null);
   const comparisonBaselineReadyRef = useRef(false);
   const [payload, setPayload] = useState<DocumentPayload | null>(null);
+  const compositionScenes = useMemo(() => payload ? deriveCompositionScenes(payload.document) : [], [payload]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
+  const [safeAreasVisible, setSafeAreasVisible] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
+  const [audioMeterMessage, setAudioMeterMessage] = useState<CompositionAudioMeterMessage | null>(null);
   const [previewMediaState, setPreviewMediaState] = useState<"BUFFERING" | "PLAYING" | "PREPARING" | "READY">("PREPARING");
   const [pendingPreviewMediaIds, setPendingPreviewMediaIds] = useState<string[]>([]);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+  const advancePreviewGeneration = useCallback(() => {
+    htmlPreviewHostRef.current?.dispose(); htmlPreviewHostRef.current = null;
+    runtimePatchCoordinatorRef.current?.dispose();
+    if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
+    previewRuntimeHandshakeTimerRef.current = null;
+    previewReadyRef.current = false;
+    const nextGeneration = previewGenerationRef.current >= COMPOSITION_PREVIEW_MAX_GENERATION
+      ? 0
+      : previewGenerationRef.current + 1;
+    previewGenerationRef.current = nextGeneration;
+    failedPreviewGenerationRef.current = null;
+    previewRuntimeSignalGenerationRef.current = null;
+    setPreviewRefreshKey(nextGeneration);
+  }, []);
   const [previewDocumentHash, setPreviewDocumentHash] = useState<string | null>(null);
+  const [previewSourceIdentity, setPreviewSourceIdentity] = useState<ReturnType<typeof captureHtmlEditingPreviewSource> | null>(null);
   const [previewDirty, setPreviewDirty] = useState(false);
   const [comparisonActive, setComparisonActive] = useState(false);
   const [comparisonBaselineHash, setComparisonBaselineHash] = useState<string | null>(null);
+  const [comparisonBaselineHasHtml, setComparisonBaselineHasHtml] = useState(false);
+  const [comparisonBaselineHtmlRevisionId, setComparisonBaselineHtmlRevisionId] = useState<string | undefined>(undefined);
   const [comparisonBaselineLoading, setComparisonBaselineLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [previewLoadErrorCode, setPreviewLoadErrorCode] = useState<CompositionPreviewLoadErrorCode | null>(null);
+  const [failedPreviewMediaIds, setFailedPreviewMediaIds] = useState<string[]>([]);
   const [colorGradingStatuses, setColorGradingStatuses] = useState<Record<string, CompositionColorGradingRuntimeStatus>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [timelineClipboardCompositionId, setTimelineClipboardCompositionId] = useState<string | null>(null);
   const [separatingAudio, setSeparatingAudio] = useState(false);
   const [separatingAudioProgress, setSeparatingAudioProgress] = useState(0);
   const [refreshingProductionAssets, setRefreshingProductionAssets] = useState(false);
   const [recoveringHistoricalAssets, setRecoveringHistoricalAssets] = useState(false);
   const [failedSave, setFailedSave] = useState<{ operations: CompositionEditorPatchOperation[]; source: "AGENT" | "USER"; summary: string } | null>(null);
+  const [commandHistoryState, setCommandHistoryState] = useState<CompositionCommandHistorySnapshot>({
+    canRedo: false,
+    canUndo: false,
+    redoLabel: null,
+    retainedEntries: 0,
+    retainedSerializedBytes: 0,
+    undoLabel: null,
+  });
+  const [recoveryConflict, setRecoveryConflict] = useState<CompositionRecoveryEntry | null>(null);
   const [selectedHfId, setSelectedHfId] = useState<string | null>(null);
-  const getCurrentPayload = useCallback(() => payloadRef.current, []);
-  const isSaveInFlight = useCallback(() => saveInFlightRef.current, []);
-  const applyPresetDocument = useCallback((nextPayload: CompositionDocumentPayload) => {
-    payloadRef.current = nextPayload;
-    setPayload(nextPayload);
-    previewDocumentHashRef.current = nextPayload.documentHash;
-    previewRuntimeBaseHashRef.current = nextPayload.documentHash;
-    setPreviewDocumentHash(nextPayload.documentHash);
-    setPreviewDirty(false);
+  const commitTerminalPreviewFailure = useCallback((failure: TerminalPreviewFailure) => {
+    if (failedPreviewGenerationRef.current === previewGenerationRef.current) return false;
+    return applyCompositionPreviewTerminalFailure(failure, playheadSecondsRef.current, {
+      state: previewSyncStateRef,
+      record: (metric) => { previewTelemetryRef.current?.record(metric); },
+      present: (presentation) => {
+        failedPreviewGenerationRef.current = previewGenerationRef.current;
+        if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
+        previewRuntimeHandshakeTimerRef.current = null;
+        const pauseCommand = createCompositionPreviewParentCommand({ type: "courseforge-composition-pause" });
+        if (pauseCommand) { postPreviewMessage(pauseCommand); postComparisonBaselineMessage(pauseCommand); }
+        previewReadyRef.current = presentation.ready;
+        setAudioMeterMessage(null);
+        autoPlayAfterPreviewRefreshRef.current = false;
+        setPlaying(presentation.playing);
+        setPreviewReady(presentation.ready);
+        setPreviewMediaState(presentation.mediaState);
+        setPendingPreviewMediaIds(presentation.pendingMediaIds);
+        setPreviewLoadErrorCode(presentation.loadErrorCode);
+        setPlaybackError(presentation.message);
+      },
+    });
   }, []);
-  const beginAgentProposalMutation = useCallback((optimisticPayload: CompositionDocumentPayload) => {
-    previewReadyRef.current = false;
-    pendingPreviewRestoreSecondsRef.current = playheadSecondsRef.current;
-    pendingSeekSecondsRef.current = null;
-    frameRef.current?.contentWindow?.postMessage(
-      createCompositionPreviewParentCommand({ type: "courseforge-composition-pause" }),
-      window.location.origin,
-    );
+  const getCurrentPayload = useCallback(() => htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHostRef.current?.isBlocked() ? null : payloadRef.current, []);
+  const isSaveInFlight = useCallback(() => saveInFlightRef.current || Boolean(htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHostRef.current?.isBlocked()), []);
+  const adoptSavedPreviewRevision = useCallback((documentHash: string) => {
+    const source = payloadRef.current;
+    setPreviewSourceIdentity(source?.documentHash === documentHash ? captureHtmlEditingPreviewSource(source) : null);
+    previewDocumentHashRef.current = documentHash;
+    previewRuntimeBaseHashRef.current = documentHash;
+    setPreviewDocumentHash(documentHash);
+    setPreviewDirty(false);
+    if (!COMPOSITION_PREVIEW_SYNC_V2_ENABLED) return;
+    previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
+      documentHash,
+      type: "DOCUMENT_LOADED",
+    });
+    advancePreviewGeneration();
+    autoPlayAfterPreviewRefreshRef.current = false;
     setPlaying(false);
     setPreviewReady(false);
     setPreviewMediaState("PREPARING");
     setPendingPreviewMediaIds([]);
+    setPreviewLoadErrorCode(null);
     setPlaybackError(null);
+  }, [advancePreviewGeneration]);
+  const restoreSavedPreviewAfterDismissal = useCallback(() => {
+    const currentPayload = payloadRef.current;
+    if (!currentPayload) return;
+    pendingPreviewRestoreSecondsRef.current = playheadSecondsRef.current;
+    pendingSeekSecondsRef.current = null;
+    adoptSavedPreviewRevision(currentPayload.documentHash);
+  }, [adoptSavedPreviewRevision]);
+  const syncCommandHistoryState = useCallback(() => {
+    if (commandHistoryRef.current) setCommandHistoryState(commandHistoryRef.current.snapshot());
+  }, []);
+  const applyPresetDocument = useCallback((nextPayload: CompositionDocumentPayload) => {
+    const previousPayload = externalMutationBasePayloadRef.current || payloadRef.current;
+    if (previousPayload && previousPayload.documentHash !== nextPayload.documentHash) {
+      commandHistoryRef.current?.record({
+        afterDocument: nextPayload.document,
+        beforeDocument: previousPayload.document,
+        source: "SYSTEM",
+        summary: "Aplicó un cambio de preset o asistente.",
+      });
+      syncCommandHistoryState();
+    }
+    externalMutationBasePayloadRef.current = null;
+    payloadRef.current = nextPayload;
+    setPayload(nextPayload);
+    adoptSavedPreviewRevision(nextPayload.documentHash);
+  }, [adoptSavedPreviewRevision, syncCommandHistoryState]);
+  const beginAgentProposalMutation = useCallback((optimisticPayload: CompositionDocumentPayload) => {
+    externalMutationBasePayloadRef.current = payloadRef.current;
+    agentMutationPreviewRef.current = {
+      generation: previewGenerationRef.current,
+      ready: previewReadyRef.current,
+      source: frameRef.current?.getAttribute("src") ?? null,
+    };
+    previewReadyRef.current = false;
+    pendingPreviewRestoreSecondsRef.current = playheadSecondsRef.current;
+    pendingSeekSecondsRef.current = null;
+    postPreviewMessage({ type: "courseforge-composition-pause" });
+    setPlaying(false);
+    setPreviewReady(false);
+    setPreviewMediaState("PREPARING");
+    setPendingPreviewMediaIds([]);
+    if (failedPreviewGenerationRef.current !== previewGenerationRef.current) setPlaybackError(null);
     saveInFlightRef.current = true;
     setSaving(true);
     payloadRef.current = optimisticPayload;
     setPayload(optimisticPayload);
   }, []);
   const failAgentProposalMutation = useCallback((previousPayload: CompositionDocumentPayload) => {
+    const previousPreview = agentMutationPreviewRef.current;
+    externalMutationBasePayloadRef.current = null;
     pendingPreviewRestoreSecondsRef.current = null;
     payloadRef.current = previousPayload;
     setPayload(previousPayload);
-    setPreviewReady(true);
-    setPreviewMediaState("READY");
-    setPendingPreviewMediaIds([]);
+    if (failedPreviewGenerationRef.current === previewGenerationRef.current) return;
+    const canRestoreReady = Boolean(previousPreview
+      && previousPreview.generation === previewGenerationRef.current
+      && previousPreview.source === (frameRef.current?.getAttribute("src") ?? null)
+      && (previousPreview.ready || previewReadyRef.current));
+    previewReadyRef.current = canRestoreReady;
+    setPreviewReady(canRestoreReady);
+    if (canRestoreReady) {
+      setPreviewMediaState("READY");
+      setPendingPreviewMediaIds([]);
+    }
   }, []);
   const finishAgentProposalMutation = useCallback(() => {
+    agentMutationPreviewRef.current = null;
     saveInFlightRef.current = false;
     setSaving(false);
   }, []);
@@ -308,6 +573,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     onMutationFinished: finishAgentProposalMutation,
     onMutationStarted: beginAgentProposalMutation,
     onMutationSucceeded: applyPresetDocument,
+    onPreviewDismissed: restoreSavedPreviewAfterDismissal,
     selectedClipId: payload?.document.clips.find((clip) => clip.hfId === selectedHfId)?.id || null,
   });
   const {
@@ -333,7 +599,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     isSaveInFlight,
     onDocumentApplied: applyPresetDocument,
     onError: setSaveError,
-    onSavingChange: setSaving,
+    onPreviewDismissed: restoreSavedPreviewAfterDismissal,
+    onSavingChange: (pending) => { presetWritePendingRef.current = pending; setSaving(pending); },
     saving,
   });
   const [assembly, setAssembly] = useState<ActiveCompositionAssembly | null>(null);
@@ -357,35 +624,157 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
   if (!saveQueueRef.current) {
     saveQueueRef.current = new CompositionSaveQueue(
-      (saveCommand) => saveCommand(),
+      (saveCommand) => htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHostRef.current?.isBlocked() ? Promise.resolve(false) : saveCommand(),
       (snapshot) => setSaving(snapshot.status === "RUNNING" || snapshot.pendingCount > 0),
       () => setSaveError("Hay demasiados cambios pendientes. Espera a que termine el guardado actual."),
     );
   }
+  if (!commandHistoryRef.current) commandHistoryRef.current = new CompositionCommandHistory();
   if (!runtimePatchCoordinatorRef.current) {
     runtimePatchCoordinatorRef.current = new CompositionPreviewRuntimePatchCoordinator();
   }
 
   const [selectedAnimationId, setSelectedAnimationId] = useState<string | null>(null);
   const [selectedTimelineClipIds, setSelectedTimelineClipIds] = useState<Set<string>>(() => new Set());
+  const selectedTimelineClipIdsRef = useRef<ReadonlySet<string>>(selectedTimelineClipIds);
+  selectedTimelineClipIdsRef.current = selectedTimelineClipIds;
   const [selectedTimelineGroupId, setSelectedTimelineGroupId] = useState<string | null>(null);
   const [editingTimelineGroupId, setEditingTimelineGroupId] = useState<string | null>(null);
   const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(null);
   const [applyingPreassembly, setApplyingPreassembly] = useState(false);
   const animationPlaybackEndRef = useRef<number | null>(null);
+  const narrativeRangePlaybackRef = useRef<NarrativeRangePreview | null>(null);
+  const narrativeRangeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const narrativeRangeStopRef = useRef<() => void>(() => {});
   const previewReadyRef = useRef(false);
   const [manualInspectorOpen, setManualInspectorOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
+  const [assetInsertionMode, setAssetInsertionMode] = useState<CompositionAssetInsertionMode>(
+    initialEditorPreferences.assetInsertionMode,
+  );
+  const [timelineFrameStep, setTimelineFrameStep] = useState(initialEditorPreferences.timelineFrameStep);
+  const [timelineKeyboardEditMode, setTimelineKeyboardEditMode] = useState<CompositionTimelineKeyboardEditMode>(
+    initialEditorPreferences.timelineKeyboardEditMode,
+  );
+  timelineFrameStepRef.current = timelineFrameStep;
+  timelineKeyboardEditModeRef.current = timelineKeyboardEditMode;
   const [inspectorTab, setInspectorTab] = useState<CompositionInspectorTab>("properties");
   const [removalRangeStart, setRemovalRangeStart] = useState<{ clipId: string; seconds: number } | null>(null);
   const [history, setHistory] = useState<CompositionDocumentHistoryEntry[] | null>(null);
   const [brandingAvailability, setBrandingAvailability] = useState<AssemblyBrandingAvailability | null>(null);
 
+  const htmlEditorialContextRef = useRef({ draftId, saving, blockingWork: false });
+  htmlEditorialContextRef.current = { draftId, saving, blockingWork: Boolean(loading || previewDirty || saveError || failedSave
+    || recoveryConflict || agentProposal || presetPreview || proposing || presetBusy || comparisonActive || assembling
+    || applyingPreassembly || separatingAudio || refreshingProductionAssets || recoveringHistoricalAssets
+    || renderRequestId || ["validating", "sending", "rendering"].includes(renderStatus)) };
+  if (!htmlEditorialHostRef.current) {
+    htmlEditorialHostRef.current = new CompositionHtmlEditorialNativeHost({
+      enabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_MUTATIONS_ENABLED === "true",
+      durableEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_OPERATION_RECEIPTS_ENABLED === "true",
+      initializationEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED === "true",
+      generatedDeckEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED === "true"
+        && process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED === "true",
+      legacyAdoptionEnabled: () => process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED === "true"
+        && process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_LEGACY_ADOPTION_RECEIPTS_ENABLED === "true"
+        && process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_LEGACY_ADOPTION_ENABLED === "true"
+        && process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_MUTATIONS_ENABLED === "true",
+      getScope: () => {
+        if (!nativeMountedRef.current) return null;
+        const scope = htmlSnapshotLocatorScopeSchema.safeParse({ actorId: useAuthStore.getState().user?.id,
+          organizationId: useOrganizationStore.getState().activeOrganizationId, draftId: htmlEditorialContextRef.current.draftId });
+        return scope.success ? scope.data : null;
+      },
+      getPayload: () => payloadRef.current,
+      hasConflictingWork: reserved => Boolean(htmlEditorialContextRef.current.blockingWork || nativeBypassPendingRef.current || narrativeExtractionHostRef.current?.isBlocked()
+        || presetWritePendingRef.current || saveInFlightRef.current || renderPollInFlightRef.current
+        || (!reserved && htmlEditorialContextRef.current.saving)),
+      reserve: task => saveQueueRef.current!.runExclusiveWhenIdle(task),
+      getStorage: resolveHtmlSnapshotLocatorStorage,
+      getLock: resolveHtmlSnapshotPublicationLock,
+      onAnchorAvailable: (signal, isCurrent) => refreshHtmlAnchorRef.current(signal, isCurrent),
+      onBusyChange: busy => {
+        if (!nativeMountedRef.current) return;
+        setHtmlEditorialBusy(busy);
+        if (busy) { postPreviewMessage({ type: "courseforge-composition-pause" }); setPlaying(false); }
+      },
+      adopt: nextPayload => {
+        payloadRef.current = nextPayload; setPayload(nextPayload);
+        commandHistoryRef.current?.rebaseDocuments(document => projectCurrentHtmlReferencesIntoHistory(document, nextPayload.document));
+        syncCommandHistoryState();
+        setHistory(null); setAssembly(null); setSnapshotHistory(null);
+        clearLastAppliedAgentProposal(); setLastAppliedPreset(null);
+        pendingPreviewRestoreSecondsRef.current = playheadSecondsRef.current;
+        refreshPreviewDocument(false, "EDIT_SAVED");
+      },
+    });
+  }
+  useEffect(() => {
+    nativeMountedRef.current = true;
+    return () => { nativeMountedRef.current = false; htmlEditorialHostRef.current?.abortPending(); };
+  }, []);
+
+  async function runNativeBypass(task: () => Promise<void>) {
+    if (htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHostRef.current?.isBlocked()) {
+      setSaveError("Hay una escritura editorial pendiente de confirmación o actualización. Revisa su seguimiento antes de editar."); return;
+    }
+    nativeBypassPendingRef.current += 1;
+    try { await task(); } finally { nativeBypassPendingRef.current -= 1; }
+  }
+  const addSoundEffectToTimeline = (item: SoundEffectCatalogItem) => runNativeBypass(() => linkAndInsertSoundEffect(item));
+  const separateSelectedVideoAudio = (clip: CompositionClip) => runNativeBypass(() => detachAndInsertVideoAudio(clip));
+  const refreshProductionAssets = () => runNativeBypass(refreshNativeProductionAssets);
+  const recoverHistoricalAssets = () => runNativeBypass(recoverNativeHistoricalAssets);
+  const placeAssemblyBranding = (assetId?: string | null) => runNativeBypass(() => placeNativeAssemblyBranding(assetId));
+  const prepareAssembly = () => runNativeBypass(prepareNativeAssembly);
+  const restoreSnapshot = (snapshot: CompositionSnapshotEntry) => runNativeBypass(() => restoreNativeSnapshot(snapshot));
+  const approveAssembly = () => runNativeBypass(approveNativeAssembly);
+  const submitAssemblyRender = (options: { forceNewAttempt?: boolean } = {}) => runNativeBypass(() => submitNativeAssemblyRender(options));
+  const deletePriorVideoAndRender = () => runNativeBypass(deleteNativePriorVideoAndRender);
+
+  function persistEditorPreferences(
+    update: Partial<Pick<CompositionEditorPreferences, "assetInsertionMode" | "timelineFrameStep" | "timelineKeyboardEditMode">>,
+  ) {
+    const nextPreferences: CompositionEditorPreferences = {
+      ...(editorPreferencesRef.current || initialEditorPreferences),
+      ...update,
+    };
+    editorPreferencesRef.current = nextPreferences;
+    writeCompositionEditorPreferences(
+      resolveBrowserCompositionEditorPreferenceStorage(),
+      nextPreferences,
+    );
+  }
+
+  function changeAssetInsertionMode(mode: CompositionAssetInsertionMode) {
+    setAssetInsertionMode(mode);
+    persistEditorPreferences({ assetInsertionMode: mode });
+  }
+
+  function changeTimelineFrameStep(frameStep: number) {
+    setTimelineFrameStep(frameStep);
+    persistEditorPreferences({ timelineFrameStep: frameStep });
+  }
+
+  function changeTimelineKeyboardEditMode(mode: CompositionTimelineKeyboardEditMode) {
+    setTimelineKeyboardEditMode(mode);
+    persistEditorPreferences({ timelineKeyboardEditMode: mode });
+  }
+
   useEffect(() => {
     onVideoCompletedRef.current = onVideoCompleted;
   }, [onVideoCompleted]);
 
-  const loadDocument = useCallback(async () => {
+  const loadDocument = useCallback(async (historyCommand?: {
+    beforePayload: CompositionDocumentPayload;
+    source: "SYSTEM" | "USER";
+    summary: string;
+    expectedAfterHash?: string;
+    selectedClipId?: string;
+  }, extractionReceipt?: NarrativeEditorReload) => {
+    if (htmlEditorialHostRef.current?.isBusy()) return false;
+    nativeBypassPendingRef.current += 1;
     setLoading(true);
     setError(null);
     try {
@@ -394,18 +783,26 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       if (!response.ok) throw new Error(body.error || "No se pudo cargar la composición.");
       const nextPayload = body.data as DocumentPayload;
       nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
+      if (extractionReceipt && !acceptsNarrativeExtractionReload(nextPayload.document, nextPayload.documentHash, extractionReceipt)) {
+        throw new Error("El documento recargado no acredita el lote completo de extracción. Se conserva el comando pendiente.");
+      }
+      if (historyCommand && historyCommand.beforePayload.documentHash !== nextPayload.documentHash
+        && (!historyCommand.expectedAfterHash || historyCommand.expectedAfterHash === nextPayload.documentHash)) {
+        commandHistoryRef.current?.record({
+          afterDocument: nextPayload.document,
+          beforeDocument: historyCommand.beforePayload.document,
+          source: historyCommand.source,
+          summary: historyCommand.summary,
+        });
+      } else if (!historyCommand || (historyCommand.expectedAfterHash && historyCommand.expectedAfterHash !== nextPayload.documentHash)) {
+        commandHistoryRef.current?.clear();
+      }
+      syncCommandHistoryState();
+      recoveryAttemptedEntryRef.current = null;
+      setRecoveryConflict(null);
       payloadRef.current = nextPayload;
       setPayload(nextPayload);
-      if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
-        previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
-          documentHash: nextPayload.documentHash,
-          type: "DOCUMENT_LOADED",
-        });
-      }
-      previewDocumentHashRef.current = nextPayload.documentHash;
-      previewRuntimeBaseHashRef.current = nextPayload.documentHash;
-      setPreviewDocumentHash(nextPayload.documentHash);
-      setPreviewDirty(false);
+      adoptSavedPreviewRevision(nextPayload.documentHash);
       setSeconds(0);
       playheadSecondsRef.current = 0;
       pendingPreviewRestoreSecondsRef.current = null;
@@ -416,7 +813,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       setComparisonActive(false);
       setComparisonBaselineHash(null);
       setComparisonBaselineLoading(false);
-      setSelectedHfId(null);
+      setSelectedHfId(historyCommand?.selectedClipId ? nextPayload.document.clips.find(clip => clip.id === historyCommand.selectedClipId)?.hfId ?? null : null);
       setSelectedAnimationId(null);
       setSelectedTimelineClipIds(new Set());
       setSelectedTimelineGroupId(null);
@@ -428,12 +825,36 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       resetAgentProposalState();
       setLastAppliedPreset(null);
       void loadRecoverablePresetApplication();
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudo cargar la composición.");
+      return false;
     } finally {
+      nativeBypassPendingRef.current -= 1;
       setLoading(false);
     }
-  }, [draftId, loadRecoverablePresetApplication, resetAgentProposalState]);
+  }, [adoptSavedPreviewRevision, draftId, loadRecoverablePresetApplication, resetAgentProposalState, syncCommandHistoryState]);
+
+  useEffect(() => narrativeExtractionHost?.registerOwner({
+    canApply: () => Boolean(payloadRef.current && !htmlEditorialContextRef.current.blockingWork
+      && !htmlEditorialHostRef.current?.isBusy() && !nativeBypassPendingRef.current
+      && !saveInFlightRef.current && !presetWritePendingRef.current
+      && saveQueueRef.current?.snapshot().status === "IDLE"),
+    beforeApply: () => { narrativeExtractionBeforeRef.current = payloadRef.current ? structuredClone(payloadRef.current) : null; },
+    reloadDocument: async receipt => {
+      const { anchorClipId: selectedClipId, documentHash: expectedAfterHash } = receipt;
+      const beforePayload = narrativeExtractionBeforeRef.current;
+      const loaded = await loadDocument(beforePayload ? { beforePayload, expectedAfterHash, selectedClipId,
+        source: "USER", summary: receipt.kind === "AUDIOVISUAL" ? "Extrajo un fragmento audiovisual al final de la composición."
+          : "Extrajo una copia de voz al final de la composición." } : undefined, receipt);
+      if (loaded) {
+        narrativeExtractionBeforeRef.current = null;
+        const extractedClip = payloadRef.current?.document.clips.find(clip => clip.id === selectedClipId);
+        if (extractedClip) setSelectedHfId(extractedClip.hfId);
+      }
+      return loaded;
+    },
+  }), [narrativeExtractionHost?.registerOwner, loadDocument]);
 
   const loadBrandingAvailability = useCallback(async () => {
     try {
@@ -448,7 +869,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }
   }, [draftId]);
 
-  const loadSnapshotHistory = useCallback(async (signal?: AbortSignal) => {
+  const loadSnapshotHistory = useCallback(async (signal?: AbortSignal, options?: {preserveRenderProfile?:boolean; isCurrent?: () => boolean}) => {
+    if (options?.preserveRenderProfile) setSnapshotHistory(null);
     const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/revisions`, {
       cache: "no-store",
       signal,
@@ -458,10 +880,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       error?: string;
     }>(response, "No se pudo cargar el historial de snapshots.");
     if (!response.ok || !body.data) throw new Error(body.error || "No se pudo cargar el historial de snapshots.");
-    if (signal?.aborted) return;
+    if (signal?.aborted || (options?.isCurrent && !options.isCurrent())) return;
     setSnapshotHistory(body.data.snapshots);
     const activeSnapshot = body.data.snapshots.find((snapshot) => snapshot.id === body.data?.activeRevisionId);
-    if (activeSnapshot) {
+    if (activeSnapshot && !options?.preserveRenderProfile) {
       setSelectedRenderProfileId(
         activeSnapshot.renderProfileId
         || findHyperframesRenderProfile(activeSnapshot.renderProfile)?.id
@@ -476,7 +898,48 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     } : null);
   }, [compositionId]);
 
+  useEffect(() => {
+    refreshHtmlAnchorRef.current = (signal, isCurrent) => loadSnapshotHistory(signal, { isCurrent });
+    return () => { refreshHtmlAnchorRef.current = async () => { throw new Error("HTML_INITIAL_ANCHOR_OWNER_CHANGED"); }; };
+  }, [loadSnapshotHistory]);
+
   useEffect(() => { void loadDocument(); void loadBrandingAvailability(); }, [loadBrandingAvailability, loadDocument]);
+  useEffect(() => {
+    const currentPayload = payloadRef.current;
+    if (!currentPayload || currentPayload.documentHash !== payload?.documentHash || saving) return;
+    let resolution: ReturnType<typeof resolveCompositionRecovery>;
+    try {
+      resolution = resolveCompositionRecovery(window.localStorage, draftId, currentPayload.documentHash);
+    } catch {
+      return;
+    }
+    if (resolution.status === "NONE") return;
+    if (resolution.status === "ALREADY_COMMITTED") {
+      try {
+        clearCompositionRecoveryEntry(window.localStorage, draftId, resolution.entry.entryId);
+      } catch {
+        return;
+      }
+      recoveryAttemptedEntryRef.current = resolution.entry.entryId;
+      toast.info("El último cambio interrumpido ya estaba guardado.");
+      return;
+    }
+    if (resolution.status === "CONFLICT") {
+      recoveryAttemptedEntryRef.current = resolution.entry.entryId;
+      setRecoveryConflict(resolution.entry);
+      return;
+    }
+    if (recoveryAttemptedEntryRef.current === resolution.entry.entryId) return;
+    recoveryAttemptedEntryRef.current = resolution.entry.entryId;
+    void savePatchRef.current?.(
+      resolution.entry.operations,
+      resolution.entry.summary,
+      resolution.entry.source,
+      { historyMode: "RECORD", recoveryEntryId: resolution.entry.entryId, skipRecoveryJournal: true },
+    ).then((recovered) => {
+      if (recovered) toast.success("Se recuperó y guardó el último cambio interrumpido.");
+    });
+  }, [draftId, payload?.documentHash, saving]);
   useEffect(() => {
     const controller = new AbortController();
     setAssembly(null);
@@ -509,12 +972,79 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   }, [draftId]);
   useEffect(() => () => runtimePatchCoordinatorRef.current?.dispose(), []);
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
+    const executeShortcut = (command: CompositionEditorShortcut) => {
+      if (command === "PALETTE") { setCommandPaletteOpen(true); return; }
+      if (command === "UNDO") { void undoLastEditRef.current?.(); return; }
+      if (command === "REDO") { void redoLastEditRef.current?.(); return; }
+      if (command === "PASTE") { if (timelineClipboardRef.current) void pasteTimelineClipboardRef.current?.(); return; }
+      if (!selectedTimelineClipIdsRef.current.size) return;
+      if (command === "DUPLICATE") { void duplicateTimelineSelectionRef.current?.(); return; }
+      if (command === "COPY") { copyTimelineSelectionRef.current?.(); return; }
+      if (command === "DELETE" || command === "RIPPLE_DELETE") {
+        void deleteTimelineSelectionRef.current?.(command === "RIPPLE_DELETE"); return;
+      }
+      const timelineCommand = resolveCompositionTimelineKeyboardCommand({ altKey: true, ctrlKey: false, metaKey: false,
+        key: command === "TIMELINE_LEFT" ? "ArrowLeft" : "ArrowRight", frameStep: timelineFrameStepRef.current,
+        hasSelection: true, mode: timelineKeyboardEditModeRef.current });
+      if (timelineCommand?.type === "SLIDE") void slideTimelineSelectionRef.current?.(timelineCommand.deltaFrames);
+      else if (timelineCommand) void rollTimelineSelectionRef.current?.(timelineCommand.edge, timelineCommand.deltaFrames);
+    };
+    executeEditorShortcutRef.current = executeShortcut;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return;
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
+        || (target instanceof HTMLElement && (target.isContentEditable || target.closest('[role="dialog"], [aria-modal="true"]')))) return;
+      const command = resolveCompositionEditorShortcut(event);
+      if (!command) return;
+      if (["DELETE", "RIPPLE_DELETE", "COPY", "DUPLICATE", "TIMELINE_LEFT", "TIMELINE_RIGHT"].includes(command)
+        && !selectedTimelineClipIdsRef.current.size) return;
+      if (command === "PASTE" && !timelineClipboardRef.current) return;
+      event.preventDefault();
+      executeShortcut(command);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => { executeEditorShortcutRef.current = null; window.removeEventListener("keydown", onKeyDown); };
+  }, []);
+  useEffect(() => {
+    const onMessage = (event: MessageEvent, fromPrivatePort = false) => {
       const isCurrentFrame = event.source === frameRef.current?.contentWindow;
       const isComparisonBaselineFrame = event.source === comparisonBaselineFrameRef.current?.contentWindow;
       if (!isCurrentFrame && !isComparisonBaselineFrame) return;
+      if (!fromPrivatePort && ((isCurrentFrame && isHtmlEditingPreviewPageUrl(frameRef.current?.src || ""))
+        || (isComparisonBaselineFrame && isHtmlEditingPreviewPageUrl(comparisonBaselineFrameRef.current?.src || "")))) return;
       const message = parseCompositionPreviewIframeMessage(event.data);
       if (!message) return;
+      if (message.type === "courseforge-composition-shortcut") {
+        if (!acceptsCompositionPreviewShortcut({ currentFrame: isCurrentFrame,
+          messageGeneration: message.previewGeneration, currentGeneration: previewGenerationRef.current,
+          ready: previewReadyRef.current, focused: document.hasFocus() && document.activeElement === frameRef.current,
+          modalOpen: Boolean(document.querySelector('[role="dialog"], [aria-modal="true"]')),
+          previewOnly: Boolean(agentProposal || presetPreview), saving: isSaveInFlight() })) return;
+        executeEditorShortcutRef.current?.(message.command);
+        return;
+      }
+      const messageDecision = classifyCompositionPreviewMessage({
+        documentHash: previewDocumentHashRef.current,
+        generation: previewGenerationRef.current,
+        failedGeneration: failedPreviewGenerationRef.current,
+        message,
+        strictSync: isCurrentFrame && (COMPOSITION_PREVIEW_SYNC_V2_ENABLED || isHtmlEditingPreviewPageUrl(frameRef.current?.src || "")) && !presetPreview && !agentProposal,
+      });
+      if (!messageDecision.accept) {
+        if (messageDecision.outcome) previewTelemetryRef.current?.record({
+          atSeconds: playheadSecondsRef.current,
+          context: { syncOutcome: messageDecision.outcome },
+          durationMs: 0,
+          name: "preview_sync_event",
+        });
+        return;
+      }
+      if (messageDecision.runtimeSignal && isCurrentFrame) {
+        previewRuntimeSignalGenerationRef.current = previewGenerationRef.current;
+        if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
+        previewRuntimeHandshakeTimerRef.current = null;
+      }
       if (isComparisonBaselineFrame) {
         if (message.type === "courseforge-composition-ready") {
           comparisonBaselineReadyRef.current = true;
@@ -535,6 +1065,26 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         runtimePatchCoordinatorRef.current?.acknowledge(message);
         return;
       }
+      if (message.type === "courseforge-composition-audio-meter") {
+        setAudioMeterMessage(message);
+        return;
+      }
+      if (message.type === "courseforge-composition-load-error") {
+        if (!COMPOSITION_PREVIEW_SYNC_V2_ENABLED || presetPreview || agentProposal
+          || !shouldReportCompositionPreviewReadyTimeout({
+            expectedDocumentHash: message.documentHash,
+            previewReady: previewReadyRef.current,
+            state: previewSyncStateRef.current,
+          })) return;
+        if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
+        previewRuntimeHandshakeTimerRef.current = null;
+        commitTerminalPreviewFailure({
+          code: message.code,
+          message: resolveCompositionPreviewLoadErrorPresentation(message.code)?.message || "No se pudo cargar el preview.",
+          outcome: message.code === "AUTH_REQUIRED" || message.code === "ACCESS_DENIED" ? message.code : "PREVIEW_LOAD_FAILED",
+        });
+        return;
+      }
       if (message.type === "courseforge-composition-time") {
         const pendingSeekSeconds = pendingSeekSecondsRef.current;
         const decision = classifyPreviewTimeMessage({
@@ -547,6 +1097,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         pendingSeekSecondsRef.current = null;
         playheadSecondsRef.current = message.seconds;
         setSeconds(message.seconds);
+        const narrativeRange = narrativeRangePlaybackRef.current;
+        if (narrativeRange && shouldStopNarrativeRangePreview(narrativeRange, payloadRef.current?.documentHash || null, message.seconds)) {
+          narrativeRangeStopRef.current();
+        }
         if (comparisonActive && comparisonBaselineReadyRef.current) {
           postComparisonBaselineMessage({ type: "courseforge-composition-seek", seconds: message.seconds });
         }
@@ -574,9 +1128,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         previewTelemetryRef.current?.record(message.metric);
       }
       if (message.type === "courseforge-composition-ready") {
-        previewReadyRef.current = true;
         const readyDocumentHash = previewDocumentHashRef.current;
-        if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED && readyDocumentHash) {
+        if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
+        previewRuntimeHandshakeTimerRef.current = null;
+        previewReadyRef.current = true;
+        if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED && !presetPreview && !agentProposal && readyDocumentHash) {
           previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
             documentHash: readyDocumentHash,
             type: "PREVIEW_READY",
@@ -611,6 +1167,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         setPreviewMediaState("READY");
         setPendingPreviewMediaIds([]);
         setPlaybackError(null);
+        setPreviewLoadErrorCode(null);
+        setFailedPreviewMediaIds([]);
         const restoreSeconds = pendingPreviewRestoreSecondsRef.current;
         if (restoreSeconds !== null) {
           const clampedSeconds = clampPreviewPlayhead(restoreSeconds, message.duration);
@@ -633,6 +1191,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           setPlaybackError("El navegador bloqueó el audio. Pulsa “Activar audio y reproducir” dentro del preview.");
           return;
         }
+        setFailedPreviewMediaIds((current) => current.includes(message.mediaId) ? current : [...current, message.mediaId]);
         const currentHash = payloadRef.current?.documentHash || null;
         setPreviewMediaState("PREPARING");
         if (currentHash && mediaRecoveryHashRef.current !== currentHash) {
@@ -644,6 +1203,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           previewDocumentHashRef.current = currentHash;
           previewRuntimeBaseHashRef.current = currentHash;
           setPreviewDocumentHash(currentHash);
+          const source = payloadRef.current;
+          setPreviewSourceIdentity(source?.documentHash === currentHash ? captureHtmlEditingPreviewSource(source) : null);
           setPreviewDirty(false);
           if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
             previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
@@ -652,11 +1213,15 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
             });
           }
           previewReloadTelemetryRef.current = { reason: "MEDIA_RECOVERY", startedAt: performance.now() };
-          setPreviewRefreshKey((current) => current + 1);
+          advancePreviewGeneration();
           return;
         }
         if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
-          previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "RUNTIME_FAILED" });
+          commitTerminalPreviewFailure({
+            message: `No se pudo reproducir ${message.mediaId}: ${message.message}`,
+            outcome: "RUNTIME_FAILED",
+          });
+          return;
         }
         setPlaybackError(`No se pudo reproducir ${message.mediaId}: ${message.message}`);
       }
@@ -671,6 +1236,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         const selectionDecision = resolveCompositionPreviewSelectionEvent({
           clips: payload?.document.clips || [],
           hfId: message.hfId,
+          hfIds: message.hfIds,
           origin: message.origin,
         });
         if (selectionDecision.nextClipIds !== null) {
@@ -683,6 +1249,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           setSelectedAnimationId(null);
           setManualInspectorOpen(true);
           setInspectorTab("properties");
+        }
+        if (selectionDecision.shouldOpenSelection) {
+          setSelectedAnimationId(null);
+          setManualInspectorOpen(true);
+          setInspectorTab("selection");
         }
       }
       if (message.type === "courseforge-composition-layout-commit") {
@@ -705,42 +1276,182 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         }
       }
     };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [comparisonActive, gridVisible, payload, playing, snapEnabled]);
+    htmlPortMessageRef.current = (source, message) => onMessage(new MessageEvent("message", { source, data: message }), true);
+    const onWindowMessage = (event: MessageEvent) => onMessage(event);
+    window.addEventListener("message", onWindowMessage);
+    return () => { htmlPortMessageRef.current = null; window.removeEventListener("message", onWindowMessage); };
+  }, [agentProposal, commitTerminalPreviewFailure, comparisonActive, gridVisible, payload, playing, presetPreview, snapEnabled]);
 
   const duration = payload?.document.canvas.durationSeconds || 0;
   const transportActive = playing || previewMediaState === "BUFFERING";
   const durationSourceLabel = payload?.document.canvas.durationSource
     ? DURATION_SOURCE_LABELS[payload.document.canvas.durationSource]
     : null;
-  const savedPreviewUrl = useMemo(() => payload && previewDocumentHash ? `/api/production/hyperframes/drafts/${draftId}/preview?v=${encodeURIComponent(previewDocumentHash)}&r=${previewRefreshKey}` : null, [draftId, payload, previewDocumentHash, previewRefreshKey]);
+  const previewChannel = resolveHtmlEditingPreviewChannel(previewDocumentHash, previewSourceIdentity);
+  const hasHtmlEditing = previewChannel === "HTML_EDITING";
+  const htmlSavedRevisionId = resolveHtmlEditingPublishedPreviewRevision({
+    documentHash: previewDocumentHash, activeRevisionId: assembly?.revisionId ?? null, snapshots: snapshotHistory,
+  });
+  const htmlSavedSession = useMemo(() => hasHtmlEditing && previewDocumentHash
+    ? createHtmlEditingPreviewSession(previewDocumentHash, previewRefreshKey) : null,
+  [hasHtmlEditing, previewDocumentHash, previewRefreshKey]);
+  const savedPreviewUrl = useMemo(() => {
+    if (!payload || !previewDocumentHash || previewChannel === null) return null;
+    if (htmlSavedSession) return buildHtmlEditingPreviewPageUrl(draftId, htmlSavedSession, htmlSavedRevisionId);
+    return buildCompositionSavedPreviewUrl({
+      draftId,
+      documentHash: previewDocumentHash,
+      refreshKey: previewRefreshKey,
+      strictSyncEnabled: COMPOSITION_PREVIEW_SYNC_V2_ENABLED,
+    });
+  }, [draftId, payload, previewDocumentHash, previewRefreshKey, htmlSavedSession, htmlSavedRevisionId, previewChannel]);
   const comparisonBaselineUrl = useMemo(() => comparisonBaselineHash
-    ? buildCompositionComparisonPreviewUrl({ draftId, documentHash: comparisonBaselineHash })
-    : null, [comparisonBaselineHash, draftId]);
-  const previewUrl = presetPreview
+    ? comparisonBaselineHasHtml
+      ? buildHtmlEditingPreviewPageUrl(draftId, createHtmlEditingPreviewSession(comparisonBaselineHash, 0), comparisonBaselineHtmlRevisionId)
+      : buildCompositionComparisonPreviewUrl({ draftId, documentHash: comparisonBaselineHash })
+    : null, [comparisonBaselineHash, draftId, comparisonBaselineHasHtml, comparisonBaselineHtmlRevisionId]);
+  // Pin the owner before navigation, not at load: a delayed response must not
+  // acquire the identity of a user/tenant selected while the page was loading.
+  const htmlBaselineOwner = useMemo(() => ({ url: comparisonBaselineUrl,
+    actorId: useAuthStore.getState().user?.id,
+    organizationId: useOrganizationStore.getState().activeOrganizationId }), [comparisonBaselineUrl]);
+  const htmlCandidatePreview = useCompositionHtmlCandidatePreview({draftId, payload, generation: previewRefreshKey,
+    proposal: agentProposal, preset: presetPreview, onError: setPlaybackError});
+  const previewUrl = htmlCandidatePreview.active ? htmlCandidatePreview.url || "about:blank" : presetPreview
     ? `/api/production/hyperframes/drafts/${draftId}/preset-applications/${presetPreview.applicationId}/preview`
     : agentProposal
       ? `/api/production/hyperframes/drafts/${draftId}/agent-proposals/${agentProposal.proposalId}/preview`
       : savedPreviewUrl;
+  const htmlActiveOwner = useMemo(() => ({url: previewUrl, actorId: useAuthStore.getState().user?.id,
+    organizationId: useOrganizationStore.getState().activeOrganizationId}), [previewUrl]);
+  const reportPreviewNavigationFailure = (syncOutcome: "PREVIEW_IFRAME_ERROR" | "PREVIEW_LOADED_NO_RUNTIME", message: string) => {
+    if (!COMPOSITION_PREVIEW_SYNC_V2_ENABLED || !savedPreviewUrl || previewUrl !== savedPreviewUrl) return;
+    const expectedDocumentHash = previewDocumentHashRef.current;
+    const expectedGeneration = readCompositionPreviewGeneration(savedPreviewUrl);
+    if (!expectedDocumentHash || expectedGeneration === null
+      || previewGenerationRef.current !== expectedGeneration
+      || !shouldReportCompositionPreviewRuntimeHandshakeFailure({
+        expectedDocumentHash,
+        expectedGeneration,
+        frameGeneration: readCompositionPreviewGeneration(frameRef.current?.src || ""),
+        observedRuntimeGeneration: previewRuntimeSignalGenerationRef.current,
+        previewReady: previewReadyRef.current,
+        state: previewSyncStateRef.current,
+      })) return;
+    commitTerminalPreviewFailure({ message, outcome: syncOutcome });
+  };
+  const onPreviewFrameLoad = () => {
+    if (previewUrl && isHtmlEditingPreviewPageUrl(previewUrl)) connectHtmlPreviewFrame(false);
+    if (!COMPOSITION_PREVIEW_SYNC_V2_ENABLED || !savedPreviewUrl || previewUrl !== savedPreviewUrl
+      || previewRuntimeSignalGenerationRef.current === previewGenerationRef.current) return;
+    if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
+    previewRuntimeHandshakeTimerRef.current = setTimeout(() => {
+      previewRuntimeHandshakeTimerRef.current = null;
+      reportPreviewNavigationFailure("PREVIEW_LOADED_NO_RUNTIME", "El iframe cargó, pero no inició el preview. Reintenta cargarlo.");
+    }, COMPOSITION_PREVIEW_DOCUMENT_READY_CONFIG.runtimeHandshakeAfterLoadMs);
+  };
+  const onPreviewFrameError = () => {
+    if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
+    previewRuntimeHandshakeTimerRef.current = null;
+    if (isHtmlEditingPreviewPageUrl(previewUrl || "")) {
+      htmlPreviewHostRef.current?.dispose();
+      commitTerminalPreviewFailure({ outcome: "PREVIEW_IFRAME_ERROR", message: "No se pudo cargar el preview HTML. Reintenta cargarlo." });
+      return;
+    }
+    reportPreviewNavigationFailure("PREVIEW_IFRAME_ERROR", "No se pudo navegar al preview. Comprueba tu conexión y reintenta.");
+  };
+  useEffect(() => () => {
+    htmlPreviewHostRef.current?.dispose(); htmlPreviewHostRef.current = null;
+    if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
+    previewRuntimeHandshakeTimerRef.current = null;
+  }, [previewUrl]);
+  useEffect(() => () => { htmlBaselineHostRef.current?.dispose(); htmlBaselineHostRef.current = null; }, [comparisonBaselineUrl]);
+  const connectHtmlPreviewFrame = (baseline: boolean) => {
+    const iframe = baseline ? comparisonBaselineFrameRef.current : frameRef.current;
+    const url = baseline ? comparisonBaselineUrl : previewUrl;
+    const holder = baseline ? htmlBaselineHostRef : htmlPreviewHostRef;
+    if (!iframe?.contentWindow || !url || !isHtmlEditingPreviewPageUrl(url)) return;
+    const expectedFrameUrl = new URL(url, window.location.origin).href;
+    if (iframe.src !== expectedFrameUrl) return;
+    const target = iframe.contentWindow, query = new URL(url, window.location.origin).searchParams;
+    const session = {version: 1 as const, documentHash: query.get("documentHash")!,
+      previewGeneration: Number(query.get("r")), nonce: query.get("nonce")!};
+    if (holder.current?.getState().connected && !holder.current.getState().disposed && holder.current.matchesSession(session)) return;
+    const { actorId, organizationId } = baseline ? htmlBaselineOwner : htmlActiveOwner;
+    const isCurrentOwner = () => Boolean(actorId && organizationId) && useAuthStore.getState().user?.id === actorId
+      && useOrganizationStore.getState().activeOrganizationId === organizationId && iframe.src === expectedFrameUrl;
+    holder.current?.dispose();
+    const host = createHtmlEditingPreviewHost({ session,
+      resources: { documentId: draftId, audience: window.location.origin, revisionId: query.get("revisionId") ?? undefined,
+        candidate: readHtmlPreviewCandidateQuery(query) },
+      onRuntimeSignal: () => {
+        if (holder.current !== host || baseline) return;
+        previewRuntimeSignalGenerationRef.current = Number(query.get("r"));
+        if (previewRuntimeHandshakeTimerRef.current) clearTimeout(previewRuntimeHandshakeTimerRef.current);
+        previewRuntimeHandshakeTimerRef.current = null;
+      },
+      isCurrentOwner,
+      subscribeOwner: onChange => {
+        const unsubscribeAuth = useAuthStore.subscribe(onChange);
+        const unsubscribeOrganization = useOrganizationStore.subscribe(onChange);
+        return () => { unsubscribeAuth(); unsubscribeOrganization(); };
+      },
+      onEvent: message => { if (holder.current === host) htmlPortMessageRef.current?.(target, message); },
+      onFailure: () => { if (holder.current !== host || iframe.src !== expectedFrameUrl) return;
+        iframe.src = "about:blank";
+        if (baseline) { comparisonBaselineReadyRef.current = false; setComparisonBaselineLoading(false);
+          setPlaybackError("El canal de comparación HTML se cerró. Vuelve a abrir la comparación."); }
+        else commitTerminalPreviewFailure({ message: "El canal del preview HTML se cerró. Reintenta cargarlo.", outcome: "PREVIEW_LOADED_NO_RUNTIME" });
+      } });
+    holder.current = host; host.connect(target);
+  };
   useEffect(() => {
     comparisonBaselineReadyRef.current = false;
     if (comparisonBaselineUrl) setComparisonBaselineLoading(true);
   }, [comparisonBaselineUrl]);
   useEffect(() => {
     pendingSeekSecondsRef.current = null;
+    setAudioMeterMessage(null);
     previewReadyRef.current = false;
     setPlaying(false);
     setPreviewReady(false);
     setPreviewMediaState("PREPARING");
     setPendingPreviewMediaIds([]);
     setColorGradingStatuses({});
+    setPreviewLoadErrorCode(null);
+    previewFocusRestoredRef.current = false;
   }, [previewUrl]);
+  useEffect(() => {
+    if (!COMPOSITION_PREVIEW_SYNC_V2_ENABLED || !savedPreviewUrl || previewUrl !== savedPreviewUrl) return;
+    const expectedDocumentHash = previewDocumentHashRef.current;
+    const expectedGeneration = readCompositionPreviewGeneration(savedPreviewUrl);
+    if (!expectedDocumentHash || expectedGeneration === null) return;
+    const timeout = setTimeout(() => {
+      if (previewDocumentHashRef.current !== expectedDocumentHash
+        || previewGenerationRef.current !== expectedGeneration
+        || readCompositionPreviewGeneration(frameRef.current?.src || "") !== expectedGeneration
+        || !shouldReportCompositionPreviewReadyTimeout({
+        expectedDocumentHash,
+        previewReady: previewReadyRef.current,
+        state: previewSyncStateRef.current,
+      })) return;
+      commitTerminalPreviewFailure({
+        message: "El preview no confirmó la versión guardada a tiempo. Reintenta cargarlo.",
+        outcome: "PREVIEW_READY_TIMEOUT",
+      });
+    }, COMPOSITION_PREVIEW_DOCUMENT_READY_CONFIG.acknowledgementTimeoutMs);
+    return () => clearTimeout(timeout);
+  }, [commitTerminalPreviewFailure, previewUrl, savedPreviewUrl]);
   useEffect(() => {
     mediaRecoveryHashRef.current = null;
   }, [payload?.documentHash]);
   const estimatedClipCount = payload?.document.clips.filter((clip) => clip.timingSource === "ESTIMATED").length || 0;
   const selectedClip = payload?.document.clips.find((clip) => clip.hfId === selectedHfId) ?? null;
+  const selectedClipSourceAssetId = selectedClip?.source.type === "PRODUCTION_ASSET" ? selectedClip.source.productionAssetId : null;
+  const selectedClipSourceUnavailable = selectedClipSourceAssetId !== null && (
+    !assets.some((asset) => asset.id === selectedClipSourceAssetId && asset.valid)
+    || (selectedClip !== null && failedPreviewMediaIds.some((mediaId) => mediaId === selectedClip.id || mediaId === `${selectedClip.id}-media` || mediaId === `${selectedClip.id}-audio`))
+  );
   const selectedSourceAssetId = selectedClip?.source.type === "PRODUCTION_ASSET"
     ? selectedClip.source.productionAssetId
     : null;
@@ -755,29 +1466,31 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     ? "Preview de preset"
     : agentProposal
       ? "Propuesta sin guardar"
-      : saving || (!previewReady && previewMediaState === "PREPARING")
+      : !previewReady && previewMediaState === "PREPARING"
         ? "Actualizando preview…"
         : previewDirty
           ? "Cambios pendientes"
           : null;
 
-  const postPreviewMessage = (message: CompositionPreviewParentCommandInput) => {
-    const command = createCompositionPreviewParentCommand(message);
-    if (!command) return false;
-    frameRef.current?.contentWindow?.postMessage(command, "*");
-    return true;
-  };
-  const postComparisonBaselineMessage = (message: CompositionPreviewParentCommandInput) => {
-    const command = createCompositionPreviewParentCommand(message);
-    if (!command) return false;
-    comparisonBaselineFrameRef.current?.contentWindow?.postMessage(command, "*");
-    return true;
-  };
+  const stopNarrativeRangePreview = useCallback(() => {
+    if (!narrativeRangePlaybackRef.current) return;
+    narrativeRangePlaybackRef.current = null;
+    if (narrativeRangeTimeoutRef.current !== null) clearTimeout(narrativeRangeTimeoutRef.current);
+    narrativeRangeTimeoutRef.current = null;
+    postPreviewMessage({ type: "courseforge-composition-pause" });
+    if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-pause" });
+  }, [postPreviewMessage, postComparisonBaselineMessage]);
+  useEffect(() => {
+    const range = narrativeRangePlaybackRef.current;
+    if (range && (range.selection.documentHash !== payload?.documentHash || range.hfId !== selectedHfId
+      || !libraryOpen || !previewReady || previewDirty || saving || agentProposal || presetPreview || comparisonActive)) stopNarrativeRangePreview();
+  }, [payload?.documentHash, selectedHfId, libraryOpen, previewReady, previewDirty, saving, agentProposal, presetPreview, comparisonActive, stopNarrativeRangePreview]);
+  useEffect(() => () => stopNarrativeRangePreview(), [stopNarrativeRangePreview]);
   useEffect(() => {
     if (!previewReady) return;
     postPreviewMessage({
-      editingEnabled: directEditingEnabled && !agentProposal && !presetPreview,
-      cropEnabled: visualCropEnabled && !agentProposal && !presetPreview,
+      editingEnabled: directEditingEnabled && !agentProposal && !presetPreview && !saving && !isSaveInFlight(),
+      cropEnabled: visualCropEnabled && !agentProposal && !presetPreview && !saving && !isSaveInFlight(),
       gridVisible,
       snapEnabled,
       type: "courseforge-composition-editor-settings",
@@ -791,22 +1504,50 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         type: "courseforge-composition-editor-settings",
       });
     }
-  }, [agentProposal, comparisonActive, directEditingEnabled, gridVisible, presetPreview, previewReady, snapEnabled, visualCropEnabled]);
+  }, [agentProposal, comparisonActive, directEditingEnabled, gridVisible, presetPreview, previewReady, saving, snapEnabled, visualCropEnabled, htmlEditorialBusy, isSaveInFlight]);
   useEffect(() => {
     if (previewReady) postPreviewMessage({ scale: previewZoom, type: "courseforge-composition-preview-zoom" });
     if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ scale: previewZoom, type: "courseforge-composition-preview-zoom" });
   }, [previewReady, previewZoom]);
+  useEffect(() => {
+    if (!previewReady || !payload?.document) return;
+    const hfIds = payload.document.clips
+      .filter((clip) => selectedTimelineClipIds.has(clip.id))
+      .map((clip) => clip.hfId)
+      .slice(0, 100);
+    const primaryHfId = selectedHfId && hfIds.includes(selectedHfId)
+      ? selectedHfId
+      : hfIds.at(-1) || null;
+    postPreviewMessage({ hfId: primaryHfId, hfIds, type: "courseforge-composition-select" });
+    if (!previewFocusRestoredRef.current) {
+      previewFocusRestoredRef.current = true;
+      if (document.hasFocus() && document.activeElement === frameRef.current) {
+        postPreviewMessage({ hfId: primaryHfId, type: "courseforge-composition-restore-focus" });
+      }
+    }
+  }, [payload?.document, previewReady, selectedHfId, selectedTimelineClipIds]);
   useEffect(() => {
     const syncFullscreenState = () => setPreviewFullscreen(document.fullscreenElement === previewShellRef.current);
     document.addEventListener("fullscreenchange", syncFullscreenState);
     return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
   }, []);
   const refreshPreviewMedia = () => {
+    const errorAction = resolveCompositionPreviewLoadErrorPresentation(previewLoadErrorCode)?.action;
+    if (errorAction === "LOGIN") {
+      window.location.assign("/login?error=session_expired");
+      return;
+    }
+    if (errorAction === "NONE") return;
+    if (errorAction === "RELOAD_EDITOR") {
+      void loadDocument();
+      return;
+    }
     mediaRecoveryHashRef.current = null;
     refreshPreviewDocument(false, "MEDIA_RECOVERY");
     setPlaybackError("Renovando el acceso a los medios del preview…");
   };
   const seek = (nextSeconds: number) => {
+    stopNarrativeRangePreview();
     pendingSeekSecondsRef.current = nextSeconds;
     playheadSecondsRef.current = nextSeconds;
     setSeconds(nextSeconds);
@@ -814,11 +1555,13 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-seek", seconds: nextSeconds });
   };
   const beginScrub = () => {
+    stopNarrativeRangePreview();
     postPreviewMessage({ type: "courseforge-composition-pause" });
     if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-pause" });
     setPlaying(false);
   };
   const selectClip = (hfId: string, preserveTimelineSelection = false) => {
+    stopNarrativeRangePreview();
     const nextClip = payloadRef.current?.document.clips.find((clip) => clip.hfId === hfId);
     if (removalRangeStart && nextClip?.id !== removalRangeStart.clipId) setRemovalRangeStart(null);
     if (!preserveTimelineSelection) {
@@ -854,6 +1597,23 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-play" });
     }
   };
+  const previewNarrativeRange = (selection: NarrativeRangeSelection): boolean => {
+    const currentPayload = payloadRef.current;
+    if (!currentPayload || !frameRef.current?.contentWindow || !previewReadyRef.current || previewDirty || saving
+      || agentProposal || presetPreview || comparisonActive
+      || previewDocumentHashRef.current !== currentPayload.documentHash) return false;
+    const resolution = resolveNarrativeRangePreview(currentPayload.document, currentPayload.documentHash, selection);
+    if (!resolution.ok) return false;
+    beginScrub();
+    selectClip(resolution.range.hfId);
+    seek(resolution.range.startSeconds);
+    animationPlaybackEndRef.current = null;
+    narrativeRangePlaybackRef.current = resolution.range;
+    narrativeRangeTimeoutRef.current = setTimeout(stopNarrativeRangePreview,
+      (resolution.range.endSeconds - resolution.range.startSeconds) * 1_000 + NARRATIVE_RANGE_PREVIEW_TIMEOUT_MARGIN_MS);
+    postPreviewMessage({ type: "courseforge-composition-play" });
+    return true;
+  };
   const clearSelection = () => {
     setSelectedHfId(null);
     setSelectedAnimationId(null);
@@ -863,6 +1623,13 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     setSelectedTransitionId(null);
     setManualInspectorOpen(false);
     postPreviewMessage({ type: "courseforge-composition-select", hfId: null });
+  };
+  const openCompositionLibrary = () => {
+    setLibraryOpen(true);
+    comparisonBaselineReadyRef.current = false;
+    setComparisonActive(false);
+    setComparisonBaselineHash(null);
+    setComparisonBaselineLoading(false);
   };
   const inspectTimelineSelection = () => {
     setManualInspectorOpen(true);
@@ -936,6 +1703,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     previewDocumentHashRef.current = currentPayload.documentHash;
     previewRuntimeBaseHashRef.current = currentPayload.documentHash;
     setPreviewDocumentHash(currentPayload.documentHash);
+    setPreviewSourceIdentity(captureHtmlEditingPreviewSource(currentPayload));
     setPreviewDirty(false);
     if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
       previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
@@ -944,7 +1712,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       });
     }
     previewReloadTelemetryRef.current = { reason, startedAt: performance.now() };
-    setPreviewRefreshKey((current) => current + 1);
+    advancePreviewGeneration();
   };
   const scheduleSavedPreviewReload = (autoPlay: boolean) => {
     const requestId = previewReloadRequestRef.current + 1;
@@ -958,6 +1726,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     });
   };
   const togglePreviewPlayback = () => {
+    stopNarrativeRangePreview();
     if (transportActive) {
       postPreviewMessage({ type: "courseforge-composition-pause" });
       if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ type: "courseforge-composition-pause" });
@@ -984,6 +1753,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     if (!currentPayload || saving) return;
     comparisonBaselineReadyRef.current = false;
     setComparisonBaselineHash(currentPayload.documentHash);
+    setComparisonBaselineHasHtml(Boolean(currentPayload.document.htmlEditing?.items.length));
+    setComparisonBaselineHtmlRevisionId(resolveHtmlEditingPublishedPreviewRevision({
+      documentHash: currentPayload.documentHash, activeRevisionId: assembly?.revisionId ?? null, snapshots: snapshotHistory,
+    }));
     setComparisonBaselineLoading(true);
     setComparisonActive(true);
     setLibraryOpen(false);
@@ -995,6 +1768,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     source: "AGENT" | "USER" = "USER",
     options: SavePatchOptions = {},
   ): Promise<boolean> {
+    if (htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHost?.isBlocked()) return Promise.resolve(false);
     return saveQueueRef.current!.enqueue(() => executeSavePatch(operations, summary, source, options, true));
   }
 
@@ -1023,16 +1797,26 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       setSaveError(caught instanceof Error ? caught.message : "El cambio solicitado no es válido.");
       return false;
     }
-    const updateStrategy = classifyCompositionPreviewOperations(effectiveOperations);
+    // Authored envelopes must be rebuilt together with their effective visibility/gain.
+    const changesAuthoredAudio = optimisticDocument.clips.some((clip) => clip.volumeEnvelope?.length)
+      && effectiveOperations.some((operation) => operation.type === "clip.volume" || operation.type === "clip.visibility");
+    const updateStrategy = changesAuthoredAudio ? "LIVE_TIMELINE" : classifyCompositionPreviewOperations(effectiveOperations);
     const requiresCompiledPreviewReload = requiresCompositionPreviewReload(updateStrategy);
     if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
       previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "EDIT_ACCEPTED" });
       previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, { type: "SAVE_STARTED" });
     }
     const isMotionEdit = effectiveOperations.length > 0 && effectiveOperations.every((operation) => operation.type.startsWith("animation."));
-    const visualPatch = updateStrategy === "LIVE_DOM" || isMotionEdit
+    const domPatch = updateStrategy === "LIVE_DOM" || isMotionEdit
       ? buildCompositionPreviewVisualPatch({ document: optimisticDocument, operations: effectiveOperations })
       : null;
+    const scenePatch = COMPOSITION_PREVIEW_SYNC_V2_ENABLED && !domPatch && !requiresCompiledPreviewReload ? buildCompositionPreviewScenePatch({
+      assetUrls: new Map(),
+      audioMetersEnabled: areCompositionAudioMetersEnabled(),
+      beforeDocument: currentPayload.document,
+      document: optimisticDocument,
+    }) : null;
+    const visualPatch = domPatch || (scenePatch ? { changes: [], scene: scenePatch } : null);
     const runtimeBaseHash = previewRuntimeBaseHashRef.current;
     const canApplyIncrementally = (COMPOSITION_PREVIEW_SYNC_V2_ENABLED || isMotionEdit)
       && agentProposal === null
@@ -1041,13 +1825,32 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       && visualPatch !== null
       && runtimeBaseHash !== null
       && previewDocumentHashRef.current === currentPayload.documentHash;
-    const runtimePatchPromise = canApplyIncrementally
-      ? runtimePatchCoordinatorRef.current!.dispatch({
-        baseDocumentHash: runtimeBaseHash,
-        patch: visualPatch,
-        send: postPreviewMessage,
-      })
-      : null;
+    const runtimePatchGeneration = previewGenerationRef.current;
+    const runtimePatchPromise = canApplyIncrementally ? (async () => {
+      try {
+        const assetUrls = scenePatch ? await previewAssetUrlCache.resolveNewAssets({
+          assets,
+          beforeDocument: currentPayload.document,
+          document: optimisticDocument,
+        }) : null;
+        if (previewGenerationRef.current !== runtimePatchGeneration) throw new Error("PREVIEW_GENERATION_CHANGED");
+        const outcome = await runtimePatchCoordinatorRef.current!.dispatch({
+          baseDocumentHash: runtimeBaseHash,
+          patch: scenePatch && assetUrls ? { changes: [], scene: { ...scenePatch, assetUrls: Object.fromEntries(assetUrls) } } : visualPatch,
+          send: postPreviewMessage,
+        });
+        if (canCommitCompositionPreviewRuntimePatch({
+          applied: outcome.applied,
+          dispatchedGeneration: runtimePatchGeneration,
+          currentGeneration: previewGenerationRef.current,
+          failedGeneration: failedPreviewGenerationRef.current,
+        })) setPreviewDirty(false);
+        return outcome;
+      } catch {
+        // The saved document still has the authenticated compiler as fallback.
+        return { applied: false, code: "SEND_REJECTED" as const, durationMs: 0, sequence: 0 };
+      }
+    })() : null;
     if (!runtimePatchPromise) {
       postPreviewMessage({ type: "courseforge-composition-pause" });
       setPlaying(false);
@@ -1070,11 +1873,31 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     const optimisticPayload = { ...currentPayload, document: optimisticDocument };
     payloadRef.current = optimisticPayload;
     setPayload(optimisticPayload);
+    // Render before journal hashing or network I/O. Persistence stays serialized.
+    let recoveryEntryId = options.recoveryEntryId;
+    if (!options.skipRecoveryJournal) {
+      try {
+        const recoveryEntry = await createCompositionRecoveryEntry({
+          baseDocumentHash: currentPayload.documentHash,
+          draftId,
+          operations: effectiveOperations,
+          source,
+          summary,
+          targetDocument: optimisticDocument,
+        });
+        writeCompositionRecoveryEntry(window.localStorage, recoveryEntry);
+        recoveryEntryId = recoveryEntry.entryId;
+        // Recovery replays interrupted sessions, never a failed save in this session.
+        recoveryAttemptedEntryRef.current = recoveryEntry.entryId;
+      } catch (recoveryError) {
+        console.warn("[CompositionRecovery] No se pudo registrar el cambio pendiente.", recoveryError);
+      }
+    }
     const requestBody = JSON.stringify({ operations: effectiveOperations, source, summary });
     const requestStartedAt = performance.now();
     let saveOutcome: "CONFLICT" | "ERROR" | "SUCCESS" = "ERROR";
     try {
-      const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/document`, {
+      const { response, body: responseBody } = await requestCompositionDocumentSave(`/api/production/hyperframes/drafts/${draftId}/document`, {
         body: requestBody,
         headers: {
           "Content-Type": "application/json",
@@ -1083,7 +1906,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         },
         method: "PUT",
       });
-      const body = await response.json();
+      const body = responseBody as { data?: DocumentPayload; error?: string };
       if (response.status === 409 && body.data) {
         saveOutcome = "CONFLICT";
         if (!options.preservePreviewRuntime) pendingEditTelemetryRef.current = priorPendingEditTelemetry;
@@ -1125,7 +1948,12 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           durationMs: Math.min(600_000, runtimeOutcome.durationMs),
           name: "runtime_visual_patch_ms",
         });
-        if (runtimeOutcome.applied) {
+        if (canCommitCompositionPreviewRuntimePatch({
+          applied: runtimeOutcome.applied,
+          dispatchedGeneration: runtimePatchGeneration,
+          currentGeneration: previewGenerationRef.current,
+          failedGeneration: failedPreviewGenerationRef.current,
+        })) {
           previewDocumentHashRef.current = nextPayload.documentHash;
           // The iframe URL describes its compiled base. Updating it here would
           // reload the iframe after every successfully acknowledged live edit.
@@ -1152,19 +1980,42 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
             });
           }
         } else {
+          previewTelemetryRef.current?.record({
+            atSeconds: playheadSecondsRef.current,
+            context: { syncOutcome: "VISUAL_PATCH_FAILED" },
+            durationMs: 0,
+            name: "preview_sync_event",
+          });
           setPreviewDirty(true);
-          refreshPreviewDocument(false, "SAVE_RECOVERY");
+          if (failedPreviewGenerationRef.current !== previewGenerationRef.current) {
+            refreshPreviewDocument(false, "SAVE_RECOVERY");
+          }
         }
       } else {
         setPreviewDirty(nextPayload.documentHash !== previewDocumentHashRef.current);
-        // Timeline and structural operations cannot be applied to the iframe
-        // with a visual DOM patch. Also recover any visual edit made while the
-        // iframe was unavailable. In both cases the saved document must become
-        // the source of a fresh preview without requiring user interaction.
+        // Unsupported dependencies and edits made before the runtime is ready
+        // recover from the saved document without requiring user interaction.
         if (requiresCompiledPreviewReload || !canApplyIncrementally) {
           scheduleSavedPreviewReload(playing || previewMediaState === "BUFFERING");
         }
       }
+      if ((options.historyMode || "RECORD") === "RECORD") {
+        commandHistoryRef.current?.record({
+          afterDocument: nextPayload.document,
+          beforeDocument: currentPayload.document,
+          source,
+          summary,
+        });
+        syncCommandHistoryState();
+      }
+      if (recoveryEntryId) {
+        try {
+          clearCompositionRecoveryEntry(window.localStorage, draftId, recoveryEntryId);
+        } catch (recoveryError) {
+          console.warn("[CompositionRecovery] El cambio se guardó, pero no se pudo limpiar el journal.", recoveryError);
+        }
+      }
+      setRecoveryConflict(null);
       if (source === "USER") clearLastAppliedAgentProposal();
       return true;
     } catch (caught) {
@@ -1204,6 +2055,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   }
 
   async function applyNarrativePreassembly() {
+    if (componentId === null) { setSaveError("Este contenido independiente no importa ni preensambla fuentes de una lección."); return false; }
     return saveQueueRef.current!.enqueue(async () => {
       const currentPayload = payloadRef.current;
       if (!currentPayload) return false;
@@ -1223,6 +2075,13 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         if (!response.ok || !body.data) throw new Error(body.error || "No se pudo aplicar el preensamble.");
         const nextPayload = body.data;
         nextPayload.documentHash = resolveCompositionDocumentVersion(nextPayload.documentHash);
+        commandHistoryRef.current?.record({
+          afterDocument: nextPayload.document,
+          beforeDocument: currentPayload.document,
+          source: "USER",
+          summary: "Aplicó el preensamble narrativo.",
+        });
+        syncCommandHistoryState();
         payloadRef.current = nextPayload;
         setPayload(nextPayload);
         refreshPreviewDocument(false, "EDIT_SAVED");
@@ -1238,6 +2097,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   }
 
   function openSceneBuilder() {
+    if (componentId === null) { setSaveError("El contenido independiente no está vinculado a una lección para generar escenas."); return; }
     const current = new URL(window.location.href);
     const adminIndex = current.pathname.indexOf("/admin");
     const tenantPrefix = adminIndex > 0 ? current.pathname.slice(0, adminIndex) : "";
@@ -1292,7 +2152,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       );
       if (saved) {
         selectClip(plan.hfId);
-        toast.success(`${plan.cueCount} captions sincronizados con la voz.`);
+        toast.success(`${plan.cueCount} captions sincronizados con la voz.${plan.discardedCueCustomizations ? ` Se restablecieron los efectos individuales de ${plan.discardedCueCustomizations} frases; los efectos de capa se conservaron.` : ""}`);
       }
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "No se pudieron generar captions desde la voz.");
@@ -1303,13 +2163,6 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     const currentPayload = payloadRef.current;
     if (!currentPayload || !asset.isEditable) return;
     const baseClipId = asset.deckClip?.id || `asset-${asset.id}`;
-    const existing = currentPayload.document.clips.find((clip) => asset.deckClip
-      ? clip.source.type === "DECK_SLIDE" && asset.deckClip.source.type === "DECK_SLIDE" && clip.source.slideKey === asset.deckClip.source.slideKey
-      : clip.source.type === "PRODUCTION_ASSET" && clip.source.productionAssetId === asset.id);
-    if (existing) {
-      selectClip(existing.hfId);
-      return;
-    }
 
     // A removed asset can have derived historical clips with the canonical id.
     // Only the current document matters, but generate a collision-free identity
@@ -1333,7 +2186,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     const occupiedUntil = currentPayload.document.clips
       .filter((candidate) => candidate.trackId === trackId)
       .reduce((latest, candidate) => Math.max(latest, candidate.startSeconds + candidate.durationSeconds), 0);
-    const insertionTiming = currentPayload.document.sourceInsertionMode === "MANUAL"
+    const appendTiming = currentPayload.document.sourceInsertionMode === "MANUAL"
       ? { startSeconds: Math.max(occupiedUntil, playheadSecondsRef.current), durationSeconds: preferredDuration, overlapsExistingClips: false }
       : resolveCompositionAssetInsertionTiming({
       canvasDurationSeconds: currentPayload.document.canvas.durationSeconds,
@@ -1343,6 +2196,13 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       playheadSeconds: playheadSecondsRef.current,
       preferredDurationSeconds: preferredDuration,
     });
+    const insertionTiming = assetInsertionMode === "APPEND"
+      ? appendTiming
+      : {
+          durationSeconds: preferredDuration,
+          overlapsExistingClips: false,
+          startSeconds: Math.max(0, playheadSecondsRef.current),
+        };
     const clipKind: CompositionClip["kind"] = asset.deckClip ? "DECK_SLIDE" : isAudio ? "AUDIO" : asset.mimeType.startsWith("video/") ? "VIDEO" : "IMAGE";
     const sourceDimensions = asset.sourceWidth && asset.sourceHeight
       ? { height: asset.sourceHeight, width: asset.sourceWidth }
@@ -1368,27 +2228,71 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       timingSource: "ESTIMATED",
       trackId,
     };
-    const insertionOperations: CompositionEditorPatchOperation[] = [];
-    const insertedEnd = clip.startSeconds + clip.durationSeconds;
-    if (currentPayload.document.sourceInsertionMode === "MANUAL" && insertedEnd > currentPayload.document.canvas.durationSeconds) {
-      insertionOperations.push({ type: "composition.canvas-duration", clipId: "canvas", durationSeconds: insertedEnd, durationMode: "USER_EDITED", durationSource: "media" });
+    let placementOperations: CompositionEditorPatchOperation[];
+    let coordinatedRemovedClipCount = 0;
+    try {
+      const placementPlan = buildCompositionAssetPlacementEditPlan({
+        clip,
+        document: currentPayload.document,
+        mode: assetInsertionMode,
+        // The patch service ignores this when the track already exists and uses
+        // it when the latest server version no longer contains that track.
+        track: trackDefinition,
+      });
+      placementOperations = placementPlan.operations;
+      coordinatedRemovedClipCount = placementPlan.coordinatedRemovedClipIds.length;
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo colocar el asset en la línea de tiempo.");
+      return;
     }
-    const added = await savePatch([...insertionOperations, {
-      clip,
-      clipId,
-      // The patch service ignores this when the track already exists and uses
-      // it when the latest server version no longer contains that track.
-      track: trackDefinition,
-      type: "clip.add",
-    }], trackDefinition.semanticRole === "VOICE"
-      ? `Agregó ${asset.label} al final y extendió la duración del video.`
-      : insertionTiming.overlapsExistingClips
-        ? `Agregó ${asset.label} a la línea de tiempo en una subfila superpuesta.`
-        : `Agregó ${asset.label} a la línea de tiempo.`);
+    if (assetInsertionMode === "OVERWRITE") {
+      const coordinatedWarning = coordinatedRemovedClipCount > 0
+        ? ` También retirará ${coordinatedRemovedClipCount} clip${coordinatedRemovedClipCount === 1 ? "" : "s"} vinculado${coordinatedRemovedClipCount === 1 ? "" : "s"} o agrupado${coordinatedRemovedClipCount === 1 ? "" : "s"} en otras pistas.`
+        : "";
+      if (!window.confirm(`Sobrescribir reemplazará el contenido de ${formatCompositionTimecode(clip.startSeconds)} a ${formatCompositionTimecode(clip.startSeconds + clip.durationSeconds)} en la pista ${trackDefinition.label}.${coordinatedWarning} Los assets fuente no se eliminarán. ¿Continuar?`)) return;
+    }
+    const added = await savePatch(placementOperations, assetInsertionMode === "INSERT"
+      ? `Insertó ${asset.label} en el cursor y desplazó el contenido posterior.`
+      : assetInsertionMode === "OVERWRITE"
+        ? `Sobrescribió el intervalo del cursor con ${asset.label}${coordinatedRemovedClipCount > 0 ? ` y retiró ${coordinatedRemovedClipCount} clips coordinados` : ""}.`
+        : trackDefinition.semanticRole === "VOICE"
+          ? `Agregó ${asset.label} al final y extendió la duración del video.`
+          : insertionTiming.overlapsExistingClips
+            ? `Agregó ${asset.label} a la línea de tiempo en una subfila superpuesta.`
+            : `Agregó ${asset.label} a la línea de tiempo.`);
     if (added) selectClip(clip.hfId);
   }
 
-  async function addSoundEffectToTimeline(soundEffect: SoundEffectCatalogItem) {
+  async function replaceSelectedClipSource(asset: CompositionStudioAsset) {
+    const document = payloadRef.current?.document;
+    const clip = document?.clips.find((candidate) => candidate.hfId === selectedHfId);
+    if (!document || !clip || selectedTimelineClipIds.size > 1 || clip.source.type !== "PRODUCTION_ASSET") return;
+    const track = document.tracks.find((candidate) => candidate.id === clip.trackId);
+    if (!track || track.locked || clip.source.placement || resolveAvatarAudioLink(document, clip.id).status !== "NONE" || asset.deckClip || !asset.isEditable || !asset.valid) {
+      setSaveError("El clip o el medio seleccionado no admite reemplazo.");
+      return;
+    }
+    if (!asset.mimeType.startsWith(`${clip.kind.toLowerCase()}/`) || clip.source.productionAssetId === asset.id) {
+      setSaveError("Selecciona un medio distinto y del mismo tipo.");
+      return;
+    }
+    if (clip.kind !== "IMAGE" && (!asset.durationSeconds || (clip.sourceOffsetSeconds || 0) + clip.durationSeconds > asset.durationSeconds + 0.001)) {
+      setSaveError("El medio nuevo no cubre el recorte y la duración del clip.");
+      return;
+    }
+    await savePatch([{
+      clipId: clip.id,
+      productionAssetId: asset.id,
+      mimeType: asset.mimeType,
+      ...(asset.durationSeconds ? { sourceDurationSeconds: asset.durationSeconds } : {}),
+      ...(asset.hasAudio !== undefined ? { hasAudio: asset.hasAudio } : {}),
+      ...(asset.sourceHeight ? { sourceHeight: asset.sourceHeight } : {}),
+      ...(asset.sourceWidth ? { sourceWidth: asset.sourceWidth } : {}),
+      type: "clip.replace-source",
+    }], `Reemplazó el medio de ${clip.label} por ${asset.label} sin alterar timing ni layout.`);
+  }
+
+  async function linkAndInsertSoundEffect(soundEffect: SoundEffectCatalogItem) {
     const currentPayload = payloadRef.current;
     if (!currentPayload || soundEffect.durationMilliseconds <= 0) return;
     const linked = await fetch("/api/production/sound-effects", {
@@ -1475,7 +2379,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     await savePatch([{ document, type: "document.restore" }], "Quitó la intro y reacomodó el contenido del video.");
   }
 
-  async function separateSelectedVideoAudio(clip: CompositionClip) {
+  async function detachAndInsertVideoAudio(clip: CompositionClip) {
+    if (componentId === null) { setSaveError("La separación de audio requiere una vinculación explícita a un componente."); return; }
     if (clip.kind !== "VIDEO" || clip.source.type !== "PRODUCTION_ASSET") return;
     const sourceAssetId = clip.source.productionAssetId;
     const sourceAsset = assets.find((asset) => asset.id === sourceAssetId);
@@ -1590,6 +2495,249 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     if (removed) clearSelection();
   }
 
+  async function duplicateTimelineSelection() {
+    const currentDocument = payloadRef.current?.document;
+    if (!currentDocument || selectedTimelineClipIds.size === 0) return;
+    try {
+      const plan = buildCompositionDuplicateSelectionPlan({
+        clipIds: selectedTimelineClipIds,
+        document: currentDocument,
+      });
+      const duplicated = await savePatch(
+        plan.operations,
+        `Duplicó ${plan.duplicateClipIds.length} clip${plan.duplicateClipIds.length === 1 ? "" : "s"} con sus animaciones.`,
+      );
+      if (!duplicated) return;
+      setSelectedTimelineClipIds(new Set(plan.duplicateClipIds));
+      setSelectedTimelineGroupId(null);
+      setEditingTimelineGroupId(null);
+      const firstHfId = plan.duplicateHfIds[0];
+      if (firstHfId) selectClip(firstHfId, true);
+      setInspectorTab("selection");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo duplicar la selección.");
+    }
+  }
+
+  function copyTimelineSelection() {
+    if (saveInFlightRef.current || selectedTimelineClipIds.size === 0) return;
+    try {
+      const entry = createCompositionSelectionClipboardEntry({
+        clipIds: selectedTimelineClipIds,
+        compositionId,
+      });
+      timelineClipboardRef.current = entry;
+      setTimelineClipboardCompositionId(compositionId);
+      toast.success(`${entry.clipIds.length} clip${entry.clipIds.length === 1 ? "" : "s"} copiado${entry.clipIds.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo copiar la selección.");
+    }
+  }
+
+  async function pasteTimelineClipboard() {
+    const currentDocument = payloadRef.current?.document;
+    if (!currentDocument || saveInFlightRef.current) return;
+    let clipIds: readonly string[];
+    try {
+      clipIds = resolveCompositionSelectionClipboardEntry(timelineClipboardRef.current, { compositionId });
+    } catch (error) {
+      timelineClipboardRef.current = null;
+      setTimelineClipboardCompositionId(null);
+      setSaveError(error instanceof Error ? error.message : "El portapapeles de la composición no está disponible.");
+      return;
+    }
+    try {
+      const plan = buildCompositionDuplicateSelectionPlan({
+        clipIds,
+        destinationStartSeconds: playheadSecondsRef.current,
+        document: currentDocument,
+      });
+      const pasted = await savePatch(
+        plan.operations,
+        `Pegó ${plan.duplicateClipIds.length} clip${plan.duplicateClipIds.length === 1 ? "" : "s"} en el playhead con sus animaciones.`,
+      );
+      if (!pasted) return;
+      setSelectedTimelineClipIds(new Set(plan.duplicateClipIds));
+      setSelectedTimelineGroupId(null);
+      setEditingTimelineGroupId(null);
+      const firstHfId = plan.duplicateHfIds[0];
+      if (firstHfId) selectClip(firstHfId, true);
+      setInspectorTab("selection");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo pegar la selección.");
+    }
+  }
+
+  function runCompositionCommand(commandId: CompositionEditorCommandId) {
+    executeCompositionEditorCommand({
+      frameStep: timelineFrameStep,
+      handlers: {
+        align: (alignment) => void alignTimelineSelection(alignment, "CANVAS"),
+        copy: copyTimelineSelection,
+        delete: (ripple) => void deleteTimelineSelection(ripple),
+        distribute: (axis) => void distributeTimelineSelection(axis),
+        duplicate: () => void duplicateTimelineSelection(),
+        openAssistant: () => { setManualInspectorOpen(true); setInspectorTab("assistant"); },
+        openLibrary: openCompositionLibrary,
+        openPresets: () => { setPresetPanelOpen(true); void loadCompositionPresets(); },
+        paste: () => void pasteTimelineClipboard(),
+        redo: () => void redoLastEdit(),
+        roll: (edge, deltaFrames) => void rollTimelineSelection(edge, deltaFrames),
+        slide: (deltaFrames) => void slideTimelineSelection(deltaFrames),
+        toggleDirectEditing: () => setDirectEditingEnabled((current) => !current),
+        toggleGrid: () => setGridVisible((current) => !current),
+        toggleInspector: () => setManualInspectorOpen((current) => !current),
+        toggleSafeAreas: () => setSafeAreasVisible((current) => !current),
+        toggleSnap: () => setSnapEnabled((current) => !current),
+        undo: () => void undoLastEdit(),
+      },
+      id: commandId,
+    });
+  }
+
+  async function deleteTimelineSelection(ripple: boolean) {
+    const currentDocument = payloadRef.current?.document;
+    if (!currentDocument || selectedTimelineClipIds.size === 0) return;
+    const selectedCount = selectedTimelineClipIds.size;
+    const confirmation = ripple
+      ? `Se eliminarán ${selectedCount} clip${selectedCount === 1 ? "" : "s"} y se cerrarán los huecos seguros en sus pistas. ¿Continuar?`
+      : `Se eliminarán ${selectedCount} clip${selectedCount === 1 ? "" : "s"} de la línea de tiempo. ¿Continuar?`;
+    if (!window.confirm(confirmation)) return;
+    try {
+      const plan = buildCompositionDeleteSelectionPlan({
+        clipIds: selectedTimelineClipIds,
+        document: currentDocument,
+        ripple,
+      });
+      const deleted = await savePatch(
+        plan.operations,
+        ripple
+          ? `Eliminó ${selectedCount} clips y cerró sus huecos en la línea de tiempo.`
+          : `Eliminó ${selectedCount} clips de la línea de tiempo.`,
+      );
+      if (deleted) clearSelection();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo eliminar la selección.");
+    }
+  }
+
+  async function alignTimelineSelection(
+    alignment: CompositionSelectionAlignment,
+    target: CompositionSelectionAlignmentTarget,
+  ) {
+    const currentDocument = payloadRef.current?.document;
+    if (!currentDocument || selectedTimelineClipIds.size === 0) return;
+    try {
+      const plan = buildCompositionSelectionAlignmentPlan({
+        alignment,
+        clipIds: selectedTimelineClipIds,
+        document: currentDocument,
+        target,
+      });
+      await savePatch(
+        plan.operations,
+        `Alineó ${plan.visualClipCount} elemento${plan.visualClipCount === 1 ? "" : "s"} visual${plan.visualClipCount === 1 ? "" : "es"} ${target === "CANVAS" ? "al canvas" : "a la selección"}.`,
+      );
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo alinear la selección.");
+    }
+  }
+
+  async function distributeTimelineSelection(axis: CompositionSelectionDistributionAxis) {
+    const currentDocument = payloadRef.current?.document;
+    if (!currentDocument || selectedTimelineClipIds.size === 0) return;
+    try {
+      const plan = buildCompositionSelectionDistributionPlan({
+        axis,
+        clipIds: selectedTimelineClipIds,
+        document: currentDocument,
+      });
+      await savePatch(
+        plan.operations,
+        `Distribuyó ${plan.visualClipCount} elementos visuales en el eje ${axis === "HORIZONTAL" ? "horizontal" : "vertical"}.`,
+      );
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo distribuir la selección.");
+    }
+  }
+
+  async function rollTimelineSelection(edge: "LEFT" | "RIGHT", deltaFrames: number, anchorClipId?: string) {
+    const currentDocument = payloadRef.current?.document;
+    const selectedClipId = anchorClipId || [...selectedTimelineClipIds][0];
+    if (!currentDocument || !selectedClipId) return;
+    const selectedClipIds = new Set(selectedTimelineClipIds);
+    selectedClipIds.add(selectedClipId);
+    try {
+      const plan = buildCompositionRollEditPlan({
+        deltaFrames,
+        document: currentDocument,
+        edge,
+        selectedClipId,
+        selectedClipIds,
+      });
+      await savePatch(
+        plan.operations,
+        `Ajustó ${edge === "LEFT" ? "la entrada" : "la salida"} de la selección ${deltaFrames > 0 ? "+" : ""}${deltaFrames} frame${Math.abs(deltaFrames) === 1 ? "" : "s"}.`,
+      );
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo ajustar el corte con roll.");
+    }
+  }
+
+  async function slideTimelineSelection(deltaFrames: number, anchorClipId?: string) {
+    const currentDocument = payloadRef.current?.document;
+    const selectedClipId = anchorClipId || [...selectedTimelineClipIds][0];
+    if (!currentDocument || !selectedClipId) return;
+    const selectedClipIds = new Set(selectedTimelineClipIds);
+    selectedClipIds.add(selectedClipId);
+    try {
+      const plan = buildCompositionSlideEditPlan({
+        deltaFrames,
+        document: currentDocument,
+        selectedClipId,
+        selectedClipIds,
+      });
+      await savePatch(
+        plan.operations,
+        `Deslizó la selección ${deltaFrames > 0 ? "+" : ""}${deltaFrames} frame${Math.abs(deltaFrames) === 1 ? "" : "s"} sin cambiar su duración.`,
+      );
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "No se pudo deslizar la selección.");
+    }
+  }
+
+  async function undoLastEdit() {
+    if (saving || saveQueueRef.current?.snapshot().status !== "IDLE" || presetBusy || agentProposal || presetPreview) return;
+    const entry = commandHistoryRef.current?.peekUndo();
+    if (!entry) return;
+    const restored = await savePatch(
+      [{ document: entry.beforeDocument, type: "document.restore" }],
+      `Deshizo: ${entry.summary}`,
+      "USER",
+      { historyMode: "UNDO" },
+    );
+    if (!restored) return;
+    commandHistoryRef.current?.commitUndo(entry.id);
+    syncCommandHistoryState();
+    clearSelection();
+  }
+
+  async function redoLastEdit() {
+    if (saving || saveQueueRef.current?.snapshot().status !== "IDLE" || presetBusy || agentProposal || presetPreview) return;
+    const entry = commandHistoryRef.current?.peekRedo();
+    if (!entry) return;
+    const restored = await savePatch(
+      [{ document: entry.afterDocument, type: "document.restore" }],
+      `Rehizo: ${entry.summary}`,
+      "USER",
+      { historyMode: "REDO" },
+    );
+    if (!restored) return;
+    commandHistoryRef.current?.commitRedo(entry.id);
+    syncCommandHistoryState();
+    clearSelection();
+  }
+
   async function loadHistory() {
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/document?history=1`, { cache: "no-store" });
@@ -1669,11 +2817,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
   function markSelectedIntervalStart() {
     if (!selectedClip) {
-      setSaveError("Selecciona primero el clip de video o audio que deseas recortar.");
+      setSaveError("Selecciona primero el clip de video, audio, texto o captions que deseas recortar.");
       return;
     }
-    if (selectedClip.kind !== "VIDEO" && selectedClip.kind !== "AUDIO") {
-      setSaveError("La eliminación de intervalos solo está disponible para clips de video o audio.");
+    if (selectedClip.kind !== "VIDEO" && selectedClip.kind !== "AUDIO" && selectedClip.kind !== "TEXT" && selectedClip.kind !== "CAPTION") {
+      setSaveError("La eliminación de intervalos está disponible para clips de video, audio, texto o captions.");
       return;
     }
     const clipEnd = selectedClip.startSeconds + selectedClip.durationSeconds;
@@ -1718,7 +2866,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     await savePatch(operations, "Organizó los tiempos estimados sin reemplazar el layout manual.");
   }
 
-  async function refreshProductionAssets() {
+  async function refreshNativeProductionAssets() {
     if (!onRefreshProductionAssets) return;
     setRefreshingProductionAssets(true);
     setSaveError(null);
@@ -1734,10 +2882,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }
   }
 
-  async function recoverHistoricalAssets() {
+  async function recoverNativeHistoricalAssets() {
     if (!componentId) return;
     setRecoveringHistoricalAssets(true);
     setSaveError(null);
+    const beforePayload = payloadRef.current;
     try {
       const response = await fetch("/api/production/heygen/scenes", {
         body: JSON.stringify({ componentId }),
@@ -1754,7 +2903,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       }
 
       await onAssetsChanged?.();
-      await loadDocument();
+      await loadDocument(beforePayload ? {
+        beforePayload,
+        source: "SYSTEM",
+        summary: "Sincronizó assets históricos con la composición.",
+      } : undefined);
       const report = responsePayload.data?.report;
       const recoveredAvatarCount = report?.recoveredAvatarCount || 0;
       const importedHistoricalAvatarCount = report?.importedHistoricalAvatarCount || 0;
@@ -1784,10 +2937,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }
   }
 
-  async function placeAssemblyBranding(outroAssetId?: string | null) {
+  async function placeNativeAssemblyBranding(outroAssetId?: string | null) {
     if (saving || saveInFlightRef.current) return;
     setSaving(true);
     setSaveError(null);
+    const beforePayload = payloadRef.current;
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/branding`, {
         ...(outroAssetId === undefined ? {} : {
@@ -1799,7 +2953,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "No se pudo colocar el intro y outro.");
       await loadBrandingAvailability();
-      await loadDocument();
+      await loadDocument(beforePayload ? {
+        beforePayload,
+        source: "USER",
+        summary: "Actualizó intro y outro de la composición.",
+      } : undefined);
     } catch (caught) {
       setSaveError(caught instanceof Error ? caught.message : "No se pudo colocar el intro y outro.");
     } finally {
@@ -1807,12 +2965,28 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     }
   }
 
-  async function prepareAssembly() {
+  function getHtmlSnapshotPublicationContext() {
+    const current=payloadRef.current;
+    const queue=saveQueueRef.current?.snapshot();
+    return {documentHash:current?.documentHash ?? null,hasHtmlEditing:Boolean(current?.document.htmlEditing?.items.length),
+      snapshotHistoryLoaded:snapshotHistory !== null,expectedActiveRevisionId:assembly?.revisionId ?? null,
+      renderProfileId:selectedRenderProfileId,saving:Boolean(saving || saveInFlightRef.current || htmlEditorialHostRef.current?.isBlocked() || queue?.pendingCount || queue?.status !== "IDLE"),
+      otherWorkPending:Boolean(assembling || presetBusy || ["validating","sending","rendering"].includes(renderStatus)),
+      previewPending:Boolean(previewDirty || saveError || agentProposal || presetPreview || comparisonActive)};
+  }
+
+  async function prepareNativeAssembly() {
     setAssembling(true); setAssemblyError(null); setAssemblyNotice(null); setRenderStatus("validating");
     try {
       const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
       const response = await fetch(`/api/production/hyperframes/compositions/${compositionId}/snapshot`, { body: JSON.stringify({ draftId, renderProfileId: selectedProfile.id }), headers: { "Content-Type": "application/json" }, method: "POST" });
-      const body = await readCompositionApiResponse<{ data?: { id: string; project_archive_size_bytes: number; reused?: boolean; revision_number?: number }; error?: string }>(response, "No se pudo preparar el ensamble.");
+      const body = await readCompositionApiResponse<{ data?: {
+        conformance?: { checkpointCount: number; maxMismatchedPixelRatio: number; maxTemporalDriftFrames: number; schemaVersion: number };
+        id: string;
+        project_archive_size_bytes: number;
+        reused?: boolean;
+        revision_number?: number;
+      }; error?: string }>(response, "No se pudo preparar el ensamble.");
       if (!response.ok) throw new Error(body.error || "No se pudo preparar el ensamble.");
       if (!body.data?.id) throw new Error("El servidor no devolvió el snapshot creado.");
       setAssembly({
@@ -1821,16 +2995,19 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         revisionId: body.data.id,
         status: "READY_FOR_PREVIEW",
       });
-      setAssemblyNotice(body.data.reused
+      const conformanceLabel = body.data.conformance
+        ? ` Contrato de conformidad v${body.data.conformance.schemaVersion}: ${body.data.conformance.checkpointCount} cuadros, tolerancia ${(body.data.conformance.maxMismatchedPixelRatio * 100).toFixed(2)}% y deriva máxima ${body.data.conformance.maxTemporalDriftFrames} frame.`
+        : "";
+      setAssemblyNotice((body.data.reused
         ? `El Snapshot ${body.data.revision_number || "activo"} ya coincide con el documento, los assets y el perfil. Se reutilizó sin volver a cargar el ZIP.`
-        : `Snapshot ${body.data.revision_number || "nuevo"} creado y ZIP almacenado correctamente.`);
+        : `Snapshot ${body.data.revision_number || "nuevo"} creado y ZIP almacenado correctamente.`) + conformanceLabel);
       setRenderStatus("idle");
       await loadSnapshotHistory();
     } catch (caught) { setAssemblyError(caught instanceof Error ? caught.message : "No se pudo preparar el ensamble."); setRenderStatus("failed"); }
     finally { setAssembling(false); }
   }
 
-  async function restoreSnapshot(snapshot: CompositionSnapshotEntry) {
+  async function restoreNativeSnapshot(snapshot: CompositionSnapshotEntry) {
     if ((snapshot.isActive && snapshot.isCurrentDocument) || assembling) return;
     const currentPayload = payloadRef.current;
     if (!currentPayload) return;
@@ -1876,18 +3053,16 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         documentHash: resolveCompositionDocumentVersion(body.data.documentHash),
         version: body.data.restoredVersion,
       };
+      commandHistoryRef.current?.record({
+        afterDocument: restoredPayload.document,
+        beforeDocument: currentPayload.document,
+        source: "USER",
+        summary: `Restauró el snapshot ${snapshot.revisionNumber}.`,
+      });
+      syncCommandHistoryState();
       payloadRef.current = restoredPayload;
       setPayload(restoredPayload);
-      if (COMPOSITION_PREVIEW_SYNC_V2_ENABLED) {
-        previewSyncStateRef.current = transitionCompositionPreviewSyncState(previewSyncStateRef.current, {
-          documentHash: restoredPayload.documentHash,
-          type: "DOCUMENT_LOADED",
-        });
-      }
-      previewDocumentHashRef.current = restoredPayload.documentHash;
-      previewRuntimeBaseHashRef.current = restoredPayload.documentHash;
-      setPreviewDocumentHash(restoredPayload.documentHash);
-      setPreviewDirty(false);
+      adoptSavedPreviewRevision(restoredPayload.documentHash);
       pendingPreviewRestoreSecondsRef.current = null;
       playheadSecondsRef.current = 0;
       setSeconds(0);
@@ -1921,7 +3096,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       setAssembling(false);
     }
   }
-  async function approveAssembly() {
+  async function approveNativeAssembly() {
     const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
     if (!assembly) return;
     if (!assembly.renderProfile || !sameHyperframesRenderSettings(assembly.renderProfile, selectedProfile)) {
@@ -2154,7 +3329,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     };
   }, [renderRecovery?.completedVideo, renderRequestId]);
 
-  async function submitAssemblyRender(options: { forceNewAttempt?: boolean } = {}) {
+  async function submitNativeAssemblyRender(options: { forceNewAttempt?: boolean } = {}) {
     const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
     if (!assembly || assembly.status !== "READY_FOR_RENDER") return;
     if (!assembly.renderProfile || !sameHyperframesRenderSettings(assembly.renderProfile, selectedProfile)) {
@@ -2201,7 +3376,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     finally { setAssembling(false); }
   }
 
-  async function deletePriorVideoAndRender() {
+  async function deleteNativePriorVideoAndRender() {
     const completedVideo = renderRecovery?.completedVideo;
     if (!completedVideo?.assetId || !assembly || assembly.status !== "READY_FOR_RENDER") return;
     const confirmed = window.confirm(
@@ -2247,11 +3422,25 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
     await submitAssemblyRender({ forceNewAttempt: true });
   }
 
+  savePatchRef.current = savePatch;
+  narrativeRangeStopRef.current = stopNarrativeRangePreview;
+  undoLastEditRef.current = undoLastEdit;
+  redoLastEditRef.current = redoLastEdit;
+  copyTimelineSelectionRef.current = copyTimelineSelection;
+  pasteTimelineClipboardRef.current = pasteTimelineClipboard;
+  duplicateTimelineSelectionRef.current = duplicateTimelineSelection;
+  deleteTimelineSelectionRef.current = deleteTimelineSelection;
+  rollTimelineSelectionRef.current = rollTimelineSelection;
+  slideTimelineSelectionRef.current = slideTimelineSelection;
+
   if (loading) return <LoadingPreview />;
   if (error || !payload || !previewUrl) return <PreviewError error={error || "No hay composición disponible."} onRetry={() => void loadDocument()} />;
 
   const deliveryMenu = (
     <CompositionDeliveryPanel
+      recovery={<CompositionHtmlSnapshotRecoveryPanel key={draftId} draftId={draftId}
+        publication={{context:getHtmlSnapshotPublicationContext(),getContext:getHtmlSnapshotPublicationContext,
+          onRegistered:signal => loadSnapshotHistory(signal,{preserveRenderProfile:true})}} />}
       canvas={payload?.document.canvas}
       compact
       assembly={assembly}
@@ -2279,7 +3468,6 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       onRestore={restoreSnapshot}
     />
   );
-  const compositionScenes = deriveCompositionScenes(payload.document);
   const captionTranscriptWordCount = compositionScenes.reduce(
     (total, scene) => total + (scene.wordCues?.length || 0),
     0,
@@ -2290,6 +3478,11 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
   const narrativeLibrary = compositionScenes.length > 0 ? (
     <CompositionNarrativePanel
       document={payload.document}
+      documentHash={payload.documentHash}
+      draftId={draftId}
+      canPreviewRange={previewReady && !previewDirty && !saving && !agentProposal && !presetPreview && !comparisonActive}
+      onPreviewRange={previewNarrativeRange}
+      onStopRange={stopNarrativeRangePreview}
       scenes={compositionScenes}
       currentTime={seconds}
       onSeek={(time) => { beginScrub(); seek(time); }}
@@ -2299,9 +3492,30 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
       onOpenSceneBuilder={openSceneBuilder}
     />
   ) : null;
+  const canPasteTimelineClipboard = timelineClipboardCompositionId === compositionId;
+  const commandPaletteItems = buildCompositionCommandPaletteItems({
+    agentProposalActive: Boolean(agentProposal),
+    canPaste: canPasteTimelineClipboard,
+    canRedo: commandHistoryState.canRedo,
+    canUndo: commandHistoryState.canUndo,
+    directEditingEnabled,
+    document: payload.document,
+    frameStep: timelineFrameStep,
+    gridVisible,
+    inspectorAssistantActive: inspectorOpen && inspectorTab === "assistant",
+    inspectorOpen,
+    libraryOpen,
+    presetsOpen: presetPanelOpen,
+    safeAreasVisible,
+    saving,
+    selectedClipIds: selectedTimelineClipIds,
+    snapEnabled,
+  });
 
   return (
-    <section className={`${styles.studio} courseforge-composition-studio`}>
+    <section className={`${styles.studio} courseforge-composition-studio`} inert={htmlEditorialBusy || narrativeExtractionHost?.busy} aria-busy={htmlEditorialBusy || narrativeExtractionHost?.busy}>
+      {htmlEditorialHostRef.current && <CompositionHtmlRecoveryCenter draftId={draftId} compositionId={compositionId} host={htmlEditorialHostRef.current} document={payload?.document} />}
+      {commandPaletteOpen && <CompositionCommandPalette items={commandPaletteItems} onClose={() => setCommandPaletteOpen(false)} onRun={runCompositionCommand} />}
       <CompositionPresetPanel
         activePreview={presetPreview}
         busy={saving || presetBusy}
@@ -2317,6 +3531,19 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         onUndo={undoLastCompositionPreset}
         open={presetPanelOpen}
       />
+      {recoveryConflict && (
+        <CompositionRecoveryConflictNotice
+          summary={recoveryConflict.summary}
+          onDiscard={() => {
+            try {
+              clearCompositionRecoveryEntry(window.localStorage, draftId, recoveryConflict.entryId);
+              setRecoveryConflict(null);
+            } catch {
+              setSaveError("El navegador no permitió descartar la copia local. Revisa el almacenamiento del sitio.");
+            }
+          }}
+        />
+      )}
       {saveError && (
         <CompositionErrorToast
           message={saveError}
@@ -2338,13 +3565,45 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
         } as CSSProperties}
         className={`${styles.editorGrid} ${!libraryOpen ? styles.editorGridWithoutLibrary : ""} ${inspectorOpen ? styles.editorGridWithInspector : ""}`}
       >
-        <CompositionStudioLibrary assets={assets} captionTranscriptWordCount={captionTranscriptWordCount} delivery={deliveryMenu} introAssetId={payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO" ? [clip.source.productionAssetId] : [])[0] || null} libraryOpen={libraryOpen} lessons={lessons} narrative={narrativeLibrary} narrativeCount={compositionScenes.length} onAddAsset={addAssetToTimeline} onAddCaptionLayer={() => void addNativeOverlay("CAPTION")} onGenerateTranscriptCaptions={() => void generateTranscriptCaptions()} onAddSoundEffect={addSoundEffectToTimeline} onAddTextLayer={() => void addNativeOverlay("TEXT")} onClearIntro={clearProductionIntro} onSelectLesson={onSelectLesson} onSelectAsset={selectClip} onSetIntro={setProductionIntro} selectedLessonId={selectedLessonId} selectedHfId={selectedHfId} timelineAssetIds={new Set(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" ? [clip.source.productionAssetId] : clip.source.type === "DECK_SLIDE" ? [clip.source.htmlAssetId ? `html-${clip.source.htmlAssetId}-${clip.source.sourceSlideIndex}` : `deck-slide-${clip.source.slideIndex}`] : []))} />
+        <CompositionStudioLibrary
+          assets={assets}
+          captionTranscriptWordCount={captionTranscriptWordCount}
+          delivery={deliveryMenu}
+          insertionMode={assetInsertionMode}
+          introAssetId={payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO" ? [clip.source.productionAssetId] : [])[0] || null}
+          libraryOpen={libraryOpen}
+          lessons={lessons}
+          narrative={narrativeLibrary}
+          narrativeCount={compositionScenes.length}
+          onAddAsset={addAssetToTimeline}
+          onReplaceAsset={(asset) => void replaceSelectedClipSource(asset)}
+          replacementTarget={selectedTimelineClipIds.size > 1 || payload.document.tracks.find((track) => track.id === selectedClip?.trackId)?.locked || selectedClip && resolveAvatarAudioLink(payload.document, selectedClip.id).status !== "NONE" ? null : selectedClip}
+          replacementTargetUnavailable={selectedClipSourceUnavailable}
+          onAddCaptionLayer={() => void addNativeOverlay("CAPTION")}
+          onGenerateTranscriptCaptions={() => void generateTranscriptCaptions()}
+          onAddSoundEffect={addSoundEffectToTimeline}
+          onAddTextLayer={() => void addNativeOverlay("TEXT")}
+          onClearIntro={clearProductionIntro}
+          onInsertionModeChange={changeAssetInsertionMode}
+          onSelectLesson={onSelectLesson}
+          onSelectAsset={selectClip}
+          onSetIntro={setProductionIntro}
+          selectedLessonId={selectedLessonId}
+          selectedHfId={selectedHfId}
+          timelineAssetHfIds={new Map(payload.document.clips.flatMap((clip) => clip.source.type === "PRODUCTION_ASSET"
+            ? [[clip.source.productionAssetId, clip.hfId] as const]
+            : clip.source.type === "DECK_SLIDE"
+              ? [[clip.source.htmlAssetId ? `html-${clip.source.htmlAssetId}-${clip.source.sourceSlideIndex}` : `deck-slide-${clip.source.slideIndex}`, clip.hfId] as const]
+              : []))}
+        />
 
         <section ref={previewShellRef} className={`${styles.previewPanel} ${previewFullscreen ? styles.previewFullscreen : ""}`}>
           {payload.document.sourceInsertionMode === "MANUAL" && payload.document.clips.length === 0 &&
             <p role="status" className="px-4 py-2 text-sm text-slate-500">Tu timeline está vacío. Elige un archivo de la biblioteca y pulsa «Añadir a timeline».</p>}
           <CompositionPreviewToolbar
             canvas={payload.document.canvas}
+            canRedo={commandHistoryState.canRedo}
+            canUndo={commandHistoryState.canUndo}
             onCanvasFormatChange={(format) => void savePatch([{ type: "composition.canvas-size", ...COMPOSITION_CANVAS_FORMATS[format] }], `Cambió el lienzo a ${format}; conserva el encuadre para ajuste manual.`)}
             agentProposalActive={Boolean(agentProposal)}
             comparisonActive={comparisonActive}
@@ -2359,13 +3618,7 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
             onContinueToPublication={onContinueToPublication}
             onHistoryOpen={() => void loadHistory()}
             onInspectorToggle={() => setManualInspectorOpen((current) => !current)}
-            onOpenLibrary={() => {
-              setLibraryOpen(true);
-              comparisonBaselineReadyRef.current = false;
-              setComparisonActive(false);
-              setComparisonBaselineHash(null);
-              setComparisonBaselineLoading(false);
-            }}
+            onOpenLibrary={openCompositionLibrary}
             onIntervalAction={() => {
               if (removalRangeStart === null) markSelectedIntervalStart();
               else void removeSelectedInterval();
@@ -2375,10 +3628,12 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
               setManualInspectorOpen(true);
               setInspectorTab("assistant");
             }}
+            onOpenCommandPalette={() => setCommandPaletteOpen(true)}
             onOpenPresets={() => {
               setPresetPanelOpen(true);
               void loadCompositionPresets();
             }}
+            onRedo={() => void redoLastEdit()}
             onReload={() => void loadDocument()}
             onRestoreHistory={(entry) => void restoreHistoryEntry(entry)}
             onSplit={() => void splitSelectedClipAtPlayhead()}
@@ -2387,6 +3642,10 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
             onToggleFullscreen={() => void togglePreviewFullscreen()}
             onToggleGrid={() => {
               setGridVisible((current) => !current);
+              setToolMenuOpen(false);
+            }}
+            onToggleSafeAreas={() => {
+              setSafeAreasVisible((current) => !current);
               setToolMenuOpen(false);
             }}
             onToggleSnap={() => setSnapEnabled((current) => !current)}
@@ -2401,19 +3660,27 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
               setVisualCropEnabled((current) => !current);
               setToolMenuOpen(false);
             }}
+            onUndo={() => void undoLastEdit()}
             onZoom={changePreviewZoom}
             previewFullscreen={previewFullscreen}
             previewStatusLabel={previewStatusLabel}
             previewZoom={previewZoom}
+            redoLabel={commandHistoryState.redoLabel}
             removalRangeStartSeconds={removalRangeStart?.seconds ?? null}
+            safeAreasVisible={safeAreasVisible}
             saveError={saveError}
             saving={saving}
             snapEnabled={snapEnabled}
             toolMenuOpen={toolMenuOpen}
             toolMenuRef={toolMenuRef}
             trimToolEnabled={trimToolEnabled}
+            undoLabel={commandHistoryState.undoLabel}
             visualCropEnabled={visualCropEnabled}
           />
+          {areCompositionAudioMetersEnabled() && <CompositionAudioMeters
+            message={audioMeterMessage}
+            onReset={() => postPreviewMessage({ type: "courseforge-composition-reset-audio-meter" })}
+          />}
           <CompositionPreviewViewport
             activeSceneId={activeSceneId}
             agentProposalActive={Boolean(agentProposal)}
@@ -2427,9 +3694,13 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
             fps={payload.document.canvas.fps}
             frameRef={frameRef}
             onBeginScrub={beginScrub}
+            onFrameError={onPreviewFrameError}
+            onFrameLoad={onPreviewFrameLoad}
+            onBaselineFrameLoad={() => connectHtmlPreviewFrame(true)}
             onPlaySelectedAnimation={playSelectedAnimation}
             onRefreshDocument={() => refreshPreviewDocument(false)}
             onRefreshMedia={refreshPreviewMedia}
+            previewErrorActionLabel={resolveCompositionPreviewLoadErrorPresentation(previewLoadErrorCode)?.actionLabel ?? (previewLoadErrorCode ? null : "Reintentar preview")}
             onSceneSelect={(scene) => {
               seek(scene.startSeconds);
               selectClip(scene.primaryHfId);
@@ -2443,6 +3714,8 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
             previewMediaState={previewMediaState}
             previewReady={previewReady}
             previewUrl={previewUrl}
+            previewZoom={previewZoom}
+            safeAreasVisible={safeAreasVisible}
             saving={saving}
             scenes={compositionScenes}
             seconds={seconds}
@@ -2488,7 +3761,9 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
 
         <CompositionTimelineWorkspace
           assetLabels={Object.fromEntries(assets.map((asset) => [asset.id, asset.label]))}
+          assets={assets}
           brandingAvailability={brandingAvailability}
+          componentId={componentId}
           currentTime={seconds}
           document={payload.document}
           durationSourceLabel={durationSourceLabel}
@@ -2508,10 +3783,12 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
           onRecalculateDuration={() => void recalculateDuration()}
           onRecoverHistoricalAssets={() => void recoverHistoricalAssets()}
           onRefreshProductionAssets={() => void refreshProductionAssets()}
+          onRoll={(edge, deltaFrames) => void rollTimelineSelection(edge, deltaFrames)}
           onSeek={seek}
           onSelect={(hfId) => selectClip(hfId, true)}
           onSelectedClipIdsChange={setSelectedTimelineClipIds}
           onSelectedGroupChange={setSelectedTimelineGroupId}
+          onSlide={(deltaFrames) => void slideTimelineSelection(deltaFrames)}
           onTrackUpdate={(track, settings, summary) => void updateTrack(track, settings, summary)}
           onTransitionSelect={selectTransition}
           onTrim={(clip, startSeconds, durationSeconds, sourceOffsetSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, sourceOffsetSeconds, startSeconds, type: "clip.trim" }], `Ajustó el inicio de ${clip.label} desde la timeline.`)}
@@ -2538,8 +3815,15 @@ export function NativeCompositionPreview({ assets, componentId, compositionId, d
             <button type="button" onClick={clearSelection} className={styles.inspectorClose} title="Cerrar inspector" aria-label="Cerrar inspector"><X size={15} /></button>
           </div>
           <div className={styles.inspectorBody}>
+            {inspectorTab === "properties" && selectedClip?.source.type === "DECK_SLIDE" &&
+              <CompositionHtmlEditorialInspector draftId={draftId} clipId={selectedClip.id} documentHash={payload.documentHash} host={htmlEditorialHostRef.current} />}
+            {inspectorTab === "properties" && <CompositionAudioDiagnostics
+              analysis={assets.find((asset) => asset.id === selectedSourceAssetId)?.audioAnalysis}
+              clip={selectedClip}
+              track={payload.document.tracks.find((track) => track.id === selectedClip?.trackId)}
+            />}
             {inspectorTab === "properties" && <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} colorGradingStatus={selectedHfId ? colorGradingStatuses[selectedHfId] || null : null} componentId={componentId} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} sourcePreviewUrl={selectedSourcePreviewUrl} selectedAnimationId={selectedAnimationId} onAnimationSelect={(id) => { if (id && selectedClip) selectAnimation(id, selectedClip.hfId); else setSelectedAnimationId(null); }} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewColorGrading={(hfId, colorGrading) => postPreviewMessage({ type: "courseforge-composition-preview-color-grading", hfId, colorGrading })} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} />}
-            {inspectorTab === "selection" && <CompositionSelectionPanel document={payload.document} editingGroupId={editingTimelineGroupId} onClear={clearSelection} onCreateGroup={createTimelineGroup} onEnterGroup={enterTimelineGroup} onExitGroup={exitTimelineGroup} onInspectClip={(hfId) => selectClip(hfId, true)} onUngroup={ungroupTimelineSelection} saving={saving} selectedClipIds={selectedTimelineClipIds} selectedGroupId={selectedTimelineGroupId} />}
+            {inspectorTab === "selection" && <CompositionSelectionPanel canPaste={canPasteTimelineClipboard} document={payload.document} editingGroupId={editingTimelineGroupId} frameStep={timelineFrameStep} keyboardEditMode={timelineKeyboardEditMode} onAlign={(alignment, target) => void alignTimelineSelection(alignment, target)} onClear={clearSelection} onCopy={copyTimelineSelection} onCreateGroup={createTimelineGroup} onDelete={() => void deleteTimelineSelection(false)} onDistribute={(axis) => void distributeTimelineSelection(axis)} onDuplicate={() => void duplicateTimelineSelection()} onEnterGroup={enterTimelineGroup} onExitGroup={exitTimelineGroup} onFrameStepChange={changeTimelineFrameStep} onInspectClip={(hfId) => selectClip(hfId, true)} onKeyboardEditModeChange={changeTimelineKeyboardEditMode} onPaste={() => void pasteTimelineClipboard()} onRippleDelete={() => void deleteTimelineSelection(true)} onRoll={(edge, deltaFrames) => void rollTimelineSelection(edge, deltaFrames)} onSlide={(deltaFrames) => void slideTimelineSelection(deltaFrames)} onUngroup={ungroupTimelineSelection} saving={saving} selectedClipIds={selectedTimelineClipIds} selectedGroupId={selectedTimelineGroupId} />}
             {inspectorTab === "transitions" && <TransitionControls document={payload.document} onAdd={(transition) => void savePatch([{ transition, type: "transition.add" }], `Añadió ${transition.type} entre dos clips.`)} onRemove={(transitionId) => void savePatch([{ transitionId, type: "transition.remove" }], "Quitó una transición entre clips.")} onSelect={selectTransition} onUpdate={(transitionId, settings) => void savePatch([{ settings, transitionId, type: "transition.update" }], "Ajustó una transición entre clips.")} saving={saving} selectedTransitionId={activeSelectedTransitionId} />}
             {inspectorTab === "assistant" && <CompositionAgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={(instruction) => requestAgentProposal(instruction, Boolean(presetPreview))} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}
           </div>
@@ -2597,6 +3881,20 @@ function CompositionErrorToast({
           <X aria-hidden="true" size={16} />
         </button>
       </div>
+    </div>
+  );
+}
+
+function CompositionRecoveryConflictNotice({ onDiscard, summary }: { onDiscard: () => void; summary: string }) {
+  return (
+    <div role="alert" className="fixed right-4 top-20 z-[99] w-[calc(100vw-2rem)] max-w-md rounded-xl border border-amber-300 bg-white p-4 shadow-2xl dark:border-amber-400/40 dark:bg-[var(--engine-surface-hover)]">
+      <p className="text-sm font-bold text-amber-900 dark:text-amber-100">Cambio recuperable en conflicto</p>
+      <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-gray-300">
+        “{summary}” partía de otra versión. No se aplicó automáticamente para evitar sobrescribir cambios más recientes.
+      </p>
+      <button type="button" onClick={onDiscard} className="mt-3 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-bold text-amber-900 dark:text-amber-100">
+        Descartar copia local
+      </button>
     </div>
   );
 }

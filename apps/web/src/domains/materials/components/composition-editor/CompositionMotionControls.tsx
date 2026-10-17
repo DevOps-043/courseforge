@@ -18,9 +18,12 @@ import {
 } from "@/domains/production/composition-editor/composition-motion-scheduling.service";
 import {
   COMPOSITION_MOTION_EASES,
+  COMPOSITION_SIMPLE_PATH_MAX_KEYFRAMES,
+  COMPOSITION_SIMPLE_PATH_MIN_OFFSET_GAP,
   type CompositionAnimation,
 } from "@/domains/production/composition-editor/composition-motion.types";
 import { EngineSelect } from "@/components/ui/EngineSelect";
+import { areCompositionSimplePathsEnabled } from "@/domains/production/composition-editor/composition-advanced-capabilities";
 
 type CompositionMotionPatchHandler = (
   operations: CompositionEditorPatchOperation[],
@@ -360,16 +363,41 @@ function MotionAnimationRow({
           Avanzado · keyframes ({animation.keyframes.length})
         </summary>
         <div className="mt-1.5 space-y-1.5">
-          {animation.keyframes.map((_, index) => (
-            <MotionKeyframeEditor
-              key={`${animation.id}-${index}`}
-              animation={animation}
-              clip={clip}
-              disabled={disabled}
-              index={index}
-              onPatch={onPatch}
-            />
-          ))}
+          {animation.keyframes.map((keyframe, index) => {
+            const next = animation.keyframes[index + 1];
+            const canInsertPathPoint = areCompositionSimplePathsEnabled()
+              && animation.propertyGroup === "POSITION"
+              && animation.keyframes.length < COMPOSITION_SIMPLE_PATH_MAX_KEYFRAMES
+              && next !== undefined
+              && next.offset - keyframe.offset >= COMPOSITION_SIMPLE_PATH_MIN_OFFSET_GAP * 2;
+            return (
+              <div key={`${animation.id}-${index}`}>
+                <MotionKeyframeEditor
+                  animation={animation}
+                  clip={clip}
+                  disabled={disabled}
+                  index={index}
+                  onPatch={onPatch}
+                />
+                {canInsertPathPoint && <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => void onPatch([{
+                    animationId: animation.id,
+                    offset: Number(((keyframe.offset + next.offset) / 2).toFixed(6)),
+                    values: {
+                      x: ((keyframe.values.x || 0) + (next.values.x || 0)) / 2,
+                      y: ((keyframe.values.y || 0) + (next.values.y || 0)) / 2,
+                    },
+                    type: "animation.insert-path-point",
+                  }], `Añadió un punto al path de ${clip.label}.`)}
+                  className="mt-1 w-full rounded border border-dashed border-cyan-300 px-2 py-1 text-[8px] font-semibold text-cyan-800 disabled:opacity-50 dark:border-cyan-400/30 dark:text-cyan-200"
+                >
+                  Añadir punto de path · experimental
+                </button>}
+              </div>
+            );
+          })}
         </div>
       </details>}
     </div>
@@ -395,7 +423,12 @@ function MotionKeyframeEditor({
     Object.fromEntries(propertyNames.map((name) => [name, String(keyframe.values[name])]))
   ));
   const [ease, setEase] = useState(keyframe.ease || "none");
+  const [offsetPercent, setOffsetPercent] = useState(String(keyframe.offset * 100));
   const [validationError, setValidationError] = useState<string | null>(null);
+  const canRetimingPathPoint = areCompositionSimplePathsEnabled()
+    && animation.propertyGroup === "POSITION"
+    && index > 0
+    && index < animation.keyframes.length - 1;
 
   useEffect(() => {
     setValues(Object.fromEntries(
@@ -403,15 +436,24 @@ function MotionKeyframeEditor({
         .map((name) => [name, String(keyframe.values[name])]),
     ));
     setEase(keyframe.ease || "none");
+    setOffsetPercent(String(keyframe.offset * 100));
     setValidationError(null);
-  }, [animation.id, index, keyframe.ease, keyframe.values]);
+  }, [animation.id, index, keyframe.ease, keyframe.offset, keyframe.values]);
 
   const save = () => {
     const parsedValues = Object.fromEntries(
       Object.entries(values).map(([name, value]) => [name, Number(value)]),
     );
-    if (Object.values(parsedValues).some((value) => !Number.isFinite(value))) {
+    if (Object.values(values).some((value) => value.trim() === "")
+      || Object.values(parsedValues).some((value) => !Number.isFinite(value))) {
       setValidationError("Todos los valores de la pose deben ser números válidos.");
+      return;
+    }
+    const offset = canRetimingPathPoint ? Number(offsetPercent) / 100 : undefined;
+    if (offset !== undefined && (!Number.isFinite(offset)
+      || offset - animation.keyframes[index - 1]!.offset < COMPOSITION_SIMPLE_PATH_MIN_OFFSET_GAP
+      || animation.keyframes[index + 1]!.offset - offset < COMPOSITION_SIMPLE_PATH_MIN_OFFSET_GAP)) {
+      setValidationError("El tiempo de paso debe respetar la separación mínima entre poses.");
       return;
     }
     setValidationError(null);
@@ -419,6 +461,7 @@ function MotionKeyframeEditor({
       animationId: animation.id,
       ease: index === 0 ? undefined : ease as typeof COMPOSITION_MOTION_EASES[number],
       keyframeIndex: index,
+      offset,
       values: parsedValues as CompositionAnimation["keyframes"][number]["values"],
       type: "animation.update-keyframe",
     }], `Editó el keyframe ${index + 1} de ${clip.label}.`);
@@ -431,6 +474,18 @@ function MotionKeyframeEditor({
         <span>{Math.round(keyframe.offset * 100)}%</span>
       </div>
       <div className="grid grid-cols-2 gap-1">
+        {canRetimingPathPoint && <label className="col-span-2 text-[8px] uppercase text-slate-400">
+          Tiempo de paso (%)
+          <input
+            type="number"
+            min={(animation.keyframes[index - 1]!.offset + COMPOSITION_SIMPLE_PATH_MIN_OFFSET_GAP) * 100}
+            max={(animation.keyframes[index + 1]!.offset - COMPOSITION_SIMPLE_PATH_MIN_OFFSET_GAP) * 100}
+            step="0.1"
+            value={offsetPercent}
+            onChange={(event) => setOffsetPercent(event.target.value)}
+            className="mt-0.5 w-full rounded border border-slate-200 px-1 py-0.5 text-[9px] text-slate-800 dark:border-white/10 dark:bg-slate-900 dark:text-white"
+          />
+        </label>}
         {propertyNames.map((name) => (
           <label key={name} className="text-[8px] uppercase text-slate-400">
             {name}
@@ -467,6 +522,22 @@ function MotionKeyframeEditor({
       >
         Guardar pose
       </button>
+      {areCompositionSimplePathsEnabled()
+        && animation.propertyGroup === "POSITION"
+        && index > 0
+        && index < animation.keyframes.length - 1
+        && <button
+          type="button"
+          disabled={disabled}
+          onClick={() => void onPatch([{
+            animationId: animation.id,
+            keyframeIndex: index,
+            type: "animation.remove-path-point",
+          }], `Quitó un punto del path de ${clip.label}.`)}
+          className="mt-1 w-full rounded border border-slate-200 py-1 text-[8px] text-slate-600 disabled:opacity-50 dark:border-white/10 dark:text-slate-300"
+        >
+          Quitar punto de path
+        </button>}
     </div>
   );
 }

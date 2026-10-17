@@ -4,6 +4,8 @@ import type { CompositionEditorPatchOperation } from "./editor-patch.types";
 import { compositionColorGradingSchema, normalizeCompositionColorGrading } from "./composition-color-grading.types";
 import { buildCompositionMotionRuntime, compositionMotionRuntimeSchema } from "./composition-motion-runtime";
 import { resolveCompositionCropInsets } from "./composition-visual-crop.service";
+import { compositionPreviewScenePatchSchema } from "./composition-preview-scene-patch";
+import { buildCompositionPlaybackVolumeAutomations } from "./composition-playback-audio-envelope";
 import {
   resolveCompositionPreviewAspectAnchor,
   resolveCompositionPreviewClipVolume,
@@ -40,7 +42,8 @@ export const compositionPreviewVisualChangeSchema = z.object({
 export const compositionPreviewVisualPatchSchema = z.object({
   changes: z.array(compositionPreviewVisualChangeSchema).max(100),
   motion: compositionMotionRuntimeSchema.optional(),
-}).strict().refine((patch) => patch.changes.length > 0 || patch.motion !== undefined, "El patch está vacío.");
+  scene: compositionPreviewScenePatchSchema.optional(),
+}).strict().refine((patch) => patch.changes.length > 0 || patch.motion !== undefined || patch.scene !== undefined, "El patch está vacío.");
 
 export type CompositionPreviewVisualChange = z.infer<typeof compositionPreviewVisualChangeSchema>;
 export type CompositionPreviewVisualPatch = z.infer<typeof compositionPreviewVisualPatchSchema>;
@@ -55,6 +58,9 @@ export function buildCompositionPreviewVisualPatch(params: {
   }
   const changesByHfId = new Map<string, CompositionPreviewVisualChange>();
   const tracksById = new Map(params.document.tracks.map((track) => [track.id, track]));
+  const automatedVolumeClipIds = params.operations.some((operation) => operation.type === "clip.volume")
+    ? new Set(buildCompositionPlaybackVolumeAutomations(params.document).map((automation) => automation.targetClipId))
+    : null;
 
   for (const operation of params.operations) {
     if (!("clipId" in operation)) return null;
@@ -87,6 +93,7 @@ export function buildCompositionPreviewVisualPatch(params: {
     } else if (operation.type === "clip.visibility") {
       current.hidden = clip.hidden || Boolean(track?.hidden);
     } else if (operation.type === "clip.volume") {
+      if (automatedVolumeClipIds?.has(clip.id)) return null;
       current.volume = resolveCompositionPreviewClipVolume(clip, track);
     } else {
       return null;

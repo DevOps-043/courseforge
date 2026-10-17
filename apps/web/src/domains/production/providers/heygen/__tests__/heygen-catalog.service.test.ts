@@ -8,6 +8,87 @@ import {
   HeygenCatalogService,
   HeygenCatalogSyncIncompleteError,
 } from "../heygen-catalog.service";
+import { describeHeygenCatalogSyncFailure, HeygenCatalogSyncFailureError } from "../heygen-catalog-errors";
+
+describe("HeyGen catalog failure diagnostics", () => {
+  it("reports the missing SQL dependency without exposing database details", async () => {
+    const databaseError = {
+      code: "42883",
+      message: "function public.reconcile_heygen_core_catalog_snapshot(...) does not exist",
+      details: "private row values and credentials must never reach the UI",
+    };
+    let storedFailure: Record<string, unknown> | undefined;
+    const fixture = createSyncFixture({
+      reconcileCatalogSnapshot: async () => { throw databaseError; },
+      markCatalogSyncIncomplete: async (failure: Record<string, unknown>) => { storedFailure = failure; },
+    });
+
+    await assert.rejects(() => fixture.syncCatalog("org", "request"), (error: unknown) => {
+      assert.ok(error instanceof HeygenCatalogSyncFailureError);
+      assert.equal(error.code, "42883");
+      assert.equal(error.stage, "reconcile_catalog");
+      assert.match(error.message, /migraciones de HeyGen/);
+      assert.doesNotMatch(error.message, /public\.|private row|credentials/);
+      return true;
+    });
+    assert.equal(storedFailure?.status, "FAILED");
+    assert.match(String(storedFailure?.errorMessage), /guardar el catálogo en Supabase \(42883\)/);
+  });
+
+  it("identifies failures after reconciliation separately", async () => {
+    for (const [method, stage] of [
+      ["listAvatarPresets", "read_presets"],
+      ["getDefaultVoicePresetId", "select_defaults"],
+    ]) {
+      const fixture = createSyncFixture({ [method]: async () => { throw { code: "42501", message: "internal permission details" }; } });
+      await assert.rejects(() => fixture.syncCatalog("org"), (error: unknown) => {
+        assert.ok(error instanceof HeygenCatalogSyncFailureError);
+        assert.equal(error.stage, stage);
+        assert.equal(error.code, "42501");
+        return true;
+      });
+    }
+  });
+
+  it("preserves the primary failure when saving FAILED also fails", async () => {
+    const original = new Error("primary failure");
+    const fixture = createSyncFixture({
+      reconcileCatalogSnapshot: async () => { throw original; },
+      markCatalogSyncIncomplete: async () => { throw new Error("secondary failure"); },
+    });
+    await assert.rejects(() => fixture.syncCatalog("org"), (error: unknown) => error === original);
+  });
+
+  it("bounds diagnostics and ignores arbitrary thrown values and unsafe codes", () => {
+    for (const error of [null, "secret", { code: "secret\nSQL", message: "private" }, { code: "x".repeat(1000) }]) {
+      const failure = describeHeygenCatalogSyncFailure(error, "reconcile_catalog");
+      assert.equal(failure.code, null);
+      assert.doesNotMatch(failure.message, /secret|private|SQL/);
+      assert.ok(failure.message.length < 500);
+    }
+  });
+});
+
+function createSyncFixture(repositoryOverrides: Record<string, unknown>) {
+  return new HeygenCatalogService({
+    client: {
+      async getApiKeySelf() { return null; },
+      async getCurrentUser() { return null; },
+      async listAllPrivateAvatarLooks() { return { data: [], hasMore: false }; },
+      async listAllPrivateVoices() { return { data: [], hasMore: false }; },
+    } as never,
+    repository: {
+      async beginCatalogSync() { return "sync-run"; },
+      async reconcileCatalogSnapshot() { return {}; },
+      async listAvatarPresets() { return []; },
+      async listVoicePresets() { return []; },
+      async getDefaultAvatarPresetId() { return null; },
+      async getDefaultVoicePresetId() { return null; },
+      async markCatalogSyncIncomplete() {},
+      ...repositoryOverrides,
+    } as never,
+  });
+}
 
 describe("HeyGen catalog service", () => {
   it("reconciles avatars and voices while treating account metadata as optional", async () => {

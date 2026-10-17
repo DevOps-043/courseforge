@@ -1,18 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
-import { z } from "zod";
+import {hyperframesPlanSchema, type HyperframesPlan} from "./hyperframes-plan.types";
 import { getOptionalGeminiApiKey } from "../../../lib/server/env";
 import type { HyperframesCompositionMode } from "./hyperframes.types";
 
-const HEX_COLOR = /^#[0-9a-f]{6}$/i;
-
-export const hyperframesPlanSchema = z.object({
-  accentColor: z.string().regex(HEX_COLOR),
-  durationSeconds: z.number().int().min(3).max(120),
-  subtitle: z.string().trim().min(1).max(220),
-  title: z.string().trim().min(1).max(100),
-}).strict();
-
-export type HyperframesPlan = z.infer<typeof hyperframesPlanSchema>;
+// Preserve the existing service API; consumers of the contract need no AI SDK.
+export {hyperframesPlanSchema, type HyperframesPlan} from "./hyperframes-plan.types";
 
 export interface HyperframesPlanResult {
   model: string | null;

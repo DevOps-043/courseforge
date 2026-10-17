@@ -123,6 +123,33 @@ service role, SQL manual o un bug del backend.
 
 ## 6. Contrato del preview
 
+- Los presets de animación Educativo, Lectura guiada y Social aplican settings de
+  efectos a la capa sin modificar texto, tiempos o personalizaciones por frase.
+  Los presets visuales permanecen independientes. Social usa karaoke `BACKGROUND`
+  con texto/fondo activos y posiciones estables; `activeBackgroundColor` es opcional
+  y validado como hexadecimal. Los lectores previos a esta ampliación no conocen
+  el nuevo enum: desplegar juntos servidor, compilador y UI, sin degradar el lector
+  después de persistirlo. No se requiere SQL. Los bloques generados desde voz ya
+  son breves; no se resegmentan automáticamente captions manuales o importados.
+  Pruebas: `test:composition-caption-presets` y `qa:composition-caption-layout`
+  del workspace web.
+- En captions sin efectos, la alineación vertical pertenece al contenedor flex;
+  el texto y los spans sincronizados se agrupan en un bloque de párrafo interior.
+  Las palabras conservan sus IDs y tiempos y se distribuyen en flujo inline,
+  con ajuste de líneas al ancho disponible, tanto en preview como en render.
+  Regresión: `npm run qa:composition-caption-layout --workspace=apps/web`.
+- Los helpers que se serializan como JavaScript para el iframe deben conservar
+  todas sus dependencias dentro de la misma función/factoría serializada. Una
+  referencia a otro símbolo del módulo puede romperse al minificar el servidor.
+  La geometría de recorte y snap se prueba después de minificar el módulo.
+- El arrastre y la selección rectangular usan el ancho vigente del lienzo después
+  de cada patch de escena; el tirador proporcional admite desplazamiento en ambos
+  ejes. Regresión local: `qa/run-composition-resize-format-smoke.ts` del dominio.
+- El PUT del editor limita petición y lectura de respuesta a 30 segundos. Un
+  timeout libera la cola, conserva el cambio para recuperación y comunica que el
+  resultado remoto es incierto; no provoca reintentos automáticos. Las siguientes
+  escrituras conservan las precondiciones de versión para detectar conflictos.
+
 - Resuelve solo assets vinculados al borrador y permitidos para la organizacion.
 - Los SFX nuevos deben estar `READY`; los snapshots historicos pueden conservar
   assets archivados si su identidad inmutable ya fue congelada.
@@ -332,6 +359,16 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-17: añadidos presets de animación específicos y resaltado sincronizado
+  de fondo para Social, conservando posición, énfasis, timestamps y lectura V1.
+- 2026-10-16: corregidos captions sincronizados sin efectos que apilaban cada
+  palabra como un flex item en columna. El bloque de párrafo conserva karaoke,
+  alineación, Unicode y escapes; no requiere migración de documentos.
+- 2026-10-16: corregida la escala del arrastre tras cambiar orientación y el
+  tirador proporcional vertical; eliminado el cierre externo de la geometría
+  serializada que producía ReferenceError en staging tras minificar; añadido
+  límite de espera del guardado del editor.
 
 - 2026-09-04: se verifico la correccion P0 de extremo a extremo en la UI con el
   mismo reintento que habia fallado; el clip SFX quedo persistido y visible en

@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { getOrganizationHyperframesApiKey } from "../_shared/credentials.ts";
 import { getHyperframesRender, HeygenHttpError } from "../_shared/heygen.ts";
 import { importRetryDelaySeconds, isPermanentProviderFailure } from "../_shared/hyperframes-retry-policy.ts";
+import { readVideoProbeSize, readVideoRangeBytes } from "../_shared/hyperframes-video-range.ts";
 import { authorizeWorker, jsonResponse, logEvent, methodNotAllowed } from "../_shared/http.ts";
 import { rpc } from "../_shared/supabase.ts";
 import {
@@ -186,16 +187,13 @@ async function probeSource(
     signal: AbortSignal.timeout(20_000),
   });
   const contentType = normalizeContentType(response.headers.get("content-type"), url, providerFormat);
-  const contentRange = response.headers.get("content-range") || "";
-  const rangeMatch = /^bytes 0-0\/(\d+)$/.exec(contentRange);
-  const contentLength = Number(response.headers.get("content-length"));
-  const size = rangeMatch ? Number(rangeMatch[1]) : contentLength;
-  await response.body?.cancel();
-  if (!response.ok || !Number.isSafeInteger(size) || size <= 0) {
-    throw new RetryableImportError("Could not determine HeyGen video size.");
-  }
-  if (response.status !== 206 && size > TUS_CHUNK_BYTES) {
-    throw new TerminalImportError("HeyGen video host does not support safe ranged downloads.");
+  let size: number;
+  try {
+    size = readVideoProbeSize(response, TUS_CHUNK_BYTES);
+  } catch {
+    throw new RetryableImportError("Could not determine a trustworthy HeyGen video size.");
+  } finally {
+    await response.body?.cancel();
   }
   return { contentType, size };
 }
@@ -206,14 +204,11 @@ async function downloadRange(url: string, start: number, end: number, total: num
     redirect: "error",
     signal: AbortSignal.timeout(30_000),
   });
-  const expectedLength = end - start + 1;
-  if (!response.ok || (response.status !== 206 && !(start === 0 && expectedLength === total))) {
-    await response.body?.cancel();
-    throw new RetryableImportError(`HeyGen range download failed (${response.status}).`);
+  try {
+    return await readVideoRangeBytes(response, start, end, total);
+  } catch {
+    throw new RetryableImportError(`HeyGen returned an invalid video byte range (${response.status}).`);
   }
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength !== expectedLength) throw new RetryableImportError("HeyGen returned an incomplete video range.");
-  return bytes;
 }
 
 function assertSafeVideoUrl(rawUrl: string): void {

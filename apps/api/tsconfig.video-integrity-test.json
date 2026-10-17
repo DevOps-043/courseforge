@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".tmp/video-integrity-tests",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": [
+    "src/core/supabase-client.ts",
+    "src/features/video-integrity/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

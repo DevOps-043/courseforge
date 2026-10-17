@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { compositionCaptionEffectsSchema } from "./composition-caption-effects.types";
+import { compositionVolumeEnvelopeSchema } from "./composition-volume-envelope";
 import {
   COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS,
   COMPOSITION_DURATION_SOURCES,
@@ -22,6 +24,7 @@ import {
   compositionTransitionParametersSchema,
   compositionTransitionSchema,
 } from "./composition-transition.types";
+import { COMPOSITION_VIDEO_PLAYBACK_RATES } from "./composition-video-rate";
 
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
 const boundedSecondsSchema = z.number().finite().min(0).max(COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS);
@@ -35,6 +38,16 @@ const clipMoveOperationSchema = z.object({
 const clipDurationOperationSchema = z.object({
   durationSeconds: boundedSecondsSchema.positive(),
   type: z.literal("clip.duration"),
+}).strict();
+
+const clipPlaybackRateOperationSchema = z.object({
+  playbackRate: z.union(COMPOSITION_VIDEO_PLAYBACK_RATES.map((rate) => z.literal(rate))),
+  type: z.literal("clip.playback-rate"),
+}).strict();
+
+const clipFreezeTailOperationSchema = z.object({
+  enabled: z.boolean(),
+  type: z.literal("clip.freeze-tail"),
 }).strict();
 
 const clipTrimOperationSchema = z.object({
@@ -94,6 +107,19 @@ const clipMediaFitOperationSchema = z.object({
   type: z.literal("clip.media-fit"),
 }).strict();
 
+/** Rebinds one timeline clip without changing its placement or edit decisions. */
+const clipReplaceSourceOperationSchema = z.object({
+  /** Overwritten by the server after verifying derivative provenance. */
+  audioProcessingPreviousAssetId: z.string().uuid().optional(),
+  productionAssetId: z.string().uuid(),
+  mimeType: z.string().regex(/^(audio|image|video)\/[a-z0-9.+-]+$/i),
+  sourceDurationSeconds: z.number().finite().positive().max(86_400).optional(),
+  hasAudio: z.boolean().optional(),
+  sourceHeight: z.number().int().positive().max(16_384).optional(),
+  sourceWidth: z.number().int().positive().max(16_384).optional(),
+  type: z.literal("clip.replace-source"),
+}).strict();
+
 /** Restores one source asset and consolidates all of its derived timeline fragments. */
 const clipResetAssetOperationSchema = z.object({
   type: z.literal("clip.reset-asset"),
@@ -115,15 +141,24 @@ const clipAudioFadesOperationSchema = z.object({
   type: z.literal("clip.audio-fades"),
 }).strict();
 
+const clipVolumeEnvelopeOperationSchema = z.object({
+  type: z.literal("clip.volume-envelope"), points: compositionVolumeEnvelopeSchema,
+}).strict();
+
 const clipTextContentOperationSchema = z.object({
   text: z.string().min(1).max(4_000),
   type: z.literal("clip.text-content"),
 }).strict();
 
 const clipCaptionCuesOperationSchema = z.object({
-  cues: z.array(compositionCaptionCueSchema).min(1).max(2_000),
+  cues: z.array(compositionCaptionCueSchema).max(2_000),
   origin: z.enum(["MANUAL", "SRT", "TRANSCRIPT", "VTT"]).optional(),
   type: z.literal("clip.caption-cues"),
+}).strict();
+
+const clipCaptionEffectsOperationSchema = z.object({
+  effects: compositionCaptionEffectsSchema.nullable(),
+  type: z.literal("clip.caption-effects"),
 }).strict();
 
 const clipTextStyleOperationSchema = z.object({
@@ -136,6 +171,19 @@ const clipAddOperationSchema = z.object({
   clip: compositionClipSchema,
   track: compositionTrackSchema.optional(),
   type: z.literal("clip.add"),
+}).strict();
+
+/** Duplicates one clip and all of its animations without copying external assets. */
+const clipDuplicateOperationSchema = z.object({
+  animationIds: z.array(z.object({
+    newAnimationId: editorIdSchema,
+    sourceAnimationId: editorIdSchema,
+  }).strict()).max(200).default([]),
+  newClipId: editorIdSchema,
+  newHfId: editorIdSchema,
+  newSceneId: editorIdSchema.optional(),
+  startSeconds: boundedSecondsSchema,
+  type: z.literal("clip.duplicate"),
 }).strict();
 
 /** Removes only the timeline clip, never the source asset or its storage object. */
@@ -292,9 +340,26 @@ const animationUpdateKeyframeOperationSchema = z.object({
   animationId: editorIdSchema,
   ease: z.enum(COMPOSITION_MOTION_EASES).nullable().optional(),
   keyframeIndex: z.number().int().min(0).max(49),
+  offset: z.number().finite().gt(0).lt(1).optional(),
   values: compositionMotionValuesSchema.optional(),
   type: z.literal("animation.update-keyframe"),
-}).strict().refine((operation) => operation.values !== undefined || operation.ease !== undefined, "Debes modificar valores o easing.");
+}).strict().refine((operation) => operation.values !== undefined || operation.ease !== undefined || operation.offset !== undefined, "Debes modificar valores, easing o tiempo de paso.");
+
+const animationInsertPathPointOperationSchema = z.object({
+  animationId: editorIdSchema,
+  offset: z.number().finite().gt(0).lt(1),
+  values: z.object({
+    x: z.number().finite().min(-16_384).max(16_384),
+    y: z.number().finite().min(-16_384).max(16_384),
+  }).strict(),
+  type: z.literal("animation.insert-path-point"),
+}).strict();
+
+const animationRemovePathPointOperationSchema = z.object({
+  animationId: editorIdSchema,
+  keyframeIndex: z.number().int().min(1).max(48),
+  type: z.literal("animation.remove-path-point"),
+}).strict();
 
 const transitionAddOperationSchema = z.object({
   transition: compositionTransitionSchema,
@@ -321,23 +386,29 @@ const transitionRemoveOperationSchema = z.object({
 
 const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipAddOperationSchema,
+  clipDuplicateOperationSchema,
   canvasDurationOperationSchema,
   clipCropOperationSchema,
   clipMoveOperationSchema,
   clipDurationOperationSchema,
+  clipPlaybackRateOperationSchema,
+  clipFreezeTailOperationSchema,
   clipEstimatedTimingOperationSchema,
   clipLayoutOperationSchema,
   clipMediaFitOperationSchema,
+  clipReplaceSourceOperationSchema,
   clipRemoveOperationSchema,
   clipTemplateOperationSchema,
   clipTrimOperationSchema,
   clipSplitOperationSchema,
   clipCaptionCuesOperationSchema,
+  clipCaptionEffectsOperationSchema,
   clipRemoveRangeOperationSchema,
   clipResetAssetOperationSchema,
   clipVisibilityOperationSchema,
   clipVolumeOperationSchema,
   clipAudioFadesOperationSchema,
+  clipVolumeEnvelopeOperationSchema,
   clipTextContentOperationSchema,
   clipTextStyleOperationSchema,
 ]).and(z.object({ clipId: editorIdSchema }).strict());
@@ -350,6 +421,8 @@ export const compositionEditorPatchOperationSchema = z.union([
   animationAddPresetOperationSchema,
   animationConfigurePresetOperationSchema,
   animationRemoveOperationSchema,
+  animationInsertPathPointOperationSchema,
+  animationRemovePathPointOperationSchema,
   animationUpdateKeyframeOperationSchema,
   animationUpdateTimingOperationSchema,
   transitionAddOperationSchema,

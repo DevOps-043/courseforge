@@ -1,3 +1,5 @@
+import type { AudioSourceMimeType } from "./audio-source-contract";
+
 export const AUDIO_PROCESSING_PROFILE_IDS = [
   "voice-course-v1",
   "voice-clean-neural-dfn3-v1",
@@ -44,7 +46,7 @@ export interface AudioProcessingProfile {
 export interface AudioProcessingSource {
   assetId: string;
   checksum: string;
-  mimeType: "audio/mpeg" | "audio/mp3" | "audio/wav" | "audio/x-wav";
+  mimeType: AudioSourceMimeType;
   storageBucket: string;
   storagePath: string;
 }
@@ -56,4 +58,56 @@ export interface AudioProcessingSource {
 export interface AudioProcessingJobInput {
   profile: AudioProcessingProfile;
   source: AudioProcessingSource;
+}
+
+export interface AudioLoudnessAnalysis {
+  contractVersion: 1;
+  integratedLufs: number | null;
+  loudnessRangeLu: number;
+  measuredThresholdLufs: number | null;
+  passed: boolean;
+  targetIntegratedLufs: number;
+  targetTruePeakDbtp: number;
+  toleranceLu: number;
+  truePeakDbtp: number | null;
+}
+
+export interface AudioWaveformManifest {
+  checksum: string;
+  contractVersion: 1 | 2;
+  channelCount?: number;
+  sourceChecksum?: string;
+  durationSeconds: number;
+  levelCount: number;
+  sampleRateHz: number;
+  storageBucket: "production-assets";
+  storagePath: string;
+}
+
+export interface AudioWaveformLevel {
+  bucketSizeSamples: number;
+  max: number[];
+  min: number[];
+}
+
+export interface AudioWaveformDerivative {
+  contractVersion: 1 | 2;
+  channels?: { levels: AudioWaveformLevel[] }[];
+  durationSeconds: number;
+  levels: AudioWaveformLevel[];
+  sampleRateHz: number;
+}
+
+/** A single server-selected LOD for responsive timeline rendering. */
+export interface AudioWaveformPreview {
+  contractVersion?: 1 | 2;
+  checksum?: string;
+  /** Source time of the first bucket in this window. Absent for legacy full-source responses. */
+  offsetSeconds?: number;
+  channels?: { min: number[]; max: number[] }[];
+  bucketSizeSamples: number;
+  durationSeconds: number;
+  max: number[];
+  min: number[];
+  sampleRateHz: number;
 }

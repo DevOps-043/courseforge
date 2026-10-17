@@ -1,5 +1,6 @@
 import type {
   CompositionClip,
+  CompositionEditorDocument,
   CompositionTrack,
 } from "./composition-document.types";
 
@@ -40,6 +41,17 @@ export function resolveCompositionClipAudioVolume(
   const clipVolume = clip.volume
     ?? resolveCompositionClipDefaultVolume(clip, track);
   return clampVolume(trackVolume * clipVolume);
+}
+
+/** Shared preview/snapshot rule: only active sources with effective gain need a rendered audio track. */
+export function compositionDocumentHasAudibleMedia(document: CompositionEditorDocument): boolean {
+  const tracksById = new Map(document.tracks.map((track) => [track.id, track]));
+  return document.clips.some((clip) => {
+    const track = tracksById.get(clip.trackId);
+    return !clip.hidden && !track?.hidden && !track?.muted
+      && compositionClipHasConfigurableAudio(clip, track)
+      && resolveCompositionClipAudioVolume(clip, track) > 0;
+  });
 }
 
 function clampVolume(value: number) {

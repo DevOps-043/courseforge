@@ -6,7 +6,7 @@ import {
   compositionEditorDocumentSchema,
 } from "../composition-document.types";
 import { createCompositionNativeOverlay } from "../composition-native-overlay.factory";
-import { compileCompositionPreview } from "../composition-preview-compiler.service";
+import { compileCompositionPreview, COMPOSITION_COMPILATION_TARGETS } from "../composition-preview-compiler.service";
 import { applyCompositionEditorPatches } from "../editor-patch.service";
 
 function baseDocument() {
@@ -22,6 +22,60 @@ function baseDocument() {
     plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "Prueba", title: "Texto nativo" },
   });
 }
+
+test("Unicode text and captions use identical bidi-safe markup in preview and render", async () => {
+  for (const kind of ["TEXT", "CAPTION"] as const) {
+    const initial = baseDocument();
+    const { clip, track } = createCompositionNativeOverlay({ document: initial, id: `unicode-${kind.toLowerCase()}`, kind, playheadSeconds: 0 });
+    const text = "שלום مرحباً 👩🏽‍💻 e\u0301 <script>&\n你好，世界！";
+    if (clip.source.type === "NATIVE_TEXT") clip.source.text = text;
+    else if (clip.source.type === "NATIVE_CAPTIONS") {
+      clip.source.language = "ar-EG";
+      clip.source.cues = [{ id: "cue", startSeconds: 0, endSeconds: 2, text }];
+    }
+    const edited = applyCompositionEditorPatches(initial, [{ type: "clip.add", clip, clipId: clip.id, ...(track ? { track } : {}) }]);
+    const before = JSON.stringify(edited);
+    const preview = await compileCompositionPreview({ document: edited, assetUrls: new Map() });
+    const render = await compileCompositionPreview({ document: edited, assetUrls: new Map(), target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER });
+    const selector = kind === "TEXT" ? /<div[^>]*class="motion-subject composition-native-text"[\s\S]*?<\/div>/
+      : /<div[^>]*class="composition-caption-cue"[\s\S]*?<\/div>/;
+    const previewMarkup = preview.match(selector)?.[0];
+    assert.ok(previewMarkup); assert.equal(render.match(selector)?.[0], previewMarkup);
+    assert.match(previewMarkup, /dir="auto"/); assert.match(previewMarkup, /unicode-bidi:plaintext/);
+    assert.ok(previewMarkup.includes("👩🏽‍💻 e\u0301 &lt;script&gt;&amp;\n你好，世界！"));
+    if (kind === "CAPTION") assert.match(previewMarkup, /lang="ar-EG"/);
+    assert.equal(JSON.stringify(edited), before);
+  }
+});
+
+test("timed CJK captions preserve authored punctuation and retain word element IDs", async () => {
+  const initial = baseDocument();
+  const { clip, track } = createCompositionNativeOverlay({ document: initial, id: "cjk-caption", kind: "CAPTION", playheadSeconds: 0 });
+  if (clip.source.type !== "NATIVE_CAPTIONS") throw new Error("Expected caption fixture");
+  clip.source.cues = [{ id: "cue", text: "你好，世界！", startSeconds: 0, endSeconds: 2, words: [
+    { id: "first", text: "你好", startSeconds: 0, endSeconds: 0.5 },
+    { id: "last", text: "世界", startSeconds: 0.5, endSeconds: 1 },
+  ] }];
+  const edited = applyCompositionEditorPatches(initial, [{ type: "clip.add", clip, clipId: clip.id, ...(track ? { track } : {}) }]);
+  for (const target of Object.values(COMPOSITION_COMPILATION_TARGETS)) {
+    const html = await compileCompositionPreview({ document: edited, assetUrls: new Map(), target });
+    assert.match(html, /id="cjk-caption-caption-cue-word-first"/);
+    assert.match(html, /你好<\/span>，<span[^>]*>世界<\/span>！/);
+  }
+});
+
+test("unalignable legacy karaoke renders the cue, with hidden seek-safe word anchors", async () => {
+  const initial = baseDocument();
+  const { clip, track } = createCompositionNativeOverlay({ document: initial, id: "legacy-caption", kind: "CAPTION", playheadSeconds: 0 });
+  if (clip.source.type !== "NATIVE_CAPTIONS") throw new Error("Expected caption fixture");
+  clip.source.cues = [{ id: "cue", text: "שלום & 原文", startSeconds: 0, endSeconds: 2,
+    words: [{ id: "word", text: "Different transcript", startSeconds: 0, endSeconds: 1 }] }];
+  const edited = applyCompositionEditorPatches(initial, [{ type: "clip.add", clip, clipId: clip.id, ...(track ? { track } : {}) }]);
+  for (const target of Object.values(COMPOSITION_COMPILATION_TARGETS)) {
+    const html = await compileCompositionPreview({ document: edited, assetUrls: new Map(), target });
+    assert.match(html, /שלום &amp; 原文<span id="legacy-caption-caption-cue-word-word" class="composition-caption-word" hidden aria-hidden="true">Different transcript<\/span>/);
+  }
+});
 
 test("creates a transparent caption layer and promotes the document contract to v3", () => {
   const initial = baseDocument();

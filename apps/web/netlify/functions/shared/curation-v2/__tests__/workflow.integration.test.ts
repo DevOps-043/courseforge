@@ -92,17 +92,17 @@ void run().then(() => {
   console.log("curation-v2 workflow integration tests passed");
 });
 
-function workflowDatabase(options: { lessonCount?: number; rows?: Record<string, unknown>[] } = {}) {
+function workflowDatabase(options: { lessonCount?: number; rows?: Record<string, unknown>[]; imported?: boolean; planVersion?: number } = {}) {
   let active = true;
   let completion: { state?: string; qa_decision?: { notes?: string } } | null = null;
   const saved: Record<string, unknown>[] = [...(options.rows || [])];
   const database = {
     from(table: string) {
       const result = () => ({ error: null, data: table === "instructional_plans"
-        ? { lesson_plans: Array.from({ length: options.lessonCount || 1 }, (_, index) => ({ lesson_id: `lesson-${index + 1}`, lesson_title: `Lesson ${index + 1}`, module_title: "Module", oa_text: "Apply", components: [{ type: "READING" }] })) }
+        ? { syllabus_content_version: options.planVersion ?? 2, lesson_plans: Array.from({ length: options.lessonCount || 1 }, (_, index) => ({ lesson_id: `lesson-${index + 1}`, lesson_title: `Lesson ${index + 1}`, module_title: "Module", oa_text: "Apply", components: [{ type: "READING" }] })) }
         : table === "artifacts" ? { idea_central: "Course", nombres: [], objetivos: [], descripcion: {} }
-        : table === "syllabus" ? { modules: [] } : saved });
-      const query = { select: () => query, eq: () => query, single: async () => result(),
+        : table === "syllabus" ? { input_mode: options.imported ? "PROVIDED_SYLLABUS" : "IDEA", content_version: 2, state: "STEP_APPROVED", modules: options.imported ? [{ title: "Module", lessons: [{ id: "lesson-1", topics: ["Tipos", "Límites"] }] }] : [] } : saved });
+      const query = { select: () => query, eq: () => query, single: async () => result(), maybeSingle: async () => result(),
         then: (resolve: (value: unknown) => unknown) => Promise.resolve(result()).then(resolve) };
       return query;
     },
@@ -119,6 +119,26 @@ function workflowDatabase(options: { lessonCount?: number; rows?: Record<string,
 const workflowOptions = { artifactId: "artifact", curationId: "curation", attemptNumber: 1, openAiApiKey: "test-key", model: "test-model" };
 const candidates = [1, 2].map((index) => ({ lesson_id: "lesson-1", title: `Source ${index}`, url: `https://example.org/${index}`, rationale: "Relevant" }));
 const validate = async (url: string): Promise<UrlValidationResult> => ({ normalizedUrl: url, isValid: true, report: report("valid") });
+
+test("imported lesson topics and learning objective reach source search", async () => {
+  const fixture = workflowDatabase({ imported: true });
+  let searched = false;
+  await runCurationWorkflowV2({ ...workflowOptions, supabase: fixture.database, search: async input => {
+    searched = true;
+    assert.deepEqual(input.lessons[0].topics, ["Tipos", "Límites"]);
+    assert.equal(input.lessons[0].lesson_objective, "Apply");
+    return candidates;
+  }, validate });
+  assert.equal(searched, true);
+});
+
+test("stale imported plan is rejected before searching or saving sources", async () => {
+  const fixture = workflowDatabase({ imported: true, planVersion: 1 });
+  await assert.rejects(runCurationWorkflowV2({ ...workflowOptions, supabase: fixture.database, search: async () => {
+    assert.fail("Search must not run for an obsolete plan");
+  }, validate }), /plan no corresponde/);
+  assert.equal(fixture.saved.length, 0);
+});
 
 test("complete curation persists sources before approving", async () => {
   const fixture = workflowDatabase();

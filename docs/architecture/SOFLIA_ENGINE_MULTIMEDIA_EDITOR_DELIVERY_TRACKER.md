@@ -1,0 +1,3036 @@
+# Hoja de seguimiento — siete capacidades prioritarias del editor multimedia
+
+## Corte vigente — admisión runtime y build preparado (2026-10-13)
+
+CAP-027: inventario exacto integrado al binding CLR (6/6 pruebas), proyectos net48 separados
+y receta de doble build con comparación de tres DLL preparada. Build nativo no ejecutado,
+sin instalación/activación. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-027 91.30% parcial; siete 98.76% estimados. CAP-004/009/010/017/023/026: 100% de
+implementación registrada cada una, QA pendiente/sin reauditoría. Cierre físico sigue abierto.
+
+## Corte vigente — entrada administrada CAP-027 (2026-10-13)
+
+Entrada C# + adaptador Node edge implementados, con cancelación/drenaje y FILETIME exacto.
+No instalados/activados: falta admitir clausura runtime, build CLR/ABI y verificar conexión
+nativa. [Evidencia y límites](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-027: 91.30% parcial; siete: 98.76% estimados. CAP-004/009/010/017/023/026: 100% de
+implementación registrada cada una, QA pendiente/sin reauditoría. Sin crédito de cierre nativo.
+
+## Corte vigente — fuentes tardías en CAP-027 (2026-10-12)
+
+Sesión original y preview rechazan evidencia invalidada por eventos CSS después del último
+checkpoint y antes de publicar. [Detalle](SOFLIA_ENGINE_CAP027_CLOSURE_AUDIT.md).
+CAP-027: 91.30% estimado parcial; promedio siete: 98.76%. CAP-004/009/010/017/023/026:
+100% de implementación registrada cada una, QA pendiente, sin reauditoría. No hay aumento
+por corrección de garantía previamente contabilizada; cierre nativo/corpus/DB sigue pendiente.
+
+## Corte vigente — presupuesto SDR sin reinicio entre etapas (2026-10-12)
+
+Inspección local no encontró runtime CLR declarado en package manifests ni dotnet/cl/cmake
+en PATH: no acredita ausencia global, pero no existe binding operativo probado. No instalar
+ni sustituir autenticación por subprocess. Se corrigió una brecha independiente CAP-027:
+encode y verificación mux recibían timeout completo cada uno. Ahora comparten presupuesto
+monotónico desde entrada en encode, incluyendo intervalo de assembly/finalize; clock drift/
+agotamiento fallan latched y cada herramienta recibe solo remaining.
+
+7/7 etapas SDR pasan con archivos reales/execute multimedia simulado y clock dirigido;
+sin SDK/render/QA formal. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Sin crédito adicional por corrección de garantía ya
+contabilizada. Binding nativo/política efectiva/provision/corpus/DB continúan abiertos.
+Corte sustituye inferiores. SDK fijo/pipeline original conservados; pins a regenerar.
+
+## Corte vigente — admisión del exchange e identidad nativa del cliente (2026-10-12)
+
+Adaptador exchange valida config/pins/binding/secuencia antes y después del callback
+managed, copia buffers y enclava errores. Nuevo entry C# ExchangeBoundOnceAsync comprueba
+PID actual y handle/FILETIME/cuenta/logon del cliente antes/después del pipe autenticado.
+No lanzar en PowerShell hijo: cambia PID admitido. Falta runtime CLR in-process concreto;
+callback NO equivale a conexión nativa resuelta. Preparación no abre pipe ni carga DLL.
+
+3/3 exchange y5/5 cliente pasan (managed/native simulados); ambos TS y compilación C#
+con5 checks framing managed pasan, sin Win32/pipe/WFP/render/QA formal. Inventario/pins
+requieren regeneración explícita. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Bloques nativos/provision/corpus/DB continúan abiertos.
+Corte sustituye inferiores. Sin activación ni modificación de seguridad del equipo.
+
+## Corte vigente — composición concreta de supervisor firmado (2026-10-12)
+
+original-server-network-lifecycle.mjs implementa serveOriginalServer con mailbox firmado,
+cliente broker y doble observación del listener. Clave privada KeyObject queda en closure
+supervisor; se comprueba par público, ejecución/nonce y DENIED antes de atender. Factoría
+materializada verifica configuración V2 y pins runtime antes de componer, sin comandos de red.
+Wrapper exige organización y SID AppContainer iguales a descriptor/token antes de DENY.
+Bridge materializado exige inventario de nuevos módulos y network guard ya importado.
+
+4/4 composición supervisor,6/6 ciclo,11/11 bridge materializado,4/4 measurer y ambos TS pasan.
+Mailbox/firmas/filesystem reales; SDK/socket/job/broker transport simulados. Sin prueba OS.
+Pendiente exchange nativo autenticado conectado al backend efectivo/confirmación Job,
+provisión ACL/key/profile, inventario completo admitido/pins, build DLL y corpus/DB.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Sin configuración operativa/activación/render/QA formal.
+Corte sustituye inferiores. No confundir composición concreta con backend nativo completo.
+
+## Corte vigente — ciclo de red conectado a factoría Windows (2026-10-12)
+
+Wrapper opt-in por ejecución reserva intento síncronamente: DENY antes de START, READY
+atiende port supervisor, STOP/cierre/drain antes de SEAL; resultado retenido hasta ACK
+SEALED. STOP/aborto durante DENY impiden launch tardío y no fabrican STOP sin job; fallo
+retiene fence/quarantina. Factoría Windows admite networkLifecycle explícito y rechaza
+mezclarlo con onOwnedReady anterior; legacy conservado, sin default/activación.
+
+5/5 ciclo (cliente/bridge/snapshots/native simulados),27/27 bridge y ambos TS pasan.
+Falta composición operativa del port serve con mailbox/clave privada, inventario/ACL/
+provision y broker confirmación independiente Job/SID/política efectiva/build; corpus/DB.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Sin red/job/WFP/render físico ni QA formal.
+Corte sustituye inferiores; integración de ports no demuestra aislamiento efectivo.
+
+## Corte vigente — bootstrap V2 conectado al canal firmado (2026-10-12)
+
+Configuración V2 opt-in contiene metadata pública estricta: ejecución/nonce/directorio,
+SPKI Ed25519 canónico y SHA, SHA/tamaño del transporte fijo. V1 rechaza campos nuevos y
+mantiene legacy. Bootstrap V2 conecta onOriginalServer a mailbox real, ligado a ejecución
+y directorio sibling preprovisionado; verifica config/transporte antes y después, sin
+callback/módulo arbitrario/clave privada desde JSON. Directorio de video conserva mkdir exclusivo.
+
+9/9 loader/bootstrap (incluido V2 con mailbox/firma reales y SDK/native simulados),
+2/2 configuración,6/6 canal y5/5 gate pasan. No IPC OS entre procesos/job/WFP/render/QA formal.
+Falta orchestration supervisor DENY-before-start/serve/SEAL-after-stop y admisión del
+inventario runtime completo/ACL/key custody/política efectiva/native build/corpus/DB.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Sin configuración operativa escrita/activación.
+Corte sustituye inferiores; pins/inventario deben regenerarse antes de admisión.
+
+## Corte vigente — transporte local candidato/ACK firmado (2026-10-12)
+
+Canal de archivos dedicado por ejecución/nonce: solicitudes y ACK Ed25519 vinculan hash/
+UUID/secuencia/puerto/PID, sin clave privada en productor ni nuevo puerto TCP. Escrituras
+exclusivas+sync+marker, lecturas acotadas/pinned, máximo4 intercambios/15s y reservas sin
+replay/resume/TTL/cleanup. Cancelación drena autorización pendiente antes de retornar;
+sin late ACK aunque callback ignore señal.6/6 pruebas filesystem/firmas reales pasan.
+
+NO conectado aún a bootstrap/configuración/inventario ni al ciclo de arranque/cierre.
+Callback de autorización/native root simulado: no prueba aislamiento OS ni IPC entre procesos.
+Faltan configuración pública pinneada, key custody privado supervisor, ACL/provision/pins,
+política efectiva/native build y corpus/DB/wiring. Sin activación/render/QA formal.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Corte sustituye inferiores.
+
+## Corte vigente — compuerta original pre-navegación y enlace supervisor (2026-10-12)
+
+Extensión versionada V6/mismo SDK0.7.106 conserva los ocho hooks y pipeline original.
+Observer opt-in onOriginalServer espera ACK exacto ANTES de CDP/onSession/navegación,
+con candidato localhost/puerto canónico, deadline15s+cancelación del callback; solo después
+usa dirección IPv4 literal autorizada. Fallo permanece latched aunque SDK lo absorba.
+Loader admitido preserva/fija callback; legacy sin callback no cambia ni queda certificado.
+
+Supervisor compone root/control poseídos con cliente broker: requiere DENIED previo,
+observa listener antes/después de allow y rechaza owner/port drift; sesiones adicionales
+revalidan sin reenviar ALLOW. No hay implementación de transporte candidato/ACK entre
+procesos ni wiring productivo todavía; política efectiva/SID/native build siguen pendientes.
+
+5/5 compuerta,3/3 composición supervisor,15/15 extensión y8/8 loader pasan;
+ambos TS compilan. Sin navegador/Win32/WFP/pipe/render/QA formal ni activación.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+CAP-02791.30% estimado parcial; siete98.76%. CAP-004/009/010/017/023/026100% registrada
+cada una/QA pendiente/sin reauditoría. Corte sustituye inferiores; sin incremento por ports
+aún desconectados entre procesos. Regenerar pins/package/inventario antes de admisión.
+
+## Corte vigente — listener integrado al canal poseído (2026-10-12)
+
+Bridge V4 expone observeOriginalListener al callback del OPERADOR. Comando/respuesta
+correlacionados por executionId/requestId/puerto y PID/FILETIME contra READY inmutable;
+PowerShell llama a observación nativa del root/Job retenidos. Máximo8 snapshots seriales,
+deadline15s, aborto/STOP/root-exit y respuestas ajenas/tardías impiden aceptar evidencia.
+Fallo/timeout no puede ocultarse absorbiendo el rechazo en el callback. Legacy V1–V3 conservado.
+
+27/27 pruebas bridge,12/12 decoder managed, ambos TS y C#/PS compile/parse pasan.
+Transporte/metadata simulados; ninguna API nativa de socket/Job/WFP/pipe fue ejecutada.
+NO conectado aún al candidato del SDK ni al ACK de autorización HTTP; SID/política efectiva,
+build/pins/provisionamiento y corpus/DB/wiring continúan pendientes.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-02791.30% estimado parcial; siete98.76% sin incremento. CAP-004/009/010/017/023/026100%
+implementación registrada cada una/QA pendiente/sin reauditoría. Sin instalación/activación/
+migración/render/QA formal. Corte sustituye inferiores.
+
+## Corte vigente — observación acotada del listener poseído (2026-10-12)
+
+OwnedRenderJob incorpora observación IPv4 TCP LISTEN 127.0.0.1/puerto exacto usando tabla
+del OS, PID del owner, handle retenido, pertenencia al MISMO Job Object y FILETIME/liveness
+antes/después. Consulta única acotada a4MiB/65536 filas; falla ante crecimiento/error,
+wildcard, puerto compartido o identidad ajena. Decoder puro NO equivale a observación OS.
+
+12/12 comprobaciones managed y compilación de los tres helpers C# pasan. Sin llamada a
+GetExtendedTcpTable, Job Object, WFP, pipe o render físicos; sin instalación/activación.
+Todavía NO conectado a bridge/candidato/ACK ni autorización HTTP. SID/política efectiva,
+provisionamiento/DLL/build/pins y corpus/DB/wiring siguen pendientes.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-02791.30% estimado parcial; siete98.76% sin incremento. CAP-004/009/010/017/023/026100%
+implementación registrada cada una/QA pendiente/sin reauditoría. Corte sustituye inferiores.
+
+## Corte vigente — identidad de raíz para autorizar HTTP (2026-10-12)
+
+Bridge V4 opt-in entrega PID/FILETIME desde handle poseído mediante callback del operador,
+requiere AppContainerV5/cuotas y rechaza ausencia/metadata no solicitada. Callback/colección
+se drenan antes de liberar ownership/fence incluso con productor STOP/cerrado. No permiso de red
+implícito ni identidad del documento.22/22 bridge y ambos TS pasan; C#/PS compile/parse pasan.
+Sin Win32/job/pipe/WFP físicos. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-02791.30% estimado parcial; siete98.76% sin incremento. CAP-004/009/010/017/023/026100%
+registrada cada una/QA pendiente/sin reauditoría. Falta candidato/ACK antes de navegación,
+listener ownership independiente y autorización efectiva, DLL/build/pins y wiring/corpus/DB.
+No instalación/activación/migración/QA formal. Corte sustituye inferiores; objetivo activo.
+
+## Corte vigente — corrección de arranque CDP y protecciones (2026-10-12)
+
+SDK fijado usaba CDP TCP dinámico antes de onSession: contradicción con DENY_ALL inicial.
+Extensión V5 usa pipe en contexto observado, retira overrides de sandbox/aislamiento/IPC,
+rechaza nuevos bypass y preserva legacy sin contexto/pipeline completo. Dos nuevos hooks,
+ningún cambio a node_modules/SDK versión.26/26 launch/transform/package pasan; Puppeteer mock,
+syntax/files reales, sin Chromium/WFP/render físicos. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-02791.15→91.30% estimado parcial (+0.15pp): identidad/ejecutor94→95, peso15%, crédito por
+corrección concreta de startup, NO por tests ni aislamiento demostrado. Siete98.76% estimado.
+CAP-004/009/010/017/023/026100% registrada cada una/QA pendiente/sin reauditoría. No cierreR04.
+Regenerar paquete V5/pins; aún faltan runtime bridge/DLL/HTTP-broker/provisión/enforcement/corpus/DB.
+Sin instalación/activación/migración/QA formal. Corte sustituye inferiores; objetivo activo.
+
+## Corte vigente — invocación administrada con ownership (2026-10-12)
+
+Adaptador C# concreto valida record/owner/generación y llama al delegate DLL; copias fijadas y
+resultado owned-only, NO política global. Invoker TS liga journal/encoder/managed resultSHA,
+con serialización/deadline/cuarentena. Config V2 exige quinto pin invocation; rechaza V1 sin upgrade.
+C# compila, 3/3 checks managed +8/8 Node invoker/host y ambos builds TS pasan. Nativo/transporte
+simulados, sin DLL/pipe/WFP físicos. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-027 91.15% estimado parcial; siete98.74% estimado, sin incremento. CAP-004/009/010/017/023/
+026100% registrada cada una/QA pendiente/sin reauditoría. No vswhere estándar encontrado; C++
+sin compilar. Faltan transporte runtime, build/pins, peers y política efectiva/global/wiring.
+Sin instalación/activación/migración/QA formal. Corte sustituye inferiores; objetivo activo.
+
+## Corte vigente — preparación operatoria del broker (2026-10-12)
+
+Config estricta SHA-pinned para binding/peers/authority/root y cuatro archivos; revisión de
+ancestros/pins y rechazo de datos compartidos o no canónicos. prepare es read-only: cero callbacks
+nativos, pipe/DLL/filtros/servicios creados. serveOnce separado compone journal/controller/dispatcher,
+exige un dispatch completado, reutiliza3sesiones y cuarentena por outcome incierto. No default ports.
+14/14 host/journal y ambos builds TS pasan (filesystem real, pipe/WFP simulados).
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md). No se ejecutó serve físico ni se activó seguridad.
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento. CAP-004/009/010/017/023/
+026100% registrada individual, QA pendiente/sin reauditoría. Adaptadores concretos C#↔TS↔DLL,
+build/pins/arbitraje/procesos/ACL/enforcement efectivo siguen pendientes. No migración/QA formal.
+Corte sustituye inferiores; objetivo activo.
+
+## Corte vigente — puente invocable C#↔C++ preparado (2026-10-12)
+
+Preparados export C ABI/DLL y encoder binario512 bytes: intención/SHA/keys exactos, IDs operatorios
+provider/subcapa, generaciones1–3 y parser acotado sin punteros desde JSON. Loader C# por ruta/hash/
+tamaño, handle retenido y dependencias System32, sin activación implícita. No se cargó la DLL.
+Encoder1/1 +source5/5 +dos checks managed pasan; C# y ambos builds TS compilan. C++ NO compilado:
+SDK/toolchain aún no disponibles. [Detalle y límites](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento. CAP-004/009/010/017/023/
+026100% registrada cada una/QA pendiente/sin reauditoría. Faltan bootstrap/pins/build nativo y
+arbitraje/loader/ownership/enforcement efectivo; ReadOwned no equivale a política global.
+No instalación/activación/pipe/WFP/migración/QA formal. Corte sustituye inferiores; objetivo activo.
+
+## Corte vigente — cliente, dispatcher y validación de respuestas (2026-10-12)
+
+Cliente C# preparado: identidad de servidor PID/handle/FILETIME/cuenta/logon antes de escribir,
+local-only, derechos individuales y Identification, sin resend. Dispatcher TS valida
+scope/channelId/nonce/orden, reserva comando en journal ANTES de efectos y bloquea replay incluso
+tras recreación. Respuesta fija request/generación/lease; aborto o outcome incierto conserva latch.
+Cliente TS compara eco exacto/lease/generación y SHA del plan esperado, sin aprender endpoint
+desde respuesta; ACK perdido/cancelación bloquea siguientes llamadas. Recorrido software completo
+cliente→dispatcher→controlador→journal probado con diez entradas reales y WFP/transporte simulados.
+11/11 Node del corte (cliente5+dispatcher6) y ambos builds TS pasan; no sumar suites históricas.
+No pipe físico ni WFP activado. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento. CAP-004/009/010/017/023/
+026100% registrada cada una/QA pendiente/sin reauditoría. Falta bootstrap C#↔TS↔C++, pins,
+compilación nativa y wiring/enforcement real. No instalación/migraciones/QA formal.
+Corte sustituye inferiores; autorización resuelta y objetivo activo.
+
+## Corte vigente — servidor de canal local preparado (2026-10-12)
+
+Servidor C# desarrollado y compilado: pipe primera instancia/solo local/DACL explícita,
+cliente ligado a handle vivo/PID/FILETIME/cuenta/logon y broker en cuenta distinta. Framing
+32KiB/UTF-8 estricto, presupuesto15s y latch tras dispatch incierto; nunca libera filtros/lease.
+5/5 managed framing +3/3 source checks +6/6 etapas/worker pasan, ambos builds TS pasan.
+No se abrió pipe ni invocó Win32/WFP; source/framing no acreditan autenticación física.
+[Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md). Faltan cliente autenticación mutua,
+dispatcher scope/nonce/replay, puente C++/compilación/pins y wiring con SDK/worker.
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento por canal aún incompleto.
+CAP-004/009/010/017/023/026: 100% registrada cada una, QA pendiente/sin reauditoría.
+Sin instalación/activación/cambio de seguridad del equipo/migraciones/QA formal. Corte sustituye inferiores.
+
+## Corte vigente — reserva durable local y conexión al controlador (2026-10-12)
+
+Implementado journal SID exclusivo con intención y claves de filtros ANTES de escritura nativa,
+3 generaciones inmutables/7 archivos como máximo por reserva, readback exacto y observación ligada
+por SHA. Nuevas instancias no reutilizan SID retenido. Puertos conectan controlador→journal→backend
+obligatorio; ACK perdido no reintenta ni declara aplicado desde metadata. Errores de recuperación
+preservan no retry/inputs a través de etapas/worker/cleanup. No backend nativo por defecto.
+23/23 dirigidas y ambos builds TS pasan: filesystem/reservas reales, nativo simulado.
+[Detalle y límites](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento. Seis CAP-004/009/010/017/
+023/026100% registrada cada una, QA pendiente/sin reauditoría. Faltan canal autenticado, compilación
+C++, pins, arbitraje/enforcement real y wiring del worker. No WFP físico/instalación/activación/
+migraciones/QA formal; no garantías cross-host o pérdida de energía. Este corte sustituye inferiores.
+
+## Corte vigente — biblioteca WFP preparada (2026-10-12)
+
+Desarrollada biblioteca C++ con tipos oficiales Windows SDK: instalación explícita deny-all,
+reemplazo transaccional ligado a SID/lease/generación y readback exacto de filtros persistentes.
+No servicio/ejecutable/instalación/activación. Falta broker durable/canal/autorización, auditoría
+de arbitraje y wiring; no confundir lectura de filtros propios con enforcement global.
+8/8 núcleo TS reejecutadas +3/3 checks estructurales pasan. C++ NO compilado: SDK/toolchain no
+detectados, sin instalarlos. Ninguna API WFP invocada. [Detalle](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento por nativo no verificado.
+CAP-004/009/010/017/023/026: 100% registrada individual, QA pendiente/sin reauditoría.
+Objetivo activo; este corte sustituye los inferiores. La autorización de desarrollo está resuelta.
+
+## Corte vigente — núcleo del controlador de red (2026-10-12)
+
+Autorización recibida: desarrollar sin instalar/activar/modificar seguridad del equipo. Se
+implementaron compilador de planes BLOCK y ciclo deny-all→loopback exacto→deny-all persistente,
+con lease/hash/generación/readback, deadline, ACK perdido no retry y confirmación del job cerrado.
+8/8 dirigidas y ambos builds TS pasan; backend simulado, NO filtros WFP ni tráfico físico.
+Faltan adaptador nativo, canal autenticado, reserva durable y conexión al worker/SDK. No activar.
+[Contrato y siguientes obligaciones](SOFLIA_ENGINE_CAP027_NETWORK_CONTROLLER.md).
+
+CAP-027 91.15% estimado parcial; siete 98.74% estimado, sin incremento por núcleo no operativo.
+CAP-004/009/010/017/023/026: 100% implementación registrada cada una, QA pendiente/sin reauditoría.
+Este corte sustituye los inferiores; la autorización de desarrollo ya no es un pendiente.
+
+## Corte vigente — temporales retenidos del medidor (2026-10-12)
+
+Auditoría posterior de cierre: [brechas y decisión de frontera OS](SOFLIA_ENGINE_CAP027_CLOSURE_AUDIT.md).
+SDR tiene ruta de conversión/ensamblado explícita; no duplicar encoder. Falta implementar una
+frontera de red OS compatible con loopback original. Se requiere decisión sobre un controlador
+separado del worker restringido antes de expandir la arquitectura; no es solo QA pendiente.
+
+CAP-027 **91.15% estimado, parcial**; promedio siete **98.74% estimado**, sin incremento.
+CAP-004/009/010/017/023/026: 100% implementación registrada cada una, QA pendiente, sin reauditoría.
+Este corte sustituye los inferiores; R04 parcial y objetivo activo.
+
+Implementado un gate de admisión del spool en los puertos Windows: antes de crear otro directorio
+se rechaza cualquier entrada measurement- previa (también archivo/nombre con mayúsculas), sin abrir
+hijos ni borrar. Recheck después de adquirir el fence y antes del start, excluyendo solo el directorio
+propio. Enumeración streaming, señal/deadline común y límite de 4096 entradas del padre. Instancias
+nuevas con el mismo padre también bloquean; no se depende solo de quarantine en memoria.
+
+Reconciliación requerida, scan incierto/límite o configuración inválida conservan semántica de
+recuperación y NO retry a través del worker, wrappers de etapa y cleanup. No se etiqueta falsamente
+como terminación de proceso incierta cuando nunca se lanzó uno. No hay reclaim, TTL, borrado o
+limpieza automática. El operador debe reconciliar evidencia/procesos y mantener padre/fence estables
+antes de volver a admitir. Regenerar inventario/pins de archivos modificados explícitamente.
+
+Esta es una barrera a acumular temporales en operaciones sucesivas de los puertos cooperantes,
+NO cuota física de disco, aislamiento ACL, lock distribuido, ni garantía ante escritores externos,
+cambio de padre, otros workers o pérdida de energía. Preparaciones concurrentes pueden rechazarse
+conservadoramente y conservar sus propios temporales; no se concede mayor paralelismo.
+
+Validación del corte: **19/19 dirigidas** (transporte12, admisión filesystem2, etapas/worker5),
+ambas compilaciones TypeScript pasan. Filesystem real, procesos/bridge simulados; sin Win32,
+FFmpeg, SDK/render físico, DB/migración, activación ni QA formal. No se suman a suites históricas.
+La rúbrica conserva el valor anterior: sigue faltando cierre integral de red/provisión,
+corpus/color/fuentes/A-V/procedencia y operación PostgreSQL/entre hosts.
+
+## Corte vigente — integridad del corpus (2026-10-12)
+
+CAP-027 conserva **91.15% estimado, parcial**; promedio de los siete **98.74% estimado**.
+CAP-004/009/010/017/023/026: cada una 100% de implementación registrada, QA pendiente,
+sin reauditoría en este corte. Este encabezado sustituye los estados históricos inferiores.
+
+Se verificó la implementación existente por handle con cuatro regresiones nuevas: sustitución
+por otro archivo con bytes idénticos del encoder, probe, WAV y video. Se conserva el contenido y
+se restaura mtime; se comprueba un inode distinto. Cada caso exige rechazo por integridad y limpieza
+solo de archivos propios, sin recibo. No se cambió el generador productivo en este corte.
+
+Validación: **11/11 pruebas dirigidas** (10 del generador +1 del pin de archivos), ambas compilaciones
+TypeScript pasan y diff sin errores de whitespace. Archivos/hash/identidad reales, procesos y
+salidas de codec simulados; no FFmpeg, navegador, render real ni QA formal. El runner con proceso
+hijo fue bloqueado por sandbox (EPERM); los módulos compilados se ejecutaron directamente y pasaron.
+
+No aumenta la rúbrica: esta evidencia protege integridad, no cierra conformidad preview/render.
+Siguen pendientes aislamiento efectivo de red/loopback y provisión Windows, corpus original
+con color/fuentes/audio-video/procedencia, y migraciones/concurrencia/operación entre hosts.
+La siguiente prioridad es contrastar esas brechas con el cierre requerido, no sumar pruebas como
+porcentaje ni ampliar capacidades fuera de CAP-027. Objetivo activo; R04 parcial.
+
+## Estado actual autoritativo (2026-10-08)
+
+Corte vigente: **CAP-027 ~91% (rúbrica 91.15%), siete ~98.74%, sin incremento**. Entrega diferida
+checkpoint consumido→outbox→reserva del job futuro conectada opt-in/default off; resume usa primero
+historia y no vuelve a consumir si ya está disponible. 56/56 dirigidas/builds pasan. SQL preparado
+NO aplicado ni probado en PostgreSQL; no activación/QA formal. Seis CAP-004/009/010/017/023/026100%
+registradas cada una/QA pendiente. Plan CAP-027 y entrega de render documentan carrera, garantías
+y pendientes; todos los cortes inferiores históricos. No cierre operativo R04.
+
+Corte vigente: **CAP-027 ~91% (rúbrica 91.15%), siete ~98.74%, sin incremento**. Ruta AppContainer
+V5 operatoria implementada: capacidades vacías, hijo suspendido, token real/SID/IL/ACL verificados
+en código antes de resume. No activación/provisión ni evidencia física de red/loopback/SDK.
+159/159 dirigidas +5/5 checks administrados; ambos compiladores TS y C#/parseo PS pasan.
+Seis CAP-004/009/010/017/023/026100% registradas cada una/QA pendiente. Detalle y límites en
+plan CAP-027 y frontera Windows; todos los cortes inferiores históricos, sin cierre R04.
+
+Corte vigente: **CAP-027 ~91% (rúbrica 91.15%), siete ~98.74% estimado, sin incremento**.
+Defensa HTTP conectada antes de navegación/captura de la página SDK original: origen/puerto
+exactos, GET/HEAD sin cuerpo, rechazo persistente, límites y cleanup sin reabrir Fetch.
+No equivale a aislamiento de red Windows ni cubre otros targets/procesos/WS/WebRTC/DNS.
+20/20 checks guard/transformation +13/13 integración simulada, no QA
+formal ni navegador físico. Seis CAP-004/009/010/017/023/026100% registradas/QA pendiente cada
+una. Todos los cortes siguientes son históricos; no créditos nuevos por número de pruebas.
+
+Corte actual autoritativo: **CAP-02791.15% estimado parcial (~91.2%); siete~98.74%**. Auditoría
+ACL V4 de descendientes readonly/denied con límites compartidos, reparse rejection y reenumeración;
+identidad93→94/peso15%, +0.15pp.165/165 dirigidas +5/5 managed budget checks y compilaciones pasan;
+no AccessCheck/kernel/ACL físicas, inmutabilidad o red segura acreditados. Seis CAP-004/009/010/017/
+023/026100% implementación registrada individual, QA pendiente. No flags, QA formal, migraciones,
+ACL modificadas o despliegue. Detalle/evidencia en plan CAP-027; todos los cortes inferiores históricos.
+
+Corte actual autoritativo: **CAP-02791.0% estimado parcial; siete~98.71%**. Preflight AccessCheck
+de objetos declarados sobre clon del token reducido, antes de CreateProcessAsUser; readonly/denied
+comprueban derechos individuales sin modificar ACL. Helper separado requerido en inventario.
+Identidad92→93/peso15%, +0.15pp;163/163 dirigidas y compilaciones pasan. No auditoría de árboles/
+TOCTOU/enforcement físico ni aislamiento de red acreditados. CAP-004/009/010/017/023/026100% cada
+una implementación registrada, QA pendiente. No activación, QA formal, migraciones/despliegue.
+Todos los cortes inferiores históricos; detalles y límites en plan CAP-027.
+
+Corte actual: **CAP-02790.85% parcial conservado; siete~98.69% estimado**. TEMP/TMP/TMPDIR
+fijados al directorio propio de cada operación en bridge/decoder, guard nativo antes de crear Job;
+no herencia de TEMP del supervisor.136/136 dirigidas y compilaciones pasan. Sin nuevo crédito
+ponderado por prerequisito del mismo bloque; ACL/red no cerrados ni enforcement físico acreditado.
+Seis CAP-004/009/010/017/023/026100% implementación registrada cada una, QA pendiente. Sin flags,
+QA formal, migraciones, cambios ACL o despliegue. Detalle en plan; todos los cortes inferiores históricos.
+
+Último corte autoritativo: **CAP-02790.85% estimado parcial (~90.9%), siete~98.69%**. SID restrictor
+de capacidad explicitado/pinneado y readback exacto antes de CreateProcessAsUser; identidad91→92,
+peso15%, +0.15pp.135/135 dirigidas, ambas compilaciones TS/C# y parse PowerShell pasan. Sin ACL
+provisionadas, enforcement físico o red aislada acreditados. CAP-004/009/010/017/023/026100% cada
+una implementación registrada, QA pendiente. No activación/migración/despliegue/QA formal. Detalle
+en plan CAP-027. TODOS los párrafos inferiores son históricos aunque mantengan «Último corte».
+
+Último corte: **CAP-02790.70% estimado parcial (~90.7%); siete~98.67%**. Identidad91/peso15%,
++0.15pp por token LUA de privilegios reducidos explícitoV3, verificación y CreateProcessAsUser sin
+fallback; no aislamiento ACL/red ni enforcement físico acreditado.132/132 dirigidas y build operativo/
+C# pasan; PowerShell parsea. Recompilación habitual tests falla CAP-029 ajeno TS2339
+maximumSvgNumericTokens; preservado. CAP-004/009/010/017/023/026100% cada una implementación registrada/
+QA pendiente. Sin activación, QA formal, migraciones ni despliegue. Detalle/evidencia en plan CAP-027.
+El párrafo siguiente conserva el corte anterior, no es el porcentaje actual.
+
+CAP-027 **90.55% estimado parcial (~90.6%)**; media siete **~98.65%**. CAP-004/009/010/017/023/026:
+100% implementación registrada cada una, QA pendiente. Bootstrap reservado Windows conectado al
+runner con JSON estricto fijado por hash y sin fallback; proveedor de mediciones independiente del
+workspace del productor. Cuotas operatorias V2 + hard cap CPU nativo/readback antes de crear proceso;
+identidad/ejecutor89→90, peso15%, +0.15pp CAP.121/121 dirigidas, compilaciones TS/C# y parse PowerShell
+pasan; procesos simulados/checks estáticos no demuestran enforcement físico. No aislamiento OS acreditado,
+activación, migraciones aplicadas ni QA formal. Evidencia, provisión y limitaciones en plan CAP-027.
+Los cortes inferiores son históricos y no sustituyen este estado aunque digan «vigente».
+
+**Corte vigente2026-10-08 reserva por job: CAP-02790.1% parcial; siete~98.59% estimado.**
+Servicio y host programático recuperan artefactos/referencias exactos sin ruta local del productor,
+verifican autoridad consumida y conservan hash de reserva en reporte. Migración privada preparada
+vincula registro/lease/cierre; NO aplicada/ejecutada DB.147/147 dirigidas y ambas compilaciones pasan.
+Identidad85→87 (peso15%, +0.30pp CAP). Seis CAP-004/009/010/017/023/026100% implementación registrada/
+QA pendiente individual. Aún bootstrap/proveedor Windows, aislamiento real y recuperación cross-host/
+DB/ACK, corpus/color/A-V/procedencia y QA. Sin activación ni despliegue; detalle en plan CAP-027.
+
+**Corte vigente2026-10-08 durableV2: CAP-02789.8% parcial; siete~98.54% estimado.**
+Sin pista audio admite reporteV2 con selección/autoridad consumida y worker opt-in default off;
+V1 audible conserva obligaciones.132/132 dirigidas, build operativo y compilación habitual tests
+pasan. Audio92→94, peso15%, +0.30pp CAP. SQL preparado con precondiciones, NO aplicado/ejecutado.
+CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual. Siguen
+provisión/reserva/recuperación distribuida, Windows efectivo, corpus/color/A-V/procedencia y QA;
+validación DB/operación/lotesV2 pendiente. Detalles y límites en plan CAP-027. No activación.
+
+**Corte vigente2026-10-08 silencio explícito: CAP-02789.5% parcial conservado; siete98.5%.**
+Comparador scoped dispone de ruta sin pista audio, ligada a expectativa congelada explícita y
+sin inventar métricas. Reporte durableV1/SQL aún no admiten esa rama; worker mantiene bloqueo.
+Seis capacidades restantes100% implementación registrada/QA pendiente individual. Detalles,
+validación y limitación TS6133 ajena a CAP-027 en plan de cierre. Sin activación ni migración.
+
+**Corte vigente2026-10-08 puente exacto: CAP-02789.5% estimado parcial; siete98.5%.**
+Factory entrega selección medida al supervisor/checkpoint; worker la recupera con scope host
+explícito y conserva verificación de autoridad consumida, sin recapturar referencias.74/74
+dirigidas y ambas compilaciones pasan. Identidad/ejecutor83→85 (peso15%, +0.30pp CAP).
+CAP-004/009/010/017/023/026100% implementación registrada individual/QA pendiente.
+Pendientes: silencio durable, bootstrap/reserva distribuida, aislamiento Windows, corpus/color/
+A-V/procedencia y QA. No activación productiva ni migración aplicada. Detalle en plan CAP-027.
+
+**Corte actual2026-10-08 selección exacta: CAP-02789.2% estimado parcial conservado; siete~98.5%.**
+Worker reservado no recaptura preview/audio raíz; checkpoints/reportes conservan checksums y
+paquetes de lotes distinguen referencia visual para impedir reanudación cruzada.127/127 dirigidas
+y builds pasan. Migración seleccionada preparada con precondiciones, NO aplicada/ejecutada en DB.
+Falta silencio durableV1 (rechazado explícitamente), provisión factory→checkpoint→claim, reserva
+distribuida, Windows efectivo y corpus/color/A-V/procedencia/QA. Seis CAP-004/009/010/017/023/026100%
+implementación registrada/QA pendiente individual. Sin cierre nuevo ni activación/migración aplicada.
+[Detalle y límites](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**Corte actual2026-10-08: CAP-02789.2% estimado parcial; siete~98.5%.** Admisión consumida
+verificada en worker opt-in, receipts nativos raíz/lotes ligados por contrato y bytes, relectura de
+revocación y binding explícito durable no equivalente a conformidad.130/130 dirigidas/builds pasan;
+DB/decoder/browser simulados, firma/hash/evaluador/files reales. Identidad81→83, peso15% (+0.30 pp),
+otros bloques sin cambio. Bootstrap/reservas durables, Windows efectivo, corpus/color/A-V/procedencia
+y QA pendientes. Seis CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una.
+Sin cierre R04, migración, flags, vendor ni cambios de CAP-022/025/029.
+[Detalle y límites](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+## Corte actual CAP-027: coordinación durable y recuperación (2026-10-08)
+
+Puertos host propagados a comparación raíz/lotes y presupuesto común; cierre incierto conserva
+inputs y fallo sanitizado no reintentable. Runner deja de reclamar jobs ante recuperación, incluso
+si se pierde lease o ACK. No bootstrap productivo configurado, receipt nativo autenticado integrado,
+aislamiento Windows probado ni recuperación distribuida completa.124/124 dirigidas y builds pasan,
+sin QA formal/decoder/browser/Win32/BD reales. CAP-02788.9% estimado parcial conservado; media siete98.4%.
+CAP-004/009/010/017/023/026100% implementación registrada, QA pendiente cada una. No cierre nuevo,
+migración/rollout/vendor ni cambios de CAP-022/025/029. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**Vigente2026-10-08 factory integrado: CAP-02788.9% estimado parcial; media siete~98.4%.** Factory
+single silencioso verificado desde collector hasta lector ZIP y comparador/SSIM/gates reales,
+diagnóstico y retorno/rechazo de artifacts; DB/probe/decode simulados. Identidad79→81 (peso15%,
++0.30 pp) por integración existente ahora comprobada, no por cantidad de tests. Otros bloques sin
+crédito nuevo. CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual.
+Sin cierre adicional ni QA físico. Faltan aislamiento Windows y autoridad/persistencia/corpus/color/A-V.
+[Evidencia y límites](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**Vigente2026-10-08 reserva y cobertura: CAP-02788.6% estimado parcial; media siete~98.4%.**
+Selección exacta inmutable conectada al host/factory, medidor validado con pares preview/audio y todos
+los lotes derivados. Identidad/ejecutor77→79 (peso15%, +0.30 pp). Lectores/procesos simulados;
+archivos/hash/PNG reales. No se acredita recorrido físico completo, persistencia durable, sandbox OS
+ni QA. CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual.
+Sin cierre nuevo/flags/migraciones/rollout. [Rúbrica y pendientes](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**Continuación2026-10-08: CAP-02788.3% parcial conservado; media siete~98.3%.** Núcleo de medición
+de referencias autorizadas y conexión opt-in al productor observado implementados. Parent-stop espera
+el colector independiente, o conserva fence/cuarentena. Comparador completo usa puertos Windows;
+diagnóstico local no firmado conserva FAIL/INCOMPLETE. Falta validar factory integral, audio/lotes y
+selección de referencias del host; no se otorga crédito nuevo por construcción aislada. Seis restantes
+CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual. Sin activación,
+render físico, QA formal ni migraciones. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**Corte vigente2026-10-08: CAP-02788.3% estimado parcial; media siete~98.3%.** Puertos comparador UTF-8/PCM usan driver/spool acotados y job Windows propio por operación, fence dedicado, cierre confirmado antes del consumo, pins/inventario y cuarentena/retención ante cierre incierto. Identidad/ejecutor75→77 (peso15%, +0.30 pp); resto sin crédito nuevo. CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una. Transporte implementado; medidor completo y aislamiento efectivo/color/A-V/corpus/procedencia siguen pendientes, no solo QA. Tests con archivos/fence reales y procesos simulados; sin render físico/QA formal/migración/rollout. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**Estimación vigente revisada (2026-10-07): CAP-027 ~88% parcial; siete prioridades ~98.3%.** Revisión acumulada sustituye85.80/97.97 como cifras vigentes, no modifica el historial ni acredita avance nuevo en esta respuesta. Misma rúbrica/pesos: identidad69→75, tiempo/repetibilidad92→95, fuentes/codecs/SDR65→75; restantes estimaciones sin cambio. Crédito por conexión original bootstrap/observadores/recibos/colector y stages, no por número de tests ni ejecución física. CAP-004/009/010/017/023/026100% implementación registrada, QA pendiente individual; no nueva auditoría exhaustiva de esas seis.10/10 dirigidas actuales pasan con multimedia simulada; QA/OS/DB/render reales pendientes. Cierre roadmap7/30, implementación global no determinada. [Rúbrica, evidencia y límites](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 bootstrap-SDR2026-10-07: integración launch→plan/config/inventario→observer/frames→encode/ensamblaje→observación/receipt→colector pasa silent/AAC y rechaza drift real del fixture. FPS racional SDK y streaming bypass corregidos. Launch SDR exige instalación observada/plan V3; legacy/V2 rechazados.38/38 dirigidas y build operativo pasan, binarios/CDP simulados; sin activar producción. CAP-02785.80% parcial; CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una; media97.97%. Color/A-V/corpus/procedencia/aislamiento Windows siguen funcionalmente pendientes. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 silent-remux2026-10-07: conservación de payload/extradata/timestamps y perfil SDR sin audio permite contenedor distinto, vinculada al adaptador/bootstrap/observación sin declarar mux AAC.41/41 dirigidas y builds pasan; binarios simulados, archivos/PNG reales. Gate SDR aún cerrado hasta integración bootstrap V3 completa/admisión; color/A-V/corpus/procedencia/sandbox y QA pendientes. CAP-02785.80% parcial; CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual; media97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 adaptador-SDR2026-10-07: bootstrap conecta puertos V4 con archivo forward/encoder/probe/mux operativos y ensambla ejecución desde resultados vinculados. Ejecutor espera cierre hijo directo y conserva temporales ante fallo; no acredita descendientes/aislamiento. Gate SDR todavía cerrado: falta verificación de remux silent sin audio e integración bootstrap SDR completa. CAP-02785.80% parcial; CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual; media97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 puerto-encode2026-10-07: recetaV4 permite codificación host y verificación después del ensamblaje original/before cleanup; job/signal/frames/callbacks vinculados, audio SDK intacto.35/35 dirigidas pasan, con VM y binarios simulados. Bootstrap todavía no conecta encoder SDR ni resultados; gate SDR/mux permanece cerrado. CAP-02785.80% parcial; CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una; media97.97%. Nuevos hashes necesitan aprobación de operador. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 archivo-forward2026-10-07: secuencia privada acotada desde buffers originales SDK, escritura exclusiva/secuencial, copia previa al await y rechecks de fuentes/PNG. Observer/bootstrap conectados condicionalmente;33/33 dirigidas y builds pasan. No habilita SDR: admisión todavía rechaza conversión/mux hasta integrar resultados reales. CAP-02785.80% parcial; CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una; media97.97%. Sin crédito adicional hasta cerrar un bloque ponderado. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 ejecución-original2026-10-07: pins medidos de inventario+CDP original+hash video conectados a receipt V3/colector/puente, con rechazo de contradicciones y sin copiar expectativas.75/75 dirigidas y builds pasan, archivos/PNG reales y runtime/media simulados. Conversión SDR/mux explícitos siguen sin conectar al productor materializado; no es solo QA. CAP-02785.80% parcial, seis CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual; media97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 RGBA-original2026-10-07: recetaV3 ofrece recaptura screenshot SDK con preparación/restore originales; recorder incremental compara RGBA forward/reverse y produce reportes por contrato. Receipt/colector V3 y puente conectan reportes originales/rechazan conflictos, sin promover a conformidad global.77/77 dirigidas/build operativo/compilación conjunta pasan; PNG/bytes reales, SDK/CDP/media simulados, sin render/QA formal/instalación. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual; media97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 eventos-nativos2026-10-07: todas las particiones observan sesión original con forward global/reverse global; receipt V3 y colector exigen cobertura propia por hijo. Puente conecta EVENT_BATCH_SET sin relabelar padre ni degradar a contrato único. Build operativo/compilación conjunta y44/44 dirigidas pasan; tres nuevas, CDP/SDK/media simulados, sin render físico/QA formal. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media97.97%. Bloque previo `detach` resuelto en desarrollo paralelo sin editarlo aquí. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+Revalidación final consumo2026-10-07:59/59 dirigidas pasan sobre código emitido; build operativo final y compilación conjunta bloqueados por el mismo error `detach` de CAP-029 paralelo. El build operativo inicial sí pasó. No se declara compilación final verde ni prueba física de render.
+
+CAP-027 consumo2026-10-07: geometría nativa sin fuentes personalizadas llega al comparador; fuentes obligatorias solo según bindings congelados. Puente conecta testigo original a SINGLE_CONTRACT con identidad completa y rechazo de conflictos. EVENT_BATCH_SET requiere cobertura propia; no se relabela evidencia padre. Build operativo pasó; compilación conjunta bloqueada por error `detach` de CAP-029 paralelo. CAP-02785.80% parcial, seis CAP restantes100% implementación registrada/QA pendiente individual, media97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 nativo2026-10-07: orquestador conectado a bootstrapV3 lee checkpoints originales y compara texto/glifos en reverse con leaseSDKV2; restaura frame, no seek manual/página alterna. Receipt nativo ligado a plan/request/contrato/vídeo, colectorV3 obligatorio y puente entrega clones al medidor/recheck. Scope OBSERVED_UNATTESTED, no PASS/attestation/color/A-V. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%; no cierre operativo completo. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+Validación nativa52/52 dirigidas (20 native/fonts,24 recipe/collector/bridge,8 loader/bootstrap), cinco nuevas. Build operativo inicial pasó; compilación conjunta final detectó cuatro errores transitorios CAP-029 HTML compiler/inspector y se avisó al responsable sin tocar esos archivos. Test emitido actual del observer fijo20/20 directo, sin reclamar compile verde. SDK/CDP/medios/DOM simulados, filesystem/hash reales, sin QA formal/render/DB.
+
+CAP-027 seek2026-10-07: recetaV2 entrega after-frame lease de prepareFrameForCapture original SDK y restaura posición capturada; scope no-conformidad, nuevas recetas/pins requieren aprobación, sin cambiar vendor ni instalación.34/34 dirigidas pasan (VM/SDK/medios simulados, paquete/hash/filesystem reales). Pendiente orquestar geometry/fonts forward/reverse. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 abort2026-10-07: pin/recheck admite signal y cancela entre chunks/archivos; cierre de handles, compatibilidad legacy, sin fingir cancelación de I/O nativo o STOPPED. Build operativo y15/15 dirigidas pasan; dos nuevas, sin QA formal/render. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%. Pendiente medición original integrada. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 transporte2026-10-07: archivo de plan nativo exclusivo pinneado y requestV3 hash/tamaño/execution, nombre fijo; bootstrap valida schemas/bindings/archivos/fonts y recheck antes/después SDK, sin inferir desde HTML ni promover a evidencia. V1/V2 conservados. Pendiente conectar a observer/capturas/seeks originales. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%; sin cierre ponderado por transporte aislado. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+Validación del transporte: **45/45** dirigidas y compilaciones pasan; tres nuevas. Lectura real de plan/ZIP/hash/pins y regresiones de bootstrap, SDK/CDP/media simulados. Controles realpath/enlaces de temporales propios fuera del sandbox; sin render/QA formal/migración/deploy.
+
+CAP-027 plan2026-10-07: materialización conserva documento/contrato/fonts/pins nativos autorizados, revalida antes de lectura y entrega copias al ejecutor; verificador host separado del workspace serializable. No reconstruye plan desde HTML ni acredita captura. Pendiente transporte autenticado al bootstrap y seeks/geometry/fonts originales. CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%; sin aumento por infraestructura incompleta. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+Validación de ese corte **37/37** dirigidas y compilaciones pasan; executor revalida bajo deadline antes de start y después de STOPPED. Cuatro pruebas nuevas; filesystem/ZIP reales, red/procesos/SDK/media simulados. Sin QA formal/render/rollout/DB/migración.
+
+CAP-027 fuentes2026-10-07: adapter CDP original prestado sin detach/close SDK ni listeners ajenos, cleanup/abort/error latched/cuotas; fábrica reutiliza capturador fuentes/glifos y exige reverse verification completo antes de finish. **24/24** dirigidas (15 fuentes+9 adapter/runtime), CDP/events/fonts/geometry simulados; build operativo y compilación pruebas pasan, sin render/QA formal/migración/deploy. Fábrica aún no conectada al bootstrap: faltan plan completo autorizado y seeks/geometry originales, no se atribuye prueba física a llamadas reverse. CAP-02785.80% estimado parcial, seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 colector2026-10-07: V2 exige registro original pinneado y ligado a request/execution/CDP/frameCount/hash+size vídeo, schema/quota/UTF8; puente valida antes de measure y recheck después, clones no mutan pins privados. **56/56** dirigidas filesystem/hash/admisión reales y SDK/CDP/medición simulados, vídeo no-media; sin QA formal/render/migración/deploy. Registro no equivale a fonts/color/pixel/A-V/attestation; mediciones completas y sandbox Windows pendientes. CAP-02785.80% estimado parcial, seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 bootstrap2026-10-06: puente selecciona entry observado fijo con configuración del operador declarada/pin SHA, fuera del job; requestV2 vincula digest execution y rechaza fallback legacy. Observer fijo de CDP original/version+digest de frames, registro separado ligado a candidato, sin promoverlo a conformance/fonts/color/supervisor artifact. **48/48** dirigidas con filesystem/hash reales y SDK/CDP/arranque simulados; sin render/QA formal/migración/deploy. Colector/medición completa/aislamiento Windows pendientes; CAP-02785.80% estimado parcial, seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 admisión2026-10-06: loader usa inventario operativo existente antes de importar paquete observado, liga producer y binarios a roles, rechecks de import/ejecución; port host-only del driver rechaza instalación parcial/conflictos sin fallback. CLI/bridge todavía no suministra instalación observada; bootstrap/medición/sandbox Windows pendientes. **41/41** dirigidas, filesystem/crypto/admisión reales, SDK/import/binaries simulados; sin QA formal/render/migración/deploy. CAP-02785.80% estimado parcial, seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 packaging2026-10-06: copia paquete completo fuera de node_modules, entry instrumentado+runtime, manifest determinista/pins de salida y fragmento para inventario existente; verificación requiere digest externo aprobado, sin auto-admisión ni instalación/driver activado. **28/28** dirigidas, dos builds reales idénticos/vendor intacto y rechazo drift/overwrite/enlaces/aliases; EPERM del sandbox resuelto repitiendo en temporales propios fuera. No SDK/render/QA formal/migración/deploy. CAP-02785.80% estimado parcial sin crédito de integración todavía; seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 decisión2026-10-06: usuario confirma Windows restringido y autoriza extensión versionada del productor completo, sin node_modules/deploy/QA formal. Receta fijada a0.7.106+SHA/tamaño, hooks de sesión CDP original/seek/screenshot, runtime aislado por job con fallo latched y adapter observado sin fallback; preserva pipeline, driver no activado. **20/20** pruebas dirigidas (bundle real transformado/sintaxis y SDK/captura simulados). Pendiente packaging/inventario de dist completo/runtime, medir sesión original efectiva y sandbox Windows. CAP-02785.80% estimado parcial, seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+Coordinación 2026-10-06: [traspaso y desarrollo paralelo](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_PARALLEL_DEVELOPMENT_HANDOFF.md) documenta estado, pendientes, CAP-027 reservado al equipo actual y paquetes propuestos para compañero (primero CAP-022, después CAP-025 acotado o catálogo UX CAP-029), reservas de archivos y gates de integración. Sin asignación ejecutada, commit/base consolidada, rama/PR/envío/deploy/QA/migración. Porcentajes sin cambio: CAP-02785.80% estimado, seis restantes100% implementación registrada/QA pendiente individual, media siete97.97%; cierre roadmap7/30=23.33%, no implementación global.
+
+CAP-027 supresión nativa2026-10-06: ya no cambia color/currentColor junto con text-fill, evitando contaminar máscaras con fondos/bordes. Rechaza IDs ambiguos/SVG/root sobre cuota y drift de CSS no suprimido/texto/hijos/geometría con snapshots acotados; restauración PNG existente se conserva. **39/39** dirigidas, cuatro nuevas, DOM/CDP simulados y píxeles PNG reales; sin navegador/render/QA formal/migración. CAP-02785.80% estimado sin crédito por corregir garantía ya contabilizada; seis CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%. Integración real/aislamiento/CDP productor original siguen pendientes. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 build operativo2026-10-06: entradas/transitivos a dist/composition-worker sin tests/API routes ni servicio IA; Node16 conserva import dinámico SDK ESM. Colector y runners usan dist fijo sin fallback temporal, comandos build/test dedicados y README. Diez comprobaciones dirigidas más regresiones plan/project-builder/factory: **44/44**, TypeScript web/build pruebas/diff-check aprobados, sin iniciar worker/render; filesystem/crypto reales en fixtures, procesos simulados. No bundle/imagen/inventario aprobado ni sandbox/sesión CDP original; entorno del renderizador no definido por Dockerfiles API/audio. CAP-02785.80% estimado sin crédito nuevo, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%. Sin QA formal/migraciones/despliegue. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 comparador host2026-10-06: probe/frame/loudness/PCM existentes dirigibles a ports operator-owned conjuntos con paths host/pins; configuración parcial sin fallback, referencia persistida propaga ports. Cierre incierto ya no se absorbe como métrica ni elimina workDirectory/referencia; conserva para intervención.33/33 tests, cuatro nuevos y variantes añadidas; píxeles/filesystem/crypto reales, procesos simulados sin FFmpeg/render/QA/migraciones. TypeScript web/build pruebas pasan. CAP-02785.80% estimado sin nuevo crédito, seis CAP-004/009/010/017/023/026100% individual implementación registrada/QA pendiente, media siete97.97%. Host real/instrumentación CDP original/sandbox siguen pendientes; entorno sin elegir. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 captura resuelta2026-10-06: auditor compara resumen final SDK contra screenshot/software/worker1/noHDR y rechaza evidencia ausente/drift/fallback/retries; receipt/collector proyectan/revalidan scope SDK_REPORTED_CAPTURE_NOT_CDP_OR_COLOR_ATTESTATION.16/16 tests pasan, uno nuevo con nueve variantes; SDK simulado, sin render/QA/migración. Límite público SDK confirmado: pipeline completo no ofrece hook CDP de sesión productora; medir otro navegador no la atestigua. Entorno Windows restringido vs Linux contenedor pendiente de elección. CAP-02785.80% estimado sin nuevo crédito, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una, media siete97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 colector/configuración puente2026-10-06: recibo bounded/schema/digest/scope/ruta exactos y pins de bytes reales; rechazo symlink/hardlink observados y recheck posterior. Configuración resuelve binarios desde roles y exige driver/imports declarados; conecta collector→measure obligatorio→recheck→supervisor artifacts, sin deducir métricas del recibo. **15/15 tests**, seis nuevos; filesystem/crypto reales con bytes no-vídeo, SDK/procesos/medición sin ejecutar. Falta measure owned real/sandbox/host operativo/packaging propio; no render/QA/migración. CAP-02785.80% estimado sin crédito nuevo, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una, media siete97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 entrada de proceso preparada2026-10-06: request estricto4KiB/base64/UTF8/digest y prepareLaunch desde descriptor/materialización correlacionados; driver fijo Node, variables SDK operator-only, output exclusivo/candidate receipt wx sin retry. Incompatibilidades de perfil/conversión/mux rechazan; no artifacts/PASS ni activación worker. Falta binding de rutas/config a roles, collector independiente y sandbox físico. **9/9 tests** adapter+request/proceso/launch con dependencias simuladas, sin SDK/render/QA/migración reales. CAP-02785.80% estimado sin crédito nuevo, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual, media siete97.97%. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+CAP-027 pipeline completo preparado2026-10-06: controlled-materialized-producer.mjs usa createRenderJob/executeRenderJob del SDK instalado sobre entrada materializada/output fuera, perfil inicial SDR software/screenshot/strict y rechazo warnings/abort/resultado ajeno. Devuelve candidato sin conformance/artifacts. **No conectado** al puente/worker ni productor activado: quedan configuración engine congelada/descriptor/collector independiente/sandbox; no reducir alcance a SDR. Cinco tests5/5 con SDK simulado, sin render/QA/SDK real/migraciones. CAP-02785.80% estimado sin crédito nuevo, media siete97.97%, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente individual. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+Corrección CAP-0272026-10-06: collectResult ahora espera STOPPED0 y salida limpia, no solo ROOT_EXITED; STOP idempotente compartido con lifecycle, recheck de aborto antes de recopilar. Dos pruebas nuevas cubren intervalo de cancelación y ausencia de espera circular. Sin porcentaje adicional por corregir garantía ya contabilizada: CAP-02785.80% parcial, CAP-004/009/010/017/023/026100% implementación registrada/QA pendiente cada una, media siete97.97%. Productor/colector aprobado, sandbox y evidencia audiovisual siguen pendientes. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+## Avance CAP-027 — puente Windows conectado al host explícito (2026-10-06)
+
+Bridge START/STOP por stdin y estados JSON estrictos/bounded/correlacionados; STOPPED requiere cero miembros y salida limpia del puente. Factory Windows exige PowerShell/script/helper/Node/driver declarados en inventario, sin fallback sintético. Fallos conservan fence/workspace. Aún requiere productor/colector del operador y sandbox efectivo de red/archivos/token; Job Object no aporta ese aislamiento. [Detalle y evidencia](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+Bloque86/86 dirigidas (9 nuevas), TypeScript web/build pruebas, parser PowerShell y compilación C# aprobados; continuación revalida9/9 y TypeScript web. Transporte simulado, sin proceso nativo/QA formal/render/browser/FFmpeg/DB/SQL/migraciones/rollout. Siete fallos históricos checkpoint no revalidados.
+
+**CAP-02785.50%→85.80% estimado**, identidad/ejecutor67→69% con peso15%(+0.30pp), gate/evidencia99% sin cambio. Parcial14.20% restante, no soloQA. CAP-004100%, CAP-009100%, CAP-010100%, CAP-017100%, CAP-023100%, CAP-026100% de implementación registrada, todasQA pendiente. Media siete97.97%; crédito cierre roadmap7/30=23.33%, no implementación global. CAP-022/025/029 diferidas en prioridad, no eliminadas del objetivo. HyperFrames/Core mantiene contrato de composición y evidencia separados.
+
+## Avance CAP-027 — cuarentena persistente local antes de start (2026-10-06)
+
+Nuevo fence local por host con creación exclusiva/write/fsync metadata de nonce/host/org/revisión/ejecución/documento/proyecto antes de start; host exige ownedExecutor.fence. Ausencia de cierre confirmado preserva archivo y workspace, sin TTL/PID/reclaim/retry automático. Release solo después de STOPPED exacto y lease propio schema/UTF8/bounds/pin/recheck; no sobrescribe corruptos. Instancia recreada con mismo hostId/directorio bloqueada mientras persista fence. Clasificador exige intervención, sin declarar bloqueo distribuido, aislamiento OS o power-loss durability. [Detalle](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**77/77 dirigidas, 7 nuevas**, TypeScript web/build pruebas pasan; filesystem real, executor/OS/DB simulados, tests de enlaces fuera del sandbox sin skips. Sin procesos nativos/render/browser/FFmpeg/SQL/migraciones/QA formal/rollout. Siete fallos checkpoint históricos no revalidados. HyperFrames/core preserva composición/timing/evidencia; CAP-029 y cambios ajenos preservados.
+
+**Recálculo:** gate/evidencia98→99%(peso10%,+0.10pp) por fence persistente local. CAP-027 **85.40%→85.50% estimado**, parcial; seis CAP-004/009/010/017/023/026 **100% implementación registrada/QA pendiente** cada una. Media siete **97.93%**, cierre roadmap **7/30=23.33%**, sin nuevo cierre. Pendiente14.50% estimado incluye ejecutor real/aislamiento y reconciliación operativa del fence, closure/procedencia/fonts/color/corpus, no soloQA.
+
+## Avance CAP-027 — cierre confirmado y cuarentena del ejecutor en el host (2026-10-06)
+
+Infraestructura Windows existente inspeccionada: Job Object/launcher local tiene cuotas/cierre, no sandbox de filesystem/red/token ni ejecutor productivo integrado. Nuevo adapter `composition-controlled-owned-executor.ts` requiere adquisición síncrona del handle, completion separada de stopAndConfirm, deadline compartido y cierre estricto por executionId acotado5s. No entrega resultado hasta confirmación; fallos/aborto/late result no se convierten en éxito. Host exige ownedExecutor y conserva instancia entre claims; terminación desconocida deja cuarentena en memoria sin reset/retry automático. Materializador no borra workspace potencialmente en uso; worker exige intervención. Es enforcement de contrato del puerto, no prueba de cierre físico, sandbox OS ni fence durable entre reinicios. [Detalle y próximos pendientes](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**70/70 dirigidas, 11 nuevas**, TypeScript web/build pruebas pasan. OS/ejecutor/DB simulados; filesystem/crypto reales, enlaces regresivos fuera del sandbox sin skips. Sin QA formal, launcher/renderer/browser/FFmpeg nativos, SQL/DB/migración/flags/rollout. Siete fallos checkpoint históricos sin revalidar. HyperFrames/core preserva separación composición/control/evidencia; cambios CAP-029 y narrativos ajenos preservados.
+
+**Recálculo:** gate/evidencia **97%→98%**, peso10%, **+0.10 pp** por exigir confirmación/cuarentena antes de publicar. CAP-027 **85.30%→85.40% estimado**, parcial; CAP-004/009/010/017/023/026 **100% implementación registrada, QA pendiente** cada una. Media siete **97.91%**; cierre roadmap **7/30 = 23.33%**, no implementación global ni nuevo cierre. Restan14.60% estimados; falta conectar ejecutor real, aislamiento/fence durable, closure/procedencia/fuentes/color y cobertura audiovisual.
+
+## Avance CAP-027 — admisión esperada de dependencias conectada al host (2026-10-06)
+
+Se implementa inventario operator-owned de árboles completos declarados, digest canónico y binding a roles node/producer/engine/runtime/browser/encoder/decoder y comparisonTools si presentes. Límites de bytes/entries/profundidad; archivos exactos, identidades y ancestros revalidados, rechaza missing/extra/duplicados/traversal/symlinks/junctions/hardlinks. Admisión requerida en host antes de clave y en renderer antes de materialización; recheck pre/post ejecución retiene resultados alterados sin fallback. Pin vacío solo opt-in para archivos incidentales; consumidores anteriores preservan default estricto. Recibo explícitamente no acredita imagen OS, closure dinámico ni aislamiento. Ver [detalle y pendientes](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md).
+
+**59/59 dirigidas pasan; 15 nuevas**: 12 inventario/admisión, 3 integración. Filesystem/crypto reales y puertos simulados; tests de enlaces ejecutados fuera del sandbox tras EPERM, sin skips. Compilación de pruebas aprobada; no QA formal/browser/FFmpeg/render/DB/SQL/migraciones/flags/rollout. Selección no revalida siete fallos históricos de checkpoint. No cambios CAP-029 ni narrativos ajenos.
+
+**Rúbrica:** identidad congelada **65% → 67%**, peso 15%, **+0.30 pp** por verificación independiente de manifiesto esperado/árboles/roles en el host, sin dar crédito por inmutabilidad OS ni closure efectivo. CAP-027 **85.00% → 85.30% estimado**, parcial; seis CAP-004/009/010/017/023/026 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.90%**; crédito cierre roadmap **7/30 = 23.33%**, sin nuevo cierre. Restan 14.70% estimados, incluido entorno de ejecutor aislado aún por definir, dependencias transitivas/imagen efectiva, procedencia/fuentes/color y cobertura audiovisual. HyperFrames/core preserva separación preview/render/evidencia; no modifica composición ni ejecuta CLI.
+
+## Prioridad vigente — volver al cierre de las siete capacidades (2026-10-06)
+
+Por instrucción del usuario, el siguiente trabajo se concentra en **CAP-027**, única capacidad parcial dentro de las siete prioridades. CAP-004/009/010/017/023/026: **100% de implementación registrada, falta QA** cada una. CAP-027: **85.00% estimado, parcial por requisitos funcionales**, no solo QA. Media del grupo **97.86%**; la repriorización no concede incremento. CAP-022/025/029 quedan diferidas en la prioridad inmediata, con cambios y pendientes preservados; el objetivo general del roadmap no se reduce.
+
+La [ruta de cierre CAP-027](SOFLIA_ENGINE_CAP027_COMPLETION_PLAN.md) ordena dependencias/ejecutor, aislamiento y cuotas OS, procedencia del supervisor, fuentes/color efectivos y cobertura audiovisual. Próxima unidad: auditoría del cierre transitivo de dependencias y admisión antes del ejecutor; no rehacer pins/firmas/worker existentes ni acreditar aislamiento por CSP, hashes o AbortSignal. QA formal/smoke/migraciones/flags/rollout siguen diferidos. Este corte solo cambia planificación/trazabilidad, sin implementación runtime ni pruebas nuevas; siete fallos de checkpoint previos sin revalidar. Crédito de cierre roadmap permanece **7/30 = 23.33%**, no implementación global.
+
+## Avance CAP-029 — servicio y HTTP de inicialización durable conectados (2026-10-06)
+
+Bootstrap comparte preparación actual de fuente/anchor/catalog/grants entre legacy y durable, sin duplicar la lógica. Nuevo registerOperation valida ID/body/owner y deriva digest servidor; consulta receipt autorizado **antes** de preparar source/CAS actual. RECORDED correlacionado vuelve histórico sin registro/readback/latest/reactivación aunque native cambió; otra request/owner/digest no se acepta. Solo ausencia en una invocación explícita permite preparar autoridad actual y commit+receipt único; fallo/read invalida no se trata como ausencia ni dispara fallback/retry. Legacy conserva su contrato y secuencia.
+
+Nueva ruta initialize/operations/[operationId] POST tipado y GET metadata querydigest única: auth/tenant/reviewer antes de service-role, origin/site/params/JSON/URL/bytes/deadlines/correlación/scope/digest/ACK históricos estrictos. POST comparte cuotas de inicialización legacy10org/3actor/min; GET independiente60org/30actor/min. Respuesta RECORDED siempre200 (created puede ser histórico), NOT_FOUND no es fallo ni permiso de reenvío. Errores seguros retryablefalse sin payload del provider. Flag receipts nuevo literaltrue + inspector; POST requiere además initializationflag, GET permite writesoff y no construye catálogo ni registra. Ningún flag activado.
+
+**16 tests nuevos (7 servicio + 9 HTTP); 324/324 código + 16/16 guards léxicos SQL = 340/340 dirigidas pasan; TypeScript web/build pruebas pasan.** Simulación de RPC/handler Request–Response valida earlyreceipt/histórico/digest/collision/earlyauth/quotas/body/gates/unknown/abort/legacycompat. No sesión/NextHTTP/browser real/DB/RLS/SQL runtime/locks/Storage/UI/render/QA formal/migraciones/flags/rollout. Inventario173SQL/cuatro grupos repetidos no alterados. HyperFrames/core preserva source/timing y separa registro/current/render.
+
+**Cliente aún legacy**: falta ID/digest persistidos antes de POST durable, receipt en journal inicial y GET-recovery sinACK/panel/histórico. Inicialización desconocida sigue bloqueada; no acredita recovery end-to-end. CAP-029/R19–R22 parciales por ese wiring/catálogo UX/sandbox/gates/evidencia integrada. **Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 sin rúbrica comparable; CAP-025 sin cierre nuevo. Siete fallos checkpoint sin revalidar.
+
+## Avance CAP-029 — recibos durables de inicialización preparados (2026-10-06)
+
+Contrato metadata inicial vincula owner/org/draft/clip/op/digest, request template/version/expected hash y ACK inicialv1/hash; scope declara histórico, no current/render. Preimage canónico compartido versionado y digest Node derivado independientemente de body tipado; adapter además recalcula digest del request devuelto. Variante interna opt-in `initializationOperationId` de registerInitial/registerInstalled usa un solo RPC commit+receipt, valida respuesta completa/SHA preparada sin inferir ACK desde latest; legacy mantiene registration+readback. Reader autorizado scope/op/clip verifica metadata acotada4KiB, NOT_FOUND no prueba fallo/retry. Aún sin ID durable conectado al host bootstrap/ruta/cliente/journal/UI.
+
+SQL **20261006090000 preparada, no aplicada** diseña registroV2+revisioninicial+receipt en una transacción. Draft-first NOWAIT/actor auth antes de receipt lookup; ID existente exige clip/digest/template/version/expectedhash/SHA y template no revocado, devuelve histórico sin re-registro/nativewrite/append. Primera operación verifica registro inicial exacto y actual grants usados mediante wrapperV2; fallo de insert receipt aborta transacción. Reader reautoriza draft ACTIVE/actor/template actual antes de exponer receipt; ausencia retorna NOT_FOUND incluso sin template instalado, sin escritura. Tabla privada/RLS/service-only/PKowner+op, metadata sinHTML/PII extra y retención con draft; sin endpoints update/delete/cleanup. No eliminación/renombre de migraciones anteriores.
+
+**8 tests código nuevos + 8 guards SQL nuevos; 308/308 código + 16/16 guards léxicos = 324/324 dirigidas pasan; TypeScript web/build pruebas pasan.** Ports RPC simulados y guardas léxicas no prueban SQL runtime/atomicidad/RLS/locks reales. Sin HTTP/UI/browser/DB/Storage/render/QA formal/migraciones/flags/rollout. Inventario **173 SQL**, cuatro grupos de prefijos repetidos existentes (20240117,20260721120000,20260825120000,20260826120000) ajenos a nueva090000; reconciliar historial DB antes de despliegue. HyperFrames/core mantiene registro/source/timing/render separados.
+
+**Inicialización sin ACK continúa bloqueada en producto** hasta wiring servicio/HTTP/digest-client/journal/receipt-recovery. No repetir legacy para resolverla ni aplicar SQL aislado. Rollout debe conservar reader/metadata al apagar nuevos writes; no borrar receipts para habilitar reintentos. CAP-029/R19–R22 parciales por este wiring/histórico inicial/catálogo UX/sandbox/gates/evidencia integrada. **Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 sin rúbrica comparable; CAP-025 sin cierre nuevo. Siete fallos checkpoint sin revalidar.
+
+## Avance CAP-029 — recuperación global independiente del clip (2026-10-06)
+
+Native monta centro de recuperación al nivel del borrador, fuera del inspector/selección/tab, sin condicionar a flags de nuevas escrituras. Contexto actor/org/draft validado genera identidad estable sin clip/hash; cambios de owner/draft remountan paneles y abortan requests, contexto inválido no reutiliza owner anterior. Centro muestra seguimiento editorial e inicial sin formulario POST. Inicializador recibe target solo en inspector DECK: allí muestra formulario únicamente con tracking EMPTY/flag habilitado; pending/unavailable y sus acciones viven exclusivamente en centro global, evitando controles duplicados. No habilita endpoint/flags ni modifica semántica de cierre.
+
+Receipt editorial fresco + native ya cargado permiten cierre histórico aunque clip desaparezca o HTML se reemplace, sin inspector/source original/restauración/POST/adopción. Inicialización sin ACK sigue visible/bloqueada aunque su clip desaparezca: cero GET/POST para inferirla; aún requiere recibo durable server-side. Estado histórico no acredita current/render. Recuperación exacta/inicial ACK conserva invariantes previos y puede seguir bloqueada si documento original cambió.
+
+**6 tests nuevos; 300/300 código + 8/8 guards SQL = 308/308 dirigidas pasan; TypeScript web/build pruebas pasan.** Cuatro tests contexto puro y dos host simulado cubren identidad válida/ownerremount/invalid/no selección, clip eliminado/source reemplazado y falta deACK. Inspección de wiring confirma centro fuera del inspector y retiro de acciones duplicadas. **No React/Native montados ni QA visual/browser:** layout/scroll/focus/abort real y sincronización entre componentes quedan para tester. Sin DB/RLS/concurrencia/Storage/HTTP real/render/QA formal/migraciones/flags/rollout; sin cambios narrativos ajenos. HyperFrames/core preserva source/timing y separación edición/render.
+
+CAP-029/R19–R22 parciales por recibos durables de inicialización desconocida, inicialización histórica con native cambiado, catálogo UX/sandbox/gates/evidencia integrada. **Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 sin rúbrica comparable; CAP-025 sin cierre nuevo. Siete fallos checkpoint/cuatro grupos SQL repetidos pendientes.
+
+## Avance CAP-029 — inicialización coordinada conectada a Native/UI (2026-10-06)
+
+Coordinador inicial usa lock compartido/reserva Native y deadline total60s: valida scope/clip DECK/source hash/no pointer/expected native hash, persiste intención antes de un solo POST initialize. ACK directo correlacionado se guarda antes de GET document+inspector; cierre exige native hash canónico/version ya cargada/hash inicial intactos, template/version/source/owner/clip exactos, revisión1/SHA del ACK/overrides vacíos y tracking intacto. Sin adopción, modificación documental, historial undo ni render. Registro existente confirmado200 también debe verificarse; no permite editar plantilla desde navegador.
+
+Host expone tracking inicial, SEND con flag literal true y RECOVER sin nueva escritura. Tracking pending/corrupt bloquea native/edición/recovery editorial incluso con flags apagados; fences owner/base/otras operaciones se reevalúan dentro de reserva y después de awaits. Native conecta puerto opt-in sin activarflag. Panel solicita ID/version de plantilla **ya instalada**; server conserva catálogo/source/grants/roles/CAS. UI muestra pending/unknown/unavailable aun con nuevos envíos apagados, ofrece cierre ACK mediante GET sin POST y aborta al desmontar/cambiar contexto. Consulta de campos posterior es explícita; no reemplaza silenciosamente sesiones/historial existentes.
+
+**9 tests nuevos; 294/294 código + 8/8 guards léxicos SQL = 302/302 dirigidas pasan; TypeScript web/build pruebas pasan.** Host/cola/storage/HTTP simulados cubren happy path3requests, admisión off/work/journal/storage/lock, pérdida POST/reload, ACK+fallo refresh/recovery2GET con writesoff, template/SHA/source/revision inválidos, native stale, drift durantePOST/GET, abort no cooperativo y no overwrite. No montaje React/Native/browser/HTTP real/DB/RLS/concurrencia/Storage/render/QA formal; no migraciones/flags/rollout ni cambios narrativos ajenos. HyperFrames/core conserva fuente/timing y separación registro/editorial/render.
+
+CAP-029 sigue parcial: falta reconciliación **durable server-side de inicialización sin ACK** (no inferirla de inspector ni borrar/rePOST), cierre de inicialización histórica con documento cambiado, descubrimiento/catalog UX, sandbox/gates/evidencia integrada. Panel actual vive junto al inspector de clip DECK seleccionado; recuperación sin clip seleccionable requiere superficie global. **Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 sin rúbrica comparable; CAP-025 sin cierre nuevo. R19–R22 parciales; siete fallos checkpoint/cuatro grupos SQL repetidos pendientes.
+
+## Avance CAP-029 — transporte y seguimiento de inicialización preparados (2026-10-06)
+
+Contrato ACK inicial compartido handler/cliente elimina duplicación sin cambiar formato HTTP. Cliente POST único relativo `initialize`, body template/version/hash estrictos sin autoridad owner/grants/fuente, same-origin/no-store/redirect:error, límites de bytes y deadline. Valida request/correlation, hash esperado, versión 1 y semántica 200 existente/201 creado. Respuesta perdida/inválida/oversized deja OUTCOME_UNKNOWN; no retry, fallback ni inferencia desde inspector.
+
+Journal independiente v1 acotado a 4 KiB por actor/org/draft persiste intención antes de envío; no sobrescribe pending/corrupt, ACK directo ligado al hash y entrada íntegra, persistencia no cierra. Cierre requiere ACK y snapshot de tracking exacto; caller todavía debe verificar refresh autorizado/source/template/native bajo lock/reserva. Metadata local no es autorización, CAS ni recibo durable server-side.
+
+**Aún no conectado al host/UI**, por tanto no acredita inicialización UI completa ni bloqueo Native operativo nuevo. Siguiente bloque: coordinador de envío único, inclusión de tracking inicial en barreras Native, recuperación ACK con GET autorizados sin rePOST y panel explícito. Resultado desconocido sin ACK no se borrará/inferirá; requiere reconciliación segura. Flags/migraciones no activados.
+
+**8 tests nuevos; 285/285 código + 8/8 guards SQL = 293/293 dirigidas pasan; TypeScript web/build pruebas pasan.** Puertos en memoria, sin UI/Native/browser/HTTP real/DB/RLS/concurrencia/Storage/render/QA formal. HyperFrames/core preserva fuente/timing y separa registro/editorial/render; no edición narrativa ajena.
+
+**Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 parciales sin rúbrica porcentual comparable; CAP-025 sin cierre nuevo. R19–R22 no cerrados. Siete fallos checkpoint/cuatro grupos SQL repetidos pendientes.
+
+## Avance CAP-029 — cierre histórico explícito de seguimiento (2026-10-06)
+
+Panel/host ofrece acción separada `historicalOnly`: bajo lock/reserva vuelve a consultar receipt autorizado incluso cacheado, valida owner/org/draft/clip/op/digest/expected y tracking intacto. Verifica GET native autorizado contra hash canónico y versión de composición **ya cargada**, con fences owner/base/signal/tracking. Cierra seguimiento durable históricamente confirmado aun con revisión sustituida: no POST, adopción, restauración de ACK.next, inspector/current inference, recreación de undo ni acreditación de render. No afirma vigencia ni orden causal de la composición actual respecto al receipt. Cierre exacto previo conserva document+inspector y revisión vigente.
+
+NOT_FOUND/403/receipt extranjero conserva seguimiento incluso con receipt cacheado; legacy sin digest no cierra históricamente. Payload stale/version/hash exige reload explícito; drift o abort impide cierre incluso ante respuesta tardía. Permisos actuales y gates server siguen requeridos; flags/migraciones no activados.
+
+**6 tests nuevos; 277/277 código + 8/8 guards léxicos SQL = 285/285 dirigidas pasan; TypeScript web/build pruebas pasan.** Superseded, receipt cacheado con autorización fresca, legacy, stale/hash/version, owner/base/tracking y abort no cooperativo. Puertos simulados, no montaje UI/React/Native/browser/sesión/HTTP real/DB/RLS/concurrencia/Storage/render/QA formal. HyperFrames/core conserva fuente/timing y separación edición/autorización/render; sin cambios narrativos ajenos.
+
+CAP-029/R19–R22 siguen parciales por inicialización UI, sandbox/catalog/gates y evidencia integrada; legacy desconocido sin identidad durable requiere investigación/manual segura, no borrar/reintentar. **Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 sin rúbrica porcentual comparable; CAP-025 sin cierre nuevo. Siete fallos checkpoint/cuatro grupos SQL repetidos pendientes.
+
+## Avance CAP-029 — recuperación sin ACK local conectada (2026-10-06)
+
+Acción explícita del panel/host ahora admite entrada durable con digest y sin ACK: bajo lock/reserva consulta **solo GET de receipt** (no POST/retry), valida owner/org/draft/clip/op/digest/expected antes de registrar evidencia, recheck signal/base/owner/tracking intactos y persiste receipt+ACK correlacionados. Luego ejecuta verificación actual document+inspector/hash/version/source/pointer y cierra solo mismo ID/revisión confirmada ya cargada. No se infiere causalidad desde latest/inspector; receipt es evidencia histórica, no permiso ni render. Sin receipt (NOT_FOUND) conserva entrada desconocida sin current GET y muestra mensaje explícito; inválido/foreign/ACK previous ajeno no se registra. Legacy sin digest ni ACK sigue sin recuperación causal, cero requests/cierre.
+
+Receipt válido permanece si payload local está stale: exige reload explícito, no overwrite/adopción/historial reconstruido; segundo intento explícito usa ACK ya registrado y no vuelve a consultar receipt. Owner/base/tracking drift durante lookup impide registrar ACK. Abort/deadline acotan espera y liberan reserva aun con fetch no cooperativo; late completion no registra/cierra. Recovery no exige flags de nuevas escrituras, pero endpoint recibos requiere sus gates de lectura actuales. No flags/migraciones activados. **ACK superseded sigue fallando cerrado**: no hay cierre histórico de seguimiento de revisión sustituida; es siguiente bloque, no recovery completa.
+
+**8 tests nuevos; 271/271 código + 8/8 guards léxicos SQL (279/279 total) pasan; TypeScript web/build pruebas aprobado.** Recorrido compuesto host durable → pérdida POST → reload simulado → GET receipt/document/inspector → cierre sin segunda escritura; también no-op inicial, ausencia, scope/digest/expected inválidos, drift, stale/reload y abort tardío. Puertos/HTTP/storage en memoria: no montaje panel/Native/hooks/React, browser/sesión/HTTP real/DB/RLS/transacciones/concurrencia/Storage/render/QA formal. Sin nuevas migraciones/flags/rollout ni edición narrativa ajena. HyperFrames/core conserva fuente/timing y separa edición/autorización/render.
+
+CAP-029 aún parcial por reconciliación histórica superseded/legacy sin identidad, inicialización UI, sandbox/catalog/gates/evidencia real. **Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 sin rúbrica porcentual comparable; CAP-025 sin cierre nuevo. Siete fallos checkpoint/cuatro grupos SQL repetidos pendientes.
+
+## Avance CAP-029 — transporte cliente durable y journal conectados (2026-10-06)
+
+Serializador/preimage compartido mantiene digest versionado idéntico Node/Web Crypto, schema/body 64 KiB y Unicode; servidor lo deriva independientemente, hash cliente no otorga autoridad. Transporte POST único relativo operations/[ID] envía solo body tipado; GET explícito metadata con digest, sin poll/retry/adopción/cierre. Decoder streaming acotado/UTF-8/JSON/scope/correlación/owner/draft/clip/op/digest/ACK exactos; POST inválido antes de fetch no despacha, errores tras envío inciertos. NOT_FOUND conserva desconocimiento, jamás permiso para repetir. Flags/gates no activados.
+
+Dispatcher opt-in calcula/persiste/verifica ID+digest **antes** del POST bajo lock/reserva y recheck owner/base; registra receipt antes de rebase/cierre exactos. Pérdida de respuesta conserva ID/hash sin ACK ni fallback legacy. Journal metadata v1 se extiende con digest/receipt opcionales: entradas legacy siguen legibles; entry durable no admite ACK plano y receipt requiere owner/scope/digest/expected exactos. Preparación no acepta receipt/ACK preinyectados y no sobrescribe pendientes. LocalStorage no es autoridad ni CAS cross-tab. Host Native recibe `durableEnabled` y flag público nuevo `NEXT_PUBLIC_COMPOSITION_HTML_EDITING_OPERATION_RECEIPTS_ENABLED` literal true, **apagado/no configurado por este trabajo**; requiere gates servidor receipts/inspector/mutations. Sin flag conserva transporte legacy.
+
+**8 tests nuevos; 263/263 código + 8/8 guards SQL (271/271 total) pasan; TypeScript web/build pruebas aprobado.** Ports/fetch/storage en memoria, no Native/hooks/React/browser/sesión/HTTP real/DB/RLS/concurrencia/Storage/render/QA formal ni migración/flag/rollout. HyperFrames/core preserva fuente/timing y separa edición/autorización/render. **Recuperación UI aún no consulta recibo cuando falta ACK**: transport y metadata están listos, falta conectar consulta explícita/recheck/tracking/closure y superseded handling; no declarar recovery completa. También inicialización UI/sandbox/catalog/gates/evidencia real pendientes CAP-029.
+
+**Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 parciales sin rúbrica porcentual comparable; CAP-025 sin cierre nuevo. Siete fallos checkpoint/cuatro grupos SQL repetidos permanecen pendientes.
+
+## Avance CAP-029 — HTTP durable de operación instalado, deshabilitado (2026-10-06)
+
+Nueva ruta `/api/production/hyperframes/drafts/[draftId]/html-editing/[clipId]/operations/[operationId]`: POST body editorial estricto 64 KiB → servicio durable y digest servidor → recibo correlacionado; GET `?requestSha256=<sha256>` → reader autorizado y metadata RECORDED/NOT_FOUND, sin mutación/retry/adopción/render. ID/digest no son autorización. Owner/org derivados de sesión/tenant/reviewer antes de construir service-role; SQL mantiene autorización independiente. GET permite origin ausente normal same-origin, rechaza origin/site extranjeros; POST exige origin exacto y JSON. UUID/clip/query única/límites URL/body/deadlines/correlación owner/draft/clip/op/digest/ACK estrictos, no-store y errores seguros retryable=false.
+
+Flag nuevo `COMPOSITION_HTML_EDITING_OPERATION_RECEIPTS_ENABLED` literal true + inspector gate obligatorio; **no activados**. POST requiere además mutations gate; GET puede recuperar metadata con nuevas escrituras desactivadas. Cuotas POST comparte namespace/límites legacy para evitar bypass entre rutas; GET cuotas org60/actor30 por minuto. Controles no demuestran SLA ni concurrencia de producción. Legacy ruta/client no cambia: **cliente/journal aún no despacha a operations ni reconcilia sin ACK**. NOT_FOUND nunca permite repetir una operación ya enviada. Reader no declara receipt vigente; falta manejo cliente de superseded.
+
+**11 tests nuevos; 255/255 código + 8/8 guards léxicos SQL (263/263 total) pasan y TypeScript web/build pruebas aprobados.** Handler con Request/Response/puertos y auth/cuotas simulados; no sesión/HTTP Next/browser/React/DB/RLS/concurrencia/Storage/render/QA formal. Expectativa de prueba `retryable` corrigió al campo principal del contrato; selección final revalidada. Sin migraciones/flags/rollout/fuente/timing ni cambios narrativos ajenos; HyperFrames/core mantiene edición/autorización/render separados.
+
+**Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 parciales sin rúbrica porcentual comparable; CAP-025 sin cierre nuevo. Pendientes CAP-029: transporte cliente/digest/journal y recovery sin ACK/superseded, inicialización UI/sandbox/catalog/gates/evidencia real. Siete fallos checkpoint y cuatro grupos SQL repetidos permanecen pendientes.
+
+## Avance CAP-029 — servicio y gateway con commit durable conectados (2026-10-06)
+
+`createHtmlEditingDurableMutationService` deriva digest del body tipado, consulta recibo autorizado owner/org/draft/clip/operation y comprueba correlación/CAS. Recibo registrado devuelve solo resultado histórico sin leer/preparar/aplicar otra revisión, incluso si el estado ya avanzó. ID reutilizado para otro comando/owner/CAS se rechaza. NOT_FOUND no prueba fallo ni habilita retries: solo sigue el primer dispatch admitido; recuperación debe usar lectura, nunca reenviar para resolver ausencia. Nueva ruta host aún no invocada por HTTP/cliente.
+
+Gateway comparte preparación de COMMAND/RESTORE y añade port durable opt-in: commitOperation recibe versión/hash/source/grants/result y metadata servidor; **también no-op requiere recibo transaccional**, sin append/incremento. Valida owner/org/draft/clip/ID/digest y ACK exactos del resultado; error/cancelación/respuesta perdida o malformed conserva incertidumbre y **no hace fallback legacy**. Legacy factory/HTTP mantiene contrato y comportamiento previo. Contratos de locator/ACK/receipt ahora viven en núcleo `html-editing`, con reexports compatibles: gateway no depende de capa HTTP y build unit aislado sigue válido. No cambia SQL/fuente/timing/render ni activa gates.
+
+**9 tests nuevos; 244/244 código + 8/8 guards léxicos SQL (252/252 total) pasan. TypeScript web/build pruebas y build unit aislado aprobados.** Incluye COMMAND/RESET no-op/RESTORE forward, digest server, receipt histórico sin current read, reutilización inválida, pérdida/malformed/cancel después de persistencia, grants/CAS/pre-abort y port durable ausente. Puertos en memoria, no evidencia DB/atomicidad/RLS/concurrencia real ni HTTP/React/browser/render/QA formal. Fixture de comparación por identidad corrigió a igualdad estructural tras parse de contrato; conteo final revalidado. Pendientes: instalar HTTP durable y consulta de recibos con auth/cuotas, cliente/journal/digest y recovery sin ACK/superseded, inicialización UI/sandbox/catalog/gates/evidencia real. CAP-029 sigue parcial.
+
+**Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 sin rúbrica porcentual comparable; CAP-025 sin cierre nuevo. Siete fallos checkpoint y cuatro grupos de versiones SQL repetidas siguen sin revalidación/corrección de despliegue. Sin migraciones/flags/rollout ni cambios narrativos ajenos. HyperFrames/core mantiene edición/autorización/render separados.
+
+## Avance CAP-029 — persistencia de recibos de operación preparada (2026-10-06)
+
+Contrato estricto `EDITORIAL_OPERATION_RECEIPT_NOT_CURRENT_STATE_OR_RENDERED` contiene owner actor/org/draft, operation ID, hash de solicitud, clip y ACK histórico; no HTML/overrides/grants/estado current/render. Digest servidor versionado deriva action/CAS/overrides ordenados desde body estricto y límites 64 KiB, no hash cliente. Adapter `commitOperation` revalida contexto/source/grants/version/hash y prepara native pointer o no-op; verifica correlación completa del receipt. `readOperation` devuelve metadata autorizada o NOT_FOUND, que no prueba fallo ni habilita retry. Error/ACK perdido/malformed/foreign = incertidumbre, sin retry.
+
+SQL **20261006080000 preparada, no aplicada**: tabla privada RLS/privilegios directos revocados, PK org/draft/actor/operation, recibos 4 KiB y FK profiles/templates; RPC service-only y orden draft-first NOWAIT + actor/template current. Commit changed delega append transaccional existente y luego inserta recibo: insert fallido revierte native/audit/HTML; no-op comprueba contenido/CAS/referencia/grants e inserta recibo sin nueva versión. ID registrado con mismo scope/digest devuelve solo recibo histórico, sin append/reactivación; clip/digest diferentes rechazan reutilización. Reader reautoriza actor/draft/template y no escribe. Recibo se conserva con draft; no expiración que habilite reenviar. Hash canónico/semántica/recursos completos siguen responsabilidad del host service-only, no autoridad del browser.
+
+**9 pruebas nuevas de contrato/adapter; 235/235 selección de código + 8/8 guards léxicos SQL (243/243 total) pasan. TypeScript web/build pruebas aprobados.** RPCs simuladas; guards léxicos no prueban ejecución PostgreSQL, transacciones/RLS/concurrencia real. Sin QA formal/HTTP real/DB/render/migraciones/flags/rollout. **No conectado aún al gateway/service/POST/client/journal/recovery:** este avance prepara persistencia, no habilita reconciliación sin ACK. Faltan propagación autenticada del operation ID/digest, no-op durable en gateway, endpoint de consulta y cliente que verifique recibo antes de registrar ACK; superseded ACK y demás pendientes CAP-029 permanecen. HyperFrames/core conserva fuente/timing y separa edición/autorización/render.
+
+Auditoría de nombres: 172 archivos SQL; cuatro grupos con prefijo duplicado fuera de la nueva versión: `20240117` (7 archivos), `20260721120000`, `20260825120000`, `20260826120000` (2 cada uno). No se renombraron: contrastar contra historial aplicado de Supabase antes de planificar migraciones; no considerar esta carpeta globalmente libre de colisiones. Validaciones históricas de versiones no sustituyen este inventario actual.
+
+**Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 parciales sin rúbrica porcentual comparable; CAP-025 sin cierre nuevo. Siete fallos checkpoint anteriores sin revalidar.
+
+## Avance CAP-029 — recuperación explícita con ACK vigente (2026-10-06)
+
+Nuevo coordinador de recuperación y port Native verifican journal con ACK directo persistido → Web Lock/reserva → GET document + inspector autorizados/acotados → documento ya cargado/version/hash/source/pointer/plantilla/revisión ACK exactos → recheck owner/base/signal/tracking → cierre del mismo ID. No POST/retry/merge/adopción/undo reconstruido/render; no se interpreta GET como confirmación causal. Requiere recarga explícita del documento guardado si payload local no coincide. Cambios nativos ya recargados pueden conservarse si referencia editorial exacta sigue vigente. ACK no-op inicial sin pointer solo cierra con hash original exacto/revisión 1. Tracking cambiado, owner/base drift, source/hash/locator incorrectos conservan journal. Deadline/cancelación acotan espera y reserva incluso si lectura no coopera; callback tardío no cierra.
+
+`CompositionHtmlEditorialRecoveryPanel` conectado al inspector muestra seguimiento/mensaje y acción explícita; disponible aunque flags de nueva edición/inspector estén apagados, pero lecturas siguen requiriendo sus gates servidor y autorización. Owner/org/draft key cancela request al cambiar ámbito. Recovery no requiere flags de nuevas mutaciones. Sin ACK no hace GET ni elimina tracking; explica necesidad de recibo durable servidor-side. Seguimiento corrupto/Storage indisponible no se borra. No pretende atomicidad localStorage frente a actores no cooperativos ni transacción entre dos GETs: drift falla cerrado.
+
+**8 tests nuevos; 226/226 selección dirigida pasan; TypeScript web/build pruebas aprobados.** Incluye cierre exacto tras reload/flags de escritura apagados, sin ACK cero requests, stale local sin overwrite, owner/identidad drift, tampering, journal sustituido, abort de lectura no cooperativa y no-op. Puertos/repo/HTTP simulados; React/Native/panel no montados, sin browser/sesión/HTTP real/DB/RLS/Storage/concurrencia/render/QA formal/migraciones/flags/rollout. HyperFrames/core mantiene edición/autorización/render separados y no cambia fuente/timing.
+
+CAP-029 aún parcial: recibo durable de operación server-side para resultado sin ACK, reconciliación de ACK ya superseded, inicialización UI, sandbox/catalog/gates operativos y evidencia real. No eliminar manualmente journal ni reenviar para resolver estos pendientes. **Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 sin rúbrica porcentual comparable; CAP-025 sin cierre nuevo. Siete fallos checkpoint previos siguen sin revalidar.
+
+## Avance CAP-029 — lote editorial atómico conectado (2026-10-06)
+
+Inspector prepara cambios locales de texto/imagen/tema/RESET y ofrece guardar/quitar/descartar lote. Preparar no ejecuta POST ni modifica documento; máximo 50 overrides, un override por elemento, orden de manifiesto y límites de contrato/bytes compartidos. Lote vinculado a revisión/hash consultados; cambio de revisión/hash remonta campos y descarta preparación obsoleta. Guardado usa un único comando por host ya conectado: reserva/journal/POST/verificación/adopción y una entrada de undo editorial. Ref síncrono impide doble submit local; errores no disparan retry ni eliminan tracking. Descartar lote solo afecta preparación local, nunca journal ni servidor.
+
+Preflight final revisa las imágenes declaradas resultantes: varias originales revocadas pueden sustituirse juntas, pero reparación incompleta no se envía. Preparación intermedia permite completar el resto; RESET no resucita default revocado. Grants proyectados no son autoridad durable: servicio vuelve a validar grants actuales y dependencias reales del resultado completo, CAS nativo/editorial y compila antes de append. No mutación de fuente, timings o grants; no HTML/URLs/authority en body. No cambia backend/SQL ni activa flags.
+
+**6 tests nuevos; 218/218 selección dirigida pasan y TypeScript web/build pruebas aprobados.** Incluye dos imágenes revocadas reparadas con un CAS/una versión/una entrada undo, rechazo sin append de lote incompleto o segundo campo inválido, grants revocados después de preparar, hash nativo obsoleto y contratos/límites. Puertos y repositorio en memoria; no prueba montaje React/Native, interacción browser, HTTP/DB/RLS/concurrencia/Storage/render o QA formal. HyperFrames/core preserva fuente/timing y separa edición de autorización/render. Pendientes CAP-029: recuperación explícita con/sin ACK, inicialización UI, sandbox/gates/catálogo operativos y validación real; lote ya conectado en código, no capacidad completa.
+
+**Recálculo al cierre:** CAP-027 **85.00% → 85.00% (0 pp)** porque esta iteración implementa CAP-029, no sus pendientes de conformidad. CAP-009/010/026/004/017/023: **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no porcentaje global de implementación. CAP-022/029 parciales sin rúbrica porcentual comparable; CAP-025 sin nuevo cierre. Siete fallos checkpoint anteriores permanecen sin revalidar.
+
+## Avance CAP-029 — host nativo e historial interoperable conectados (2026-10-06)
+
+`CompositionHtmlEditorialNativeHost` conecta scope owner vigente/payload ref/admisión → reserva de cola + Web Lock compartido → journal → POST único → refresh/verifier → adopción síncrona guardada → cierre. NativeCompositionPreview ahora suministra este host al inspector; requiere flags inspector/mutations literal true y gates server correspondientes, **ninguno activado por este trabajo**. Sin flag mutations no dispatch. Host vuelve a comprobar owner/base por identidad/signal y trabajo conflictivo inmediatamente antes de adoptar; unmount aborta espera y no adopta tardío. No-op no reemplaza payload ni toca historial. Tracking pendiente bloquea nuevas mutaciones incluso si se deshabilita flag; tracking de snapshots ocupado/corrupto bloquea inicio editorial sin sobrescribirlo. No pretende transacción cross-tab en localStorage ni autorización cliente.
+
+Entradas Native guardan cola/savePatch, controllers de preset/propuesta mediante getCurrentPayload/isSaveInFlight, shortcuts y settings direct-edit/crop. Wrappers síncronos registran pending de SFX, detach, refresh/recovery assets, branding, snapshot/restore/approve/render/eliminación previa; loadDocument registra lectura pendiente y no corre durante host busy. Root inert/aria-busy durante operación; admission bloquea dirty/errors/recovery/proposal/preset/comparison/preassembly/assets/render/request/poll vigentes. Tipos y wiring verificados, **no prueba runtime de todos estos caminos**. Adopción no reemplaza fuente/timing ni selección/playhead; invalida metadata de snapshots/ensamble y previews nativos obsoletos de preset/agent, refresca preview guardado. No ejecuta render ni configura rollout.
+
+Para no borrar undo/redo nativo compatible, `CompositionCommandHistory.rebaseDocuments` conserva tail contiguo seguro de cada stack y recalcula presupuesto (incluye redo-only); transformación de ambos stacks es all-or-nothing si callback falla. Proyección pura fija referencias HTML actuales en checkpoints nativos compatibles: fuente original debe coincidir y no se resucitan refs históricas ya ausentes. Checkpoints incompatibles forman barrera; no se salta una edición no representada. Historial HTML mantiene sus propios locators forward y botones; undo nativo conserva HTML vigente, no lo revierte incidentalmente. No-op editorial conserva checkpoints intactos.
+
+**12 tests nuevos (7 host + 5 proyección/historia); 212/212 selección dirigida HTML/repo/host/HTTP/client/rebase/historias/cola/snapshots pasan**, TypeScript web/build pruebas aprobados tras corregir fixture tipado. Dependencias/transportes/puertos simulados: sin montaje Native/hooks/React/browser/sesión/HTTP real/DB/RLS/concurrencia real/Storage/render/QA formal. Sin migraciones/flags/catalog operativo/rollout ni cambios narrativos ajenos (preassembly existente solo usa la cola guardada, no se editó su lógica). HyperFrames/core preserva fuente/timing y separa mutación/verificación/render. Pendientes CAP-029: recovery explícito con/sin ACK, batch editorial para reparación atómica, inicialización UI, sandbox/gates/catálogo operativos y validación real. Integración de código no equivale a cierre de capacidad.
+
+**Recálculo al cierre:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada; QA pendiente** cada una. Siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin nuevo cierre. Siete fallos checkpoint anteriores sin revalidar.
+
+## Avance CAP-029 — controles editoriales y sesión del inspector preparados (2026-10-06)
+
+Inspector existente extrae lifecycle de lectura/edición a `useCompositionHtmlEditorialSession` y añade `CompositionHtmlEditableFields`: texto/input o textarea según declaración, contador Unicode y límites globales; imagen solo UUID allowlisted con grant vigente/fit declarado; tema solo token/choice simbólicos; RESET por propiedad. Nuevo preflight puro valida contrato, límites, multiline, targets, grants y no resetea default image revocada. POST body resultante solo override tipado y locators CAS, sin binding/HTML/source/URLs/actor/org/grants. Revalidación definitiva continúa server-side.
+
+Botones editoriales y undo/redo usan historial session-local ya implementado y un **port host obligatorio**, además de flag público mutations literal true (no activado). Port debe reservar cola y cercar bypasses, registrar journal, dispatch único, refresh/verifier y adopción guardada antes de devolver ACK/view/hash adoptado. Resultado UI comprueba ACK/locators/manifiesto inmutable, no adopta payload por su cuenta ni hace raw POST. NativeCompositionPreview sigue **sin proporcionar ese port**, por tanto su inspector permanece solo lectura aunque se configurara flag; no presentar integración de escrituras como completada. Errores requieren refresh explícito, sin retry/poll; consulta no prueba causalidad ni borra journal.
+
+Key ahora actor/org/draft/clip, sin hash: conserva history durante rebase propio; cambio de hash invalida view incompatible, no auto GET, y lectura en curso compara hash vigente al responder. Cambio de owner/tenant/clip unmounts/cancela requests y desecha historial. UI escribe texto React/controlado, no innerHTML. Campos guardan individualmente; edición batch para reparar varias dependencias revocadas en una transacción aún pendiente, junto a integración Native/fences/recovery de incertidumbre sin ACK/inicialización UI/sandbox y gates reales.
+
+**5 tests de preflight nuevos; 197/197 selección dirigida HTML/host/HTTP/client/rebase/cola/snapshots pasan**, TypeScript web/build pruebas aprobados. No montaje/interacción de hook/React, browser/sesión/HTTP real/DB/RLS/concurrencia real/Storage/render/QA formal ni migraciones/flags/templates/catalog operativo/rollout activados. No cambios narrativos ajenos; HyperFrames/core preserva fuente/timing y separa UI editorial de autorización/conformidad render. No atribuir cobertura de componentes al número de tests de contrato.
+
+**Recálculo al cierre:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin nuevo cierre. Siete fallos checkpoint previos sin revalidar.
+
+## Avance CAP-029 — refresco y verificación del rebase nativo (2026-10-06)
+
+`composition-html-editing-rebase.client.ts` añade dos lecturas explícitas autorizadas GET document + inspector, streaming UTF-8/JSON acotado a 16 MiB para document, same-origin/no-store/redirect:error, correlación estricta y deadline compartido 20 s propagado. No retry, merge, escritura o adopción UI automática. Abort/deadline requieren cooperación del fetch/reader; coordinador anterior acota espera externa incluso con dependencias no cooperativas.
+
+Verifier valida schemas, org/draft/clip, binding/manifiesto inmutables, ACK before/next, versiones nativas +1 o igual si no-op, SHA source original y hash canónico browser de base/candidate. Reconstruye único cambio permitido (format V4 y pointer editorial confirmado del clip, conservando refs ajenas en orden estable); hash válido por sí solo no autoriza adoptar edits nativos ajenos. Source/timing/clips/canvas/tracks/media quedan idénticos. Drift entre GETs, fuente/template/pointer anterior/hash/version/scope incorrectos rechazan rebase y conservan seguimiento mediante coordinador. Return separado de payload/view validado, sin mutar React/preview/historia; host debe revalidar owner/base/signal inmediatamente antes de adopción. Hash/binding no son autorización durable ni conformidad de render.
+
+**9 tests nuevos; 192/192 selección foundation/repo/host/HTTP/client/journal/dispatch/cola/rebase/snapshots pasan**; TypeScript web/build pruebas aprobados. Incluye recorrido compuesto POST → ACK → dos GET → verifier → adopción simulada → cierre exacto bajo reserva; no host/UI real. Browser SHA se contrasta con hash server en fixtures. Sin montaje UI/browser/sesión/HTTP real/SQL/RLS/concurrencia real/Storage/render/QA formal, migraciones/flags/catalog operativo/rollout ni cambios narrativos ajenos. HyperFrames/core conserva fuente/timing y separa verificación de rebase/render. Pendientes CAP-029: integración Native/inspector de escritura, fences de bypass, recuperación explícita de incertidumbre sin ACK, inicialización UI y sandbox/gates reales.
+
+**Recálculo al cierre:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada; QA pendiente** cada una. Siete prioridades **97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin nuevo cierre. Siete fallos checkpoint previos sin revalidar. No aumentar CAP-027 por implementación CAP-029 o número de tests.
+
+## Avance CAP-029 — coordinador de dispatch y reserva de guardados (2026-10-06)
+
+`dispatchTrackedHtmlEditingMutation` conecta validación request/scope → lock cooperativo compartido con publicaciones → reserva nativa explícita → admisión fresh → journal persistido/readback → un POST tipado → ACK persistido → rebase autorizado provisto por host → cierre exacto. Sin flags/activación. Revalida contexto antes del dispatch, antes y después del rebase; parámetros de autoridad siguen derivados por backend, ID local nunca se envía como ledger server. Sin retry/poll/rollback automático. Error después de dispatch conserva tracking OUTCOME_UNKNOWN; ACK guardado pero rebase fallido/drift/abort queda REFRESH_REQUIRED y conserva ACK. Espera client acotada incluso ante fetch/rebase no cooperativo, observa rechazos tardíos; callback de rebase debe guardar scope/base/signal antes de adoptar payload tardío. Tracking previo bloquea nuevos envíos.
+
+`CompositionSaveQueue.runExclusiveWhenIdle` añade reserva inmediata, sin esperar cola con base obsoleta: rechaza si busy, durante reserva rechaza enqueue/nested reservation y reporta RUNNING, whenIdle espera liberación, finally libera incluso al fallar workflow. Waiters no se liberan si callback abrió nueva actividad. API preparada, **NO conectada aún a NativeCompositionPreview**. Reserva de cola no protege por sí sola propuestas/presets/restores y otras mutaciones que evitan enqueue; host debe cercarlas también. No se implementó todavía reader/rebase nativo ni botones de edición/undo/redo. No atribuir protección operacional completa al coordinador con ports simulados.
+
+**10 tests nuevos (8 coordinador + 2 cola); 183/183 selección foundation/repo/host/HTTP/client/journal/dispatch/cola/snapshots pasan**; TypeScript web y build pruebas aprobados. Pruebas puras/dependencias simuladas, no montaje UI/browser/sesión/HTTP real/SQL/RLS/concurrencia real/Storage/render/QA formal. Sin migraciones/flags/catalog operativo/rollout ni cambios narrativos ajenos. HyperFrames/core preserva source/timing y separa edición de conformidad render. Pendientes CAP-029: integración/fence de rutas bypass, refresh/rebase autorizado, resolución explícita de incertidumbre sin ACK, botones editoriales/inicialización y sandbox/gates reales.
+
+**Recálculo al cierre:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada; QA pendiente** cada una. Media siete prioridades **97.86%**; crédito de cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin nuevo cierre. Siete fallos checkpoint anteriores sin revalidar. No aumento CAP-027 por avances CAP-029 ni por cantidad de tests.
+
+## Avance CAP-029 — journal editorial persistente preparado (2026-10-06)
+
+Nuevo journal client de metadata acotada (4 KiB), por actor/org/draft: verifica persistencia antes de admitir dispatch, preserva slots pendientes/corruptos y bloquea también cambios de otro clip del mismo draft. No almacena HTML, overrides, credenciales o grants; guarda locator esperado/hash nativo/ID local y, cuando llega, ACK directo validado. No hay expiración, retry ni borrado automático. Un GET coincidente no cierra incertidumbre: cierre exige ACK guardado del mismo ID y locator adoptado tras refresh/rebase explícito por el caller. ID local no equivale a ledger server, causalidad o autorización. LocalStorage no ofrece CAS entre pestañas: integración futura debe usar lock cooperativo y fence nativo compartidos.
+
+**Cuatro tests nuevos; 32/32 selección client/journal/publication/recovery pasan**, TypeScript web/build pruebas aprobados. Journal aún NO conectado al transporte ni UI/cola nativa; no afirmar protección operativa de edición. Falta coordinador de dispatch, lock/fence, refresh/rebase seguro, tratamiento explícito de incertidumbre sin ACK, botones editoriales/inicialización UI y sandbox/gates reales. Sin QA formal/browser/HTTP real/DB/render/flags/migraciones/rollout; narrativa ajena preservada. HyperFrames/core preserva contrato fuente/timing y no confunde persistencia editorial con conformidad render.
+
+**Recálculo al cierre:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada, QA pendiente** cada una. Media siete prioridades **97.86%**; crédito de cierre roadmap **7/30 = 23.33%**, no implementación global. CAP-022/029 parciales sin rúbrica porcentual comparable; CAP-025 sin nuevo cierre. Siete fallos checkpoint anteriores sin revalidar. El avance de CAP-029 no incrementa CAP-027.
+
+## Avance CAP-029 — inspector de lectura UI y transporte/historial client (2026-10-06)
+
+Panel `CompositionHtmlEditorialInspector` conectado a properties de clip DECK: flag público inspector literal true, deshabilitado; consulta explícita única muestra labels, valores/defaults/overrides texto/UUID/choice y opciones vigentes, solo nodos React, sin innerHTML/previews/URLs. Límite keyed actor/org/draft/clip/hash cancela y descarta respuestas al cambiar contexto; respuesta de hash nativo distinto no se muestra y pide recargar. No envío automático/poll/render ni escrituras editoriales desde este panel. No se adopta automáticamente documento backend ni se pisa cola/payload nativo.
+
+Transporte client GET/POST único relativo same-origin/no-store/redirect:error valida scopes/contratos/correlación/CAS ACK, UTF-8/bytes y cancelación; cualquier fallo postdispatch queda OUTCOME_UNKNOWN sin retry. No envía actor/org/source/binding/grants. Decoder streaming general reutilizado por snapshots, sin duplicar límites/cancelación; ahora rechaza redirects también. Historial editorial session-local de locators confirmados, máximo 100 undo/redo: bloquea operación simultánea, exige GET fresh después de ACK, conserva versiones forward, pierde historia ante drift/uncertainty y lectura explícita no atribuye causalidad de escritura incierta. Owner debe coincidir, UI futura debe desechar instancia en logout. Transporte/historial **no conectados todavía a botones de escritura UI**: falta fence compartido con cola nativa y tracking durable antes de POST/reconciliación/rebase del payload. La lectura integrada no implica cierre de historia UI.
+
+**7 tests nuevos; 165/165 selección HTML+repo+host+HTTP+client y regresión snapshots pasan**, TypeScript web/build pruebas aprobados tras corregir scope extra de identidad. UI no montada/interactuada; transportes/dependencias sintéticos, no navegador/HTTP Next/sesión/DB/RLS/render/QA formal. Sin flags/env/migraciones/templates/catalog operativo/rollout activados. HyperFrames/core mantiene source/timing y separa inspección de writes/render. Cambios nativos solo import y slot lectura, narrativa ajena preservada; siete fallos checkpoint previos sin revalidar. CAP-029 parcial: edición/history UI/fence/tracking durable/rebase, inicialización UI, sandbox/gates reales pendientes.
+
+**Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada; falta QA** cada una. Siete prioridades **97.86%**, cierre roadmap **7/30 = 23.33%**, no implementación global. R02/R03/R06/R07/R08/R10/R12 crédito 100%; demás 0% crédito, no 0% implementación. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin cierre nuevo. Objetivo íntegro activo.
+
+## Avance CAP-029 — comandos y restauración autenticados (2026-10-06)
+
+POST de la ruta editorial `[draftId]/html-editing/[clipId]` conecta auth/tenant/reviewer → cuotas org 30/min y actor-org 12/min → coordinador → gateway/repositorio/CAS nativo+HTML existentes. Gates server `COMPOSITION_HTML_EDITING_MUTATIONS_ENABLED` e `COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED` deben ser literal true, ninguno activado. Contrato discriminado COMMAND/RESTORE: expected versión/SHA + hash nativo; COMMAND solo overrides tipados, RESTORE solo locator histórico versión/SHA. No binding/source/HTML/grants/actor/org del body. Binding se obtiene del reader actual y restore del historial server-only; append revalida permisos y CAS. Body streaming 64 KiB/15 s, request 60 s, same-origin/MIME/IDs/query/límites/no-store/correlación.
+
+Reader histórico en adapter verifica locator/scope/schema y digest calculado; SQL **20261006070000 preparada, no aplicada**, llama reader autorizado actual y selecciona historia exacta bajo locks del mismo org/draft/clip con source/manifiesto iguales. Gateway restaura overrides a versión creciente, no rebobina contador ni concede permisos pasados; recurso original revocado no puede resucitar. No-op sin append. Respuesta contiene solo before/next locators y changed, scope explícito `EDITORIAL_RESULT_NOT_CURRENT_STATE_OR_RENDERED`: ACK histórico, no estado latest ni render; UI debe refrescar GET/hash nativo tras operación. Pérdida de ACK/resultado incierto = 503 retryable=false, sin retry/rollback automático; conflictos 409/validación 400 segura. Sin ledger de operación nuevo: CAS evita replay de una versión cambiada, GET reconcilia estado pero no prueba quién originó una escritura incierta.
+
+**9 tests nuevos; 137/137 dirigidos HTML+repo+host+HTTP pasan**, TypeScript web/build pruebas aprobados; 43 guards léxicos bootstrap/readers/history y versiones 171 SQL pasan. RPC/transportes/dependencias simulados, no SQL runtime/RLS/locks/concurrencia/sesión/HTTP Next/browser/render/QA formal. No env/flags/migraciones/templates/catalog operativo/rollout activados ni cambios narrativos ajenos. HyperFrames/core conserva source/timing y separa resultado editorial de conformidad render. Siete fallos checkpoint previos sin revalidar. CAP-029 parcial: inspector/history UI y reconciliación client segura, sandbox/gates operativos/reales pendientes.
+
+**Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada; falta QA** cada una. Siete prioridades **97.86%**, cierre roadmap **7/30 = 23.33%**, no implementación global. R02/R03/R06/R07/R08/R10/R12 crédito 100%; demás 0% crédito, no 0% implementación. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin cierre nuevo. Objetivo íntegro activo.
+
+## Avance CAP-029 — lectura editorial autenticada para inspector (2026-10-06)
+
+GET `/api/production/hyperframes/drafts/[draftId]/html-editing/[clipId]` conecta auth/tenant/rol reviewer y cuotas compartidas org 120/min + actor-org 30/min al reader autorizado del repositorio. Gate `COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED` solo literal true, no activado; deadline 20 s, IDs/path/query/URL y Origin si presente exactos, Sec-Fetch-Site solo same-origin/none cuando presente. Respuesta private/no-store/Vary/correlación, presupuesto view 2 MiB y scope de retorno verificado. Lectura no inicializa/edita/renderiza; solo counters de cuota pueden mutar. Permisos/template/hash native siguen revalidados por reader/RPC preparados.
+
+Proyección V1 devuelve manifiesto declarado, overrides, defaults JSON de texto/UUID/choice simbólico y versiones/digests/hash guardado; no source/HTML compilado/URLs/paths/grants ampliados. Texto entity-encoded se devuelve como valor literal, exige render UI vía React/textContent, nunca innerHTML. Schemas comprueban binding/declaraciones/defaults/overrides y opciones actuales. Revisión con recurso revocado permanece inspectable para remover/sustituir; grant actual se proyecta por separado y `usedResourcesGranted` false no otorga permiso. Tampoco true prueba bytes, decoding, render o paridad. HyperFrames/core conserva source/timing y separa inspección de autorización/render.
+
+**11 tests nuevos; 128/128 dirigidos HTML+repo+host+HTTP pasan**, TypeScript web/build pruebas aprobados tras últimos cambios. Dependencias simuladas, sin sesión/HTTP Next/DB/RLS/concurrencia/browser/render/QA formal; no env/flags/migraciones/catalog operativo/templates/rollout activados ni cambios narrativos ajenos. Siete fallos checkpoint previos sin revalidar. CAP-029 parcial: comandos/restore autenticados, inspector/history UI, sandbox y gates operativos/reales pendientes.
+
+**Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada; falta QA** cada una. Siete prioridades **97.86%**, cierre roadmap **7/30 = 23.33%**, no implementación global. R02/R03/R06/R07/R08/R10/R12 crédito 100%; demás 0% crédito, no 0% implementación. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin cierre nuevo. Objetivo íntegro activo.
+
+## Avance CAP-029 — endpoint de inicialización autenticado (2026-10-06)
+
+Ruta POST `/api/production/hyperframes/drafts/[draftId]/html-editing/[clipId]/initialize` conecta auth/tenant → controller → catálogo operator-owned → BootstrapHost → registro/readback. Gate server `COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED` solo literal `true`, no configurado/activado; catálogo privado `COMPOSITION_HTML_EDITING_CATALOG_JSON` obligatorio y tenant-scoped, sin URL/fallback/global ni configuración creada. Body solo templateId/templateVersion/expectedDocumentHash, streaming máximo 4 KiB/15 s; URL/IDs/query/MIME/método/Origin exacto y sec-fetch-site validados. Actor/org salen de auth/tenant, rol reviewer explícito antes de crear service client; cuotas compartidas org 10/min y actor-org 3/min, no IDs cliente como rate key.
+
+Deadline request 60 s propagado, no-store/Vary/IDs correlacionados y metadata mínima confirmada. Creación 201/reuse 200 solo ACK estricto/hash esperado; conflicto catálogo/revisión 409. Errores/resultado incierto 503 con retryable=false y mensaje seguro; logger best-effort no sustituye respuesta. Registro no edita documento, crea pointer ni ejecuta render. Host/SQL siguen revalidando actor/source/CAS/grants y no admiten permisos del cliente. HyperFrames/core mantiene inicialización separada de edición/timing/render.
+
+**9 tests HTTP/controller nuevos; 117/117 dirigidos HTML+repo+host+HTTP pasan**, TypeScript web/build pruebas aprobados tras reparación de tipos de fixtures. Dependencias/transporte simulados, no sesión/HTTP Next real/DB/RLS/concurrencia/browser/render/QA formal. No migración/env/template/flag/rollout activados ni cambios narrativos ajenos. Siete fallos checkpoint previos sin revalidar. CAP-029 parcial: falta lectura/edición editorial autenticada, inspector/history UI/sandbox y catálogo operativo/gates reales.
+
+**Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada; falta QA** cada una. Siete prioridades **97.86%**, cierre roadmap **7/30 = 23.33%**, no implementación global. R02/R03/R06/R07/R08/R10/R12 crédito 100%; demás 0% crédito, no 0% implementación. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin cierre nuevo. Objetivo íntegro activo.
+
+## Avance CAP-029 — adquisición autorizada y bootstrap compuesto (2026-10-06)
+
+`CompositionHtmlEditingBootstrapHost` conecta lectura service-only de documento guardado/ancla/grants → catálogo instalado exacto → registro inicial/readback existente. Entrada estricta acepta IDs/selección/hash esperado, nunca source/grants/ancla/templates del cliente; actor/org deben derivarse de auth/tenant en el host. Comprueba eco scope/hash, schema/hash nativo, target DECK sin pointer editorial previo, source UTF-8, template/version/sourceSHA exactos y reduce grants elegibles a allowlist declarada. Aliases lógicos no prueban bytes/decoding/render. Reader timeout 15 s/response 16 MiB, errores provider seguros; escrituras conservan CAS/grants y semántica incierta sin retry.
+
+SQL **20261006060000 preparada, no aplicada**: reader read-only revalida draft activo/org/rol vigente bajo locks, latest hash guardado, clip sin pointer previo, ancla snapshot activo de la misma composición/org y hasta 6400 imágenes elegibles ligadas al draft con MIME/tamaño/checksum/status; locks estables y límite de respuesta. Ancla es issuance, no claim de igualdad del snapshot con draft posterior. Registro vuelve a verificar source/hash/rol/grants en su propia transacción: lectura no otorga permisos durables. No credenciales/configuración/flags/catalog real/templates/endpoints/renderer/worker/migraciones/QA formal/rollout activados. HyperFrames/core conserva source/timing y separa editorial/render.
+
+**10 tests nuevos; 108/108 HTML+repositorio+host pasan**, TypeScript web y build pruebas aprobados (build tras tests finales); 32 guards léxicos bootstrap/reader y versiones 170 SQL pasan. RPC simuladas; guards no prueban SQL runtime/RLS/locks/concurrencia. Siete fallos checkpoint previos sin revalidar. CAP-029 parcial: resta endpoint/configuración operativa del catálogo, inspector/history editorial UI/sandbox y gates reales.
+
+**Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**; CAP-009/010/026/004/017/023 **100% implementación registrada; falta QA** cada una. Siete prioridades **97.86%**, cierre roadmap **7/30 = 23.33%**, no implementación global. R02/R03/R06/R07/R08/R10/R12 crédito 100%; demás 0% crédito, no 0% implementación. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin nuevo cierre. Objetivo íntegro activo.
+
+## Avance CAP-029 — catálogo instalado ligado al registro (2026-10-06)
+
+Catálogo V1 host-only acotado a 4 MiB/32 templates y presupuesto por declaración; schema compartido con bootstrap, organización explícita y rechazo de identidad template/version duplicada/campos de autoridad extra. Lookup exige tenant/version/sourceSHA exactos, sin global fallback ni fetch remoto, y devuelve string independiente del estado privado. `registerInstalled` deriva SHA desde source acotado del host y resuelve declaración instalada antes del registro/readback existente, sin JSON de template del request. El catálogo debe venir de configuración independiente del operador; parser/hash no establecen confianza ni permisos. Una nueva configuración revocada no revoca filas ya registradas: se conserva ruta durable de revocación.
+
+**5 tests nuevos; 98/98 HTML+repositorio pasan**, TypeScript web/build pruebas aprobados. RPC simulado, no catálogo real/configuración instalada/DB/browser/render/QA formal. No migraciones/templates/flags/endpoints/rollout activados. HyperFrames/core conserva source/timing y separa identidad editorial de render. Pendientes: lector autorizado de source/ancla/grants y wiring endpoint/inspector/history/sandbox/gates reales; CAP-029 parcial. Siete fallos checkpoint previos sin revalidar.
+
+**Recálculo:** CAP-027 **85.00% → 85.00%**, 0 pp; CAP-009/010/026/004/017/023 **100% implementación registrada; falta QA** cada una. Siete prioridades **97.86%**, crédito cierre roadmap **7/30 = 23.33%**, no implementación global. R02/R03/R06/R07/R08/R10/R12 crédito 100%; demás 0% crédito, no 0% implementación. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin nuevo cierre. Objetivo íntegro activo.
+
+## Avance CAP-029 — registro inicial host con confirmación exacta (2026-10-06)
+
+Repositorio incorpora `registerInitial`: reutiliza preparación desde source/ancla/declaración/grants independientes del host, comprueba scope, invoca una vez `register_html_editing_template_v2` con recursos realmente usados y exige ACK booleano. Tanto registro nuevo como reuse requieren lectura autorizada de versión 1/digest exacto/hash nativo esperado y compilación con permisos actuales. Fallo/ACK perdido/readback distinto/revocación/cancelación durante escritura quedan `COMMIT_UNCONFIRMED`, sin retry ni rollback automático. Adapter comprueba signal antes/después de RPC incluso si transporte no coopera. Registro no crea pointer nativo ni afirma render readiness; primera edición seguirá append atómico existente.
+
+Migración **20261006050000** preparada, no aplicada: wrapper conserva locks/actor/source/CAS del registro original y comprueba grants de IDs usados en la misma transacción; excepción revierte inserciones de esa llamada. IDs deben venir del compiler confiable del host, nunca del cliente. No endpoint/catálogo confiable/adquisición/source resolver/flags/template/worker/rollout activados. Versión 040000 estaba ocupada por migración narrativa: se preservó y se eligió versión libre. HyperFrames/core mantiene source/timing/hash intactos y separa registro de render.
+
+**6 tests nuevos; 93/93 dirigidos HTML+repositorio pasan**, TypeScript web/build pruebas pasan; 16 guards léxicos bootstrap y control de versiones de 169 SQL pasan. RPC/lectura simuladas; guards no prueban sintaxis SQL/RLS/locks/concurrencia y no hay DB/browser/renderer/QA formal. Siete fallos checkpoint anteriores sin revalidar. Pendientes CAP-029: catálogo confiable y adquisición autorizada para registro, endpoint/inspector/history editorial/sandbox/gates reales. Continúa parcial.
+
+**Recálculo:** CAP-027 **85.00% → 85.00% (0 pp)**, sin cierre de criterios propios en esta iteración. CAP-009/010/026/004/017/023 **100% implementación registrada; falta QA**, cada una. Siete prioridades **97.86%**, crédito cierre roadmap **7/30 = 23.33%**, no implementación global. R02/R03/R06/R07/R08/R10/R12 crédito 100%, restantes 0% crédito, no 0% implementación. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin crédito nuevo. Objetivo íntegro activo.
+
+## Avance CAP-029 — preparación inicial de revisión editable (2026-10-06)
+
+`prepareInitialHtmlEditingRevision` prepara versión 1 con overrides vacíos desde ancla guardada del host y declaración de plantilla independiente. Deriva digest de manifiesto y revisión, verifica SHA de source exacto y reutiliza compilador/política de recursos/targets/grants existentes; no modifica source, timing ni hash nativo. Es preparación pura, no autorización, catálogo confiable implementado, instrumentación automática ni registro durable. El host debe obtener ancla/source/template/grants de fuentes independientes y el registro debe revalidar permisos/CAS transaccionalmente; no se abrió endpoint ni se activó template/flag/migración.
+
+Seis pruebas nuevas; **61/61 pruebas HTML dirigidas pasan**, compilación TypeScript aislada aprobada. Cubren source sustituido, autoridad/campos extra en plantilla, targets inválidos/duplicados, HTML activo, imágenes sin permiso y límites UTF-8. No DB/RLS/concurrencia/browser/renderer/QA formal. HyperFrames/core mantiene preparación separada de documento/timing/render. Pendientes CAP-029: adquisición del catálogo confiable y wiring de registro, inspector, historia editorial UI, sandbox y gates operativos/reales; continúa parcial. Siete fallos previos checkpoint sin revalidar.
+
+**Recálculo de esta iteración:** CAP-027 **85.00% estimado → 85.00%**, incremento **0 puntos porcentuales** porque este bloque corresponde a CAP-029 y no cierra criterios de conformidad. CAP-009/010/026/004/017/023 **100% implementación registrada; falta QA**, cada una. Siete prioridades `(6×100+85)/7` = **97.86%**; cierre roadmap `7/30` = **23.33%**, no porcentaje de implementación total. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin crédito nuevo. No aumento por cantidad de tests/archivos ni por infraestructura preparada.
+
+## Avance CAP-029 — registro y recuperación integrados en el editor (2026-10-06)
+
+Panel «Seguimiento de publicación HTML» incorpora acción explícita «Registrar revisión HTML guardada» detrás de flags públicos publication + recovery literal `true`, sin activar. Contexto de NativeCompositionPreview aporta hash del payload guardado, revisión activa/perfil e historial conocido; relectura al click de refs/cola evita ventana de estado React obsoleto. Admisión pura bloquea documentos sin HTML, historial/tracking no cargados, hash/CAS inválidos, guardados/errores/previews/operaciones/render pendientes, falta de Storage/Web Locks y locator existente. La admisión es comodidad UI, nunca autorización: server sigue derivando/revalidando autoridad. No envía fuente/HTML/cambios optimistas.
+
+Un controller local compartido impide envío/consulta simultáneos; límite keyed actor/org/draft cancela y separa estado al cambiar contexto. Registro confirmado o recovery terminal refrescan sólo metadata del historial, preservando documento/perfil; historial se invalida durante refresco y un fallo bloquea nuevo registro hasta recuperarlo. Fallo de refresco no se clasifica como fallo de publicación ni invita retry. Si documento cambió durante envío, se avisa que cambios posteriores no están incluidos. Cierre explícito requiere resultado terminal **del mismo ID** y vuelve a comprobar locator, evitando borrar seguimiento sustituido. No auto-poll/retry/render/activación por recovery ni eliminación de resultado incierto.
+
+**8 tests nuevos de admisión/cierre; doce archivos 111/111 pasan**, TypeScript web y build pruebas aprobados tras últimos cambios. Pruebas puras y transporte/dependencias simulados: **no montaje/interacción React, navegador, sesión/HTTP, SQL/RLS/concurrencia, Storage o render reales**. QA formal/migraciones/flags/rollout siguen diferidos; no credenciales/ambientes modificados. Cambios nativos limitados a contexto y refresco metadata; módulos narrativos ajenos preservados. HyperFrames/core mantienen registro separado del contrato de documento/timing/render. Siete fallos checkpoint anteriores sin revalidar. CAP-029 continúa parcial por bootstrap/inspector/history editorial/sandbox/catálogo/gates operativos y reales; este historial es de snapshots, no history editorial HTML completo.
+
+**Recálculo:** CAP-009/010/026/004/017/023 **100% implementación registrada; falta QA** cada una. CAP-027 **85.00% estimado**, sin nueva evidencia de cierre propia; siete prioridades `(600+85)/7` **97.86%**, no roadmap total. Crédito cierre `7/30` **23.33%**, no implementación global: R02/R03/R06/R07/R08/R10/R12 **100% crédito**, demás R-ID **0% crédito**, no 0% implementado. CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin crédito nuevo. Objetivo completo activo.
+
+## Avance CAP-029 — publicación HTTP autenticada y transporte cliente conectados (2026-10-06)
+
+POST `/api/production/hyperframes/drafts/[draftId]/html-snapshots` instala `publishAuthorized` detrás de `COMPOSITION_HTML_SNAPSHOT_PUBLICATION_ENABLED` **y** recovery server flag literal `true`; ambos sin configurar/activar. Body estricto sólo operationId/hash/CAS/profile (4 KiB streaming, deadline/cancelación), origen exacto/JSON/método/UUID/URL, sesión+tenant coincidente+reviewer explícito sin fallback global; cuota compartida org 10/min y actor/org 3/min. Deriva composición del draft ACTIVE; consulta hash guardado más reciente y revisión activa tenant-scoped, rechaza CAS obsoleto; intent existente solicita recovery, nunca reconstruye/reenvía/reactiva. Commit reautoriza/revalida/CAS bajo SQL preparado. Config runtime esperada viene sólo de JSON server acotado `COMPOSITION_HTML_SNAPSHOT_EXECUTION_CONTRACT_JSON`, sin pins de fallback ni autoridad cliente; hash GSAP se obtiene del runtime local. Pins esperados no acreditan ejecución, aislamiento o render.
+
+Después de ACK validado, consulta recovery independiente para proyectar registro vigente activo/sustituido: no reinterpreta active-at-commit histórico. Errores sanitizados/correlación/no-store/no automatic retry, sin intent/source/ZIP/URLs/grants/hashes en respuesta/logs. `sendTrackedHtmlSnapshotPublication` enlaza coordinador/locator/Web Lock con un POST same-origin único; decodificador común acotado a 16 KiB para publicación y recovery evita duplicación. Captura ID antes de dispatch y conserva seguimiento ante fallo. **Transportes conectados; acción UI aún pendiente.** Ruta legacy continúa rechazando HTML y no fue debilitada.
+
+**14 tests nuevos; selección de once archivos 103/103 pasa**, TypeScript web/build pruebas pasan. Incluye cliente → controller por transporte en memoria; auth/RPC/Storage/fetch simulados, sin sesión/HTTP/navegador/SQL/RLS/concurrencia/Storage/render reales ni QA formal. No migraciones/flags/rollout/backend/worker activados. Host síncrono puede ensamblar ZIP grande: cuotas/deadline no prueban capacidad de memoria/CPU, SLA de hosting ni escala 100000; gates operativos/backpressure/queue y QA deben preceder rollout. Siete fallos checkpoint anteriores no revalidados. HyperFrames/core preservan documento/timing y mantienen separación entre registro y attestation.
+
+**Recálculo:** CAP-009/010/026/004/017/023 **100% implementación registrada; falta QA** cada una; CAP-027 **85.00% estimado**, sin cierre de sus brechas por este cambio CAP-029. Siete prioridades `(600+85)/7` **97.86%**, no total del roadmap. Crédito cierre `7/30` **23.33%**, no implementación global: R02/R03/R06/R07/R08/R10/R12 **100% crédito**, demás R-ID **0% crédito**, no 0% implementado. CAP-022/029 parciales sin rúbrica porcentual comparable; CAP-025 sin crédito nuevo. CAP-029 aún requiere acción UI, bootstrap/inspector/history/sandbox/catálogo y gates reales; no es sólo QA pendiente. Objetivo completo activo.
+
+## Avance CAP-029 — adquisición autorizada de recursos conectada al host (2026-10-06)
+
+`publishAuthorized` parte de lectura histórica exacta con actor/tenant y adquiere medios nativos/fuentes desde registros del servidor; sobrescribe cualquier manifiesto/bytes/URLs extra aportados por un caller JS. Lectores por lotes acotados comprueban vínculos org/draft, identidades únicas, estado permitido de producción, branding APPROVED y SFX READY; dependencias deck se resuelven sólo desde registros vinculados y rechazan alias URL ambiguos. Las URLs son claves de sustitución, nunca destinos descargados ni permisos. Fuentes nativas propias READY/uploaded requieren familia/bucket/path válidos y se descargan secuencialmente con GET autenticado HTTPS sin redirect, deadline, stream limitado al tamaño registrado, MIME/hash exactos y cancelación. Sin URLs firmadas/credenciales en receipts. El commit y worker todavía deben revalidar: estos lectores múltiples no son una transacción ni acreditan decode/aislamiento/render.
+
+**11 tests nuevos; selección de diez archivos 89/89 pasa**, incluida adquisición → ZIP real → intent → Storage simulado → repositorio concreto con RPC simulada y rechazo de recurso nativo revocado antes de intent/upload. TypeScript web y build de pruebas aprobados tras correcciones/revalidación sin modificar errores transitorios narrativos ajenos al bloque. Transportes/SQL simulados y medios/fonts sintéticos: sin DB/Storage/navegador/render/QA formal reales. No endpoint público de publicación ni wiring UI activados; siguen pendientes ruta autenticada/configuración runtime host y conexión de coordinador cliente, inspector/history/sandbox/catálogo y gates reales. Ruta antigua conserva rechazo de HTML. Sin migraciones/flags/rollout; siete fallos checkpoint anteriores sin revalidar. HyperFrames/core preservan timing/documento y separan adquisición de attestation.
+
+**Recálculo:** CAP-009/010/026/004/017/023 **100% implementación registrada; falta QA** cada una. CAP-027 **85.00% estimado**, sin nueva evidencia sobre sus propias brechas. Siete prioridades `(600+85)/7` **97.86%**, no total roadmap. Crédito cierre `7/30` **23.33%**, no implementación global: R02/R03/R06/R07/R08/R10/R12 **100% crédito**, demás R-ID **0% crédito**, no 0% implementado. CAP-022/029 parciales sin rúbrica porcentual comparable; CAP-025 sin crédito nuevo. Objetivo completo activo.
+
+## Avance CAP-029 — ciclo cliente prepublicación preparado (2026-10-05)
+
+`dispatchTrackedHtmlSnapshotPublication` genera ID y exige persistir locator actor/org/draft **antes** de invocar transporte host, una sola vez. Un locator previo (incluso mismo ID), slot corrupto, storage indisponible o ausencia de Web Locks impiden envío. Adaptador Web Locks solicita exclusión inmediata por scope (`ifAvailable`), sin cola/fallback inseguro; sólo coordina callers cooperativos del mismo origen, no sustituye idempotencia/autoridad servidor. Deadline de espera 120 s y cancelación preservan locator; aun con transporte no cooperativo, retorno cliente no prueba rollback. ACK estricto terminal debe corresponder al ID; error/ACK perdido/inválido tras dispatch es incierto sin reintento ni borrado. Confirmación histórica sustituida no se reactiva. No envía actor/org como permisos ni fuente/ZIP/grants.
+
+**9 tests nuevos; 78 dirigidos en nueve archivos pasan**, TypeScript web/build pruebas y revisión de whitespace pasan. Web Locks/transporte simulados: no prueba coordinación real entre pestañas, navegador, HTTP/sesión/SQL/RLS/Storage/render ni QA formal. HyperFrames/core mantienen ciclo de publicación fuera del documento y timing. **Preparado, no conectado a endpoint/UI de publicación**: la ruta legacy continúa fail-closed ante HTML; faltan producer host autorizado para medios/fonts, ruta autenticada y wiring de este coordinador, inspector/history/sandbox/catálogo y gates reales. Sin migración/flag/rollout activados; siete fallos checkpoint anteriores sin revalidar. CAP-029 no está completa ni sólo pendiente de QA.
+
+**Recálculo:** CAP-009/010/026/004/017/023 **100% implementación registrada; falta QA** cada una. CAP-027 **85.00% estimado → 85.00%**, sin brecha propia cerrada por este cambio CAP-029. Siete prioridades `(600+85)/7` **97.86%**, no roadmap total. Roadmap `7/30` **23.33% crédito de cierre**, no implementación global; R02/R03/R06/R07/R08/R10/R12 **100% crédito**, demás R-ID **0% crédito**, no 0% implementado. CAP-022/029 parciales sin rúbrica porcentual comparable; CAP-025 sin crédito nuevo. Objetivo completo activo.
+
+## Avance CAP-029 — recuperación cliente y panel opt-in (2026-10-05)
+
+Panel conectado a «Salida de video», detrás de `NEXT_PUBLIC_COMPOSITION_HTML_SNAPSHOT_RECOVERY_ENABLED` literal `true`, sin configurar ni activar. Consulta explícita con GET único, deadline/cancelación, JSON limitado a 16 KiB y contrato público estricto compartido con servidor. Locator local mínimo por actor/organización/draft conserva ID de operación entre recargas; no HTML, hashes, permisos ni credenciales. Un cambio de contexto desmonta el panel y cancela solicitudes para no mostrar resultados del usuario/empresa anterior. Sólo confirmación terminal y cierre explícito retiran el locator esperado; resultados inciertos no autorizan retry/publicación/reactivación/borrado. Slots corruptos se preservan sin sobrescritura y storage indisponible no se presenta como persistencia durable. LocalStorage no proporciona CAS atómico entre pestañas.
+
+**12 tests nuevos; 69 dirigidos cliente/HTTP/host/intent/reconciliación/repositorio/Storage/publicación/assembler pasan**, TypeScript web y build de pruebas pasan tras los últimos cambios. Pruebas puras y dependencias simuladas: no verifican panel en navegador, sesión/HTTP reales, PostgreSQL/RLS/concurrencia, Storage, render ni QA formal. HyperFrames/core mantienen recuperación separada del documento/preview/render. No migraciones/flags/rollout activados. El panel admite ID manual: aún falta captura automática del ID antes de publicar y endpoint/producer con autorización independiente de medios/fonts, además de inspector/history/sandbox/catálogo y gates reales. CAP-029 sigue parcial, no sólo pendiente de QA. Siete fallos checkpoint anteriores siguen sin revalidar.
+
+**Recálculo de esta iteración:** CAP-009/010/026/004/017/023 **100% implementación registrada cada una; falta QA**; CAP-027 **85.00% estimado**, sin cambio: el trabajo actual pertenece a CAP-029 y no cierra sus brechas de corpus/aislamiento/dependencias/autoridad/fonts/color/A-V. Media siete prioridades `(600+85)/7` = **97.86%**, no total del roadmap. Crédito de cierre roadmap `7/30` = **23.33%**, no implementación global. R02/R03/R06/R07/R08/R10/R12 **100% de crédito**; demás R-ID **0% de crédito**, no 0% implementado. CAP-022/029 parciales sin rúbrica porcentual comparable; CAP-025 sin crédito nuevo. Objetivo completo activo.
+
+## Avance CAP-029 — ruta autenticada de recuperación opt-in (2026-10-05)
+
+GET `/api/production/hyperframes/drafts/[draftId]/html-snapshots/[operationId]` conecta recovery service concreto sin instanciar Storage/writers ni pedir credenciales de carga. Gate server-only `COMPOSITION_HTML_SNAPSHOT_RECOVERY_ENABLED` exige literal `true`; no configurado/activado. Controller HTTP separado: método/URL/IDs/cross-site, sesión, tenant coincidente y rol reviewer explícito sin fallback global, cuota compartida por org+actor (30/min), draft tenant-scoped ACTIVE y composición derivada del servidor; SQL revalida actor original/autoridad. Deadline/cancelación, correlación, errores sanitizados no retry, private/no-store/Vary Cookie+Authorization. Proyección pública sólo estado/revisión/activo: no HTML/source/ZIP/rutas/URLs/grants/intent/hash. Read-only respecto a publicación; la cuota sí consume contador operativo.
+
+**8 tests nuevos; 57 dirigidos HTTP/host/intent/reconciliación/repositorio/Storage/publicación/assembler pasan**, TypeScript web/build pruebas pasan; **59 guards léxicos** y versiones **168 SQL del workspace actual** pasan. Autenticación/RPC/fetch son simulados: no prueba sesión real, Next HTTP real, SQL/RLS/locks/atomicidad/Storage o QA formal. No migración/flag/backend/rollout activado. Falta UI/estado cliente que conserve ID de operación, endpoint de publicación con adquisición host autorizada, inspector/history/sandbox/catálogo y gates reales. Host de publicación permanece sin ruta activa; recuperación no completa capacidad editorial HTML. Siete fallos checkpoint previos sin revalidar.
+
+**Porcentajes:** CAP-009/010/026/004/017/023 **100% implementación registrada cada una; falta QA**; CAP-027 **85.00% estimado**, sin cambio. Siete prioridades **97.86%**; roadmap **7/30 = 23.33% de crédito de cierre**, no implementación global. R02/R03/R06/R07/R08/R10/R12 **100% de crédito**, demás R-ID **0% de crédito** (no 0% de implementación). CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin crédito nuevo. Objetivo completo activo.
+
+## Avance CAP-029 — identidad durable antes de Storage y host conectado (2026-10-05)
+
+Publicación exige `recordPublicationIntent` antes de upload; ACK estricto liga operación/org/composición/draft/hashes/CAS/tamaño. Error o sustitución impide cargar/commit. Adapter concreto registra/lee locator por actor original e ID de operación, sin exigir hashes al caller para recuperarlo. Host `createHtmlEditingSnapshotHost` compone assembler → intent → Storage create-only/readback → repositorio atómico; `recover` lee locator y reconcilia en modo read-only, sin segundo ZIP/upload/retry. Configuración host/cliente Supabase debe apuntar al mismo proyecto; actor/org deben venir de contexto autenticado y medios/fonts no HTML requieren autorización independiente.
+
+Tabla privada de intents añadida a migración **20261006010000 previamente preparada/no aplicada**; commit ahora exige intent exacto bloqueado. Nueva **20261006030000 preparada/no aplicada** registra locator con rol/draft/composición/hash/CAS/exact reader vigentes, idempotencia exacta, y permite lectura sólo del actor original. Intent nunca prueba upload/commit; `NO_INTENT` tampoco autoriza reintento. No guarda source/bytes/grants/credenciales. Retención debe preservar recuperación/auditoría; referencias a actor/composición/draft requieren política antes de purga. No limpieza compensatoria de ZIP ante incertidumbre.
+
+**8 tests nuevos; 49 intent/host/reconciliación/repositorio/Storage/publicación/assembler pasan**, TypeScript web/build pruebas pasan; **59 guards léxicos** y versiones **167 SQL** pasan. SQL/fetch/RPC simulados: sin sintaxis PostgreSQL/RLS/locks/atomicidad/concurrencia/Storage real acreditados. No migración/endpoint/flag/backend/rollout/QA formal activado. Faltan rutas autenticadas, estado/UI que conserve ID de operación, inspector/historia/sandbox/catálogo y gates reales. Siete fallos checkpoint previos sin revalidar.
+
+**Porcentajes:** CAP-009/010/026/004/017/023 **100% implementación registrada cada una; falta QA**; CAP-027 **85.00% estimado**. Siete prioridades **97.86%**; roadmap **7/30 = 23.33% de crédito de cierre**, no implementación total. R02/R03/R06/R07/R08/R10/R12 **100% de crédito**, resto **0% de crédito** (parciales/no auditados, no 0% implementado). CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin avance nuevo. Objetivo completo activo.
+
+## Avance CAP-029 — reconciliación de registro incierto preparada (2026-10-05)
+
+`createHtmlSnapshotReconciler` consulta una RPC read-only acotada y distingue `COMMITTED_ACTIVE`, `COMMITTED_SUPERSEDED` y `NOT_FOUND`; no upload/commit/delete/retry/activación. ACK histórico se valida con contrato compartido y se compara con active actual, sin reinterpretar confirmación anterior como estado vigente. Errores de publicación retienen identidad inmutable org/composición/draft/operación/hash nativo/hash ZIP para consulta explícita sin reconstruir paquete, nunca source/grants/credenciales. `NOT_FOUND` es observación transaccional, no autorización de reintento ni descarte de ZIP huérfano.
+
+Migración **20261006020000 preparada/no aplicada**: locks draft/composición, rol y actor original, scope e identidades esperadas, revisión/payload guardados, exact reader/grants y registros de recursos actuales. Sin escrituras y sin obtener autoridad del ZIP. No verifica bytes actuales de Storage ni render. **9 tests nuevos; 41 dirigidos reconciliación/repositorio/Storage/publicación/assembler pasan**, TypeScript web/build pruebas pasan; **45 guards léxicos** y versiones **166 SQL** pasan. RPC/fetch simulados: no prueban sintaxis PostgreSQL/RLS/locks/concurrencia ni operación real. Pendiente conectar host/rutas/UI y estado durable de recuperación, más inspector/historia/sandbox/catálogo y gates reales. Ningún endpoint/flag/migración/rollout activado; QA formal diferido; siete fallos checkpoint previos sin revalidar.
+
+**Porcentajes:** CAP-009/010/026/004/017/023 **100% implementación registrada cada una; falta QA**; CAP-027 **85.00% estimado**, sin nueva evidencia de cierre de sus brechas. Siete prioridades `(600+85)/7 = 97.86%`. Roadmap `7/30 = 23.33%` de crédito de cierre: R02/R03/R06/R07/R08/R10/R12 **100%**; R01/R04/R05/R09/R11/R13–R30 **0% de crédito**, no 0% de implementación. CAP-022/029 parciales sin porcentaje comparable; CAP-025 sin crédito nuevo. Objetivo completo activo.
+
+## Avance CAP-029 — repositorio y transacción de publicación preparados (2026-10-05)
+
+`createHtmlEditingSnapshotRepository` vuelve a leer autoridad histórica exacta, restaura bundle contra grants actuales y reconstruye contrato V4/texto/fonts; verifica pins de documento/contrato/bundle/fonts y bindings. Payload acotado y deadline conjunto; una sola RPC, errores seguros sin retry. Dos migraciones preparadas (`20261006000000`, `20261006010000`) implementan validator privado de recursos por lotes y commit service-only: draft/composición lock, rol vigente, reader exacto/grants, identidades production/branding/SFX/fonts, CAS de hash nativo/revisión activa, numeración/reuse, vínculos de origen verificados, activación y comprobante privado auditado en una transacción. ID de operación ligado al payload completo; replay reautoriza y comprueba revisión/activo, nunca reactiva una antigua silenciosamente. Storage sigue fuera de transacción y puede dejar huérfanos.
+
+**7 tests nuevos; 32 repositorio/Storage/publicación/assembler pasan**, TypeScript web/build pruebas pasan; **29 guards léxicos** y versiones de **165 SQL** pasan. Pruebas RPC/fetch simuladas: NO prueban sintaxis PostgreSQL, locks, RLS, concurrencia, atomicidad o idempotencia reales. SQL no aplicado, repositorio no conectado a endpoint. Host sólo acepta receipts de assembler confiable/readback; SQL no reconstruye HTML ni digests canónicos. Fonts se limitan a bytes registrados READY/uploaded, no CSS remoto. Ruta vigente continúa fail-closed; faltan wiring, reconciliación operativa, UI/inspector/historia/sandbox/catálogo y gates reales. Siete fallos previos checkpoint sin revalidar.
+
+### Recálculo solicitado tras este corte
+
+Auditoría del inventario: no se cierra un requisito nuevo con estos componentes preparados. CAP-027 conserva brechas de corpus/aislamiento/procedencia/fonts/color/A-V: **85.00% estimado → 85.00%**, sin nuevo crédito por CAP-029. CAP-009/010/026/004/017/023 conservan **100% de implementación registrada; falta QA**. Media de siete prioridades: `(6×100+85)/7 = 97.857142857%`, **97.86%**. R02/R03/R06/R07/R08/R10/R12 conservan **100% de crédito de cierre**; R01/R04/R05/R09/R11/R13–R30 conservan **0% de crédito** (parcial/no auditado, NO 0% de implementación). Roadmap: `(7/30)×100 = 23.333333333%`, **23.33% de cierre registrado**, no implementación global. CAP-022/029 siguen parciales sin rúbrica comparable y CAP-025 sin crédito nuevo; no se inventan porcentajes intermedios. Objetivo completo sigue activo; QA formal/migración/rollout diferidos.
+
+## Avance CAP-029 — adaptador concreto de Storage inmutable (2026-10-05)
+
+`createHtmlEditingSnapshotArchiveStore` implementa el puerto de carga mediante API Storage con configuración host HTTPS, credenciales server-only, ruta content-addressed y POST `x-upsert:false`. Valida entrada/hash/límite antes de red; lee de vuelta tanto cargas nuevas como conflictos HTTP 409, verifica MIME/status/range/encoding/tamaño y SHA de bytes por streaming acotado, cancelando stream en exceso/abort/error. Nunca sobrescribe/borra/reintenta; descarta cuerpos de respuestas de carga y errores externos sensibles. Respuestas 400 desconocidas se rechazan, no se infiere colisión de mensajes. La señal con deadline del coordinador llega a ambas solicitudes. Sin una segunda copia completa del readback.
+
+**8 tests nuevos; 25 Storage/publicación/assembler pasan**, TypeScript web/build pruebas pasan. Transporte simulado y ensamblador ZIP real: sin solicitudes a Storage/DB reales ni QA formal. Adaptador implementado pero no instalado en ruta; falta repositorio transaccional con autorización/CAS/idempotencia/links/auditoría/activación y wiring posterior. Create-only de este writer NO convierte el bucket en write-once: otros writers privilegiados podrían sustituir bytes; pins/revalidación del worker siguen obligatorios. Puede quedar ZIP huérfano; no se borra ante commit incierto. No migraciones/flags/rollout activados. CAP-027 **85% → 85%**, CAP-029 parcial sin porcentaje comparable; prioridades **97.86%**, cierre **7/30 = 23.33%**, no implementación total. Siete fallos previos checkpoint sin revalidar.
+
+## Avance CAP-029 — coordinador de publicación preparado (2026-10-05)
+
+`publishCompositionHtmlEditingSnapshot` enlaza ensamblador real → puerto host de Storage inmutable → puerto host de commit atómico. Valida ACK de hash/tamaño/bucket/ruta content-addressed y copia de bytes; commit exige ACK estricto de operación/tenant/composición/draft/hash/revisión activa. Pasa CAS de revisión activa e ID de operación para futura reconciliación. No reintenta ni borra en error, cancelación o respuesta perdida: distingue resultado incierto de ACK inválido. Señales con deadlines requieren cooperación de los adaptadores host.
+
+**8 tests nuevos; 17 de publicación/assembler pasan**, TypeScript web/build pruebas pasan. Puertos simulados: no prueban Storage inmutable, transacciones, idempotencia, locks ni autorización reales. No hay adaptadores productivos ni wiring: el puerto de commit DEBE reautorizar/revalidar recursos y realizar registro/reuse+links+auditoría+activación en una transacción; esto es contrato preparado, no persistencia transaccional implementada. Puede quedar archivo huérfano: no se elimina ante resultado incierto. Ruta actual permanece fail-closed; migraciones y QA formal no ejecutados. CAP-027 **85% → 85%**, CAP-029 parcial sin porcentaje comparable; siete prioridades **97.86%**, cierre **7/30 = 23.33%**, no implementación total. Siete fallos previos checkpoint sin revalidar.
+
+## Avance CAP-029 — ensamblador de snapshot HTML completo (2026-10-05)
+
+`prepareCompositionHtmlEditingSnapshotArchive` conecta lectura histórica/grants, adquisición de registros usados, mezcla estricta de assets, fuentes empaquetadas verificadas/copiadas, plan de texto V4 y entradas separadas preview/render local. ZIP contiene documento original, bundle HTML exacto/pin, contrato, manifest de assets/fonts, runtime fijado y render con CSP. Relee autoridad y registros después de compilar: revocación o cambio de identidad rechaza emisión. Límites de fuentes/archivos/extracción/ZIP y cancelación; no persiste permisos ni URLs firmadas. Host debe autorizar por separado medios no HTML y fuentes antes de aportarlos. Recursos multimedia se descargan/verifican después en materializador: este paquete no certifica decode, aislamiento ni render.
+
+9 tests nuevos; **106 dirigidos/regresiones de esta selección pasan**, TypeScript web/build pruebas pasan. Incluye paquete → ZIP → verificador → materializador con medios sintéticos, conflictos/coalescencia de assets, refresh/revocación, runtime/font bytes/copia y cancelación. Sin DB/Storage/browser/renderer/FFmpeg reales ni QA formal. Ensamblador devuelve bytes/hash/metadata/contrato, **no sube/registrará/activa** revisiones; ruta actual sigue fail-closed. Resta persistencia/activación/reuse transaccionales, wiring de endpoint/UI/inspector/historia/sandbox/catálogo y validaciones reales. CAP-029 parcial sin porcentaje comparable; CAP-027 **85% → 85%**, siete prioridades **97.86%**, cierre **7/30 = 23.33%**, no implementación total. Sin migraciones/templates/flags/worker/backend activados; siete fallos previos checkpoint sin revalidar.
+
+## Avance CAP-029 — adquisición e identidad vigente de imágenes (2026-10-05)
+
+Producer preparado parte de revisión/bundle históricos autorizados y adquiere registros de imágenes realmente usadas (también CSS) en dos consultas por lotes/acotadas: verifica org/draft/link/QA/MIME PNG-JPEG-WebP/checksum/tamaño ≤32 MiB/Storage admitido. Límite de 250 assets compartido con manifest; no URLs firmadas, download ni upload. Worker RPC preparado entrega identidades actuales independientes bajo locks; host valida cobertura de grants y consumidor compara checksum/tamaño/MIME/bucket/path/alias de cada imagen usada con binding congelado en pre/postejecución. UUID todavía autorizado no permite registro sustituido. Contrato SQL/host/reader requiere despliegue coordinado. Producer multiquery no atómico: revalidación worker sigue obligatoria; identidad no certifica decode/seguridad de imagen.
+
+13 tests nuevos; **97 dirigidos/regresiones de selección actual pasan**, TypeScript web/build pruebas pasan, **35 guards léxicos** SQL/persistencia y versiones **163 SQL** pasan. Errores transitorios externos de módulo narrativo desaparecieron al revalidar sin editarlo. Sin migraciones/templates/flags/worker/backend/render/QA formal activados ni pruebas reales DB/Storage/locks/decode. Snapshot activo sigue fail-closed: falta wiring producer/assets/contratos/render snapshot, rutas/inspector/historia/sandbox/catálogo. CAP-029 parcial sin porcentaje comparable; CAP-027 **85% → 85%**, prioridades **97.86%**, cierre **7/30 = 23.33%**, no implementación total. Siete fallos previos checkpoint sin revalidar.
+
+## Avance CAP-029 — permisos HTML vinculados al trabajo del worker (2026-10-05)
+
+Host del worker instala lector independiente ligado al claim (organización/solicitud/revisión/job/lease/hash); rechaza cambios de scope y RESUME como permiso para un render nuevo. Una RPC preparada resuelve actor desde `production_jobs.created_by` y draft desde `manifest.draft_document_id` de la revisión guardada, verifica ownership de composición, queue lease, ejecución/issuer vigentes y delega lectura histórica exacta con rol/template/grants actuales bajo una transacción. Snapshot writer ahora guarda el ID de su borrador junto al hash/version. Se comparte verificación host de respuesta exacta sin duplicar las reglas de integridad ni tomar autoridad del ZIP.
+
+9 tests nuevos; **110 dirigidos/regresiones de esta selección pasan**, TypeScript web/build de pruebas pasan; **29 guards léxicos** del SQL/persistencia del draft y guard de versiones de **163 SQL** pasan. RPC/Storage/ejecución son simulados: no prueban autorización, sintaxis/locks/RLS/concurrencia ni imágenes reales. Nueva migración **20261005230000 preparada, no aplicada**; sin activación de worker/template/flag/backend. Faltan adquisición/identidad actual de imágenes, snapshot producer/rutas/inspector/historia/sandbox/catálogo y QA formal. CAP-029 parcial sin porcentaje comparable; CAP-027 **85% → 85%**, prioridades **97.86%**, cierre **7/30 = 23.33%**, no implementación total. Siete fallos previos de checkpoint siguen sin revalidar.
+
+## Avance CAP-029 — extracción y consumo autorizado del paquete HTML (2026-10-05)
+
+Materializador extrae el bundle por path fijo y pin de metadata, limita descompresión a 16 MiB antes de parsear, exige SHA de bytes/UTF-8 exactos, verifica scope de organización y contabiliza bytes extraídos. Rechaza bundle sin pin y limpia solamente archivos propios si falla un medio. Render controlado vuelve a verificar y fijar el archivo congelado, recompila el fragmento seleccionado sin modificar source/hash nativo y admite recursos del fragmento efectivo, no del default sustituido. Un resolver host independiente y obligatorio debe autorizar revisión/actor y resolver draft/template/grants vigentes; no se acepta autoridad del ZIP. Rechecks preentrega y postejecución del adaptador detectan revocación y cambios de bytes.
+
+12 pruebas nuevas de extracción/UTF-8/límites/scope/limpieza, autoridad ausente/revocada/ajena, drift del template y resultado simulado retenido tras revocación. Corrida actual: **163 tests Node reportados + 25 texto/policy = 188**, todos pasan; build TypeScript de pruebas pasa. El conteo es el de esta selección y del runner actual, no se suma como incremento sobre cortes anteriores con selecciones distintas. Sin browser/renderer/FFmpeg/DB/Storage reales ni QA formal. Resolver productivo aún no configurado, snapshot activo sigue fail-closed; faltan adquisición de imágenes, wiring de rutas/UI/historia/inspector/sandbox y catálogo. CAP-029 parcial sin porcentaje comparable; CAP-027 **85% → 85%** (este corte integra CAP-029, no cierra aislamiento/dependencias/color/A-V de CAP-027); siete prioridades **97.86%**; cierre **7/30 = 23.33%**, no implementación total. Siete fallos previos de checkpoint sin revalidar; no migraciones/templates/flags activados.
+
+## Avance CAP-029 — ZIP de referencia y plan del texto editado (2026-10-05)
+
+Writer compartido de ZIP verifica fuente/contrato/fuentes/bundle antes de escribir; snapshot service lo reutiliza para referencias. Cuando producer autorizado aporta bundle, escribe sus bytes exactos y metadata pin schema/path/SHA. Verificador rechaza paquete ausente/stripped/alterado, pins distintos e imágenes usadas ausentes o con MIME incompatible. Plan deck deriva paths/hashes del fragmento congelado editado manteniendo hash nativo/source original; presupuesto cuenta HTML efectivo. Referencias HTML exigen contrato V4 de texto y bundle; plan del texto original no pasa aun con checksums consistentes. Verificación offline es solo contenido, nunca grant/autoridad de ejecución; producer sigue exigiendo autoridad actual.
+
+8 tests nuevos de ZIP/plan/revocación/asset bindings/verificar-antes-de-escribir; 220 regresiones/simulaciones + 25 de texto/policy = 245 pasan. TypeScript web/build pruebas pasan. No captura/render/DB/upload ni QA formal. Flujo activo aún no aporta bundle y guard temprano sigue rechazando snapshots HTML: falta adquisición/materialización de imágenes, extracción/pins del paquete en materializador, autoridad vigente/recompilación del worker y wiring de rutas/UI/inspector/historia/sandbox/catálogo completo. Lectores nuevos deben desplegarse coordinadamente antes de emitir la metadata opcional. CAP-029 parcial sin porcentaje comparable; CAP-027 **85% → 85%**; prioridades **97.86%**; cierre **7/30 = 23.33%**, no implementación total. Siete fallos previos de checkpoint sin revalidar; no migraciones/templates/flags activados.
+
+## Avance CAP-029 — bytes congelados de revisiones y consumidor (2026-10-05)
+
+Paquete V1 acotado/canónico en path fijo `html-editing-revisions.json` conserva revisiones exactas y scope/hash documental, con SHA-256 externo de bytes. Nunca persiste grants/objetos de autoridad/URLs firmadas/mapas de entrega. Producer preparado obtiene una sola lectura autorizada exacta y devuelve contenido para archivo; ambos compiladores consumen esos bytes con scope/autoridad actuales independientes y recursos locales explícitos. Hash de paquete recalculado no autoriza sustituir revisiones referenciadas; revocación de imagen tras congelado rechaza su consumo. Source/hash nativo no se reescriben y el fragmento coincide en ambos targets en pruebas, no paridad visual.
+
+10 tests nuevos del paquete + 1 producer + 1 guard snapshot; 52 checks dirigidos incluidos en 203 regresiones/simulaciones pasan; TypeScript web/build pruebas pasan. Guard temprano de snapshot evita reutilizar un hash V4 sin integrar el paquete y sus recursos/plan de conformidad; rutas continúan fail-closed. Falta escritura efectiva en ZIP/manifest y pins/extracción del worker, autoridad vigente de ejecución, medios/fuentes/plan de texto editado, UI/inspector/historia/sandbox/catálogo completo. No snapshot operativo, migraciones/templates/flags/render/QA formal habilitados. CAP-029 parcial sin porcentaje comparable; CAP-027 **85% → 85%**; siete prioridades **97.86%**; cierre **7/30 = 23.33%**, no implementación total. Siete fallos previos de checkpoint no revalidados.
+
+## Avance CAP-029 — lector histórico exacto preparado (2026-10-05)
+
+Reader host obtiene un documento guardado por hash nativo y todas sus revisiones HTML por versión/digest exactos mediante una sola RPC preparada. La respuesta incluye el binding del template inicial independiente del subdocumento seleccionado. Host valida esquema/tamaño, hash nativo, source/pointers, scope, digest y grants actuales reutilizando el consumidor común; descarta la salida derivada usada para verificar integridad. Aliases lógicos no son prueba de bytes ni permisos durables. La migración `20261005220000` prepara locks de draft/actor/template/revisiones/assets, rechaza revocación y nunca sustituye revisiones históricas por latest; lectura solo service_role. Sin aplicar migración ni prueba PostgreSQL de sintaxis/locks/grants/atomicidad/races.
+
+9 pruebas nuevas del lector pasan (incluyen documento versión HTML 1 con edición 2 ya disponible, sustitución latest, tenant/anchor/grants revocados, hashes, payload/cancelación/errores seguros); 35 binding/repositorio/compilador/lector y 186 regresiones/simulaciones pasan, las 35 incluidas en 186. TypeScript web/build pruebas pasan; guard de versiones 162 SQL. Falta wiring snapshot/rutas, paquete congelado con integridad, materialización/fonts/plan de texto editado, inspector/historia/sandbox y operación de catálogo completa. Tres migraciones requieren despliegue coordinado autorizado; no templates/flags/QA formal activados. CAP-029 parcial sin porcentaje comparable; CAP-027 **85% → 85%**; prioridades **97.86%**; crédito cierre **7/30 = 23.33%**, no implementación total. Siete fallos previos de checkpoint no revalidados.
+
+## Avance CAP-029 — consumidor exacto compartido de compilación (2026-10-05)
+
+Los dos targets reciben un contexto host de revisiones exactas y verifican hash nativo, scope, versión/digest, todos los campos del pointer, source inmutable y grants vigentes. Rechazan latest en lugar de histórico, faltantes/extras y recursos sin alias local de entrega. Derivan fragmentos sin reescribir source/hash documental; ambas salidas producen el mismo fragmento editado en pruebas dirigidas. Tras ensamblar clips/CSS se rechazan contenido activo/recursos remotos/imports y, en la página completa, IDs duplicados entre wrappers o slides. No se renombra CSS/SVG silenciosamente.
+
+26 pruebas dirigidas de binding/repositorio/compilador y 177 de regresión/integración simulada pasan; TypeScript web y build de pruebas pasan. Las 26 están incluidas en las 177, no se suman dos veces. Falta lector autorizado por pointer histórico, paquete congelado de revisiones para snapshot, integridad/materialización de recursos, plan de conformidad del texto editado, rutas/inspector/historia y aislamiento; rutas existentes no suministran contexto y siguen rechazando referencias. Sin migraciones/templates/flags/QA formal activados. CAP-029 sigue parcial, sin porcentaje global comparable; CAP-027 **85% → 85%**; siete prioridades **97.86% → 97.86%**; crédito cierre roadmap **7/30 = 23.33%**, no porcentaje de toda la implementación. Siete fallos previos de checkpoint permanecen sin revalidar.
+
+## Avance CAP-029 — referencia nativa V4 y repositorio/append preparados (2026-10-05)
+
+Documento V4 admite referencias estrictas clip/revisión/hash/template/source/manifest; V1–V3 siguen compatibles y rechazan esos campos. El hash del documento incluye la referencia y el source original no cambia. Ediciones ordinarias preservan V4; eliminar un clip retira su referencia. Guardado/restore genérico no puede añadir/retargetear/quitar referencias en clips conservados ni sustituir su source: requiere el gateway específico. Restore genérico de un clip HTML eliminado permanece bloqueado hasta integrar historia segura.
+
+Adaptador Supabase conecta coordinador con RPCs preparados: verifica scope, source/manifest/subdocumento/hash nativo, re-lee antes del append, compila el estado final con grants actuales y envía documento+revisión y CAS en una sola llamada. Dependencias de imágenes realmente consumidas (incluido CSS) se calculan al compilar; no se confunden aliases locales con bytes materializados. Señales RPC acotadas, sin retries de escritura/ACK incierto. Dos migraciones privadas preparan registro/revocación/read e historial inmutable, membership/roles activos, locks draft-first, grants tenant/draft de imágenes y append nativo/audit + HTML dentro de una transacción. Solo RPCs service-role; tablas/helpers privados no admiten acceso directo. Hashes canónicos/sanitización/source/recursos completos deben validarse en host; SQL no reproduce esos checks JS.
+
+Validación: **55 pruebas aisladas HTML + 164 de documento/repositorio/timeline/history/compiler/materializador = 219 aprobadas**, con RPC simulados y sin render/browser. 13 pruebas nativas/repositorio nuevas y una de recursos usados; guard de **161 migraciones SQL** pasa. Ninguna migración aplicada ni templates registrados: no demuestra SQL sintáctico/locks/grants/deadlocks/rollback/durabilidad reales. Los siete fallos anteriores de checkpoint siguen sin nueva validación.
+
+Ambos targets del compilador rechazan referencias HTML antes de cargar runtime, evitando exportar silenciosamente el original sin aplicar overrides. Falta lector/materializador de la revisión exacta en preview/render y snapshot, bootstrap/instrumentador confiable, endpoint/history/UI/inspector, sandbox y catálogo completo OP-021..028. **No habilitar registro ni rollout antes de esos consumidores.** DEC-104 subdocumento es prototipo con referencia hash nativa; decisión operativa sigue pendiente de mediciones. Rollback: detener consumidores/revocar RPCs; preservar templates/revisiones/auditoría, sin borrar historia.
+
+**Porcentajes:** CAP-009/010/026/004/017/023: **100% implementación registrada cada una, falta QA**; CAP-027 **85% estimado, parcial**; CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin nuevo avance. Siete prioridades **97.86% estimado**; roadmap **7/30 = 23.33% crédito de cierre**, no implementación total. R19–R22 siguen abiertos: infraestructura preparada y pruebas simuladas no equivalen a capacidad productiva cerrada.
+
+## Avance CAP-029 — revisión versionada y coordinador de comandos/restauración (2026-10-05)
+
+Nuevo subdocumento experimental V1 (1 MiB): source inmutable, manifest, snapshot de overrides y versión incluidos en un digest independiente. El binding del manifest conserva el ancla de emisión/origen, no el hash del documento mutable que contiene el cambio; se evita dependencia circular. Preparación comprueba versión+digest; undo/redo restaura overrides del mismo source/manifest en una versión nueva, revalida permisos y no reduce el contador. No-op conserva digest exacto incluso con orden anterior distinto al manifest.
+
+Coordinador host obtiene autoridad/grants/materialización del repositorio, valida tenant/document/clip y hash actual de composición por separado; propaga ese hash y el CAS de revisión al contrato de append. Solo confirma mutación tras ACK exacto; conflicto/malformed ACK/ACK perdido no son éxito ni reintento automático. **54 pruebas dirigidas aprobadas** (15 nuevas revisión/coordinador), con repositorio simulado; ninguna demuestra transacción PostgreSQL.
+
+Pendientes explícitos: repositorio durable/SQL, referencia+digest enlazados atómicamente al documento nativo y revisión de render, endpoint/gateway live, history/UI, inspector y sandbox. DEC-104 conserva decisión provisional de prototipo, no cierre arquitectónico por medición. Source/decks V1–V3 y rutas actuales no modificados; no flags, migraciones ni renderer/QA formal activados. Los siete fallos de checkpoints del corte previo siguen sin nueva validación en este corte.
+
+**Avance:** CAP-009/010/026/004/017/023 = 100% implementación registrada, falta QA; CAP-027 = **85% estimado, parcial**; CAP-022/029 parciales sin rúbrica comparable; CAP-025 sin nuevo avance acreditado. Siete prioridades = **97.86% estimado**; cierre roadmap = **7/30 = 23.33%**, no porcentaje total de implementación ni horas restantes. No se eleva el indicador de cierre por módulos experimentales.
+
+## Avance CAP-029 — aplicación sobre HTML estático instrumentado (2026-10-05)
+
+Compilador experimental puro TEXT/IMAGE/THEME: verifica source SHA-256 exacto, manifest y scope de overrides; exige IDs únicos y targets compatibles; instrumenta declaraciones; aplica texto mediante DOM, imágenes materializadas internas y tokens/choices declarados. Source inmutable, límites de bytes/elementos, rechazo de contenido activo/SVG animado y recursos remotos. Política de recursos extraída y reutilizada por render controlado sin cambiar sus códigos. Defaults de imágenes requieren allowlist; permisos actuales se revisan en toda la salida y RESET no resucita recursos revocados.
+
+Validación de este corte: **39 pruebas puras de CAP-029 aprobadas** (11 nuevas), TypeScript web sin errores. Regresión supervisor/materializador/worker: **69/76 aprobadas, siete fallos de checkpoint**; diagnóstico de `realpath` del directorio temporal devuelve EPERM en este entorno restringido. Las ocho pruebas de materialización/política compartida y las diez de worker pasan; otras once de regresión de materialización también pasan. No se considera la suite completa aprobada ni se relaja la verificación de rutas; el resultado previo de 87 pruebas queda como histórico, no validación actual completa.
+
+CAP-029 continúa parcial: sin integración al documento versionado/DEC-104, gateway/OCC/history, inspector, sandbox, compilers live ni piloto. Igualdad de transformación no prueba paridad visual. Sin UI/flags activados, renderer/browser ejecutados ni migraciones aplicadas. **CAP-027 85% estimado**; siete prioridades **97.86% estimado**; roadmap **7/30 = 23.33% cierre de implementación**, QA pendiente. CAP-009/010/026/004/017/023: 100% implementación registrada, falta QA; CAP-022/029 parciales sin rúbrica comparable, CAP-025 sin nuevo crédito. No se inventa un incremento porcentual a partir de archivos o pruebas.
+
+## Avance CAP-027 — worker/cola/fencing preparados (2026-10-05)
+
+`processControlledRenderJob` conecta claim → renovación inicial → host → EXECUTE con checkpoint obligatorio o RESUME de scope independiente → cierre CAS. Heartbeat reutiliza el contrato existente de renovación única/cooperativa; pérdida/ACK ambiguo abortan señal y no permiten declarar éxito. Finish ACK perdido se propaga sin reescribir un resultado durable como fallo de render. `createControlledRenderWorkerHost` compone supervisor, materializador y store con lease de cola capturado en host; resolveSigningKey recibe solo identidad de issuer. Executor real operator-owned sigue obligatorio, nunca se sustituye por prototipo sintético.
+
+SQL **preparado, no aplicado**: cola privada por request CONTROLLED, enqueue idempotente/lineage/key checks, request-first SKIP LOCKED, lease 120 s, heartbeat 30 s, máximo cinco claims y backoff. Host affinity conserva worker_id por journal local. Cualquier ejecución histórica fuerza RESUME; checkpoint ausente/corrupto produce RECOVERY_REQUIRED, no issue/render nuevo. Claim reconcilia finalización ya comprometida tras ACK perdido mediante asset/job/receipt/issuer; trabajos vencidos/agotados no quedan reclamables indefinidamente. No trigger ni scheduler ni activación de backend.
+
+Fences preservan RPCs legacy mediante delegates privados sin permiso directo para service_role, y parámetros worker lease opcionales solo para requests **no inscritos**. Una request inscrita exige token vigente de cola en issue/consume/cancel/read-save upload/finalize. Gate request-first antes y después del delegado conserva ownership durante transacción; issuance/issuer de cola no son reemplazables. TypeScript propaga token exclusivamente a RPCs host: renderer no recibe lease de cola ni lease de autoridad. Lectores históricos/downstream mantienen su autorización independiente. Aplicar ambas migraciones con consumidores coordinados y sin activar entre ellas; enrollment sin fences no es rollout seguro.
+
+Validación: **76 pruebas supervisor/materializador/worker + 11 regresión = 87 aprobadas**, TypeScript/diff sin errores; guard de versiones **159 SQL**. Queue/Storage/RPC simulados: no se prueba PostgreSQL, SKIP LOCKED, grants/deadlocks reales, scheduler ni terminación OS. Egress/aislamiento real, durabilidad/ACL/retención/host recovery, identidad de compilador/dependencias y corpus/fonts/color integrales siguen abiertos. Callback/executor que ignore AbortSignal no se considera terminado ni aislado. Rollback requiere detener consumidores y revocar gates; preservar queue/receipts/journals, no exponer delegates ni eliminar ownership a ciegas.
+
+CAP-027 conserva **85% estimado, parcial**: worker integrado en código, no operación productiva acreditada. Siete prioridades **97.86%**; roadmap **7/30 = 23.33%** cierre. R02/R03/R06/R07/R08/R10/R12: 100%; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre, no 0% implementación. Objetivo activo.
+
+## Avance CAP-027 — checkpoint de recuperación del supervisor (2026-10-05)
+
+El host puede persistir checkpoint antes de admitir autoridad: scope tenant/request/execution/revision/job, lease de autoridad, recibo firmado, ruta del MP4 retenido y artefactos de contrato único/conjunto completo de eventos. Valida binding reconstruido y límite 20 MiB. `CompositionRenderCheckpointStore` exige directorios host existentes, MP4 dentro del root de retención y checksum/tamaño exactos; publicación en directorio exclusivo, archivo temporal wx, fsync de archivo y rename. Duplicados idénticos son idempotentes; conflictos no sobrescriben. Lectura acotada verifica archivo y MP4; nunca borra MP4 ni barre directorios.
+
+`execute(input, signal, checkpoint => store.save(checkpoint))` espera publicación antes de consume. Fallo previo a admisión cancela autoridad; incertidumbre posterior conserva evidencia. `resumeCheckpoint(await store.read(expectedScope), expectedScope, signal)` reintenta el mismo recibo/admisión o recupera CONSUMED después de TTL, comprueba identidad exacta del recibo durable y retoma upload/finalización sin issue/render nuevos. Expected scope debe venir del job confiable, no del propio JSON. No añade claves privadas ni credenciales DB al checkpoint ni al renderer.
+
+Validación: **64 tests supervisor/materializador + 11 regresión = 75 aprobados**, TypeScript pasa. Pruebas usan archivos/crypto reales, nueva instancia del servicio y RPC/Storage simulados, no kill de proceso ni recuperación entre máquinas. Contenido/lease quedan en disco local: operador debe proteger ACL/retención; modos POSIX no acreditan ACL Windows, fsync+rename no garantiza durabilidad ante corte eléctrico. Directorio huérfano por crash antes del rename falla cerrado y necesita reconciliación de ownership. Worker debe usar obligatoriamente el callback, disponer de scope durable y host affinity/retención antes de activar retries; ruta legacy sin callback sigue compatible, no se presenta como recuperable automáticamente.
+
+No se habilitan cola/worker/renderer ni migraciones. Lease/heartbeat de cola, ejecución aislada, dependencias/fonts/color/corpus integral y QA siguen pendientes. CAP-027 **85% estimado, parcial**; siete prioridades **97.86%**; cierre roadmap **7/30 = 23.33%**. R02/R03/R06/R07/R08/R10/R12: 100%; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre (no 0% implementación). Objetivo activo.
+
+## Avance CAP-027 — admisión local de decks (2026-10-05)
+
+El materializador controlado valida fragmentos HTML/CSS antes de compilar: recursos deben corresponder exactamente a medios/fuentes materializados o fragmentos SVG locales. Rechaza imports CSS/fuentes todavía no congelados, contenido activo, handlers, srcset, subcomposiciones externas y sintaxis CSS fuera del subconjunto admitido. Una revisión incompatible falla antes del ejecutor y limpia entradas, sin cambiar silenciosamente su contenido. Preview y backend Cloud existentes no cambian.
+
+La entrada recompilada incluye CSP antes de estilos/recursos: cargas de medios/fuentes/imágenes/scripts solo same-origin; connect/frame/worker/object/base/form bloqueados. Es defensa de navegador, **no aislamiento OS ni prueba de cierre transitivo**. El operador deberá servir exclusivamente el workspace en un origen aislado, denegar egress del proceso/producer y registrar violaciones como fallo. Navegación superior, acciones del SDK fuera del navegador y aplicación real de CSP no se prueban aquí. Imports CSS requieren materialización transitiva futura; un binario de fuente no sustituye una hoja de estilo.
+
+Validación: 57 pruebas supervisor/materializador y 11 regresión materialización aprobadas; sin browser/renderer/DB/Storage reales ni QA formal. CAP-027 **85% estimado, parcial**; siete prioridades **97.86%**; roadmap **7/30 = 23.33%** cierre. R02/R03/R06/R07/R08/R10/R12: 100%; restantes: 0% crédito de cierre, no 0% implementación. Este guard no cierra ejecutor/dependencias.
+
+## Avance CAP-027 — materialización autorizada conectada (2026-10-05)
+
+`materializeControlledRenderRevision` reutiliza autorización/lectura scoped y extracción allowlisted de referencia para documento, contrato, fuentes y medios verificados. Compila index.html separado con target HYPERFRAMES_RENDER y URLs locales desde el documento congelado; runtime GSAP requiere SHA-256 esperado del operador, archivos generados tienen límite y escritura exclusiva. Receipt distingue **AUTHORIZED_SOURCE_RECOMPILED_NOT_ORIGINAL_RENDER_HTML**: parent archive conserva project_hash, pero no se afirma que el HTML recompilado sea el index original ni se reutiliza preview como captura de render.
+
+`createMaterializedControlledRenderer` conecta preparación con el contrato del coordinador host y ejecutor operator-owned. Descriptor añade tenant/revision para lectura autorizada, sin key/lease/DB credencial. Pin/recheck de todas las entradas tras el ejecutor; output debe estar fuera de workspace de entrada para sobrevivir limpieza. Cleanup elimina solo archivos conocidos, nunca barrido recursivo. No se ejecuta HTML durante preparación ni se suministra aislamiento ficticio.
+
+Validación: **53 tests supervisor/materializador + 11 regresión materialización = 64 aprobados**, TypeScript y diff pasan. Crypto real/compilador real/archivos ZIP y workspace reales; ejecutor/Storage/RPC simulados, sin renderer/FFmpeg/DB reales o QA formal. Referencias externas de deck no mapeables, identidad del build del compilador, cierre transitivo, readonly OS efectivo, cuotas/retención y ejecutor/worker aislados siguen pendientes. Mapear URLs públicas conocidas de Storage no prueba ausencia de toda referencia externa. No defaults/flags/migraciones/deploy modificados.
+
+**Porcentajes:** CAP-027 **85% estimado, parcial**: se conecta materialización al contrato del host, pero no se cierra ejecución productiva/dependencias. Siete prioridades **97.86%**; roadmap **7/30 = 23.33%** cierre de implementación, QA pendiente. R02/R03/R06/R07/R08/R10/R12: 100% cierre; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre, no 0% implementación. Objetivo activo.
+
+## Avance CAP-027 — coordinador host conectado (2026-10-05)
+
+`CompositionRenderSupervisorService.execute` conecta issue → renderer operator-owned → binding independiente → firma host → admit/recovery → upload/finalize. Verifica que la clave privada corresponde a la pública asignada por autoridad antes de llamar al adaptador; descriptor clonado solo incluye execution/document/project/contract, no key/lease/credenciales. El constructor host conserva KeyObject; no se aprovisionan claves. Binding compartido con admisión reconstruye contrato/observación/recibo/output y rechaza discrepancias antes de firmar. Scope sigue siendo issuer/output, no aislamiento/conformidad.
+
+Presupuesto monotónico de render/admisión limitado por reserva se propaga por señal; se espera ownership del adaptador (no se presume terminación de procesos si ignora señal). Cancelación previa a admisión invalida autoridad; fallo de cancelación se reporta. Tras admisión incierta se consulta ledger, no se repite render/consume ni se cancela evidencia consumida. `resume` reanuda upload/finalización después de TTL sin nueva issue ni renderer; archivos quedan bajo retención/limpieza del caller, no se borran como si fueran temporales prescindibles.
+
+Validación: **49 tests dirigidos aprobados**, TypeScript focal/web y diff pasan. Producer/Storage/RPC simulados, claves efímeras reales y archivos sintéticos: no render SDK/CLI, SQL/DB, aislamiento o QA formal. El coordinador no es un worker desplegado ni introduce un adaptador productivo ficticio. Los ejecutores existentes son solo corpus sintético y no se conectan a jobs de usuarios: falta materializador/ejecutor aislado, queue/lease operativo, integración con cierre de conformidad y requisitos integrales. No se activan flags, Cloud, infraestructura o migraciones.
+
+**Porcentajes:** CAP-027 **85% estimado, parcial**; coordinación host implementada, sin cierre operativo integral. Siete prioridades **97.86%**; roadmap **7/30 = 23.33%** cierre de implementación, QA pendiente. R02/R03/R06/R07/R08/R10/R12: 100% cierre; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre, no 0% implementación. Objetivo activo.
+
+## Avance CAP-027 — lectores downstream CONTROLLED (2026-10-05)
+
+El servicio API existente `video-integrity.service.ts`, usado por el worker de integridad y por `run-composition-conformance-worker.mjs`, acepta ahora la ruta/linaje CONTROLLED sin provider_render_id Cloud. Schema separado valida execution/receipt/revision/backend; consultas existentes comprueban también identidades/tenant explícitos. Check, snapshot exclusivo y verify exigen checksum previamente registrado y consultan autoridad durable antes/después de streaming. CONTROLLED verify es read-only y nunca llama a record_hyperframes_final_video_checksum; Cloud conserva su registro habitual. Backend mezclado, tenant/ejecución/revisión ajenos y ausencia de checksum fallan antes de Storage.
+
+`20261005170000_check_controlled_render_video_authority.sql` **preparada, no aplicada**: gate host-only de ledger CONSUMED/linaje/asset/digest/tamaño/clave no revocada, sin TTL nuevo. Wrapper de finish de integridad retiene maquinaria previa de lease/retry y, para CONTROLLED, revalida autoridad y bloquea revocación durante el commit. No reinterpreta metadata como firma criptográfica nueva ni concede conformidad. No se cambia el trigger de enqueue existente: su predicado de MP4 importado es compatible con la finalización CONTROLLED preparada, pero no se ejecutó contra DB.
+
+Validación: **14 tests integridad + 8 worker = 22 aprobados**, build API, diff y guard de **157 SQL** pasan. Incluye snapshots/control de overwrites, backend híbrido, revocación antes/después, refresh fallido y compatibilidad Cloud. HTTP/Storage/RPC simulados: no SQL/locks/trigger/roles/Storage reales, worker operativo ni QA audiovisual. Falta supervisor/worker de render CONTROLLED operativo, integración de procedencia en cierre de conformidad, aislamiento/inmutabilidad/corpus/fonts/color. Rechecks son puntuales; una revocación posterior no invalida automáticamente reportes históricos.
+
+**Porcentajes:** CAP-027 **85% estimado, parcial**; se retira la incompatibilidad del lector, no se acredita pipeline operativo completo. Siete prioridades **97.86%**; roadmap **7/30 = 23.33%** cierre de implementación, QA pendiente. R02/R03/R06/R07/R08/R10/R12: 100% cierre; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre, no 0% implementación. Objetivo activo.
+
+## Avance CAP-027 — subida reanudable conectada a finalización (2026-10-05)
+
+`CompositionControlledRenderUploadService.uploadAndFinalize` conecta autoridad CONSUMED, subida TUS del archivo local y finalizador streaming. Token SDK scoped al objeto con upsert=false permanece en memoria; chunks de 6 MiB, timeout/cancelación por request, ruta/origen permitidos, descriptor de archivo verificado y recheck final. HEAD decide offset al reintentar tras ACK perdido; objeto ya existente se verifica antes de finalizar, nunca se sobrescribe. No usa credenciales Cloud ni cambia su importador. Protocolo contrastado con [documentación oficial Supabase](https://supabase.com/docs/guides/storage/uploads/resumable-uploads).
+
+Migración `20261005160000_controlled_render_upload_sessions.sql` **preparada, no aplicada**: sesión privada por execution; RPCs host-only de lectura y checkpoint CAS. Revalida tenant/CONSUMED/digest/CONTROLLED/linaje/revocación/cancelación antes de cada chunk. No persiste tokens ni asigna aprobación; TUS remoto decide offsets/concurrencia, no un contador inventado por caller. No hay worker/cron/retry scheduler activados. Una sesión creada cuyo CAS falle puede quedar huérfana hasta expiración del proveedor; no se borran objetos ajenos ni se elude conflicto de upload.
+
+Validación: **45 tests dirigidos aprobados**, TypeScript web/focal, diff y guard de **156 SQL** pasan. Incluye múltiples chunks, ACK de PATCH perdido, reanudación HEAD sin duplicar bytes, sesión expirada, reintento con objeto completo, URL ajena/CAS/revocación/offset inválido y cancelación. RPC/Storage/HTTP simulados y archivos reales sintéticos, no Edge/Storage/SQL/roles/concurrencia reales ni QA de MP4. Pendiente conexión con worker/supervisor operativo, lectores downstream CONTROLLED y aislamiento/inmutabilidad/corpus/fonts/color.
+
+**Porcentajes:** CAP-027 **85% estimado, parcial**, sin nuevo cierre de pipeline operativo. Siete prioridades **97.86%**; roadmap **7/30 = 23.33%** cerrado de implementación, falta QA. R02/R03/R06/R07/R08/R10/R12: 100% cierre; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre (no 0% implementación). Objetivo activo.
+
+## Avance CAP-027 — finalización CONTROLLED contra Storage (2026-10-05)
+
+`CompositionControlledRenderFinalizationService` conecta recuperación criptográfica con lectura de Storage en streaming y RPC de finalización preparada. Deriva ruta tenant/request/execution/checksum desde autoridad verificada, exige URL firmada HTTPS del proyecto/ruta exactos sin redirects, SHA-256/tamaño completo y refresca autoridad después de leer. Cancelación y revocación impiden commit; URLs firmadas no se persisten. No carga el MP4 completo en memoria ni usa el importador Cloud.
+
+`20261004170000_finalize_controlled_composition_render.sql` **preparada, no aplicada**: locks/linaje/CONTROLLED/CONSUMED/revocación, objeto Storage completo y conflicto idempotente; transacción registra checksum/procedencia en asset READY_FOR_QA, componente y job SUCCEEDED sin inventar provider_render_id Cloud. Duración proviene de canvas congelado. No concede conformidad ni publica; reintento no rebaja QA existente.
+
+Validación dirigida: **40 tests aprobados**, crypto real y archivos/Storage/RPC simulados; TypeScript, diff y guard de **155 SQL** pasan. No prueba ejecución SQL, concurrencia/roles/Storage reales ni codecs. Falta subida acotada/reanudable del output CONTROLLED, conexión con worker operativo, lectura/recheck downstream compatible con este linaje y garantías de inmutabilidad. La comprobación de bytes es puntual, no impide sobrescritura posterior.
+
+**Porcentajes:** CAP-027 **85% estimado, parcial**; se conecta la etapa de finalización en código, no el pipeline operativo completo. Siete prioridades **97.86%**; roadmap **7/30 = 23.33% de bloques cerrados**, QA pendiente. R02/R03/R06/R07/R08/R10/R12: 100% cierre; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre, no 0% implementación. Objetivo activo.
+
+## Avance CAP-027 — recuperación de ledger consumido tras TTL (2026-10-04)
+
+`recover` lee autoridad scoped por tenant/request/execution/revision/productionJob, no un recibo o tiempo aportados por caller. Solo CONSUMED puede acreditar firma histórica en consumedAt durable y dentro de reserva. Reusa verificación/reconstrucción de contratos/observaciones/recibos y pin/rechecks del archivo. Permite key vencida para consumo anterior válido, pero revocación actual bloquea incluso historia; segunda lectura detecta ledger/key cambiante y fallo de refresh. Sin renovación de challenge, otro write de consumo, reejecución ni promoción a PASS. Cubre ACK perdido después de commit, incluso después del TTL. Rechecks son puntuales, no inmutabilidad continua.
+
+Migración **preparada, no aplicada** `20261004160000_recover_consumed_render_execution.sql`: RPC histórica de solo lectura, joins de linaje/CONTROLLED, grants host-only, publicación transaccional sin ventana PUBLIC. Conserva rows, defaults y flags. Sin worker/importación/finalización operativos; [contrato/runbook](SOFLIA_ENGINE_RENDER_SUPERVISOR_RECEIPTS.md) actualiza la brecha de lectura histórica, sin reetiquetar el resto como solo QA.
+
+Validación dirigida: **36 tests aprobados** (11 firma + 8 eventos + 17 autoridad), TypeScript focalizado/web, diff y guard de 154 SQL pasan. Crypto real efímera, ledger/RPC simulados y placeholder de archivo; no DB/SQL/roles/locks, browser/FFmpeg/worker, QA formal o migraciones aplicadas. Prueba ambos modos y rechazo de revocación durante lectura, scope/hash/firma/tiempo inventado, output/obligaciones alterados y refresh perdido.
+
+**Porcentajes:** CAP-027 **85% → 85% estimado**; falta conectar autoridad/recuperación con supervisor operativo, importación y finalización, además de aislamiento/corpus/fonts/color. El incremento es funcional en el adaptador, no cierre del requisito de procedencia productiva. Siete prioridades **97.86%**; roadmap **7/30 = 23.33% de bloques cerrados**, falta QA. R02/R03/R06/R07/R08/R10/R12: 100% crédito; R01/R04/R05/R09/R11/R13–R30: 0% cierre (no 0% implementación). Objetivo activo.
+
+> Corte inicial: 2026-09-29. Alcance: CAP-009, CAP-027, CAP-026, CAP-010, CAP-004, CAP-017 y CAP-023. Esta hoja registra cierre de implementación y evidencia de QA; no sustituye el [benchmark](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_BENCHMARK.md) ni el [roadmap técnico](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_ARCHITECTURE_ROADMAP.md).
+
+## Corte 2026-10-03 — registro del roadmap completo
+
+### Avance CAP-027 — adaptador de autoridad y ledger preparados (2026-10-03)
+
+`CompositionRenderAuthorityService` conecta issue/read/admit/cancel a autoridad scoped. Vuelve a derivar contrato/observación/recibos (único o todos los lotes) y hash/tamaño del archivo mediante pin streaming y rechecks, en vez de copiar binding del recibo. Exige supervisor/key asignados, key pública SPKI del contexto privado y lifetime del challenge. Consumo CAS verifica firma antes del write; fallo/otro tenant/reserva/archivo/revocación no retorna artefacto admitido. Recheck posterior detecta output alterado sin borrar ledger previo. Cancelación solo invalida autoridad, no prueba terminación de procesos.
+
+Migración aditiva **preparada, no aplicada** `20261003170000_composition_render_execution_authority.sql`: keys/ledger privados con RLS y acceso solo por RPC del host service_role; keys inmutables/revocación irreversible, linaje tenant/request/productionJob/revision independiente, challenge nuevo por intento, issuance idempotente, <=5 intentos, un RUNNING por request y TTL <=600 s. Request-first lock order, consumo idempotente solo del mismo recibo/hash y sin sobrescribir CONSUMED. SQL no verifica Ed25519: confía en host Node y revalida autoridad/bindings. Registro exige job explícitamente CONTROLLED con revisión/project concordantes, request PENDING sin Cloud ID: no convierte ni activa flujo existente.
+
+Validación: **28 tests aprobados** (11 firma + 8 eventos + 9 autoridad), TypeScript focalizado/web, diff y guard de 153 migraciones pasan. RPCs simuladas, crypto real efímera y filesystem placeholder; no DB/roles/RLS/locks/SQL runtime, browser/FFmpeg/worker ni QA real. No claves persistentes, migraciones aplicadas, deploy o flags. [Runbook/límites](SOFLIA_ENGINE_RENDER_SUPERVISOR_RECEIPTS.md): falta lectura/reconciliación histórica tras TTL, selector/worker CONTROLLED, custodia operativa, supervisor con evidencia propia, importación y finalización.
+
+**Porcentajes:** CAP-027 **85% → 85% estimado**, sin adjudicar cierre de procedencia a adaptador + SQL sin integración operativa. Siete prioridades **97.86% estimado**; roadmap **7/30 = 23.33% de bloques cerrados**, QA pendiente. R02/R03/R06/R07/R08/R10/R12: 100% crédito; R01/R04/R05/R09/R11/R13–R30: 0% cierre, no 0% implementación. Objetivo activo.
+
+### Avance CAP-027 — firma del supervisor y recepción de lotes completos (2026-10-03)
+
+Nuevo [contrato de recibos del supervisor](SOFLIA_ENGINE_RENDER_SUPERVISOR_RECEIPTS.md): Ed25519, schema estricto, dominio firmado y base64url canónico. Firma vincula issuer/key/tenant/request/revision/productionJob/execution/intento/challenge, MP4/tamaño y digests de contrato/observación/recibos completos. Verificador requiere claves públicas autoritativas con tenants/vigencia/revocación; nunca usa claves/URLs del recibo. Signer privado separado del renderer. TTL <=600 s, issue skew <=30 s, clave vigente durante todo el intervalo y ahora. Errores seguros y sin secretos ni claves persistentes creadas.
+
+Consumidores separados para contrato único y todos los lotes de eventos: reconstruyen contratos/coverage/recibos con checks existentes y exigen los hashes firmados, incluyendo evidencia del lote posterior. `ISSUER_VERIFIED` solo acredita la declaración firmada del emisor: no aislamiento, conformidad ni fuente/color efectivo. `RENDER_EXECUTION_ATTESTATION_PENDING` y scopes locales se conservan; no se cambian drivers, contratos históricos, defaults ni persistencia. No conectar claves del cliente a trust ni expectedBinding desde payload.
+
+Validación dirigida: **19 tests aprobados** (11 firma/intake + 8 eventos, 2 nuevos de firma multi-lote). Criptografía real con claves efímeras en memoria; SDK/DOM/recibos sintéticos. TypeScript focalizado/web y diff pasan. No browser/FFmpeg/QA/DB, migraciones/flags/deploy ni aprovisionamiento operativo. Comando nuevo `npm run test:composition-render-supervisor`.
+
+**Porcentajes:** CAP-027 **85% → 85% estimado**: se implementa frontera criptográfica nueva, pero aún faltan autoridad durable/challenge/CAS, trust operativo y supervisor que mida evidencia propia, integración importación/persistencia/finalización. No dar crédito de cierre ni atestación productiva desde primitives/consumidor local. Siete prioridades **97.86%**; roadmap **7/30 = 23.33% de bloques cerrados**, QA pendiente. R02/R03/R06/R07/R08/R10/R12: 100% crédito; R01/R04/R05/R09/R11/R13–R30: 0% de cierre, no de implementación. Objetivo activo.
+
+### Avance CAP-027 — vínculo de reporte al intento reservado (2026-10-03)
+
+Brecha confirmada: el worker cotejaba tenant/request/revision, pero el reporte retornado no identificaba el job/intento/reserva. El ejecutor ahora genera `attemptBinding` con jobId, attempt y SHA-256 domain-separated del lease UUID canónico. El worker exige coincidencia con el claim recibido por RPC antes de finalizar: ausente, ajeno, intento anterior o token distinto produce fallo permanente sin persistir el reporte. El lease bearer original no se serializa. El schema conserva lectura de reportes históricos sin binding, no autorización para usarlos en nuevas finalizaciones.
+
+Migración aditiva **preparada, no aplicada**: `20261003160000_bind_conformance_report_attempt.sql`. Coteja objeto exacto contra fila RUNNING bloqueada y reserva vigente, luego delega todos los gates previos tenant/revisión/asset/mediciones en la misma transacción; RPC solo service_role y función anterior sin grant directo. No reescribe filas. Requiere desplegar writer nuevo antes de aplicar; workers anteriores con reporte sin binding serán rechazados después. Rollback restaura wrapper anterior y grants bajo operación explícita, perdiendo este gate adicional. PostgreSQL/concurrencia real y rollback no ejecutados.
+
+Este fingerprint es correlación de intento, **no firma ni procedencia autenticada del renderer/supervisor**: quien tenga el claim puede calcularlo. Se conservan las causas de atestación pendiente y no se concede PASS por este vínculo. Cambia ejecutor/finalizador y contrato privado del reporte, no renderer, editor, assets ni esquema de composición.
+
+Validación dirigida: 4 tests del binding + 52 tests del job = **56 aprobados**; TypeScript focalizado/web y diff pasan. Incluyen replay entre job/intento/reserva, omisión legacy, errores seguros, lease perdido y gates existentes. Adaptadores/RPC simulados y filesystem local, no QA formal/browser/FFmpeg/DB/rollout.
+
+**Porcentajes:** CAP-027 **85% → 85%**: endurecimiento del job durable ya contabilizado, sin cierre de procedencia autenticada ni crédito adicional inventado. Siete prioridades **97.86% estimado**; roadmap **7/30 = 23.33%** de bloques con implementación cerrada, falta QA. R02/R03/R06/R07/R08/R10/R12: 100% crédito; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre (no de implementación). Objetivo activo.
+
+### Avance R09 — Unicode/RTL nativo y presentación local primaria (2026-10-03)
+
+HyperFrames/core guía política única en renderer nativo compartido: dir auto/unicode-bidi plaintext para texto y cues; language BCP-47 canónico si válido, sin texto/HTML libre nuevo. Textareas editor tienen dir auto/bidi y nombres accesibles. Unicode original (incluidos combinaciones/emoji/newlines) no se normaliza ni muta; escape HTML se conserva. Karaoke alinea palabras con cue para conservar puntuación/espaciado (CJK/árabe). Mismatch legado usa texto autoritativo del cue y anclas word ocultas: mantiene IDs/eventos temporales sin sustituir texto visible. Cambios visibles intencionales, no migración/schema/API/dependencias nuevas.
+
+Helpers Intl limitan cache a 16 formatters y separan presentación de serialización: es-MX por UI española actual, locale explícito opcional. Timeline/toolbar presentan timecodes consistentes; bandas exponen números locales en aria-valuetext. Parser/inputs/timecode documental siguen canónicos: no cambiar contratos/hashes para traducir labels. HTML importado permanece autoritativo, no se altera su dirección.
+
+Validación: 4 presentación + 9 native overlays + 39 compilador = **52 pruebas aprobadas**; TypeScript focalizado/web y diff pasan. Markup nativo es igual entre targets y conserva Unicode/escape/IDs/source; Intl prueba cifras Arabic-EG y coma es-ES, inválidos/fallback. No navegador, glyph shaping/fuentes, píxeles MP4 ni QA formal. R09 permanece parcial por inventario de labels/nombres/presentación local restante, documentado en [auditoría](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_CAP031_AUDIT.md).
+
+Porcentajes: CAP-027 **85% → 85%**; siete prioridades **97.86%**; roadmap **7/30 = 23.33%** de bloques con implementación cerrada, falta QA. R02/R03/R06/R07/R08/R10/R12: 100% crédito; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre, no de implementación. Objetivo activo.
+
+### Avance R09 — aislamiento modal y pila de foco (2026-10-03)
+
+`composition-modal-isolation.ts` se conecta al controller compartido de MODAL, no a menú/popover no modal. El diálogo superior aísla ramas hermanas (inert/aria-hidden), nunca body ni sus ancestros; recupera atributos previos exactos y preserva modificaciones externas detectables. Pila por Document soporta cierre fuera de orden y activación anidada tras liberar inert previo. focusin contiene escapes programáticos sin activar otra app; MutationObserver childList, por batch, reconcilia ramas montadas. Cleanup libera observer/listener y aislamiento antes de retornar foco a opener no bloqueado. No API/persistencia/dependencias/migración ni cambios de composición/render.
+
+Validación: 7 aislamiento + 5 controller = **12 pruebas aprobadas**; TypeScript focalizado/web y diff sin errores. Se prueba estado previo, top modal, out-of-order, nuevo fondo, foco, nested y cambios externos; fake DOM/MutationObserver, no React/browser ni screen reader. QA formal sigue diferido. La [auditoría CAP-031](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_CAP031_AUDIT.md) retira aislamiento modal de brechas de implementación; permanecen Unicode/RTL, presentación local e inventario de nombres. No cierre global desde módulo aislado.
+
+Porcentajes: CAP-027 **85% → 85%**; siete prioridades **97.86%**; roadmap **7/30 = 23.33%** de bloques cerrados de implementación. R02/R03/R06/R07/R08/R10/R12: 100% crédito (QA pendiente); R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre, no de implementación. Objetivo activo.
+
+### Avance R09 — auditoría integral, paneles y ownership de sliders (2026-10-03)
+
+La [auditoría CAP-031](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_CAP031_AUDIT.md) mantiene el alcance integral del benchmark: teclado/foco no agotan captions/Unicode/RTL/localización. Se corrigen Herramientas (navegación de menú), historial no modal y paleta/presets/snapshots modales con controller de foco compartido: entrada, retorno sin robar foco, Escape/cierre único, Tab modal circular, disabled/hidden y cancel policy de preview. CSS de foco/reduced-motion del host no afecta video iframe. Sin persistencia/API/dependencias/migraciones nuevas.
+
+Defecto confirmado: capture del timeline tomaba todas las instancias role=slider, anulando la edición keyboard de AnimationTimelineBand. Ahora excluye data-animation-id; la banda protege IME/modificadores/autorepeat. Un test ejecuta handler capture extraído de fuente con targets simulados, no solo su resolver.
+
+Validación: 5 paneles + 1 routing + 4 paleta + 5 focus/cursor = **15 pruebas aprobadas**; TypeScript focalizado/web y diff pasan. No React/browser real, QA formal ni render. No cerrar R09: quedan política/integración Unicode/RTL/text/captions/localización UI, inventario integral de nombres y aislamiento semántico modal. Preparar QA después, no reetiquetar gaps como solo tester.
+
+Porcentajes: CAP-027 **85% → 85%**; siete prioridades **97.86%**; roadmap **7/30 = 23.33%** de bloques con implementación cerrada. R02/R03/R06/R07/R08/R10/R12: 100% crédito, falta QA; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre, no de implementación. Objetivo activo.
+
+### Avance R09 — puente de atajos globales cross-frame (2026-10-03)
+
+Resolver único/allowlist para Ctrl/Cmd K/Z/Shift-Z/Y/D/C/V, Delete/Backspace (Shift ripple), Alt flechas (slide/roll según modo/paso parent). Host y iframe ejecutan el mismo dispatcher y acciones existentes; no KeyboardEvent sintético ni segunda ruta de persistencia. Autorepeat/IME/chords no soportados no emiten. Campos editables/dialogs y transacciones locales preservan ownership; Alt en handles queda en resize, no slide. Puente solo preview; render permanece sin controller.
+
+Protocolo estricto requiere comando enum y generación no nula; receptor valida source de frame actual, generación exacta, ready, foco parent en iframe y ausencia de modal/proposal/preset/save-in-flight. Comparación baseline no puede enviar comandos. Las acciones existentes siguen validando selection/clipboard/OCC/locks/save queue; rechazo no aplica cambios. No se habilita capacidad de lectura DOM sandbox ni parámetros arbitrarios de operación.
+
+Validación dirigida: 5 shortcut/policy/VM + 11 protocolo + 39 compilador + 3 interacción Alt = **58 pruebas aprobadas**; TypeScript focalizado/web y diff sin errores. VM ejecuta emisor serializado; policy y resolver tienen pruebas puras. No demuestra integración React/iframe real ni autorizaciones de servicios desde navegador; QA formal sigue diferido. R09 todavía requiere auditoría integral de cobertura/estados antes de declarar implementación cerrada, no nueva brecha cross-frame conocida.
+
+Porcentajes: CAP-027 **85% → 85%** (trabajo de otra CAP); siete prioridades **97.86%**; roadmap **7/30 = 23.33%** de bloques con implementación cerrada, falta QA. R02/R03/R06/R07/R08/R10/R12: 100% crédito; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre, no de implementación. Objetivo activo.
+
+### Avance R09 — foco tras reload y auditoría cross-frame (2026-10-03)
+
+El parent solicita restauración de foco una vez por URL lista, después de enviar selección, solo si document.hasFocus y activeElement es el iframe actual. Comando tipado/estricto con hfId acotado, sin selector ni acceso al DOM sandbox. Runtime revalida foco propio y solo restaura desde body/documentElement/root: selección visible recibe foco de grupo, selección ausente/oculta cae al canvas; un control ya enfocado no se reemplaza. No recuerda el tipo de handle antes de reload: fallback deliberado al clip. Comando exclusivo de preview. Validación de versión ahora antecede la cancelación de transacción de teclado.
+
+Validación dirigida: 5 foco + 11 protocolo + 39 compilador = **55 pruebas aprobadas**; TypeScript focalizado/web y diff sin errores. VM confirma no robo de foco, fallback e identidad; no navegador real ni prueba de montaje React. QA formal/migración/render no ejecutados.
+
+Auditoría: handler global vive en window de NativeCompositionPreview, mientras el canvas tiene handlers locales dentro del iframe; no existe forwarding de atajos globales. Falta ruta tipada con allowlist (no KeyboardEvent arbitrario), validación source/generation y ejecución por dispatcher/policy existente. No cerrar R09 como solo QA todavía. Porcentajes sin incremento de cierre: CAP-027 **85% → 85%**; siete prioridades **97.86%**; roadmap **7/30 = 23.33%**. R02/R03/R06/R07/R08/R10/R12: 100% crédito; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre (no de implementación). Objetivo activo.
+
+### Avance R09 — edición del canvas por teclado (2026-10-03)
+
+Los handles MOVE/RESIZE/CROP aceptan flechas en píxeles de composición, Shift (10 px) y Alt para resize libre; resize proporcional admite ambos ejes y reutiliza límites/minimum existentes. El teclado deliberadamente no aplica snapping para permitir ajustes precisos. Transacción local: autorepeat y varias flechas mantenidas generan un solo commit al liberar todas; cambios nulos no escriben. Escape, blur/focusout, pointerdown, selección, seek y comandos parent cancelan/restauran antes de modificar el estado. Reutiliza mensajes layout/crop y pipeline persistente existente, sin API nueva. Durante saving el parent deshabilita edición/crop. Helpers exclusivos de preview, no render ni cambios de media/timing.
+
+Validación: 4 pruebas VM del handler serializado (autorepeat/múltiples teclas, cancelación/restauración, resize proporcional/libre/límites, crop/no-op/IME/disabled) + 39 compilador; TypeScript focalizado/web y diff pasan. El fake de crop verifica enrutamiento/transacción, no reemplaza QA de su geometría real. No browser, render, migración ni QA formal ejecutados. R09 sigue parcial: auditar reload/foco cross-frame y cobertura integral antes de afirmar que solo queda QA.
+
+Porcentajes: CAP-027 **85% → 85% estimado** (sin incremento por trabajo de otra CAP). Roadmap **7/30 = 23.33%** de bloques cerrados de implementación, falta QA; siete prioridades **97.86% estimado**. R02/R03/R06/R07/R08/R10/R12: 100% crédito; R01/R04/R05/R09/R11/R13–R30: 0% crédito de cierre, no 0% de implementación. Objetivo activo.
+
+### Avance R09 — continuidad de foco al reconstruir controles y cambiar escena
+
+Cambiar settings eliminaba handles antes de selectTarget; no se podía identificar el control enfocado para restituirlo. Seek podía dejar foco en un clip ya inactivo/oculto. `composition-canvas-focus-continuity.ts` separa política y runtime serializado: captura clip/tipo/edge solo para un control dentro del canvas cuando document.hasFocus; selectTarget restaura el equivalente del mismo clip después de reconstruirlo, o el clip focalizable si cambió el modo y ese control ya no existe. No mueve foco a un clip diferente por selección del padre. Clear devuelve foco al root solo si eliminó el control enfocado. Settings deja la eliminación dentro de selectTarget para poder capturar el token antes.
+
+Seek reconcilia tras timeline/WAAPI/visibility: si foco pertenecía a un clip inactivo/oculto/transparente lo devuelve al canvas. No cambia selección, documento ni playhead; no llama focus si el usuario está en paneles/parent, y no intenta recuperar foco entre recargas completas de iframe. No nuevos protocolos, handlers de persistencia o dependencia. Helpers solo en preview; render no incorpora continuidad de foco. Skills HyperFrames/CLI/core preservaron separación y contrato existente, sin upgrade ni render.
+
+**Validación:** 4 foco + 39 compilador = **43 pruebas aprobadas**; TypeScript focalizado/web y diff pasan. VM/DOM simulado verifica captura, sustitución del handle, fallback a clip, escena oculta y ausencia de robo de foco a parent; compilador conecta reconciliación al seek y omite helpers en render. No Chrome/QA formal ni navegación real de lector de pantalla. Pendiente R09: operación de controles de edición iframe por teclado, no solo foco/navegación; reload/focus cross-frame real queda para auditoría/QA posterior según flujo.
+
+**Porcentajes:** roadmap **7/30 = 23.33% de bloques cerrados**; R09 sigue parcial (0% crédito de cierre, no 0% de implementación). R02/R03/R06/R07/R08/R10/R12 mantienen 100% crédito, demás 0%. CAP-027 **85.00% estimado**; siete prioridades **97.86% estimado**. Objetivo activo.
+
+### Avance R09 — navegación y selección accesible del canvas
+
+El canvas solo soportaba selección por clic/marquee. `composition-canvas-keyboard-selection.ts` introduce política pura y runtime interactivo serializado: root focalizable; ↑/↓/Home/End recorren candidatos activos en orden DOM; Shift amplía selección; Espacio alterna, Escape limpia, Ctrl/Cmd+A selecciona visibles hasta 100 IDs. Filtra visibilidad/display/opacidad/ventana temporal; ignora controles HTML interactivos, contenido editable, IME/Alt/Tab, reproducción y gestos activos. No atrapa Tab. Foco usa preventScroll, etiqueta segura del clip y outline escalado de pantalla. El primary coincide con el foco cuando permanece seleccionado; al deseleccionarlo conserva otro seleccionado. IDs removidos/duplicados no persisten en la siguiente decisión.
+
+Selección llama exclusivamente selectTarget/clearTarget existentes → mensaje `courseforge-composition-selection` → protocolo/selección parent actuales. No `clip.layout`, nueva API, patch, save, journal ni segunda ruta de mutación. Labels/foco/handler solo en target de preview, no render. HyperFrames/CLI/core guiaron separación de target interactivo y preservación de timing/media/sandbox, sin upgrade ni render.
+
+**Validación:** 7 canvas + 39 compilador = **46 pruebas aprobadas**; TypeScript focalizado/web y diff sin errores. DOM simulado en VM ejecuta handler real serializado para candidatos activos, selección/callback, foco/label y bloqueo durante playback; no prueba DOM/Chrome real, scroll, lector de pantalla ni navegación entre iframe y parent. Pendiente R09: teclado de controles de edición del iframe y continuidad/restauración de foco con seek/cambio de escena; QA formal diferido. No cierre de accesibilidad integral.
+
+**Porcentajes:** roadmap **7/30 = 23.33% de bloques cerrados**. R09 permanece parcial, 0% de crédito de cierre (no de implementación). R02/R03/R06/R07/R08/R10/R12 conservan 100% de crédito; restantes 0%. CAP-027 **85.00% estimado**; siete prioridades **97.86% estimado**. Objetivo activo.
+
+### Avance R09 — navegación y selección de timeline sin colisión Alt
+
+El handler local de cada clip consumía cualquier ←/→, incluso Alt: provocaba move normal e impedía que el dispatcher recibiera el chord slide/roll. Nueva política pura `composition-timeline-focus-keyboard.ts` separa MOVE, navegación de foco, toggle y clear. Clips: ←/→ conserva move por frame y Shift acelera; Alt queda al dispatcher existente; Ctrl/Meta flechas e IME no mutan; ↑/↓/Home/End enfocan clips habilitados en orden DOM sin alterar selección/documento, con scroll nearest; Ctrl/Cmd+Espacio usa selección existente respetando grupos; Escape limpia selección y sale de edición de grupo. Enter sin modificadores conserva entrada a grupo. No segunda ruta de persistencia: move/group actions existentes conservan OCC/journal/undo.
+
+Cursor: ←/→ y Home/End hacen seek; captura local evita que Alt flechas/Delete/Backspace sobre el slider muten clips seleccionados, sin bloquear comandos globales explícitos como Ctrl/Cmd+K. Se agregan labels temporales de clips y foco visible acotado a timeline. Clips disabled por save/lock/grupo no entran en navegación rápida, como en el tabulado existente. No roving-tabindex ni cambios en orden Tab general en este incremento.
+
+**Validación dirigida:** 5 focus/cursor, 3 interacción Alt, 4 política paleta, 4 catálogo y 4 acciones = **20 pruebas aprobadas**; TypeScript focalizado/web y diff sin errores. Las pruebas verifican decisiones puras y compatibilidad entre resolver local/global, no propagación React/DOM ni focus/scroll visual reales. QA formal/Chrome no ejecutado. Tester: foco en clip vs cursor, Alt slide/roll, Shift step, grupos/locks, navegación horizontal con scroll, selección toggle y selección múltiple, tabulado y foco visible. Pendiente implementación R09: auditoría/navegación canvas y otros controles de tiempo; no cerrar desde timeline aislado.
+
+**Porcentajes:** roadmap **7/30 = 23.33% de bloques cerrados**; R09 parcial, 0% crédito de cierre (no de implementación). R02/R03/R06/R07/R08/R10/R12: 100% de crédito; resto: 0%. CAP-027 **85.00% estimado**; siete prioridades **97.86% estimado**. Objetivo activo.
+
+### Avance R09 — aislamiento y navegación de la paleta
+
+La paleta interceptaba Enter independientemente del elemento enfocado: el botón Cerrar podía ejecutar la opción activa; Ctrl+K desde un botón podía propagarse al listener global y reabrirla; composición IME podía ejecutar Enter. `composition-command-palette-keyboard.ts` separa decisiones puras: Enter solo ejecuta desde buscador, botones conservan activación nativa; IME no ejecuta/navega/cierra y modificadores de edición preservan comportamiento nativo. El diálogo detiene propagación de teclado sin anular defaults que no controla. El listener del editor además ignora eventos prevenidos/IME/select/dialogs. Flechas llevan foco al buscador, resultado activo hace scroll nearest y foco sobre opción sincroniza selección; combobox enlaza listbox/opción con IDs únicos y aria-activedescendant.
+
+**Validación:** 4 política de teclado, 4 catálogo, 4 acciones/contexto y 3 timeline = **15 pruebas dirigidas aprobadas**; TypeScript focalizado/web y diff pasan. No runtime de video ni browser ejecutado. Se amplía harness de QA ya existente para referencia accesible, Enter IME, Enter de cierre y Ctrl+K desde botón sin reapertura: casos preparados, NO aprobados ni ejecutados. Ninguna dependencia ni migración nueva. Pendiente R09: auditar shortcuts del resto del editor, selección/navegación canvas/timeline, foco visible y conflictos de controles; QA Chrome/lector de pantalla queda diferido. No se acredita accesibilidad integral desde funciones puras.
+
+**Porcentajes:** roadmap **7/30 = 23.33% de bloques cerrados**; R09 sigue parcial (0% de crédito de cierre, no de implementación). R02/R03/R06/R07/R08/R10/R12 mantienen 100% de crédito; demás requisitos mantienen 0%. CAP-027 **85.00% estimado**; siete prioridades **97.86% estimado**. Objetivo activo.
+
+### Cierre de implementación R08 — snapping, guías y safe areas; falta QA
+
+La inspección confirmó entrada desde toolbar/paleta, propagación de settings al iframe, snap compartido de timeline excluyendo tracks ocultos/clip activo/grupos, overlay externo no documental y retiro de guías antes del commit. Tras corregir umbral, proporción y overlay en entregas anteriores, `composition-canvas-visible-bounds.ts` completa geometría editorial de crop/rotación: calcula AABB y centro del rectángulo recortado rotado alrededor del centro del layout. Mover alinea esos bordes/centros; peers ocultos/display none/opacidad cero no son candidatos. Resize escala insets como el contrato actual: solver afín por dimensiones, un eje dominante proporcional o dos restricciones en resize libre; degeneración/candidatos no finitos/tamaño inválido no emiten ajuste. Después del clamp solo se muestra una guía si el borde final realmente coincide. Funciones puras serializadas explícitamente, sin dependencias ocultas; no se inyectan en render.
+
+Las guías son del **rectángulo editorial**, no de la silueta pintada ni del motion-subject interior animado; no se introduce hit-testing de píxeles ni se modifica la animación para hacerla coincidir. Rotación permanece en layout, crop en subject y tiempo/medios no cambian. Límites de posición/tamaño existentes siguen siendo límites editoriales, no una promesa de contener cada píxel de elementos rotados dentro del canvas.
+
+**Estado R08: implementación completada, falta QA.** Validación dirigida: 6 visible bounds/solver, 6 snap básico, 5 viewport, 39 compilador, 15 timeline/playhead/API (7 específicos de snap) y 4 command actions = **75 pruebas**. TypeScript focalizado/web y diff sin errores. Casos crop asimétrico, rotation 0/30/45/90/135/180/270/negativa, resize libre/proporcional, VM serializada y omisión de helpers editoriales en render. Sin Chrome ni QA formal. Para tester: drag/resize/crop/rotate con zoom 0.5–2, mínimo/bordes, Alt libre, toggles, ResizeObserver/comparación/fullscreen, líneas efímeras y persistencia/undo de un solo commit. El cierre de implementación no da por aprobados esos gates. Skills HyperFrames/CLI/core preservaron separación preview/render y sandbox, sin upgrade, migración o deploy.
+
+**Porcentajes:** roadmap pasa de **6/30 (20%) a 7/30 (23.33%) de bloques cerrados**. R02/R03/R06/R07/**R08**/R10/R12: 100% de crédito de cierre, falta QA; demás R-ID: 0% de crédito de cierre (parciales/no auditados, no 0% de código). CAP-027 sigue **85.00% estimado**, siete prioridades **97.86% estimado**; este cierre CAP-008 está fuera de ese subconjunto. Objetivo completo continúa activo; siguiente auditoría R09 y restantes parciales.
+
+### Avance R08 — áreas seguras alineadas al canvas con zoom
+
+El overlay externo ocupaba el marco completo aunque el canvas interno cambiara de escala, por lo que a zoom distinto de 1 sus guías de título/acción no correspondían al contenido. `composition-preview-viewport-geometry.ts` comparte la fórmula exacta de fit centrado (incluido mínimo 0.01) entre runtime sandbox y UI. `CompositionSafeAreaOverlay.tsx` observa dimensiones internas del marco con ResizeObserver, desconecta al desmontar y evita actualizar estado si el tamaño no cambia. Usa zoom 0.5–2 y geometría del canvas para colocar el overlay; dimensiones ocultas/inválidas lo ocultan. No lee DOM del iframe ni requiere `allow-same-origin`. Bordes mantienen grosor CSS de pantalla; se conservan título 80%, acción 90%, centro, clipping externo y `pointer-events: none`. Estado exclusivamente visual, sin patch, journal, undo, snapshot ni runtime de render.
+
+Validación dirigida: **5 pruebas de viewport + 39 compilador** pasan; TypeScript focalizado/web pasan. Cubre zoom, canvas horizontal/vertical/cuadrado, letterboxing, monitor mínimo/oculto, inputs inválidos y ejecución de la función serializada en VM; el compilador conecta esta fórmula y la omite del render. No prueba ResizeObserver real, handshake transitorio del zoom ni alineación visual en Chrome; siguen para QA. HyperFrames/CLI/core guiaron preservación del sandbox y separación de render; sin upgrade, renderer nativo, migración o deploy.
+
+**Porcentajes sin inflación:** CAP-027 **85.00%**, siete prioridades **97.86% estimado**, roadmap **6/30 = 20% de bloques cerrados**. R08 sigue parcial, 0% de crédito de cierre (no 0% de implementación), pendiente de geometría de guías con crop/transform. R02/R03/R06/R07/R10/R12 conservan 100% de crédito; R01/R04/R05/R08/R09/R11/R13–R30 conservan 0%. Objetivo activo.
+
+### Avance R08 — geometría de snap y resize proporcional
+
+Auditoría estática de UI, CSS, timeline y controlador generado detectó dos discrepancias con §8 fase 1: `Math.max(2, 7 / scale)` amplía el umbral por encima de 7 px de pantalla a escala >3.5; limitar ancho y alto independientemente rompe la proporción en bordes del canvas, mínimos y fallback de rejilla. Se extrae `composition-canvas-snap-geometry.ts`, puro y serializado explícitamente en el preview: tolerancia pantalla/escala sin mínimo artificial, dimensiones proporcionales acotadas simultáneamente y mínimos subordinados al espacio disponible. Rejilla 16 px y mínimo 24 px centralizados. Solo se muestra una guía si la dimensión/posición final realmente conserva el ajuste después de limitarla. Alt-resize conserva dimensiones independientes; el target de render no contiene este runtime interactivo.
+
+Validación dirigida: **6 pruebas geométricas y 39 del compilador** pasan, incluida ejecución del módulo serializado en VM sin dependencias. TypeScript focalizado y web pasan. Casos horizontal/vertical/cuadrado, zoom 0.1–8, límites en ambos ejes, mínimo imposible e inputs no finitos. Inspección confirma safe areas fuera del iframe/documento y CSS sin captura de puntero; no se ejecutó navegador/QA formal/render nativo, migración ni despliegue. Skills HyperFrames/CLI/core usadas para revisar y preservar el contrato existente, sin upgrade ni cambio en medios/timing.
+
+**Porcentajes:** CAP-027 permanece **85.00%**, siete prioridades **97.86% estimado**; cierre del roadmap **6/30 = 20%**. R08 permanece parcial (**0% de crédito de cierre**, no de implementación): falta auditar geometría de guías con crop/transform y overlay de safe areas frente a zoom; las pruebas puras no acreditan interacción visual. No se concede cierre por corregir dos defectos. R02/R03/R06/R07/R10/R12 mantienen 100% de crédito; demás R-ID mantienen 0%. El objetivo continúa activo.
+
+Se crea el [registro de requisitos del roadmap](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_ROADMAP_REQUIREMENTS_TRACKER.md): 30 bloques trazables, gates QA/migración/rollout separados y condicionales/exclusiones preservados. Primera métrica conservadora de cierre: **6/30 = 20% de bloques con implementación cerrada registrada**. Es una métrica distinta del **97.86% estimado del subconjunto de siete prioridades** y del **85% estimado de CAP-027**; no implica regresión ni mide esfuerzo/código restante. Los bloques parciales reciben 0% de crédito de cierre, no 0% de implementación. No se inventan estimaciones intermedias para capacidades sin rúbrica auditada.
+
+El siguiente trabajo prioriza auditar implementación existente de guías/paleta/audio/presets/paths/rate/freeze y gateway para localizar gaps funcionales, después avanzar thumbnails/HTML/IA segura y pendientes integrales CAP-027. QA formal, migraciones aplicadas y rollout permanecen diferidos. No se implementa CRDT, compositor nodal ni edición JS/CSS libre por la ampliación del objetivo. Esta entrega cambia seguimiento, no código productivo; revisión del diff sin errores y conteo de 30 R-ID verificado. No nuevas pruebas de runtime ni reclamo de cierre técnico adicional. Objetivo activo.
+
+## Corte 2026-10-03 — objetivo ampliado al roadmap y cancelación de fuentes
+
+El objetivo vigente abarca todos los requerimientos del roadmap, no solo CAP-027. QA formal, aplicación de migraciones y rollout siguen diferidos conforme a la restricción vigente. El porcentaje siguiente mide implementación estimada de las **siete capacidades prioritarias**, no del roadmap completo ni aceptación productiva.
+
+| Capacidad prioritaria | Implementación estimada | Estado |
+| --- | ---: | --- |
+| CAP-004 | 100% | Completada; falta QA, según seguimiento existente |
+| CAP-009 | 100% | Completada; falta QA, según seguimiento existente |
+| CAP-010 | 100% | Completada; falta QA, según seguimiento existente |
+| CAP-017 | 100% | Completada; falta QA, según seguimiento existente |
+| CAP-023 | 100% | Completada; falta QA, según seguimiento existente |
+| CAP-026 | 100% | Completada; falta QA, según seguimiento existente |
+| CAP-027 | 85% | Parcial; faltan requisitos funcionales además de QA |
+
+**Total del bloque prioritario: 97.86% estimado**, media simple con peso igual por capacidad: `(6×100+85)/7`. No representa esfuerzo restante (CAP-027 tiene pendientes de alto costo/riesgo). **Total del roadmap completo: aún no determinado**; necesita inventario y ponderación de todos los requisitos de fases 0–5, seguridad, performance, migración y decisiones pendientes. CAP-022 y CAP-029 son parciales sin rúbrica porcentual comparable; CAP-025 no tiene nueva implementación acreditada. No se imputan 0% ni 100% sin auditoría. Los porcentajes históricos de CAP-027 siguen la rúbrica de §6 y no cambian en este corte.
+
+**Implementación de esta entrega:** señal del workflow propagada driver → propietario de lotes → observador SDK → colector de fuentes. Verificación de pins y comandos CDP comprueban aborto antes/después; abort desuscribe al propietario sin cerrar el CDP compartido del SDK. Captura/reverse/finish no admiten resultados tardíos. Un remote handle ya adquirido conserva `Runtime.releaseObject` durante cleanup, aun tras aborto. Callback abort no lanza excepción sin capturar; fallo de cleanup se conserva para el cierre propietario. No se termina proceso OS ni se cancela físicamente un comando CDP ya pendiente: el SDK/lifecycle sigue siendo dueño del canal y del shutdown.
+
+**Evidencia de orden:** inspección de `@hyperframes/engine` 0.7.106 confirma que `createCaptureSession` construye la página y `initializeSession` navega mediante `page.goto`; los colectores se conectan entre ambas operaciones. Se descartó la hipótesis de suscripción posterior a navigation; no se modificó el SDK ni el orden. No prueba emisión real de eventos de fuentes en todos los casos.
+
+**Validación dirigida:** 12 colector de fonts, 5 observador SDK y 3 lotes (**20**) pasan; CDP simulado. TypeScript focalizado/web, sintaxis driver/observador y diff pasan. Casos pre-abort, aborto durante pins/glyphquery/adquisición/load/geometry/finish, liberación remota y ausencia de evidencia tardía. HyperFrames se usó para inspección/diagnóstico estático existente, sin render, upgrade, QA formal, migración o deploy.
+
+**Siguiente ruta:** establecer inventario porcentual del roadmap completo y continuar implementaciones parciales sin relegar los requisitos abiertos de CAP-027. Pendientes CAP-027: procedencia supervisor/tenant/job autenticada, closure inmutable, aislamiento/cuotas OS, fonts/perfil efectivos y corpus audiovisual autorizado completo. Objetivo activo; no cierre de implementación ni PASS global.
+
+## Avance 2026-10-03 — CAP-027: validación independiente del conjunto de recibos por lote
+
+**CAP-027: 85.00% de implementación estimada, Parcial.** El driver ahora usa `prepareCompositionEventBatchContracts` para derivar todos los hijos desde una única raíz congelada, en lugar de reconstruir cada snapshot por separado. Antes de publicar cualquier comparación, `buildControlledEventComparisonArtifacts` vuelve a derivar la cobertura desde documento/raíz y exige exactamente un contrato/recibo válido en cada posición. Comprueba hashes completos de contratos (incluidos umbrales, fuentes, assets y obligaciones de ejecución), binding del seek al contrato y de observación al mismo MP4; suma checkpoints ya validados y exige el total completo. Ausencia, duplicado, reordenamiento o cambio de obligación en un hijo rechaza el conjunto.
+
+Resumen diagnóstico derivado, no recibido del productor: documentHash, videoSha256, parentContractSha256, planSha256, batchCount/checkpointCount y listas ordenadas de hashes de contratos/recibos. Scope `COMPLETE_LOCAL_SDK_EVENT_RECEIPTS_NOT_PREVIEW_PARITY_OR_JOB_ATTESTATION`: no convierte recibos locales autorreportados en atestación, no concede PASS de conformidad y no cierra la integración durable tenant/job. El driver fija/revalida assembler y preparador y conserva pins/rechecks de todos los archivos por lote. No endpoint nuevo ni migración aplicada.
+
+**Validación dirigida:** 6 barrido/ensamblaje completo, 7 contrato/recibo/gate, 3 propiedad/cierre de colectores y 22 ejecución/derivación/autorización de particiones (**38**) pasan. Comprueba clones independientes, total exacto, rechazo de hijo con umbral distinto, reporte sin seek, hash de contrato ajeno y MP4 distinto. Capturas/observaciones y persistencia simuladas; PNGs authored y filesystem reales cuando aplica. TypeScript focalizado/web, sintaxis driver y diff pasan. Un intento inicial usó un nombre de suite inexistente; se corrigió al archivo real `composition-conformance-event-batch-execution.test.js` (22 pruebas). Sin renderer nativo, QA formal, PostgreSQL, deploy ni bypass. Instrucciones HyperFrames usadas para diagnóstico/edición existente, sin upgrade ni nueva composición.
+
+**Rúbrica:** gate/evidencia pasa de 96% a 97% (peso 10%; +0.10 global) por enforcement independiente del conjunto local; `84.90 + 0.10 = 85.00`. No se incrementan aislamiento, entorno, corpus real, fuentes/color ni procedencia. Pendientes principales se mantienen: supervisor/tenant/job autenticados, closure inmutable, cuotas/aislamiento OS, fonts/perfil efectivos y campaña audiovisual autorizada completa.
+
+**Estado individual:** CAP-004/009/010/017/023/026 completadas, falta QA; CAP-027 parcial (85.00% estimado); CAP-022/CAP-029 parciales; CAP-025 sin nuevos avances. Objetivo activo.
+
+## Avance 2026-10-03 — CAP-027: todos los checkpoints de eventos en el driver SDK
+
+**CAP-027: 84.90% de implementación estimada (~85%), Parcial.** Inspección confirmó que el driver controlado seguía usando el plan muestreado por defecto pese a disponer del enumerador completo de eventos. Ahora construye contratos v4 para todos los lotes del plan independiente del documento, cada uno con identidad de plan/batch y un máximo de 48 checkpoints. No elige el primer lote como cobertura completa ni elimina candidatos para ajustarse al límite.
+
+`measureControlledEventSeekRepeatability` verifica cantidad/orden de lotes, checkpoints exactos contra documento, documentHash/canvas y baseline de ejecución común antes de capturar. Ejecuta **un forward global seguido de su reverse global**, no pequeños barridos independientes que oculten dependencia de estado entre lotes. Reutiliza el comparador de RGBA del medidor histórico; este conserva su API de contrato único. Reporte separado y hash de contrato por lote; límite de bytes por sweep compartido por toda la campaña, sin reset ni descarte de puntos. Aborto después de decodificar PNG también impide producir reporte.
+
+Nuevo propietario `controlled-sdk-text-batches.mjs` prepara todos los colectores de texto/fonts antes de inicializar SDK, enruta observaciones según lote y cierra en orden inverso. Fallos de adquisición/carga/finish drenan los colectores poseídos; un fallo de close no impide cerrar los otros y no publica evidencia parcial. El driver ensambla comparador/recibo para cada lote, conserva los archivos originales para batch 0 y escribe pares contract/receipt adicionales con permisos privados, hashes y rechecks. Recibo diagnóstico incorpora cantidad total, batchCount, planSha256 y reportes/evidencia completos. Nuevo módulo y dependencias directas del planner/binding se fijan/revalidan. No constituye closure inmutable ni supervisor autenticado; la integración durable tenant/job sigue abierta.
+
+**Validación dirigida:** 3 plan completo/global/rechazos/aborto, 5 medidor histórico, 3 propietario de lotes, 3 observador SDK texto y 7 contrato/recibo/gate (**21**) pasan. La fixture `captions-multi-batch` exige más de un lote; el test comprueba secuencia global completa y vincula cada reporte al consumidor real `buildControlledComparisonArtifacts`. Rechaza lotes omitidos, reordenados, duplicados y hash de documento ajeno antes de cualquier captura; diferencia en reverse del último lote invalida todo. PNGs sintéticos 2×2, capturador/CDP simulados; sin MP4/Chromium/SDK nativo. TypeScript focalizado/web, sintaxis de módulos/driver y diff pasan. Se siguieron instrucciones HyperFrames para diagnóstico/edición existente, sin upgrade, renders, QA formal, migración o deploy.
+
+**Rúbrica:** checkpoints pasa de 85% a 89% (+0.40 global; peso 10%) y tiempo/repetibilidad de 90% a 92% (+0.20 global; peso 10%), por conectar cobertura completa y barrido global al consumidor controlado. `84.30 + 0.40 + 0.20 = 84.90`. No es porcentaje de corpus ejecutado ni prueba de repeatability en renderer real; no se incrementan corpus, fonts/color, aislamiento o procedencia por simulaciones. Pendientes integrales se mantienen: campañas reales autorizadas, crop/fit/crossfade medidos, fonts/captura efectivos, imagen/dependencias inmutables, cuotas/aislamiento OS y vínculo supervisor/tenant/job.
+
+**Estado individual:** CAP-004/009/010/017/023/026 completadas, falta QA; CAP-027 parcial (84.90% estimado); CAP-022/CAP-029 parciales; CAP-025 sin nuevos avances. Objetivo activo.
+
+## Avance 2026-10-03 — CAP-027: rechazo de fugas breves en silencio de trim
+
+**CAP-027: 84.30% de implementación estimada, Parcial.** Una regresión authored confirmó un falso negativo del auditor recién integrado: 1 ms de audio a amplitud 0.01 en un único canal fuera del clip pasaba al promediar RMS sobre 0.98 s de silencio. La prueba falló con `Missing expected rejection` antes de la corrección; no se trata de un hallazgo de QA real ni de un render ejecutado.
+
+Se separa la medición PCM en `composition-pcm-silence-windows.ts`: interleaved f32le acotado a 32 MiB/8 canales, índices enteros y rangos válidos, muestras finitas y solapamiento máximo 50%. Trim mide silencio en ventanas de 20 ms con hop de 10 ms, por canal y con cola parcial incluida, manteniendo el mismo umbral RMS 0.001 (-60 dBFS). El caso de ocho segundos mide 792 ventanas contando ambos canales. El recibo conserva máximo local, cantidad y window/hop; el driver fija/revalida el nuevo archivo compilado. No usa promedio de canales que diluya una fuga mono. Guardas acústicas de 20 ms alrededor del clip siguen explícitamente sin medir; tampoco se acredita ausencia absoluta de toda señal subumbral, sync A/V ni true peak.
+
+**Validación dirigida:** 4 pruebas PCM y 5 pruebas del auditor integrado (**9**) pasan tras la corrección, incluida la regresión que antes fallaba. Cubren bursts, canal derecho, cola parcial, exclusión de guardas, límites/muestras no finitas, bordes 24/25/30/60 FPS, offset/ganancia/fugas y aborto tardío. TypeScript focalizado/web, sintaxis del driver y diff pasan. PCM/PNGs y filesystem reales; decoder simulado. No ejecución nativa, QA formal, migraciones, deploy ni bypass.
+
+**Estado:** porcentaje sin incremento por corregir alcance ya contabilizado. CAP-004/009/010/017/023/026 completadas, falta QA; CAP-022/027/029 parciales; CAP-025 sin nuevos avances. Continúan pendientes los requisitos integrales de entorno/procedencia/fonts/color/corpus. Objetivo activo.
+
+## Avance 2026-10-03 — CAP-027: auditoría independiente de trim integrada al driver
+
+**CAP-027: 84.30% de implementación estimada (~84% redondeado), Parcial.** El corpus ya definía `video-trim`, pero el driver solo auditaba temporalidad/ganancia de `video-split`. Nuevo `composition-controlled-trim-audit.ts` verifica la receta authored de clip `[1,5)`, fuente desde 2 s, gain 0.8 y timeline 8 s. Driver la ejecuta exclusivamente para `video-trim`, fija/revalida el auditor y agrega `trimAudit` al recibo diagnóstico. Una auditoría fallida impide publicar el recibo; no modifica el SDK, proveedor ni defaults.
+
+Nueve checkpoints incluyen ambos lados de cada borde y último frame: marca binaria authored valida source frame dentro del clip; fuera se exige fondo oscuro en todo el frame (límite de canal 50, comprobación gruesa y no SSIM). Audio PCM estéreo 48 kHz compara 16 ventanas RMS contra cuatro segundos decodificados de fuente con gain esperado, delta máximo 0.5 dB. Fuera del clip exige RMS ≤0.001 (-60 dBFS), excluyendo guardas de 20 ms alrededor de bordes para no confundir priming AAC con fuga sostenida. Estas guardas no prueban sync de 20 ms ni precisión de los bordes acústicos. Valida finitud de todos los samples, longitud/padding acotados, bytes/hash de fuente/video/decoder antes/después, entorno restringido, señal y rechazo de aborto tardío. El driver conserva el deadline global; el auditor no autentica origen ni prueba conformidad preview/MP4.
+
+**Validación dirigida:** 4 pruebas pasan, incluidas rejillas 24/25/30/60 FPS, bordes exactos, offset incorrecto, imagen fuera de clip, ganancia errónea, señal ausente, audio fuera de clip, NaN, hash ajeno, cancelación y error sanitizado. PNGs/PCM authored y filesystem reales; decoder simulado, MP4 sintético no ejecutable. Compilación focalizada/web, sintaxis del driver y diff pasan. No render nativo, QA formal, migración, deploy ni bypass. Se usan las instrucciones HyperFrames para diagnóstico de proyecto existente, sin generar composición ni actualizar el pin.
+
+**Rúbrica:** corpus pasa de 88% a 89% por implementar y conectar una auditoría faltante, no por afirmar cobertura audiovisual medida. Peso original 10%: `84.20 + 0.10×(89−88) = 84.30`; los otros ocho bloques conservan su estimación. No es porcentaje de casos ejecutados ni cierre de corpus. Permanecen crop/fit/crossfade y conformidad integral medida, fuentes/perfil efectivos, aislamiento/cuotas OS, cierre inmutable de dependencias y supervisor/tenant/job autenticados.
+
+**Estado individual:** CAP-004/009/010/017/023/026 completadas, falta QA; CAP-027 parcial (84.30% estimado); CAP-022/CAP-029 parciales; CAP-025 sin nuevos avances. Objetivo activo.
+
+## Avance 2026-10-03 — CAP-027: cierre del binding SDR/mux en la observación del driver
+
+**CAP-027: ~84%, Parcial.** Inspección del consumidor real detectó un defecto de integración: el driver congelaba `sdrAudioMuxPolicy` en la expectativa, verificaba el mux, pero no agregaba la política a `executionObservation`. La línea se había insertado en el argumento de auditoría neutral, que no se ejecuta para video/audio. El recorrido SDR AV habría terminado con mismatch; las pruebas aisladas de contratos/mux no demostraban este ensamblaje. Se corrige el punto de consumo, no se relaja el gate.
+
+Nuevo módulo puro `composition-controlled-execution-observation.ts` ensambla la observación a partir de resultados locales del encoder y mux. Exige identidad de encoder/probe contra expectativa, hash del silent MP4 contra output del encoder y hash del mux final contra la observación. Requiere hashes de payload y timing del verificador antes de agregar la política mux. En video-only exige que el output del encoder sea el final; sin SDR rechaza resultados SDR no autorizados. Rechaza políticas predeclaradas en la entrada y vuelve a evaluar todos los roles/browser contra expectativa. El driver usa este módulo y fija/revalida su archivo compilado. No certifica origen: objetos locales/hash no equivalen a supervisor autenticado, aislamiento ni PASS.
+
+**Validación dirigida:** 4 ensamblaje SDR/video-only/no-SDR, 7 contrato/recibo/gate, 8 mux y 3 timing (**22**) pasan. TypeScript focalizado/web, sintaxis del driver y diff pasan. Ejecutores simulados, sin nuevo MP4 ni ejecución nativa; QA formal, migración y deploy siguen diferidos. Las pruebas nuevas demuestran el ensamblaje y rechazo de bindings ajenos, no el funcionamiento audiovisual real del SDK completo. Se usaron las instrucciones HyperFrames de diagnóstico existente, sin crear composición, actualizar el pin ni ejecutar renders.
+
+**Pendientes y estado:** se mantiene ~84% al corregir integración ya contabilizada, no se suma el mismo alcance otra vez. Aislamiento/cuotas OS, imagen/dependencias inmutables, supervisor/tenant/job autenticados, fonts/perfil de captura efectivos y corpus real autorizado siguen abiertos. CAP-004/009/010/017/023/026 completadas, falta QA; CAP-022/027/029 parciales; CAP-025 sin nuevos avances. Objetivo activo.
+
+## Avance 2026-10-03 — CAP-027: conservación temporal del video durante mux SDR
+
+**CAP-027: ~84% de implementación estimada; Parcial.** Se cierra una brecha específica: comparar payloads/extradata y duración global no detectaba cambios de timestamps de los mismos paquetes. El verificador de mux ahora solicita `pts`, `dts`, `duration` y `time_base` al probe fijado, además de los hashes existentes. El módulo separado `composition-sdr-packet-timing.ts` valida una rejilla completa de presentación de inicio cero a último frame, sin duplicados ni huecos, duración exacta de un frame y DTS estrictamente creciente. Permite PTS reordenados por B-frames y DTS negativos de priming/reordenamiento. Rechaza valores ausentes, enteros inseguros, valores fuera de int64 y datos fuera de límites.
+
+El digest temporal usa fracciones reducidas con BigInt, no segundos decimales redondeados: escalas de MP4 distintas pero equivalentes conservan identidad. Silent y mux deben conservar la secuencia temporal exacta asociada a los paquetes; fallo produce `SDR_MUX_VIDEO_TIMING_INVALID` o `SDR_MUX_VIDEO_TIMING_CHANGED`. El driver fija y revalida también el archivo compilado de esta nueva dependencia antes/después. No se modifica el SDK, no se repara el archivo y el scope continúa sin acreditar sync acústica/A/V, decodificación, procedencia ni atestación.
+
+**Validación dirigida:** 3 pruebas del núcleo temporal y 8 del verificador integrado (**11**) pasan; ejecutores simulados con archivos/hash/rechecks reales. Compilaciones TypeScript focalizada/web, sintaxis del driver y revisión del diff pasan. Incluye B-frames, timescales equivalentes, timestamps string/number, deriva DTS, PTS duplicados, duración inválida, cancelación y mutación. No ejecución nativa, QA formal, migración ni deploy. El porcentaje redondeado permanece ~84%: esta corrección puntual no demuestra cierre de un bloque integral de §6.
+
+**Estado:** CAP-004/009/010/017/023/026 completadas, pendientes de QA según seguimiento; CAP-027 parcial; CAP-022/CAP-029 parciales; CAP-025 sin nuevos avances. Persisten los pendientes integrales del corte ponderado siguiente; objetivo activo.
+
+## Corte actualizado 2026-10-03 — CAP-027: 84% de implementación estimada; Parcial
+
+**Avance vigente: aproximadamente 84% (84.20% según la rúbrica ponderada).** Sustituye el 80.25% repetido en los cortes anteriores, que dejó de contabilizar implementación y quedó condicionado a evidencia real. Es una estimación de ingeniería del código e integraciones implementados, no una medición automática, porcentaje de pruebas aprobadas ni conformidad audiovisual demostrada. Se conservan alcance y pesos originales de §6; QA formal, aplicación de migraciones y rollout siguen fuera del cálculo. Las cifras por bloque son estimaciones, no checklist de aceptación cerrado.
+
+| Bloque de §6 | Peso | Corte anterior | Estimación actual | Motivo del ajuste / límite restante |
+| --- | ---: | ---: | ---: | --- |
+| Identidad congelada de documento, assets y entorno | 15% | 55% | 65% | Pins y rechecks SDK/dependencias/binarios, herramientas efectivas del comparador y políticas congeladas; faltan cierre inmutable y procedencia autenticada |
+| Corpus de fixtures completo | 10% | 88% | 88% | Sin nueva ejecución real del corpus; no se acredita cobertura por mocks |
+| Checkpoints de bordes, efectos y cues | 10% | 85% | 85% | Sin ampliación integral de cobertura |
+| Imagen, SSIM y máscaras de texto | 15% | 90% | 90% | Persisten máscaras por glifo, blur/oclusiones y cierre de decks |
+| Tiempo y repetibilidad forward/reverse | 10% | 90% | 90% | Cancelación y deadlines no prueban repetibilidad audiovisual |
+| Audio, RMS, loudness, true peak y A/V | 15% | 90% | 92% | Integración SDR con mux y comprobación de origen/duración/preservación de video; faltan sync y mediciones reales del conjunto |
+| Fuentes, codecs y SDR Rec.709 | 10% | 47% | 65% | Encoder SDR, inversa del comparador, perfil y mux conectados; faltan captura efectiva, fonts y corpus real autorizado |
+| Diagnóstico por etapas | 5% | 92% | 95% | Atribución del decoder/probe efectivo y fallos de conversión/mux; no certifica causas internas del renderer |
+| Gate seguro y evidencia durable | 10% | 94% | 96% | Obligaciones de herramientas/SDR/mux, cancelación, lease y presupuesto propagadas; faltan supervisor/procedencia y validación PostgreSQL |
+
+Cálculo reproducible: `0.15×65 + 0.10×88 + 0.10×85 + 0.15×90 + 0.10×90 + 0.15×92 + 0.10×65 + 0.05×95 + 0.10×96 = 84.20`. Ajuste acumulado respecto del corte anterior: **+3.95 puntos porcentuales**; no es avance conseguido exclusivamente en esta actualización documental. Se presenta redondeado como **84%** para evitar precisión aparente.
+
+**Evidencia y pendientes:** la última entrega registró 102 pruebas dirigidas aprobadas y compilaciones/sintaxis válidas, con encoder/probes simulados; esta actualización inspecciona código y seguimiento, no vuelve a ejecutar esas pruebas ni el renderer. La implementación todavía no está completa: restan aislamiento/cuotas OS, cierre inmutable de dependencias, vinculación autenticada supervisor/tenant/job, fonts y perfil efectivo de captura, además de ejecutar y corregir el corpus audiovisual autorizado. No son todos pendientes de QA. Se mantiene FAIL/INCOMPLETE cuando falta atestación; el porcentaje no habilita PASS.
+
+**Estado individual:** CAP-004/009/010/017/023/026: **Completada; falta QA** según el seguimiento existente. CAP-027: **Parcial, ~84%**. CAP-022 y CAP-029: **Parcial**, sin porcentajes comparables establecidos. CAP-025: sin nuevos avances en este corte. Los cortes anteriores conservan sus porcentajes como historial, no como estado vigente.
+
+## Avance 2026-10-03 — CAP-027: SDR con video/audio y verificación posterior al mux
+
+**CAP-027: 80.25%, Parcial.** La iteración previa fue progreso: conectó encoder/inversa a consumidores. Este bloque elimina la prohibición estructural de source video/audio en la ruta SDR opt-in; mantiene extracción y mezcla del SDK existente. Nuevo campo separado `sdrAudioMuxPolicy = COPIED_H264_REC709_AAC_MUX_V1` requiere conversión SDR y se congela únicamente cuando el driver tiene video con audio. Recibo, comparador, reuso, gate y SQL preparado conservan la obligación. Omitir/agregar/cambiar campo produce mismatch SDR_AUDIO_MUX; la política SDR video-only anterior sigue rechazando audio extra. Sin activación productiva ni migración aplicada.
+
+Mux sigue siendo `engine.muxVideoWithAudio` del SDK fijado, no otro motor. Inspección local de chunkEncoder confirma `-c:v copy`; para SDR/M4A se solicita `preserveAudioPrimingEditList:true` para no aplicar `make_zero` que desplazaría el video por priming AAC. No se presupone éxito por esos argumentos: antes de emitir recibo se verifica perfil final contado, un video H.264/YUV420P/Rec.709 limited/chroma left y un AAC 48 kHz estéreo, ambos con origen cero. Duración de audio debe corresponder al timeline dentro de un frame; esta metadata no sustituye sync/RMS/loudness/true peak.
+
+`verifySdrAudioMuxOutput` usa probe fijado, presupuesto total decreciente y señal compartida. Compara digest ordenado de tamaño+SHA-256 de cada paquete de video y hash de extradata de codec entre silent MP4 y final: alteración/reordenación/pérdida o configuración distinta falla, aunque tags/perfil coincidan. JSON de packets máximo 16 MiB/36000 packets; perfil máximo 4096 px/600 s compartido con encoder. Pin de silent/final/probe antes/después; silent copia también se revalida tras cierre SDK, antes de publicación. Referencias primarias: [ffprobe -show_data_hash](https://ffmpeg.org/ffprobe.html) y [ffprobe n6.1 writer/packet/stream hashes](https://raw.githubusercontent.com/FFmpeg/FFmpeg/n6.1/fftools/ffprobe.c). Scope `LOCAL_PROBED_VIDEO_PAYLOADS_NOT_SYNC_OR_RENDER_ATTESTATION` mantiene procedencia y SDR no atestados.
+
+**Validación dirigida:** 7 mux/payload, 7 selector/perfil SDR, 8 encoder, 3 perfil counted, 7 contrato, 50 jobs, 5 adapter y 15 lifecycle (**102**) pasan. TypeScript focal/web, sintaxis driver y diff pasan. Probes/encoder/decoder simulados, filesystem y cancelación reales; MP4 placeholders, no evidencia audiovisual. Tests cubren hash/orden/extradata, límites, perfil ausente/ajeno, audio truncado, omisión de obligación, archivos mutados y aborto tardío. No FFmpeg/Chromium/SDK mux real, PostgreSQL, QA formal, deploy o bypass.
+
+**Pendientes integrales:** ejecutar y corregir corpus SDR AV real con binarios/capacidades autorizados; perfil efectivo de captura, fonts/decks, procedencia/tenant/job, imagen/dependencias inmutables y cuotas/aislamiento OS. Rechecks no detectan necesariamente cambiar/restaurar archivos entre fronteras. Policy declarada y hashes de probe no son atestación de proceso; límites de lectura no son cuotas kernel. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-022/CAP-029: **Parcial**; CAP-025 sin cambios. Objetivo activo; no elevar porcentaje integral solo por integración con ejecutores simulados.
+
+## Avance 2026-10-03 — CAP-027: ruta SDR conectada y versionada, no acreditada
+
+**CAP-027: 80.25%, Parcial.** La iteración anterior fue progreso: cambió contratos/consumidores y verificó la identidad del decoder. Este bloque conecta el encoder SDR y la inversa al driver/comparador existentes; deja de ser un helper sin consumidor. Política común isomórfica `DECLARED_SRGB_PNG_TO_REC709_LIMITED_V1`, sin filtros arbitrarios. Nuevo `renderExecution.sdrConversionPolicy` opcional requiere identidades explícitas del comparador y colorTagPolicy. Contrato/recibo/reutilización/exportación preservan selección exacta; omisión o cambio produce SDR_CONVERSION. No se reinterpretan contratos/MP4 anteriores. Gate y SQL preparado conocen la obligación; SQL no aplicado/probado.
+
+Driver authored opt-in `--sdr-conversion yes`: captura SDK existente, pins de PNG/encoder/probe, conversión forward explícita, probe contado de H.264/YUV420P/Rec.709 limited/chroma left y copia exclusiva hash-pinned al output. La copia está dentro de adquisición `sdrEncoder`: lifecycle espera factory tardía antes de cerrar, y un fallo de copy cierra el encoder incluso sin recurso retornado. Cierra el staging antes de publicar, conserva solo la copia diagnóstica y revalida secuencia PNG después del cierre SDK. Pins incluyen adapter, encoder, frame/profile validators y política. Presupuesto y señal compartidos; sin fallback SDK ante fallo SDR. Modo con source video/audio se rechaza antes de iniciar SDK: integración de mux que conserve perfil final sigue pendiente, no se omite audio silenciosamente.
+
+Comparador exige coincidencia completa de ejecución/recibo/documento/MP4 antes de seleccionar inversa; no basta flag ni tags. Probe debe acreditar exactamente un stream H.264/YUV420P con Rec.709/tv/chroma left. Perfil ausente, HDR, layout distinto o audio extra en esta ruta falla antes de extracción visual. Inversa fija se aplica a checkpoints y audit neutral, con decoder local pinneado. Ruta histórica no recibe -vf nuevo. Scope sigue local y declarado; **SDR_PIXEL_CONVERSION_UNATTESTED, SDR_CONVERSION y RENDER_EXECUTION_ATTESTATION_PENDING no se eliminan**.
+
+**Validación dirigida:** 6 selector/perfil/compatibilidad SDR, 8 encoder, 3 perfil contado, 7 contrato, 50 jobs, 11 prototipo/chart con executor simulado, 5 adapter SDR/ownership/copy y 15 lifecycle (**105**) pasan. Focal/web TypeScript, sintaxis driver/adapter y diff pasan. PNG/SVG/filesystem/tiempo locales, encoder/probe/decoder simulados y MP4 placeholders: NO evidencia de conversión ni ejecución real del driver. Sin FFmpeg/Chromium, QA formal, migración, deploy ni bypass. Restricciones nativas previas siguen vigentes.
+
+**Pendientes de implementación/evidencia:** perfil efectivo de captura y procedencia, capacidades reales libzimg/codec de ambos binarios, cartas de color y corpus preview/MP4 reales, video+audio/mux SDR, cierre de aislamiento/cuotas/dependencias y autorización job/tenant. Rechecks no son snapshot inmutable ni detectan todo cambio/restauración. No declarar CAP-027 completa solo pendiente QA. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-022/CAP-029: **Parcial**; CAP-025 sin cambios en esta iteración. Objetivo activo.
+
+## Avance 2026-10-03 — CAP-027: herramientas reales del comparador; CAP-029 paralelo
+
+**CAP-027: 80.25%, Parcial.** Se implementa la corrección estructural detectada en la auditoría inferior. Campo opcional versionado `comparisonTools`, política `EXPLICIT_PIXEL_DECODER_AND_PROBE_V1`, fija SHA/tamaño por separado para pixelDecoder y probe. `files.decoder` histórico conserva su significado (probe SDK); no se reinterpreta. El driver resuelve/pinea además FFmpeg de Remotion, congela ambos roles antes de captura y los reobserva al emitir recibo. Snapshot/reutilización/exportación conservan la obligación; omisión o cambios producen PIXEL_DECODER/PROBE, no MATCH. Binarios resueltos localmente, nunca paths desde cliente/recibo.
+
+El comparador real verifica identidades de sus ejecutables seleccionados antes del primer probe y revalida archivos después de todas las mediciones, antes de entregar reporte. Desajuste impide lanzar la medición; mutación persistente impide emitir resultado. Contratos anteriores sin el campo conservan lectura y reciben rechecks locales, **sin reclamar binding congelado nuevo**. Gate final y SQL preparado conocen los nuevos roles y rechazan diagnósticos no autorizados por el contrato. SQL solo editado: no aplicado ni ejecutado. MATCH conserva `RENDER_EXECUTION_ATTESTATION_PENDING`; hash/recheck no equivale a imagen inmutable, ejecución kernel, aislamiento ni procedencia autenticada. Cambiar/restaurar un ejecutable entre checks sigue siendo una limitación.
+
+**Validación dirigida CAP-027:** 6 integridad de herramientas, 7 contrato/recibo/reutilización/gate, 5 cancelación, 7 referencia persistida y 50 jobs (**75**) pasan. Archivos de herramientas sintéticos no ejecutables; sin FFmpeg/Chromium, comparación MP4 real, PostgreSQL ni QA formal. Compilación focalizada/web, sintaxis del driver y diff pasan. El contrato aditivo no activa SDR ni modifica filtros históricos. Siguiente integración: transformación forward/inverse versionada y perfil efectivo de captura, seguida de corpus autorizado. Cuotas/aislamiento, dependencias, fonts y autorización siguen pendientes; no se eleva porcentaje integral por este bloque.
+
+**CAP-029: Parcial, segundo agente autorizado.** Nuevo reductor puro de overrides en `html-editing/`, sin integración productiva: verifica digest/bindings, valida batch completo antes de aplicar, revalida estado/resultante y retorna snapshots independientes before/after y elementos cambiados. Reset elimina override preservando source inmutable; no-op y orden determinista. Estado máximo 200 overrides/256 KiB. Grants actuales se comprueban contra todo el resultado; reset permite quitar imagen revocada, conservarla falla. **28 tests puros** pasan (10 reducer + 18 anteriores); atomicidad solo en memoria, no transacción/OCC/undo durable. Sin UI, persistencia, sandbox ni preview/render habilitado. Agente principal mantiene CAP-027; no se crean identificadores nuevos.
+
+**Estado individual:** CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. CAP-022 y CAP-029: **Parcial**. CAP-025: sin cambios. QA formal, migraciones y rollout diferidos. Objetivo CAP-027 activo; no se declara cierre solo pendiente de QA.
+
+## Auditoría de integración 2026-10-03 — CAP-027: decoder real aún no fijado
+
+**CAP-027: 80.25%, Parcial; no cierre solo pendiente de QA.** Inspección de consumidores, no ejecución de renderer: `observe-neutral-render.mjs` fija `EXECUTION_ROLES.decoder = ffprobe`; `compareExportedVideoWithPreview` resuelve tanto ffprobe como FFmpeg desde RenderInternals de Remotion y extrae los PNG con ese FFmpeg. El role denominado decoder no identifica el binario que produce los píxeles comparados. Tampoco basta que los hashes del SDK sean correctos: esos archivos no fijan el ejecutable seleccionado por el comparador. No se demuestra mismatch de bytes reales sin pinning/ejecución; sí se confirma la brecha estructural de atribución.
+
+Busqueda de consumidores confirma que `encodeSdrCapturedFrames` y su filtro inverso aún no están integrados al driver ni comparador productivo. Los adapters aislados no constituyen conformidad preview/MP4. Cambiar globalmente el decode a sRGB reinterpretaría MP4/contratos previos y podría ocultar o crear diferencias; no se hace.
+
+**Siguiente bloque obligatorio antes de integrar SDR:** contrato versionado con identidades distintas de encoder/decoder-pixel/probe; binding al decoder seleccionado realmente antes de medir y recheck después; configuración trusted server-side, nunca path/binario arbitrario del cliente. Driver/comparador/persistencia/reutilización deben consumir esa misma expectativa. Después, freeze de transformación forward/inverse con source profile y reglas de compatibilidad; ejecutar corpus autorizado antes de retirar razones UNATTESTED. SQL preparada requiere evolución compatible, sin aplicar migración ahora.
+
+La auditoría cambia el orden del trabajo: resolver atribución de herramientas y contrato común, no continuar añadiendo helpers SDR sin consumidor. No nuevos renders/tests nativos, bypass, QA formal o rollout. Pendientes integrales originales conservados. CAP-004/009/010/017/023/026: **Completada; falta QA**; CAP-022/CAP-029: **Parcial**; CAP-025 sin cambios. Objetivo activo.
+
+## Avance 2026-10-03 — CAP-027: perfil contado y recheck de salida SDR
+
+**CAP-027: 80.25%, Parcial.** Adaptador SDR exige ffprobe path/hash además de encoder fijado. Probe con count_frames y campos explícitos verifica un único stream H.264/YUV420P, geometría/fps exactos, frames contados exactos, duración dentro de un frame, origen cero, container MP4 y size igual al pin. Matriz/primarias/TRC BT.709, rango TV y chroma left obligatorios; ausencia/desajuste/streams extra/JSON fuera de cuota falla. No acepta declaraciones de frame count sin lectura contada. Pin de MP4/probe/encoder y toda secuencia se revalidan antes de entregar resultado.
+
+Encoder y probe usan saldo monotónico de un presupuesto local, incluyendo preparación y postchecks, no dos timeouts completos. Operaciones no cooperativas pueden tardar físicamente más: postchecks impiden entregar éxito tardío; señal del caller sigue necesaria para cancelar trabajo interno/global. No claim de timeout kernel. Probe pin no prueba ejecución efectiva del binario por supervisor.
+
+**Validación dirigida:** 8 tests encoder y 3 perfil (**11**) pasan; compilación focalizada/web y diff pasan. Pruebas pure JSON/metadata + PNG/filesystem reales con encoder/probe simulados; placeholder de MP4 NO acredita codec/píxeles. Test de metadata incorrecta y mutación del MP4 durante probe impide entrega, conserva cleanup propio y no hace fallback. Suite de hard links anterior sigue bloqueada EPERM, no se reintentó por ruta alternativa. Sin FFmpeg/browser/render real, QA formal, migración ni rollout.
+
+**Scope:** COUNTED_H264_REC709_OUTPUT_PROFILE_V1 / PROBED_METADATA_NOT_SDR_PIXEL_CONVERSION_ATTESTATION. Perfil metadata/counts no retira SDR_CONVERSION/SDR_PIXEL_CONVERSION_UNATTESTED. Faltan capacidades de build, captura efectiva y entrada inmutable, integración de encode/inversa con contrato versionado y comparación real de cartas/corpus, supervisor/procedencia/tenant/job. CAP-004/009/010/017/023/026: **Completada; falta QA**; CAP-022/CAP-029: **Parcial**; CAP-025 sin cambios. Objetivo activo.
+
+## Avance 2026-10-03 — CAP-027: validación y recheck de secuencia de entrada SDR
+
+**CAP-027: 80.25%, Parcial.** Encoder SDR consume ahora un módulo de secuencia: cobertura exacta frame_000000.png…frame_N, enumeración streaming, directorio regular, miembros regulares/sin links, hashes e identidad filesystem antes/después. Máximo 36000 frames, 20 MiB/PNG, 4 GiB total y 4096 px por eje. Lectura PNG adicional con cuota del pin (rechaza crecimiento antes de acumular payload mayor), procesamiento de un frame a la vez. PNG real observado debe tener dimensiones declaradas, RGB sRGB/8-bit, una imagen, sin ICC u orientación alternativa; alpha debe ser totalmente opaco. Ausencia de ICC no acredita perfil efectivo de captura: se conserva precondición externa.
+
+Resumen congelado sin paths contiene geometría/conteo/bytes/hash de secuencia versionado. Pins viven en WeakMap privado; copiar el resumen a JSON no permite presentarlo como prueba de recheck. Encoder revalida todos los archivos y cobertura después de codificar, antes de entregar output. Mutación de un frame, archivos adicionales/eliminados o binario cambiado impiden entrega y limpian solo el video/workspace propios. No modifica ni borra los frames del caller.
+
+**Validación dirigida:** 7 tests encoder y 5 tests secuencia pasan (**12**); sexto test secuencia hard link bloqueado por EPERM al crear fixture. Suite secuencia **no verde**, no se suprime ni se muda para sortear permisos. PNG/alpha/dimensiones/hash/filesystem reales vía Sharp; encoder simulado y MP4 placeholder no son evidencia de transformación. Compilación focalizada/web y diff pasan. Sin FFmpeg/browser, render real, QA formal, migración ni deployment.
+
+**Límites:** lecturas/rechecks detectan cambios persistentes, no prueban inmutabilidad durante toda lectura del encoder ni impiden cambio/restauración entre chequeos. Faltan snapshot/ACL/supervisor, perfil efectivo, capabilities/probe y corpus conversión/decoder/evaluator. Validar bytes PNG no atesta source/tenant/job ni autoriza uso de imagen. Coste lineal con múltiples lecturas y decodificación por frame: límites no sustituyen backpressure/cuotas OS. SDR_CONVERSION y demás obligaciones integrales siguen pendientes. CAP-004/009/010/017/023/026: **Completada; falta QA**; CAP-022/CAP-029: **Parcial**; CAP-025 sin cambios. Objetivo activo.
+
+## Avance 2026-10-03 — CAP-027: adaptador explícito sRGB → SDR, no activado
+
+**CAP-027: 80.25%, Parcial.** Inspección del `chunkEncoder.js` instalado de SDK 0.7.106 confirma ruta CPU con conversión de rango y etiquetas BT.709, sin transferencia sRGB→BT.709 declarada. Adaptador Node nuevo `composition-sdr-frame-encoder.ts` construye/ejecuta comando fijo para PNG opaco sRGB declarado, con matriz/primarias/TRC/rango y formato YUV420P explícitos. Usa filtro zscale, sin tone map/autodetección/GPU/custom-filter/fallback. Se define inversa BT.709 limited→sRGB full para futura comparación. Referencias primarias [FFmpeg n6.1 filtros](https://raw.githubusercontent.com/FFmpeg/FFmpeg/n6.1/doc/filters.texi) y [vf_zscale](https://raw.githubusercontent.com/FFmpeg/FFmpeg/n6.1/libavfilter/vf_zscale.c); la build necesita libzimg. Opción declarada/argv no demuestra píxeles convertidos.
+
+Encoder exige SHA del ejecutable antes y después, señal sanitizada por caller, timeout acotado y entorno OS permitido. Workspace propio nuevo, output no sobrescribible, limpieza exacta e idempotente; no borra archivos desconocidos. Frames/fps/dimensiones/perfil acotados, rechazo de campos/perfiles alternos. No lanza proceso si señal ya abortada. Error de proceso/missing output/mutación/abort elimina parcial y no produce resultado; diagnóstico seguro de limpieza fallida.
+
+**Validación dirigida:** seis tests puros/filesystem con executor simulado pasan; compilación focalizada/web y diff pasan. Placeholders de MP4 prueban orquestación, NO codec ni transformación. Sin FFmpeg/browser/render real, QA formal, instalación nueva ni bypass. No modifica dependencias/SDK/proveedor, no activa driver/worker ni altera comparador histórico.
+
+**Pendientes para SDR real:** perfil efectivo de captura (incluyendo alpha/ICC), secuencia de frames inmutable, capacidades/filtros de binario fijado, probe de output/perfil/frame count y cartas que separen conversión/decoder/evaluator. Integrar encode + inversa en ruta versionada compartida preview/MP4, vincular evidencia a job/tenant/supervisor y probar corpus antes de retirar SDR_CONVERSION/SDR_PIXEL_CONVERSION_UNATTESTED. Hash del archivo y comando no son atestación; salida helper no es MP4 aprobado. CAP-004/009/010/017/023/026: **Completada; falta QA**; CAP-022/CAP-029: **Parcial**; CAP-025 sin cambios. Objetivo activo.
+
+## Avance 2026-10-03 — CAP-027: plazo compartido del ejecutor de conformidad
+
+**CAP-027: 80.25%, Parcial.** `executeConformanceJob` aplica `WHOLE_CONFORMANCE_EXECUTION_BUDGET_V1`, reutilizando reloj monotónico y controller sanitizado: hasta 600 s por ejecución, opción interna acotada 1–600 s. Empieza antes de crear workspace; no se reinicia entre snapshot remoto, referencia visual, audio, comparación, todas las particiones, recheck y limpieza. Una misma señal llega a todos los adapters. Timer/listener se liberan incluso ante fallo de preparación. Checks antes/después de etapas impiden continuar o retornar reporte tardío; postcheck tras limpieza rechaza un reporte calculado dentro del plazo pero entregado fuera de él.
+
+Timeout operativo usa código seguro `CONFORMANCE_JOB_DEADLINE_TIMEOUT`, preserva etapa y admite reintento; no se confunde con entrada inválida. Worker finaliza intento por CAS con reporte null/error de etapa/retryable true. Fallos permanentes existentes no se degradan automáticamente por cancelación concurrente. No se abandona una escritura no cooperativa para borrar su workspace mientras sigue en vuelo: se espera ownership antes de limpieza, sin afirmar terminación dura. El plazo cancela cooperativamente, no impone por sí solo una duración máxima kernel.
+
+**Validación dirigida:** 50 pruebas del job y 6 del deadline (**56**) pasan; compilación focalizada/web y diff pasan. Cinco tests nuevos: presupuesto acumulado en tres etapas, cada frontera, timer real de 1 s con escritura posterior al aborto, límites/cleanup tardío y cierre retryable sin reporte. Adapters/RPC simulados; filesystem y timer locales reales. Sin red, DB, browser/FFmpeg ni render real; QA formal sigue diferida.
+
+**Límites:** 600 s es límite total, no promesa de soporte para playback de 600 s más todas las pasadas. Corpus que exceda el saldo falla; no se reinicia por partición. Dimensionamiento/productización de corpus largo sigue pendiente. Claim/heartbeat/CAS y supervisor kernel no quedan certificados por el plazo del ejecutor. Persistencia ya terminada no se revierte. Aislamiento/cuotas/procedencia, fuentes/SDR y corpus completo permanecen pendientes. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-022/CAP-029: **Parcial**; segundo bloque CAP-029 hashing en curso, no acreditado aún. CAP-025 sin cambios. Objetivo activo, sin migración aplicada/deployment/rollout.
+
+**Entrega paralela posterior CAP-029 revisada:** módulo server de digest versionado SHA-256 sobre prefijo V1 + JSON de claves ordenadas, arrays/Unicode conservados. Preimage omite solo manifestSha256 autorreferencial y cubre todos los otros bindings y permisos. Verifica contenido contra binding autoritativo externo antes de cada comando, incluso si el objeto cambió desde un preflight anterior. Ocho pruebas adicionales pasan (18 del módulo en total), golden vector fijo con comprobación independiente .NET registrada por el agente. Sin cambios al formato V1 ni consumidor habilitado. Hash correcto no prueba origen ni autorización: storage autoritativo/tenant/plantilla aún pendientes. CAP-029 permanece Parcial.
+
+## Avance 2026-10-03 — CAP-027: interrupción del canal de captura; CAP-029 paralelo
+
+**CAP-027: 80.25%, Parcial.** La señal del pipeline llega a captura visual y preparación del navegador, incluyendo resolución HTTP de DevTools. Nuevo binding del canal CDP interrumpe todas las esperas pendientes al abortar, solicita cerrar el canal una vez, suprime eventos posteriores y rechaza éxito tardío. Motivos privados no salen; fallo de cierre se registra para impedir entregar un paquete. El cliente real rechaza comandos pendientes al cerrar/disconectar y limpia sus timers; envío síncrono fallido ya no deja una entrada pendiente. Verificación de archivos usa stream cancelable. Se comprueba cancelación también después del cierre navegador/server: abort allí elimina outputs propios, no entrega un resultado precomputado.
+
+**Validación:** 6 pruebas puras del binding CDP y 7 del pipeline pasan; compilación focalizada/web y diff pasan. Suite de captura con navegador simulado: 24 casos pasan, uno HTTP local no valida por `connect EACCES 127.0.0.1`; suite completa **no verde**. Dos casos nuevos comprueban CDP bloqueado y cancelación durante cierre, ambos con limpieza de directorio. No Chromium/FFmpeg real ni QA formal; no se cambian permisos ni se elude restricción de red.
+
+**CAP-029: Parcial, primer bloque paralelo revisado.** Contratos declarativos V1 y preflight en `html-editing/`: identidad documento/revisión/clip/template/hashes; máximo 200 elementos, 50 operaciones y 64 KiB UTF-8 por comando; texto plano, asset UUID/fit permitido con grants actuales, tema por token y reset. Campos desconocidos, markup, recursos URL arbitrarios y escrituras duplicadas rechazados. Diez pruebas puras pasan; salida de compilación independiente. No modifica source ni integra UI/gateway/render/store. Binding y grants requieren autoridad backend independiente: el schema no certifica hashes ni ownership. Manifest autoritativo, persistencia/OCC/undo, instrumentación, sandbox/CSP, inspector y aplicación común preview/render siguen pendientes. CAP-025 sin cambios.
+
+**Límites CAP-027:** el cierre CDP no acredita salida kernel ni eliminación de descendientes. Startup WebSocket y cierre de procesos conservan limitaciones; captura/audio/cómputo no adquieren por ello deadline global productivo. Pendientes aislamiento/cuotas, procedencia, fuentes/SDR y corpus completo. CAP-004/009/010/017/023/026: **Completada; falta QA**; CAP-022: **Parcial**. Objetivo activo; sin migración aplicada, deployment o rollout.
+
+## Avance 2026-10-03 — CAP-027: cancelación de decoders de comparación
+
+**CAP-027: 80.25%, Parcial.** Señal propagada desde comparación de referencia persistida a probes/extracción visual, loudness y decoder PCM de sincronía. Procesos reciben entorno OS permitido, sin secretos de aplicación. Aborto previo impide leer/lanzar; aborto en vuelo solicita terminar el hijo PCM y destruye su lectura sin depender de un evento close ausente. Loudness/timing no convierten cancelación en MEASUREMENT_FAILED ni aceptan éxito tardío. Limpieza elimina listeners/timers y conserva el cierre de referencias propias. La forma previa de argumentos del comparador se conserva cuando no hay señal.
+
+**Validación dirigida:** 5 cancelación, 7 loudness, 10 timing, 7 referencia persistida y 45 jobs (**74 pruebas**) pasan, con compilación focalizada/web y diff. Decoders/RPC simulados, PCM/filesystem locales; no FFmpeg/Chromium real, red/DB, render SDK ni QA formal. Se corrigió una regresión de contrato detectada por pruebas: no añadir signal:undefined a llamadas existentes. No migración/deployment/rollout ni bypass de permisos.
+
+**Límites:** solicitar kill al hijo inmediato no acredita su salida kernel ni eliminación de descendientes. Captura interna, cómputo síncrono y deadline integral aún no quedan cubiertos completamente. Aislamiento/cuotas OS, procedencia completa, fuentes/SDR y corpus preview/MP4 siguen pendientes. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-022: **Parcial**. CAP-029/CAP-025: sin nuevos avances en este bloque. Objetivo activo; no se incrementa porcentaje integral por este endurecimiento.
+
+**Paralelización autorizada:** segundo agente asignado a un bloque fundacional CAP-029 (manifest/overrides declarativos y validación estricta), en subdirectorio independiente, sin tocar renderer/store/QA/migraciones ni habilitar HTML arbitrario. Asignación no cuenta como implementación validada; entrega e integración pendientes. Agente principal conserva CAP-027.
+
+## Avance 2026-10-03 — CAP-027: cancelación efectiva de materialización
+
+**CAP-027: 80.25%, Parcial.** La señal ligada a reserva/apagado alcanza ahora materialización autorizada y extracción del proyecto. Gestión de controller/listener/timer separada del servicio de resolución; motivos externos sanitizados. Un presupuesto de 15 minutos cubre consultas/firma/ZIP/extracción/assets sin reiniciarse por objeto. Fetch usa la misma señal; lectura ZIP pendiente se cancela independientemente del fetch. Pipelines de descompresión/media reciben señal, verifican cancelación y limpian archivos/directorios propios; no emiten workspace listo ni comienzan descarga del siguiente asset tras abortar.
+
+**Validación dirigida:** 11 materialización, 7 pipeline visual y 45 jobs (**63 pruebas**) pasan; compilación focalizada pasa. Pruebas incluyen abort previo, respuesta tardía tras abort, stream asset bloqueado, cancelación ZIP, limpieza del parcial, ausencia de motivos privados y señal compartida entre objetos. Streams/filesystem reales locales, Supabase/fetch simulado. No test de red real, renderer, PostgreSQL ni QA formal. Sin migración/deployment/rollout; no intento de sortear autorización nativa pendiente.
+
+**Límites:** consultas metadata, hash síncrono/parse JSZip y escritura actual no se preemptan por este mecanismo. Deadline integral, cuotas OS/procesos, procedencia, fuentes/SDR y corpus completo siguen pendientes; materialización cooperativa no certifica sandbox. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-022: **Parcial**. CAP-029/CAP-025: sin nuevos avances. Objetivo activo, CAP-027 no cerrada.
+
+## Avance 2026-10-03 — CAP-027: readback de límites y preflight obligatorio
+
+**CAP-027: 80.25%, Parcial.** Lectura kernel agregada al diagnóstico confirma `configuredMaximumProcesses:6` frente al pico observado 12. Snapshot adicional encontró 7 miembros vivos: cuatro Node y tres conhost; no se excluye conhost del límite. La prueba sigue fallando, con pico variable. Se consultó código primario de libuv sobre consola/job anidado; observación no constituye causa raíz. Runtime local Node v24.19.0/libuv 1.52.1, sin cambio de versión.
+
+Implementados guards x64/ABI y readback de todos los límites configurados antes de crear el proceso. Desajustes de flags/procesos/CPU/memoria impiden arrancar. Lanzador opt-in exige el test nativo completo antes del SDK: no hay skip, cached green o fallback a proceso no contenido. Prueba negativa bloquea render; no se acepta monitoreo posterior como sustituto de cuota kernel. Test conserva/restaura variable sintética previa del caller.
+
+**Validación limitada:** los diagnósticos anteriores sí se ejecutaron y confirmaron cuota registrada + exceso de miembros; la repetición del código nuevo fue rechazada con AuthorizationManager/PSSecurityException. No se alteró ExecutionPolicy ni se usó bypass. Sintaxis PowerShell/diff pasan; ABI/readback/preflight nuevos quedan sin ejecución nativa. No render SDK, Chromium/FFmpeg, QA formal, migración ni despliegue. Resultado previo no prueba comportamiento del código nuevo.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. CAP-022: **Parcial**; CAP-029/CAP-025: sin nuevos avances. Objetivo activo. Pendientes integrales conservados: cuota/seguridad OS, procedencia, dependencias completas, fuentes, SDR y corpus preview/MP4. No se declara cierre del bloque nativo.
+
+## Avance 2026-10-02 — CAP-027: control nativo de miembros del proceso en Windows
+
+**CAP-027: 80.25%, Parcial.** Nuevo helper nativo C# compilable con `Add-Type` del PowerShell instalado, sin instalar .NET CLI. Job privado con kill-on-close, proceso suspendido/asignado antes de resumir, cuotas solicitadas y entorno allowlisted sin secretos. Cleanup usa handles propios, no PIDs/taskkill; termina miembros y verifica contador kernel cero. Lanzador opt-in para corpus authored preparado, sin ejecutarlo con SDK/Chromium ni sortear revisión de permisos. No endpoint ni activación de worker/producto.
+
+**Evidencia real local de procesos sintéticos:** quedan dos descendientes al salir root; terminación explícita alcanza cero y held handles confirman salida. Kill-on-close termina root y descendientes vivos. Escaping de argumentos/Unicode/entorno pasa. CPU busy sale no-cero con cuota solicitada 1 s. Memoria progresiva sale no-cero con pico observado 259678208 bytes. Fuentes primarias de Win32 consultadas; scope deliberadamente solo membresía/terminación, no seguridad sandbox, renderer ni QA formal.
+
+**Test nativo completo NO pasa:** límite solicitado seis durante intento de diez workers reporta 12 miembros vivos (contador y lista de handles coinciden). Se conserva aserción `NATIVE_JOB_PROCESS_LIMIT_EXCEEDED_12` en `npm run test:composition-windows-job`; causa de enforcement agregado/nesting pendiente. No se altera el umbral para declarar cierre. CPU/memoria observadas no certifican todas las cuotas. La primera prueba de argumentos detectó interpretación UTF-8 de Windows PowerShell; se explicitó Encoding y generó el carácter Unicode en el test, luego pasó. No quedan aprobados el aislamiento ni la cancelación dura de todos los modos de creación: el job no limita red/filesystem/token y no sustituye contenedor/imagen verificable.
+
+Sintaxis JS/PowerShell y diff pasan. Consulta global Win32_Process denegada por el entorno; no se escaló ni se interpreta como prueba de ausencia global de huérfanos. La evidencia de cleanup se limita al contador del job propio y los handles adquiridos de sus fixtures. Workspaces diagnósticos pequeños se retienen; no se borraron directorios ni otros procesos.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. CAP-022: **Parcial**; CAP-029/CAP-025: sin nuevos avances. Objetivo activo. Sin nuevo render, migración aplicada, despliegue ni rollout. Próximo trabajo de este bloque: explicar/corregir cuota agregada nativa y preparar frontera de seguridad completa, sin promover evidencia sintética a atestación productiva.
+
+## Avance 2026-10-02 — CAP-027: cancelación cooperativa por reserva y apagado del worker
+
+**CAP-027: 80.25%, Parcial.** Implementado el ciclo de reserva aislado de la lógica de medición: una renovación en vuelo, ticks coalescidos sin cola acumulativa, timeout 15 s (máximo 30 s) y heartbeat 60 s máximo. Rechazo/fallo/timeout de renovación invalida ownership irrevocablemente y envía cancelación; la RPC real recibe AbortSignal. Respuesta tardía no restaura lease. Drenaje lógico acotado incluso para adapter no cooperativo. Worker no finaliza reportes con reserva perdida.
+
+El comando propaga SIGINT/SIGTERM al job. Worker apagado previamente no reclama; cancelación durante ejecución o drenaje descarta resultado tardío y solicita reintento por CAS si conserva reserva. El ejecutor verifica señal en cada frontera de snapshot/referencias/comparación/eventos/recheck, mantiene limpieza y diagnóstico primario, sin borrado recursivo de contenido desconocido. Las pipelines visual/audio y comparación verifican señal antes de continuar; no inician persistencia si la cancelación ya se conoce. Particiones reciben la señal. Descarga MP4 propaga señal sanitizada combinada con timeout a fetch y al lector streaming; interrumpe lectura pendiente y no emite checksum exitoso tras abortar. Motivos privados no se exponen.
+
+**Límite:** es cancelación cooperativa y rechazo de éxito tardío, no terminación OS de procesos ni atestación de renderer. Metadata RPCs, materialización, captura y decoders sin cancelación interna pueden terminar su operación actual; los checks impiden continuar después. No rollback de objetos ya persistidos. No cambia proveedor ni activa backend controlado. Procedencia completa, containment, fonts/SDR y corpus integral permanecen pendientes.
+
+**Validación dirigida:** 5 tests de lease, 45 jobs, 7 pipeline visual, 19 evidencia audio, 22 particiones, 9 integridad de video y 8 worker de integridad (**115 pruebas**) pasan. Compilación focalizada/web/backend, sintaxis del comando y diff pasan. La primera compilación detectó inferencia literal del heartbeat centralizado (solo admitía 60000); se explicitó tipo numérico, centralizó validación de límites y repitió. Tests incluyen timeout RPC no cooperativo, apagado durante drenaje, cancelación en cada etapa, rechazo de persistencia posterior a captura/audio cancelado y aborto real de ReadableStream con cleanup. DB/red/browser son simulados; no ejecución contra Supabase, render real ni QA formal. Nuevo comando `npm run test:composition-conformance-job-lease`.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. CAP-022: **Parcial**; CAP-029/CAP-025: sin nuevos avances. Sin migración aplicada, despliegue ni rollout. No se sorteó la revisión de permisos pendiente. Objetivo activo; este bloque no certifica producción ni cierra los demás requisitos del roadmap.
+
+## Avance 2026-10-02 — CAP-027: inventario SDK y cierre de publicación
+
+**CAP-027: 80.25%, Parcial.** El driver local inventaría todos los archivos/directorios de su instalación SDK antes del import dinámico y revalida el árbol después del cierre de recursos, antes del recibo final. Nuevos archivos secundarios, cambios de contenido, eliminación, rename o reemplazo invalidan el resultado. Lectura streaming y enumeración incremental acotadas; archivos vacíos se incluyen. Rechaza symlinks/junctions, hard links múltiples y entradas especiales; límites de trabajo y callbacks del plazo compartido. El recibo conserva solo hash/cuentas/bytes, no rutas locales.
+
+Scope `LOCAL_SDK_TREE_NOT_FULL_DEPENDENCY_CLOSURE_OR_ATTESTATION`: no elimina `DEPENDENCY_CLOSURE`, no acredita dependencias del árbol de la aplicación, librerías del sistema, recursos del browser, tenant/job ni inmutabilidad entre chequeos. No es aislamiento OS. No activa worker/provider. Instalaciones enlazadas fallan explícitamente, sin fallback.
+
+Se corrigió además una carrera: `publisher.step` contabiliza operaciones pendientes; un callback que retorna dejando verificaciones en vuelo falla con `CONTROLLED_RENDER_SDK_UNAWAITED_PUBLICATION` y cancela esas operaciones. Si el callback falla, también cancela verificaciones hermanas preservando el error primario sanitizado. Ningún cambio autoriza outputs parciales como evidencia productiva.
+
+**Validación dirigida:** 15 pruebas lifecycle, 7 de inventario filesystem y 6 del deadline (**28 pruebas**) pasan; compilación focalizada/web, sintaxis y diff pasan. Lectura real de la instalación local y revalidación: 11932 entradas, 10745 archivos, 559490957 bytes, hash `15dc2855d210c9257f7df01b3be7315217334ae007c24a0916bc4008ca287ade`, 218948 ms. Esta medición precede al guard adicional de hard links (validado con fixture real separado). No se lanzó Chromium/FFmpeg: no prueba render ni cierre del corpus. El costo de dos barridos completos es alto; el aislamiento productivo necesita imagen inmutable verificable, no caché confiada sobre árbol mutable. El prototipo consume el mismo presupuesto global y debe fallar si no alcanza.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. CAP-022: **Parcial**; CAP-029/CAP-025: sin nuevos avances. Sin QA formal, migración aplicada, despliegue ni rollout. No se sorteó el fallo previo de revisión de permisos. Objetivo activo; faltan aislamiento duro/procedencia, cierre completo de dependencias, fuentes sistema/decks, SDR y corpus completo preview/MP4.
+
+## Avance 2026-10-02 — CAP-027: plazo y ownership conectados al driver SDK
+
+**CAP-027: 80.25%, Parcial.** El driver SDK observado usa ahora el plazo compartido de 600 s en preparación, lectura/pins, recursos SDK, captura forward/reverse, fuentes, extracción/audio/encoder/mux/probe/auditorías y publicación. Las APIs públicas de extracción, procesamiento de audio, encode y mux reciben AbortSignal y timeout acotado por el saldo; decoder externo recibe además entorno OS allowlisted. Límites de procesos/limpieza quedan centralizados en un módulo de política. No hay cambio de versión ni proveedor.
+
+`controlled-sdk-lifecycle.mjs` reserva ownership antes de esperar recursos (server/capture/CDP/text), invalida trabajo tardío y rechaza operaciones/acquisiciones sin await. Cierra en orden inverso con un único presupuesto de limpieza de hasta 5 s, aun al fallar/abortar; intenta los demás disposers si uno queda colgado. Recursos producidos tarde siguen ligados al disposer. Conserva error primario y códigos secundarios seguros, incluso errores falsy/arbitrarios. Fases separan trabajo, limpieza y publicación; no permiten reiniciar trabajo desde un callback tardío.
+
+El recibo final/éxito se emite **después** del cierre de APIs y una segunda revalidación de inputs, MP4 y archivos del comparador. Fallo/timeout de cleanup bloquea publicación; rechecks usan la fase de publicación, no un controller de trabajo ya cerrado. El servidor se espera mediante su evento `close` (la API pública retorna Node Server); el browser se cierra mediante API pública del SDK. Recibo mantiene scope `SDK_API_HANDLES_NOT_PROCESS_TREE_ATTESTATION`: completar disposers no demuestra eliminación kernel de descendants. Cancelación dura, cuotas OS, dependencia completa y cadena tenant/job siguen sin resolver. Pueden quedar outputs parciales locales, pero no se declara éxito ni se los aprueba como evidencia productiva.
+
+**Validación dirigida:** 13 pruebas de lifecycle, 7 de medios, 3 de SDK-text, 6 de deadline, 11 del prototipo, 40 de jobs, 6 de ejecución y 5 de seek (**91 pruebas**) pasan; compilación focalizada/web, sintaxis del driver y diff pasan. Nuevo comando `npm run test:composition-controlled-sdk-lifecycle` recompila y valida lifecycle/deadline. Ejecutores/handles/CDP son simulados; el compilador y parser SDK reales se usan solo para preparar corpus, no para renderizar. No QA formal, nuevo render real, migración, despliegue ni rollout; no se sorteó el fallo previo de revisión de permisos.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. CAP-022: **Parcial**, sin cambios en esta iteración. Objetivo activo; no se aumenta estimación integral sin verificar renderer/aislamiento/procedencia/corpus completo.
+
+## Avance 2026-10-02 — CAP-027: presupuesto monotónico compartido del flujo CLI
+
+**CAP-027: 80.25%, Parcial.** Se elimina el reinicio del presupuesto por etapa en el prototipo CLI: validación/pins, render, probe y revalidación comparten un plazo monotónico. El comando completo incluye preparación, auditoría de carta y emisión del recibo en otro plazo global, del que el render recibe solo el saldo disponible; cada proceso de probe/decoder obtiene como timeout el mínimo de su límite y el saldo. AbortSignal se propaga sin heredar el motivo privado del caller. Un adapter que ignore abort no puede emitir un resultado exitoso tardío.
+
+`composition-controlled-render-deadline.ts` centraliza límites/política, listeners/timer y chequeo antes/después de cada operación. `composition-controlled-process-environment.ts` unifica la allowlist OS y excluye credenciales/overrides Node/producer tanto en renderer como decoder del comando. Recibos conservan política/presupuesto como diagnóstico local, **no prueba de enforcement OS ni contrato de atestación**.
+
+**Límite importante:** esto es deadline lógico e invalidación, no cuota dura de CPU/I/O ni garantía de terminar descendants. `execFile` observa abort para su hijo inmediato; confirmar cancelación del adapter es asíncrono. Windows necesita Job Object u otra frontera OS verificable; SIGTERM/timeout/kill de padre no bastan. Aislamiento, cancelación del árbol y presupuesto del driver SDK observado siguen pendientes y no se elimina `ISOLATION_AND_PROCESS_TREE`. No se implementó un fallback inseguro con PID/taskkill.
+
+**Validación dirigida:** 6 pruebas de plazo/entorno, 11 de prototipo, 40 de jobs, 9 de fuentes, 6 de ejecución, 5 de seek y 3 SDK-text (**80 pruebas**) pasan; compilación focalizada/web pasa. La prueba nueva encontró una carrera en su aserción de confirmación de abort: la invalidación precede al acknowledgment del adapter; se corrigió para esperar la confirmación y se repitió. La compilación web detectó un tipo de entrada de entorno demasiado específico por la declaración de Next de NODE_ENV; se separó el diccionario de entrada del ProcessEnv de salida permitido y se repitió. Se verifica sanitización de fallos filesystem previos a render sin exponer rutas. Ejecutores y archivos son sintéticos; no nuevo render real, QA formal, migración, despliegue ni rollout. No se sorteó el fallo pendiente de revisión de permisos.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. CAP-022: **Parcial**, sin cambios en esta iteración. Objetivo activo; próximos pendientes principales: containment/proceso SDK, procedencia tenant/job, fonts efectivas/sistema/decks, SDR y corpus completo preview/MP4.
+
+## Avance 2026-10-02 — CAP-027: geometría independiente preview/renderer
+
+**CAP-027: 80.25%, Parcial.** Avance del bloque de medición: el comparador de archivos cruza ahora el resultado de píxeles con geometría independiente del renderer cuando el contrato solicita ejecución controlada. Recibo nativo aporta el testigo al metadata del MP4 decodificado. Coteja checkpoint/tiempo/contenido/identidad y los cuatro bordes; desplazamiento superior a 1 px falla aunque el PNG sea idéntico. Geometría ausente/incompleta deja el texto INCOMPLETE; la coincidencia geométrica no oculta fallos de píxeles ni referencias no informativas.
+
+La captura DOM conserva límites decimales de Range separados del ROI entero/clipped. No se infiere posición del renderer desde regiones preview ni se usa ROI redondeado para certificar desplazamiento subpixel. Evidencia antigua sin límites decimales conserva compatibilidad de lectura, pero no supera el cotejo controlado. Expansión del ROI por paint delta no altera los límites originales; ausencia y seeds offcanvas no obtienen aprobación por extrapolación. Coordenadas, cantidad de regiones y trabajo permanecen acotados.
+
+Validación distingue explícitamente `PREVIEW_PAINT` de `RENDERER_GEOMETRY`: la segunda no acredita supresión de texto ni puede portar máscaras/seeds de preview. No elimina obligaciones de paint del preview, font attestation ni procedencia. El cambio actual cubre la ruta controlada/nativa, no geometry de decks ni certificación general de otros renderers. No aumenta estimación integral sin ejecución real/corpus completo.
+
+**Validación dirigida:** 8 pruebas nuevas de geometría; 13 de captura DOM, 8 de contrato/integración PNG, 9 de fuentes, 14 regionales, 23 de captura visual, 4 de expansión, 4 de evidencia de fuentes, 40 de jobs y 6 de ejecución (**129 pruebas**) pasan. Compilación focalizada/web pasa. CDP/DOM siguen simulados y PNGs sintéticos; no sustituyen render real, QA del tester ni certificación de glifos del MP4. No QA formal, migración aplicada, despliegue ni rollout. El fallo previo de revisión de permisos sigue pendiente, sin sortearlo.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. CAP-022: **Parcial** (sin nuevas modificaciones en este bloque). Objetivo CAP-027 activo: faltan procedencia/aislamiento, fonts reales/sistema/decks, SDR y corpus completo de preview/MP4.
+
+## Avance 2026-10-02 — CAP-027: consumo del testigo de fuentes y trabajo paralelo CAP-022
+
+**CAP-027: 80.25%, Parcial.** El recibo estricto del comparador acepta ahora el testigo nativo del SDK. El exportador controlado exige ese testigo cuando el contrato declara fuentes custom; el comparador valida documento/contrato/manifest/browser/texto/glifos antes de lanzar decodificación. Rechaza evidencia preview-only, fallback y cobertura alterada. Deriva un resumen acotado sin rutas ni texto, ligado al SHA del video, que conserva el reporte durable y verifica independientemente el finalizador contra el contrato congelado.
+
+El resumen es `OBSERVED_UNATTESTED`: **no elimina `RENDERER_FONT_USAGE_UNAVAILABLE`, no certifica procedencia ni concede PASS**. La migración preparada incorpora comprobaciones del resumen contra revisión/organización y mantiene gates previos; sigue sin aplicar ni validar en PostgreSQL. La comparación geométrica independiente entre regiones del preview y renderer, el render real nativo y el vínculo autenticado de la sesión con el MP4 siguen pendientes. No se aumenta el porcentaje sin esa evidencia integral.
+
+**CAP-022: Parcial, primer bloque implementado en paralelo autorizado.** Módulo nuevo `domains/production/media-derivatives/`: contratos estrictos de identidad/manifiesto WebP y planificador puro de sprite/LOD por viewport, offset de fuente y prioridad del playhead. Identidad separa organización/SHA/perfil/duración/intervalo/LOD/página; trabajo y tamaño acotados. No modifica documentos ni sustituye originales en render. Faltan productor seguro, verificación de bytes, cola/cancelación/caché, entrega autorizada, UI y mediciones. Proxies no implementados sin mediciones. No implica CAP-022 completo ni nuevo identificador.
+
+**Validación dirigida:** 9 pruebas de font capture/binding/export/final gate, 40 de jobs, 6 de contrato de ejecución y 9 de thumbnails (**64 pruebas**) pasan. Compilación focalizada/web, sintaxis del driver y diff pasan. Nuevas pruebas de SDK/CDP siguen simuladas; no render real, QA formal, migración aplicada, despliegue ni rollout. Se mantiene pendiente el fallo previo de revisión de permisos; no se sorteó.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. CAP-022: **Parcial**. CAP-029/CAP-025: sin implementación nueva en este bloque. Objetivo CAP-027 activo.
+
+## Avance 2026-10-02 — CAP-027: conexión de texto y fuentes al consumidor SDK
+
+**Implementación estimada: 80.25%; sigue Parcial.** El driver opt-in admite `--native-recipe` para recetas nativas del catálogo, sin combinarlo con el corpus de video y sin aceptar HTML/fuentes remotas. La compilación asigna una fuente local bundled de Next (`geist-latin.woff2`), fija sus bytes, genera manifest/CSS por content hash y recompone documento/case identity. Copia solo ese archivo a `assets/fonts/`, verifica original/copia y mantiene la identidad de bytes en el manifiesto (el UUID del documento no cambia por alterar bytes). No certifica decodificación ni cobertura Unicode por compilar.
+
+La API pública del SDK crea la página antes de `initializeSession`, que realiza la navegación; el driver suscribe CDP/font capture antes de esa navegación. Después inicializa y carga FontFace declaradas explícitamente (captions pueden estar vacíos al inicio); falta de carga bloquea capturas. `controlled-sdk-text.mjs` lee texto/geometría y glyph usage después de capturas del SDK en el barrido ascendente, vuelve a cotejar ambos en el descendente y solo entonces construye el testigo de repetibilidad. Recolector vuelve a verificar fuentes en revisitas, pins/browser y testigo al terminar. No usa segundo preview, no escribe sobre frames del encoder y conserva cleanup. El recibo diagnóstico incluye `nativeEvidence`; **aún no lo consume el comparador/job** y conserva fonts/procedencia pendientes.
+
+**Validación dirigida:** 9 pruebas del prototipo/preparación (incluye cuatro FPS y sanitizador oficial preservando timeline nativa), 8 de font capture, 6 de contrato/exportación, 3 del adaptador SDK-text y 5 de medios (**31 pruebas**) pasan; compilación focalizada/web, sintaxis y diff pasan. Preparación usa bytes sintéticos en su prueba; SDK-text/CDP se simulan: no son evidencia de font decoding ni render real. La primera prueba de preparación falló por cleanup de directorio (`rm` no sirve para directorio vacío); se corrigió a `rmdir` y se repitió con éxito. No nuevo render real debido al fallo de revisión de permisos pendiente; no QA formal, migración, despliegue ni rollout.
+
+Pendientes: ejecutar SDK con fuente real, fuente ausente/fallback/RTL, corpus completo (no promesa de que todas las recetas pasen), consumo del testigo y comparación preview/MP4, fonts de sistema/decks y cierre de procedencia/aislamiento/color. Usar una fuente instalada para experimento local no es revisión de licencia para distribución del worker.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: recolector de glifos para sesión controlada
+
+**Implementación estimada: 80.25%; sigue Parcial.** Se agregó un recolector CDP independiente del formato preview-only para fuentes custom de texto/captions nativos. Es infraestructura de captura local, **aún no conectada al driver SDK**, que continúa rechazando textos nativos. No equivale a cerrar fuentes del renderer, ni se aumenta el porcentaje sin integración real.
+
+El recolector exige documento/contrato v4/manifest/bindings coherentes y perfil CONTROLLED congelado, se inicia antes de navegación/carga, fija la versión browser y llama al verificador de archivos suministrado antes/durante/después. Reutiliza el lector CDP de eventos de fuentes y glyph usage con source local exacto; rechaza fallback, evento ausente, puntos fuera de orden y loading inválido. Finalización exige el testigo de texto de la captura, no fabrica una etiqueta de reverse seek; coteja el mismo testigo y browser sin cambios. Errores de CDP se sanitizan y las suscripciones se liberan en fallo/finalización. No cierra el browser que pertenece al llamador.
+
+Evidencia estricta `CONTROLLED_SESSION_CUSTOM_NATIVE_FONT_USAGE_V1`, scope `LOCAL_CDP_CUSTOM_NATIVE_GLYPHS_NOT_RENDERER_ATTESTATION`, ligada a SHA de documento/contrato/manifest y metadatos de glyphs, sin guardar texto documental ni URLs. Un validador independiente rechaza evidencia ajena, cobertura incompleta, bindings alterados, fallback y metadatos preview-only. Se comparte únicamente la regla de cobertura/glifos con el validador preview existente; sus políticas/formato no cambian.
+
+**Validación dirigida:** 7 pruebas nuevas, 6 de CDP plataforma, 4 de evidencia preview, 5 de carga y 4 del contrato de fuentes (**26 pruebas**) pasan; compilación focalizada/web y diff pasan. CDP y archivos se simulan en las nuevas pruebas: no son prueba de fonts reales en SDK. Pendientes: conectar la sesión SDK antes de carga, materializar/compilar fuentes reales del corpus, recoger geometría/texto del mismo renderer, consumir evidencia en comparador/job y cerrar procedencia/autorización. El reporte vigente conserva `RENDERER_FONT_USAGE_UNAVAILABLE`.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. Sin QA formal, migración aplicada, despliegue ni rollout; objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: obligación de seek ligada al contrato y reporte durable
+
+**Implementación estimada: 80.25%; sigue Parcial.** La comprobación inversa deja de ser solo un campo diagnóstico: v4 puede congelar `renderExecution.seekRepeatabilityPolicy`, con identidad exacta en snapshot/reuse y particiones. El driver local la declara y exporta el resultado al recibo estricto del comparador. No hay nuevo flag productivo ni cambio de proveedor.
+
+Schema isomórfico acotado exige scope local, documento/contrato SHA, cobertura exacta, puntos ordenados únicos, hashes RGBA y presupuestos de bytes. El binding independiente coteja hash canónico del contrato completo y cada frame/tiempo esperado; rechaza evidencia de otra partición/documento, scope distinto, cobertura falsa u obligación no autorizada. Exportación exige evidencia si el perfil local la solicita. Comparador/final gate conservan `RENDER_SEEK_REPEATABILITY_UNAVAILABLE` cuando falta; el reporte durable valida y conserva el resultado sin conceder PASS global: sigue pendiente la atestación del renderer.
+
+La migración preparada agrega comprobación de presencia/política/scope/documento/cobertura/checkpoints contra revisión; el hash canónico completo se coteja por el finalizador Node, no se presume equivalente a serialización JSONB. **SQL sin aplicar ni verificar en PostgreSQL.** El resultado local sigue siendo editable/no autenticado; integrar procedencia e aislamiento es trabajo restante, no QA solamente.
+
+**Validación dirigida:** 6 pruebas de contrato/exportación/binding, 5 de repetibilidad, 39 de jobs y 22 de particiones (**72 pruebas**) pasan. Compilación focalizada/web y sintaxis del driver pasan. El test inicialmente encontró un error de tipado en una aserción nueva; se corrigió y se repitió la compilación. Render SDK del nuevo formato continúa pendiente; no se sortea la revisión de permisos que falló por límite de uso.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. Objetivo activo; pendientes integrales: procedencia/aislamiento, fuentes efectivas en renderer, SDR, corpus completo y paridad preview/MP4.
+
+## Avance 2026-10-02 — CAP-027: comprobación inversa en el consumidor SDK
+
+**Implementación estimada: 80.25%; sigue Parcial.** Se implementó la comprobación forward/reverse del renderer SDK local, pendiente de ejecutarla en Chromium real. No aumenta el porcentaje sin esa evidencia; no sustituye la comparación preview/MP4 ni completa el corpus.
+
+`measureControlledSeekRepeatability` toma los checkpoints del contrato congelado, ordena dos barridos y compara hashes de píxeles RGBA decodificados (no bytes comprimidos del PNG). Rechaza puntos duplicados, fuera de duración/rejilla, dimensiones incorrectas, imágenes inválidas, límites excedidos, cancelación y diferencias inversas. Acota checkpoints, bytes por captura/barrido y píxeles; conserva documento/contrato/checkpoints y errores sanitizados. La igualdad mide repetibilidad espacial, no acredita por sí sola que el reloj/evento corresponda al tiempo solicitado, font/color efectivos ni imagen codificada del MP4.
+
+El driver usa `captureFrameToBuffer` de la misma sesión SDK, sin sobrescribir ni añadir PNGs al directorio del encoder. Inicia la fase inversa solo después de capturar toda la secuencia; el adaptador de medios conserva sus envelopes originales y no vuelve a agregar muestras de volumen. El módulo del evaluador se fija/reverifica y el recibo conserva el resumen; mismatch aborta antes de codificación. Scope explícito: `SDK_SESSION_CHECKPOINTS_NOT_PREVIEW_PARITY_OR_JOB_ATTESTATION`; no autorización productiva ni gate durable de repetibilidad aún.
+
+**Validación dirigida:** 5 pruebas de repetibilidad, 5 de medios, 5 de contrato/exportación y 8 del prototipo pasan (**23 pruebas**). Compilaciones focalizada/web, sintaxis del driver y revisión del diff pasan. No se intentó sortear el fallo de revisión de permisos del turno anterior; la ejecución real del SDK continúa pendiente. No QA formal, migración aplicada, despliegue ni rollout.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. El objetivo permanece activo.
+
+## Avance 2026-10-02 — CAP-027: exportación consumible y preservación por particiones
+
+**Implementación estimada: 80.25%; sigue Parcial.** El driver prepara ahora `comparison-contract.json` y `comparison-receipt.json`, directamente compatibles con el comparador de MP4, sin mezclar el recibo diagnóstico con el contrato estricto de entrada. El adaptador valida v4, expectativa obligatoria, documento/video y MATCH de archivos/CDP; exporta copias independientes y mantiene atestación pendiente. Los dos archivos se crean sin sobrescribir, se fijan/reverifican y sus hashes/tamaños quedan en el recibo diagnóstico. El driver también fija los módulos de contrato/exportación utilizados; sigue sin cerrar todas las dependencias cargadas.
+
+Las particiones de eventos conservan la expectativa de ejecución en todos sus hashes autorizados y rechazan eliminarla al verificar lineage. La prueba del adaptador de medios ahora recorre las 28 combinaciones receta/FPS con compilador y parser SDK reales, pero extracción/inyección/mezcla simuladas; verifica secuencia completa y envelopes, no paridad audiovisual real.
+
+**Validación:** 5 pruebas de contrato/exportación, 4 de medios y 22 de particiones pasan (31 en este incremento); compilación focalizada/web y sintaxis del driver pasan. El intento de repetir el SDK render **no fue ejecutado**: la revisión automática del permiso elevado falló por límite de uso. No se sorteó el control ni se extrapoló evidencia antigua al nuevo formato. Render real del formato, comparación preview/MP4, SQL aplicado y QA formal siguen pendientes. El porcentaje no aumenta por una integración cuya evidencia end-to-end aún falta.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. Objetivo activo; el fallo de permisos afecta esta comprobación, no impide otros trabajos de implementación.
+
+## Avance 2026-10-02 — CAP-027: contrato de ejecución y bloqueo de aprobación indebida
+
+**Implementación estimada: 80.25%; sigue Parcial.** Este incremento vincula expectativas v4 de siete archivos de herramientas y versión CDP con observaciones del documento y MP4. No incrementa el porcentaje: la procedencia autorizada y el aislamiento del renderer siguen pendientes.
+
+Contrato isomórfico estricto `CONTROLLED_FILES_AND_BROWSER_SESSION_V1`: Node, producer, engine, runtime, browser, encoder y decoder; hash/tamaño y cinco campos CDP antes/después. El snapshot congela la expectativa; el reuse rechaza cambios y presencia/ausencia distinta. El comparador del MP4 liga la observación al hash real del archivo; el gate final y esquema durable conservan `RENDER_EXECUTION_ATTESTATION_PENDING`. MATCH significa coincidencia local, nunca aprobación productiva; discrepancias requieren FAIL y evidencia ausente permanece INCOMPLETE. Los contratos sin esta obligación conservan compatibilidad.
+
+El driver SDK queda preparado para emitir expectativa/observación/resumen; **no se repitió el render SDK con este nuevo formato** en este incremento. Su baseline CDP es local y autorreportado, no una imagen firmada independiente. La migración `20261002160000_bind_controlled_execution_summary.sql` está preparada, no aplicada ni validada en PostgreSQL; añade binding y bloqueo de PASS, conserva gates anteriores y restringe ejecución directa del wrapper privado.
+
+Validación dirigida: 4 nuevas pruebas de contrato, 38 de jobs (incluida nueva prueba durable), 6 de snapshots, 3 de browser, 4 de video exportado, 21 de particiones y 8 del prototipo: **84 pruebas pasan**. Compilaciones focalizada/web, sintaxis del driver y revisión del diff pasan. La prueba de video requirió permiso local de ejecución del decoder tras `spawn EPERM`; repetida con ese permiso pasó. No QA formal, despliegue, migración ni activación del backend.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.25%**. Pendientes: cierre de procedencia/aislamiento, fonts efectivos, SDR, corpus completo y conformidad integral preview/MP4.
+
+## Avance 2026-10-02 — CAP-027: extracción, split y audio reales mediante SDK controlado
+
+**Implementación estimada: 80.25%; CAP-027 sigue Parcial.** Corpus pasa de 87% a 88% (peso 10%; +0.10 puntos globales) al ejecutar y auditar un caso de video real con audio, no solo la carta neutral. La ruta instrumentada conserva servidor/captura/encoder públicos y añade extracción e inyección de frames, muestreo del volumen efectivo durante captura, mezcla y mux públicos del SDK. No se cambia el proveedor productivo ni se declara equivalente al pipeline completo del productor.
+
+**Dos causas confirmadas:** (1) el parser estático de audio del SDK no interpretaba `data-duration` y devolvía final cero; el compilador compartido ahora emite `data-end` aditivo para audio canónico/sincronizado, manteniendo duración e inicio. Los 28 casos de receta/FPS tienen finales finitos en el parser público. (2) el FFmpeg empaquetado por Remotion no incluía el filtro `fps` requerido para extracción oficial. El tooling opt-in fija `ffmpeg-static` 5.3.0 / release b6.1.1, descarga explícitamente FFmpeg 6.1.1 y licencia con caché local y sin overrides/credenciales heredadas. Se conservan SHA-256 y licencia en los pins. Esta distribución GPL requiere revisión antes de incorporarla/distribuirla con un worker productivo; no se agregó a dependencias de la aplicación.
+
+**Evidencia real a 25 FPS:** `video-split` usa fuente offset 1 s, corte a 3 s y ganancia 0.8. Se extraen/injectan 200 frames, se capturan 200 frames, se muestrean dos pistas de audio y se produce H.264/AAC de 8 s/1920×1080 con identidad CDP estable. La auditoría independiente decodifica los marcadores authored en frames 0/74/75/76/100/199: valores exactos 25/99/100/101/125/224, incluidos ambos lados del corte. Compara 32 ventanas RMS de los dos canales contra la fuente decodificada desplazada 1 s y atenuada a 0.8: máximo delta **0.087005409 dB**, dentro de 0.5 dB. Rehasea fuente, decoder y output antes/después. Recibo integrado ignorado: `apps/web/.tmp/observed-neutral-render-4bQBnF/receipt.json`, MP4 SHA-256 `bf530c0b6b07c1712c803fa7c312eeec2dcb15f7d8e25d5019f8ff8217232bcd`; repetición conserva el mismo output que la ejecución anterior. El primer intento completo fue rechazado por integridad y no produjo recibo aceptado; no se determinó qué entrada cambió. No se relajó el gate.
+
+**Cobertura y límites:** el preparador genera únicamente recetas authored con fuente local hash-pinned y caso/documento registrados; no admite HTML externo. Rechaza fuentes remotas, manifiesto/IDs incompletos, extracción fallida, volumen inválido, secuencia incompleta y pérdida de pistas. Solo split/25 FPS cuenta con auditoría real de tiempos/ganancia; las 28 compilaciones no son 28 renders. Marcadores y RMS grueso no equivalen a SSIM, comparación preview/MP4, sincronía A/V a 20 ms, LUFS/true peak, ni prueba completa de fades/crossfades. Fonts/SDR, aislamiento/cancelación/presupuesto global, cierre de dependencias, identidad esperada independiente y consumidor durable tenant/job siguen pendientes. CAP-004/009/010/017/023/026: **Completada; falta QA**. Sin QA formal, migraciones, despliegue ni rollout. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: identidad observada en la sesión que captura el MP4
+
+**Implementación estimada: 80.15%; CAP-027 sigue Parcial.** Sin incremento porcentual: se demuestra la observación local del browser de captura, pero no se cierra todavía una obligación integral de entorno ni su consumo durable. El tooling opt-in fija producer/engine/CLI a 0.7.106 y conserva lockfile. El nuevo consumidor usa exclusivamente APIs públicas del SDK: servidor con runtime verificado, sesión de captura y encoder. No sustituye la captura de render por una segunda captura de preview ni modifica el proveedor productivo.
+
+**Evidencia real:** a 25 FPS, la misma sesión CDP devuelve `Browser.getVersion` antes y después de los 200 frames de una carta authored de 8 s; las identidades coinciden. Los mismos frames se codifican a H.264/1920×1080 y el MP4 pasa probe y carta decodificada en tres tiempos. Recibo local ignorado: `apps/web/.tmp/observed-neutral-render-8fbUXz/receipt.json`; output SHA-256 `343e0bc2f0a1891943b0eb427888e46dc0a7a4d7ab3f43529002c437dea281c2`. El recibo fija/reverifica driver, Node, metadata/entry SDK, runtime, lock, browser, encoder/decoder, HTML/GSAP y output. Es versión autorreportada de browser más pins de archivos, no atestación de imagen ni cierre de dependencias cargadas. La primera ejecución no emitió recibo; durante ella se editó el driver y su recheck debía rechazar la mutación. La repetición con archivos estables sí pasó.
+
+**Límites:** genera únicamente esta carta sintética propia; rechaza medios/textos y no implementa la orquestación completa del productor (extracción de video, mezcla, fuentes, variables, shaders). No acepta HTML subido. Mantiene pendientes fonts efectivos, SDR general, aislamiento/cancelación del árbol y presupuesto global, cierre de dependencias, identidad esperada independiente, vinculación tenant/job y comparación preview/MP4. El ejecutor local sigue usando un navegador sin aislamiento productivo. `Browser.getVersion` se observa en el render SDK, no se extrapola al CLI, Cloud u otros renders.
+
+**Validación:** render SDK real 25 FPS y 6/6 pruebas dirigidas del prototipo CLI pasan; compilación focalizada y revisión del diff pasan. No QA formal, migraciones, despliegue ni rollout. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.15%**. Objetivo activo.
+
+**Alcance restante del producto:** los siete CAP priorizados no agotan el benchmark. HTML editable (CAP-029), optimización de medios (CAP-022), operaciones IA seguras (CAP-025) y edición avanzada tienen alcance propio ya inventariado; no se crean nuevos CAP para resolver pendientes de CAP-027. Su priorización requiere una decisión de producto posterior, no amplía este objetivo automáticamente.
+
+## Avance 2026-10-02 — CAP-027: renderer local compatible y carta decodificada en cuatro FPS
+
+**Implementación estimada: 80.15%; CAP-027 sigue Parcial.** Corpus pasa de 85% a 87% (peso 10%; +0.20 puntos globales) por conectar una receta authored a renders estrictos reales del CLI oficial y a mediciones decodificadas del mismo MP4 en cuatro perfiles. Es una estimación de implementación; no acredita QA, corpus completo ni entorno productivo. Se sigue la ruta controlada recomendada mediante prototipo local; Cloud permanece como proveedor de producción, sin despliegue ni cambio de default.
+
+**Causa confirmada y corrección:** el bootstrap `__HF_EXPORT_RENDER_SEEK_CONFIG` añadido por el consumidor local se fusionaba con la timeline durante la normalización de scripts del productor. Su sanitizador oficial eliminaba el bloque completo al sustituir el runtime. El corpus para CLI ahora conserva el HTML del compilador Courseforge sin bootstrap/runtime extra; HyperFrames inyecta el suyo. La reproducción demuestra que el bloque antiguo pierde la timeline y el nuevo la conserva; regresión cubre 24/25/30/60 FPS con el sanitizador instalado. No se modificó el motor, el compilador compartido ni las fixtures standalone; `--strict` y `--no-best-effort` siguen activos.
+
+**Evidencia local real:** cuatro MP4 H.264 de 8 s/1920×1080 pasan render estricto, probe FPS/duración y recheck de archivos. El decoder fijado mide inicio/mitad/último frame de cada MP4 contra los seis parches authored independientes: 12 frames, máximo delta RGB 4 frente al umbral 8. Cada recibo vincula hashes de MP4/decoder/plan y PNGs/métricas; entradas y salida se revalidan. Dos renders de 25 FPS produjeron el mismo SHA-256; no acredita repetibilidad forward/reverse de todas las recetas.
+
+| FPS | Recibo local ignorado | SHA-256 del MP4 |
+| ---: | --- | --- |
+| 24 | `apps/web/.tmp/controlled-render-1kciU3/receipt.json` | `fa07a7e1bcf6cae37978d0fcaf843ab2078df0bb3bd22edef32e351cd07940b6` |
+| 25 | `apps/web/.tmp/controlled-render-uEnxdZ/receipt.json` | `1f617e9874ba9cf74e8bf3dec4efc6301a85519894e1bc2fb57bd4d8598eea6e` |
+| 30 | `apps/web/.tmp/controlled-render-6WeYHp/receipt.json` | `706d5bb2a78e3c9b3820caf63fb18dbf7189ba50659584b70b66877876a21530` |
+| 60 | `apps/web/.tmp/controlled-render-xROwvi/receipt.json` | `35e16d6ff5df154de9a51fad1915faf8595b0b0d869630c95153358a97404f98` |
+
+**Validación:** 6/6 pruebas dirigidas, compilación focalizada, typecheck web y diff check pasan. Incluyen pérdida de timeline por el bootstrap, colores incorrectos, MP4/tool alterados, versión equivocada, fallo de decoder, límites/entorno y error seguro. Los recibos siguen siendo editables y declaran `LOCAL_RENDER_NOT_PRODUCTION_ATTESTATION`; no se pueden promover a evidencia de producción. Falta aislamiento/cancelación del árbol, cierre de dependencias, identidad de sesión del browser, fuentes efectivas, conversión SDR general, integración durable y comparación preview/render. El MP4 neutro no tiene audio: no aporta cobertura de audio editorial. Sin QA formal, migraciones, despliegue ni rollout. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 80.15%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: ejecutor oficial local e incompatibilidad observada
+
+**Implementación estimada: 79.95%; CAP-027 sigue Parcial.** No se suma porcentaje de conformidad: se implementó un prototipo sintético ejecutable, pero el render estricto real reveló una obligación de compatibilidad pendiente. El consumidor genera `color-neutral` con el compilador de Courseforge, ejecuta el CLI oficial `hyperframes@0.7.106`, fija archivos/argv/entorno y verifica perfil e integridad de salida. No reemplaza el motor ni cambia Cloud. Herramientas opt-in separadas de dependencias productivas; telemetría desactivada y credenciales excluidas. Ver [diseño y comandos](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_CONTROLLED_RENDERER_DESIGN.md).
+
+**Evidencia real:** dos ejecuciones sintéticas a 25 FPS capturaron 200/200 frames de 8 s y codificaron, pero el CLI rechazó el resultado por `sub_timeline_readiness_timeout` para `courseforge-composition`. El supervisor no emite recibo aprobado ante ese fallo. Inspección del HTML intermedio conserva la asignación de timeline; una reproducción local del HTML con el stub GSAP registra la clave. Falta localizar la diferencia de la sesión real del productor; no se atribuye todavía a una causa confirmada ni se desactiva `--no-best-effort`. Browser reportado por el CLI: Chrome 154.0.8037.97; no equivale a atestación CDP durable.
+
+**Validación local:** 4/4 pruebas de argv/entorno, hash/mutación, rechazo de perfil, cancelación previa, errores sanitizados y versión efectiva del paquete pasan; typecheck web, compilación focalizada y diff check pasan. El paquete CLI inspeccionado usa `--no-sandbox`; el prototipo queda restringido a contenido sintético confiable, nunca HTML de usuarios. Siguen pendientes aislamiento, cierre de dependencias, identidad de sesión, fuentes efectivas, conversión SDR, integración durable y comparación preview/render. Sin QA formal, migraciones, despliegue ni rollout. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 79.95%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: integridad del MP4 medido y propuesta de renderer
+
+**Implementación estimada: 79.95%; CAP-027 sigue Parcial.** Gate/evidencia pasa de 93% a 94% (peso 10%; +0.10 puntos globales). El comparador del video exportado ahora fija hash, tamaño e identidad del archivo mediante un handle y lectura acotada; rechaza symlinks, reemplazo o mutación durante el hash. Después de medir audio, frames, imagen y carta de color, vuelve a verificar la identidad y SHA-256 antes de devolver el reporte. Rechaza cambios de bytes con el mismo tamaño y reemplazos por otro archivo, aunque tengan bytes idénticos. Errores de filesystem de esta frontera se sanitizan. Complementa el recheck remoto del job; no certifica el entorno del proveedor.
+
+**Validación local:** prueba de cambios/reemplazo/límites y 4/4 pruebas del comparador pasan; la regresión ejecutó FFmpeg real sobre MP4 sintético y conservó detección de corrupción visual/recibo incorrecto. Compilación focalizada y typecheck pasan. El recheck acredita integridad observable en ambos extremos; no añade un lock del archivo durante todas las lecturas del decoder. El workspace debe permanecer exclusivo del worker. Se preparó la [propuesta de renderer controlado](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_CONTROLLED_RENDERER_DESIGN.md), con fronteras, evidencia efectiva, aislamiento, operación y rollout; la propuesta no incrementa el porcentaje ni cambia la selección Cloud. QA formal, migraciones y despliegue permanecen pendientes. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 79.95%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: matriz real de fuentes a compiladores
+
+**Implementación estimada: 79.85%; CAP-027 sigue Parcial.** Corpus pasa de 83% a 85% (peso 10%; +0.20 puntos globales). Un comando local de solo lectura toma los cuatro recibos y MP4 ya generados, rehasea cada archivo, exige 24/25/30/60 FPS una vez, recompone las siete identidades de receta por perfil y compila sus 28 documentos con los targets reales de preview y render. Verifica que la referencia congelada y ambos HTML enlacen el checksum/medio correcto; emite hashes de caso, documento y HTML sin paths privados. Rechaza MP4 alterado o recibo de caso incompatible. Los recibos siguen siendo editables: esto no es atestación, ejecución de navegador ni 28 MP4 renderizados.
+
+**Validación local:** la matriz sobre los cuatro recibos reales devuelve 28/28 casos compilados y ligados; 5/5 pruebas dirigidas pasan (incluidos hash/caso alterados), junto con compilación focalizada y typecheck. No se ejecutó QA formal, migración ni rollout. Persisten procedencia efectiva del renderer/fonts/SDR y comparación preview contra render real. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 79.85%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: cuatro perfiles FPS materializados del video fuente
+
+**Implementación estimada: 79.65%; CAP-027 sigue Parcial.** Corpus pasa de 81% a 83% (peso 10%; +0.20 puntos globales). Los cuatro perfiles previstos (24/25/30/60 FPS) ya tienen un MP4 H.264/AAC local generado, comprobado con el mismo generador: 240/250/300/600 frames respectivamente, timeline dentro de medio frame, píxeles decodificados distintos en 0/5 s y pista AAC decodificada con 20 ventanas RMS por canal dentro de 1.5 dB. Cada recibo vincula SHA-256 del MP4, binarios y casos de receta del perfil. La cobertura ganada es de **fuentes locales**, no de 28 renders de recetas ni de preview/MP4 remoto.
+
+**Validación local:** cuatro ejecuciones FFmpeg reales pasan; 3/3 pruebas de recetas, 6/6 del generador, typecheck y diff check previos pasan. Los recibos locales están listados en la [guía del corpus](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_NATIVE_CONFORMANCE_CORPUS.md); se encuentran bajo `.tmp` ignorado y no son evidencia durable ni atestación del proveedor. No hubo QA formal, migración o rollout. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 79.65%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: señal AAC decodificada del corpus local
+
+**Implementación estimada: 79.45%; CAP-027 sigue Parcial.** Corpus pasa de 80% a 81% (peso 10%; +0.10 puntos globales). El generador ya no confía solo en la presencia de la pista AAC: decodifica con el FFmpeg fijado a WAV PCM16 estéreo/48 kHz, valida cabecera y duración con padding AAC acotado, exige señal y compara RMS de ambos canales con el WAV authored en 20 ventanas de medio segundo (máximo 1.5 dB). El recibo conserva hash del PCM, muestras, número de ventanas y desviación observada, sin guardar audio ni paths. Esto no prueba identidad de la señal, sincronía A/V ni render remoto.
+
+**Validación local:** 6/6 pruebas dirigidas, typecheck y diff check pasan; se rechazan decoder fallido, silencio, truncamiento, envolvente errónea y WAV inválido. Generación FFmpeg real a 25 FPS: recibo `apps/web/.tmp/composition-video-corpus-hyWZwe/source-receipt.json`, 250 frames de video, 480256 muestras decodificadas por canal y máxima diferencia RMS 0.490 dB. No hubo QA formal ni migración. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 79.45%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: identidad visual del fixture decodificado
+
+**Implementación estimada: 79.35%; CAP-027 sigue Parcial.** La verificación de los dos frames del MP4 local ahora compara SHA-256 de píxeles RGBA, además del SHA-256 de cada PNG. Dos PNG con bytes distintos pero la misma imagen ya no se aceptan como movimiento. No se incrementa el porcentaje: se corrigió la solidez de la evidencia existente, sin ampliar el número de frames medidos ni cubrir preview/render.
+
+**Validación local:** 5/5 pruebas dirigidas pasan, incluido el caso de dos PNG con distinta compresión y píxeles idénticos; compilación focalizada y typecheck web pasan. La generación FFmpeg real a 25 FPS volvió a pasar: recibo local `apps/web/.tmp/composition-video-corpus-gYmoqt/source-receipt.json`, 250 frames y dos hashes de píxeles distintos. Sin comparación preview/render, aprobación QA ni migración. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 79.35%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: decodificación automática del fixture MP4
+
+**Implementación estimada: 79.35%; CAP-027 sigue Parcial.** Corpus pasa de 79% a 80% (peso 10%; +0.10 puntos globales). El generador ya no depende de una comprobación manual para detectar un video estático: decodifica a 0/5 s con el FFmpeg fijado, valida PNGs 1920×1080, limita bytes, exige hashes distintos y conserva ambos en el recibo. Rechaza fallos de decoder o frames iguales con código de etapa seguro; el MP4 se rehashea tras la decodificación.
+
+**Validación local:** 5/5 pruebas del generador (incluidos decoder fallido/estático), compilación focalizada y una nueva ejecución FFmpeg real 25 FPS pasan. Recibo local `apps/web/.tmp/composition-video-corpus-xm3LPy/source-receipt.json`: 250 frames, deriva `2.842170943040401e-14` y PNGs decodificados distintos. No se interpreta como comparación preview/render ni QA. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 79.35%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: MP4 sintético real materializado y verificado
+
+**Implementación estimada: 79.25%; CAP-027 sigue Parcial.** Corpus pasa de 77% a 79% (peso 10%; +0.20 puntos globales). El FFmpeg empaquetado no incluía `testsrc2`; se reemplazó por una secuencia de PNGs authored con marcador temporal/binario por frame, sin fuentes del sistema ni recursos remotos. El generador sigue produciendo H.264/AAC, limpia frames propios, limita recursos, fija hashes de ejecutables/medios y comprueba secuencia completa. Una ejecución real local a 25 FPS produjo MP4 de 311459 bytes, SHA-256 `2b9a8bb531a5e01c748eee771886a4f6cc36137dfe895161c1926e399bf83ff1`, 250 frames, deriva máxima `2.842170943040401e-14` frames y dos frames decodificados (0/5 s) con hashes diferentes. Artefacto ignorado: `apps/web/.tmp/composition-video-corpus-FtoyeD/`.
+
+**Validación local:** 8/8 pruebas dirigidas de generador/recetas, generación y probes FFmpeg reales, typecheck web y revisión del diff pasan. La ejecución requirió permiso de proceso para los binarios empaquetados; no usó servicios remotos ni datos productivos. No mide todavía preview contra este MP4, fuentes Cloud, SDR general o QA formal; las otras tres tasas de FPS no se generaron. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 79.25%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: verificación de secuencia del MP4 de corpus
+
+**Implementación estimada: 79.05%; CAP-027 sigue Parcial.** Sin incremento hasta generar y validar un MP4 real. El generador de fuente H.264/AAC local ahora inspecciona todos los timestamps de frames con el `ffprobe` fijado, exige 10×FPS frames crecientes y deriva máxima de medio frame, y conserva conteo/deriva en el recibo hash-pinned. Rechaza video truncado, frames duplicados o deriva incluso si el probe de streams y duración parecían válidos. El archivo se rehasea después de ambos probes; no se extrapola a un MP4 Cloud ni a audio decodificado.
+
+**Validación local:** 4/4 pruebas dirigidas con ejecutor controlado, incluyendo conteo/deriva malos, mutación de archivos, cancelación y limpieza; compilación focalizada, typecheck web y revisión del diff pasan. FFmpeg real no se ejecutó en esta actividad. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 79.05%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: escenario aislado de crossfade de audio
+
+**Implementación estimada: 79.05%; CAP-027 sigue Parcial.** Corpus pasa de 76% a 77% (peso 10%; +0.10 puntos globales). La décima receta de medios fija dos WAV estéreo distintos, solapados un segundo con fade-out/fade-in, en 24/25/30/60 FPS. El plan de checkpoints registra los bordes; el mezclador de referencia demuestra contribución real de la segunda fuente durante el solapamiento; ambos targets de compilación conservan el escenario. Total estructural preparado: 392 casos (332 nativos, 40 medios, 20 decks), además de 28 recetas de video condicionadas a materialización.
+
+**Validación local:** 4/4 pruebas del corpus de medios (40 documentos, fuente PCM y 20 compilaciones a 25 FPS), compilación focalizada, typecheck web y revisión del diff pasan. No hay medición de preview/MP4 remoto ni escucha/QA. Procedencia del renderer, fonts efectivos, SDR y gate global siguen pendientes. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 79.05%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: tags Rec.709 no acreditan conversión SDR
+
+**Implementación estimada: 78.95%; CAP-027 sigue Parcial.** Gate/evidencia pasa de 92% a 93% (peso 10%; +0.10 puntos globales). Un contrato v4 con política Rec.709 conserva `SDR_PIXEL_CONVERSION_UNATTESTED` e `INCOMPLETE` aunque los tags de stream coincidan y los píxeles preview/render sean iguales. El gate final y el reporte durable rechazan promoción a `PASS`; el wrapper SQL preparado exige la misma razón y rechaza `PASS` antes de finalizar el job. Esto evita un falso positivo, **no** implementa ni certifica la conversión SDR.
+
+**Validación local:** 44/44 pruebas dirigidas de color y job, typecheck web y compilación de pruebas pasan. La migración SQL no se aplicó ni ejecutó en PostgreSQL; QA y renderer Cloud reales siguen pendientes. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 78.95%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: gate final vinculado a métricas, fuentes declaradas y tags
+
+**Implementación estimada: 78.85%; CAP-027 sigue Parcial.** Gate/evidencia pasa de 91% a 92% (peso 10%; +0.10 puntos globales). El worker final ya no acepta solo la existencia de `fontUsage`/`colorTags`: valida el hash del manifiesto y el número de bindings congelados de fuentes, estado/reason de incompletitud, política y recomputación de tags, política/alcance de decks, y no permite `PASS` visual con SSIM/texto nativo incompletos. Rechaza testigos no autorizados o manipulados. No equipara estas declaraciones con atestación efectiva del renderer ni conversión SDR.
+
+**Validación local:** 19/19 pruebas dirigidas de fuentes, color y decks; compilación de pruebas, typecheck web y revisión del diff. No hay ejecución Cloud ni PostgreSQL; el gate SQL de decks sigue preparado sin aplicar. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 78.85%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: cierre SQL preparado para resumen de decks
+
+**Implementación estimada: 78.75%; CAP-027 sigue Parcial.** Sin incremento hasta ejecutar la prueba SQL en una base aislada. La migración preparada incorpora un predicado puro y de fallo cerrado: vincula el resumen de decks al plan/huella documental, recompone las regiones esperadas por ventanas de clips y checkpoints, comprueba política, alcance y conteos, rechaza un resumen no autorizado y niega `PASS` global mientras haya clips de deck sin atestación del renderer. El wrapper de finalización lo invoca antes del cierre de lease/CAS existente. [Prueba SQL preparada](../../supabase/tests/hyperframes-conformance-deck-summary.sql) cubre reporte válido, documento ajeno, conteo falso, PASS prematuro, razón de incompletitud ausente y resumen no autorizado.
+
+**Sin aplicar:** no se ejecutó la migración ni su prueba por falta de PostgreSQL/Supabase local disponible y por la decisión previa de diferir migraciones. Sigue siendo obligatorio validar en base aislada antes del despliegue; no se acredita cierre persistido ni QA. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 78.75%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: carta RGB enlazada al MP4 decodificado
+
+**Implementación estimada: 78.75%; CAP-027 sigue Parcial.** Fuentes/color pasa de 45% a 47% (peso 10%; +0.20 puntos globales) al conectar la expectativa RGB authored con el comparador del archivo exportado. No se acredita aún conversión SDR general ni procedencia Cloud.
+
+El verificador reconstruye opcionalmente el caso `color-neutral` por FPS y hash de caso, exige plan/documento/asset y dimensiones congelados, audita todos los checkpoints de preview y los fotogramas que extrajo del MP4 verificado por SHA-256, y convierte una desviación RGB en `FAIL` del reporte combinado. El resultado conserva por checkpoint máximos de canal, hashes de PNG y hash del plan. La obligación no se activa para exportaciones genéricas ni acredita la identidad del renderer. Según la [documentación oficial de HyperFrames](https://github.com/heygen-com/hyperframes/blob/main/docs/guides/rendering.mdx), los tags del MP4 son diagnósticos y falsificables; sigue pendiente elegir atestación verificable del proveedor o ruta controlada, además de fuentes efectivas, SDR y gate global.
+
+**Validación local:** 9/9 pruebas focalizadas de contrato/PNG/gate, typecheck web y revisión del diff pasan. El ejecutor paralelo de Node falló por `spawn EPERM`; se ejecutaron en un proceso. No se ejecutó el caso MP4 real de 1920×1080 ni QA del tester. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 78.75%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: carta neutra RGB medible e independiente del preview
+
+**Implementación estimada: 78.55%; CAP-027 sigue Parcial.** Corpus pasa de 75% a 76% (peso 10%; +0.10 puntos globales). Es preparación de una medición con expectativas authored, no ejecución de campaña real ni conversión SDR certificada.
+
+`color-neutral` congela un plan de seis parches con colores RGB esperados independientes del SVG/captura, documentHash, checksum del SVG y hash del propio plan en la identidad del caso. Auditor acotado decodifica PNG 1920×1080, exige opacidad, muestrea interiores 32×32 y registra máximo delta RGB por parche con umbral 8 por canal; rechaza geometría/documento/plan alterados. CLI acepta solo dos rutas absolutas distintas y el hash del caso, entrega hashes/métricas sin rutas ni fuentes privadas. Un `PASS` es estrictamente de carta local: no vincula por sí solo los PNG al MP4 remoto ni acredita color management, tags/transformación SDR Rec.709 o display profile. Los extremos de grading permanecen en corpus estructural sin expectativas RGB fijas. Ver [guía del corpus](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_NATIVE_CONFORMANCE_CORPUS.md).
+
+**Validación controlada:** 7 pruebas dirigidas pasan (auditor 3, corpus nativo 4), compilación focalizada, typecheck web y `diff --check` pasan. Sharp decodifica el SVG real del fixture y PNGs controlados; no se ejecutó el CLI con frames del proveedor, FFmpeg, Chrome, PostgreSQL ni QA formal. No se aplicaron migraciones ni se activaron flags/rollout.
+
+**Siguiente:** enlazar esta medición a capturas/MP4 autorizados durante la campaña de QA y resolver la política de conversión SDR efectiva según la ruta de renderer que el usuario seleccione. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 78.55%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: enlace independiente del contrato autorizado al reporte final
+
+**Implementación estimada: 78.45%; CAP-027 sigue Parcial.** Gate/evidencia pasa de 90% a 91% (peso 10%; +0.10 puntos globales). No se declara cierre del gate global: sigue faltando la condición equivalente para decks en la finalización SQL y, sobre todo, la atestación efectiva del renderer.
+
+El lector privado entrega el contrato validado junto a la evidencia; el comparador lo conserva solo en su referencia interna. Antes de revalidar el MP4 remoto y persistir el resultado, el worker vuelve a comprobar el contrato contra el reporte visual: hash documental, cobertura/SSIM v3, texto nativo v4, cantidades esperadas de decks por checkpoint, obligación de fuentes custom y tags de color. Con clips de deck bloquea un `PASS` visual aunque sus regiones coincidan y exige `DECK_TEXT_EVIDENCE_INCOMPLETE`; perder el contrato de la referencia rechaza la ejecución. Contratos v1/v2 conservan su compatibilidad. El enlace no convierte una referencia local o recibo editable en atestación del render Cloud.
+
+**Validación controlada:** 60 pruebas dirigidas pasan (contrato/deck 8, worker 36, lector privado 16); compilación focalizada, typecheck web y `diff --check` pasan. Incluyen eliminación del contrato en el adapter, omisión del resumen deck y promoción prematura. Sin navegador/proveedor/FFmpeg/PostgreSQL reales ni QA formal. No se aplicó ni agregó migración, no se activaron flags ni rollout.
+
+**Pendiente explícito:** la función SQL preparada de finalización comprueba texto nativo v4 pero todavía no vincula el resumen de decks; no se considera resuelto por el chequeo del worker. Se requiere endurecimiento SQL antes de habilitar cualquier PASS de ese alcance, junto con procedencia verificable de renderer/fuentes y SDR. La decisión Cloud vs renderer controlado sigue solicitada. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 78.45%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: cobertura diagnóstica de decks por checkpoint y partición
+
+**Implementación estimada: 78.35%; CAP-027 sigue Parcial.** Diagnóstico pasa de 90% a 92% (peso 5%; +0.10 puntos globales) por resumir y conservar la cobertura medida de decks hasta el reporte durable y los lotes de eventos. No aumenta el gate global ni acredita render/fuentes efectivos.
+
+El evaluador distingue métricas regionales `PASS`, `FAIL` e `INCOMPLETE`, cuenta checkpoints/regiones esperados y medidos desde el plan fuente y no transforma una medición ausente en éxito. El resumen local se persiste con scope explícito `DECK_SOURCE_TEXT_REGIONS_NOT_RENDER_FONT_ATTESTATION`. La agregación multi-partición suma cobertura, conserva `FAIL` y rechaza presencia mixta; el diagnóstico y el reporte durable exigen que la partición raíz coincida con su propio resumen. Incluso con regiones `PASS`, clips de deck siguen bloqueados por `DECK_TEXT_EVIDENCE_INCOMPLETE`. Un plan congelado sin clips exige sus checkpoints de cero regiones cuando se proporciona la obligación. Se restringió además el selector de supresión a la misma raíz `.deck-shell > .deck-stage > .slide` previamente validada, para no mutar otras estructuras del clip.
+
+**Validación controlada:** 73 pruebas dirigidas pasan (contrato deck 7, comparación 5, captura de pintura 5, ejecución por lotes 21, worker 35); compilación focalizada, typecheck web y `diff --check` pasan. Fixtures/dobles de DOM, PNG y job; sin navegador/renderer/proveedor/FFmpeg/PostgreSQL reales ni QA formal. No se activaron flags, migraciones o rollout.
+
+**Siguiente:** resolver procedencia verificable del MP4 remoto (decisión Cloud vs renderer controlado solicitada), fuentes efectivas y SDR; después cerrar el release gate integral contra §6 del roadmap. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 78.35%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: flujo privado de máscaras de decks integrado
+
+**Implementación estimada: 78.25%; CAP-027 sigue Parcial.** La rúbrica de imagen pasa de 88% a 90% (peso 15%; +0.30 puntos globales) por cerrar la integración de captura, custodia y recomputación del par de pintura de decks. No se cuenta como QA formal ni como conformidad global.
+
+Contrato v4 congela `deckTextPaintMaskPolicy` junto al plan derivado de la fuente; snapshot/reutilización y particiones conservan la obligación exacta. El capturador mide el DOM de decks en forward/reverse, obtiene un PNG restaurado con texto suprimido para cada checkpoint capturado con regiones, deriva máscaras y exige igualdad de ambas direcciones. El par propio `deck-text-suppressed-{frameIndex}.png` y los hashes quedan en el paquete privado; lector y comparador vuelven a derivar geometría/máscaras desde los bytes acotados antes de medir el render. Se rechaza tanto eliminar máscaras/metadata de una obligación congelada como inyectar una captura de máscaras en un contrato sin esa obligación. La bandera server-only `COMPOSITION_CONFORMANCE_DECK_TEXT_PAINT_MASKS_V1` sigue apagada por defecto.
+
+**Validación controlada:** 52 pruebas dirigidas pasan (contrato 6, derivación 3, comparación 4, capturador 23, lector privado 16); compilación focalizada, typecheck web y `diff --check` pasan. Los dobles de CDP/PNG prueban persistencia, pins, recomputación, manipulación y limpieza; no prueban navegador/CSS real ni el proveedor de render. El gate mantiene `DECK_TEXT_EVIDENCE_INCOMPLETE`: máscara conjunta no demuestra causalidad por nodo, oclusión/efectos completos ni fuentes efectivas. Sin QA formal, migraciones ni rollout.
+
+**Siguiente:** medición real de decks en preview/render, decisión de procedencia de renderer/fuentes y cierre SDR/gate global sin convertir evidencia parcial en PASS. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 78.25%**. Objetivo activo.
+
+## Avance 2026-10-02 — CAP-027: derivación y recomputación de máscaras de decks
+
+**Implementación estimada: 77.95%; CAP-027 sigue Parcial.** Derivación auditable implementada; integración productiva del par todavía pendiente, sin incremento hasta cerrar el flujo.
+
+Contrato de captura de deck admite máscara por región y metadata separada con scope conjunto de decks. Exige correspondencia exacta/orden de direcciones de nodos y regiones originales; no admite máscara sin metadata, metadata sin máscaras ni captura incompleta con evidencia de pintura. Derivador adapta únicamente ROIs al algoritmo compartido de delta RGB/expansión nearest-original-ROI: no persiste una declaración de texto nativo. Conserva geometría original, expande a pintura/halo observados y crea RLE suplementaria. Mantiene cuotas de PNG/alpha opaco/canvas/área/CPU ya existentes.
+
+Verificador exige hashes del par y recalcula geometría expandida y máscara exactas; declaraciones alteradas o máscaras omitidas fallan. Filename propio `deck-text-suppressed-{frameIndex}.png` distingue par de decks del nativo. La asignación de delta sigue conjunta y no causal por nodo/glifo. No cambia scope actual de evidencia de contenido/geometría ni habilita PASS. Productor restaurado y derivador aún no están conectados al snapshot/capturador/paquete privado.
+
+**Validación:** 20 pruebas controladas pasan (derivación deck 3, captura/evidencia deck 6, comparación deck 4, productor nativo 7), compilación focalizada, typecheck web y diff. PNGs controlados prueban halo fuera de ROI, preservación/recomputación, par cambiado, RLE/geometry alterados, metadata/máscara omitidas y checkpoint incompleto. Sin Chrome/CSS/render/proveedor/FFmpeg/PostgreSQL reales, QA formal, migraciones o rollout.
+
+**Siguiente cierre:** congelar obligación de máscaras de decks, conectar captura forward/reverse con par propio privado y exigir recomputación en lectura/comparación. Otros pendientes centrales sin cambios. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.95%**. Objetivo activo.
+
+## Avance anterior — CAP-027: productor restaurado del par de pintura de decks
+
+**Implementación estimada: 77.95%; CAP-027 sigue Parcial.** Productor del par implementado, todavía sin integración/derivación privada de máscaras; no se incrementa.
+
+`captureDeckTextPaintPair` reutiliza captura/restauración de PNG existente con supresor server-owned específico. Conserva color original (evita cambios en fondos/bordes currentColor), estructura/texto/childNodes/bounds y todas las propiedades calculadas salvo fill/stroke text color, sombra de texto y caret. Cambios ajenos a esas propiedades fallan; targets ambiguos/duplicados o no HTML se rechazan. Stylesheet temporal usa token propio y remoción guardada; incluso fallo de supresión intenta restaurar, cuyo PNG debe tener el SHA256 original. Errores remotos no se conservan.
+
+Cuotas de targets existentes (4,096), PNG 8 MiB y snapshot CSS/texto agregado 1 MiB; máximo 1,024 propiedades por nodo y 8,192 caracteres por valor, verificados antes de instalar stylesheet. Scope `JOINT_DECK_TEXT_FILL_DELTA_NOT_PER_NODE_CAUSALITY`: par conjunto no demuestra glifos individuales, fuentes efectivas ni toda pintura CSS/SVG/pseudo-elementos. Función nativa mantiene su supresor por defecto; extensión solo permite callback interno tipado, no input externo/API.
+
+**Validación:** 12 pruebas controladas pasan (deck pair 5, productor nativo 7), compilación focalizada, typecheck web y diff. VM prueba invariantes/quotas; CDP/screenshot inyectados prueban SHA/restauración/cleanup/rechazo. No navegador/CSS/render real ni QA formal, migraciones o rollout.
+
+**Siguiente:** conectar productor con captura autorizada, derivar máscaras desde par con geometría/expansión, conservar par privado y recomputarlo al medir; ninguna obligación de decks gana PASS todavía. Restantes pendientes centrales sin cambios. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.95%**. Objetivo activo.
+
+## Avance anterior — CAP-027: comparación regional de texto de decks conectada
+
+**Implementación estimada: 77.95%; CAP-027 sigue Parcial.** Flujo regional conectado, sin incrementar hasta cerrar máscara/pintura estricta de decks.
+
+Nuevo comparador adapta direcciones de nodos congelados a claves métricas SHA256 estables (no IDs DOM ni identidad de glifos). Reutiliza el comparador estricto existente: ROI completa con padding, umbral RGB/MAE/mismatch originales y desplazamiento máximo de un píxel; no alinea el frame ni elimina diferencias de fondo. Consumidor de directorios valida evidencia privada y mide ROIs sobre los PNGs decodificados. Samples conservan deckText en schema y por tanto en paquetes de medición/reanudación. Evaluador verifica cobertura contra plan autorizado y genera fracaso deck_text_parity cuando aparece defecto/cobertura incompatible. Fallo domina INCOMPLETE aunque métricas globales pasen.
+
+Coincidencia regional sigue INCOMPLETE por DECK_TEXT_EVIDENCE_INCOMPLETE: no se habilita PASS solo por ROIs, contraste de fondo o texto capturado. Máscaras de pintura de decks y efectos/oclusiones/fuentes efectivos siguen pendientes. Texto ausente conserva un resultado regional INCOMPLETE en lugar de cero regiones PASS. Contratos anteriores no admiten métricas de deck sin obligación autorizada.
+
+**Validación:** 66 pruebas controladas pasan (deck comparación 4, texto nativo 8, worker 34, lotes/reanudación 20), compilación focalizada, typecheck web y diff. Fixture de directorios escribe PNGs/metadata controlados: coincidencia mantiene incompleto y retirada en un frame persiste métrica FAIL y fracaso del evaluator. No prueba que un navegador haya pintado el HTML. Sin QA formal, render/FFmpeg/proveedor/PostgreSQL, migraciones o rollout.
+
+**Siguiente:** máscara verificable de pintura de decks sin alterar estructura/texto/layout del HTML; conservar par privado y recomputación, cubrir efectos/oclusiones y gates sin falsos PASS. Restantes pendientes principales sin cambios. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.95%**. Objetivo activo.
+
+## Avance anterior — CAP-027: cobertura completa de rutas de texto DOM ordinario
+
+**Implementación estimada: 77.95%; CAP-027 sigue Parcial.** Corrección del lector dentro del flujo todavía pendiente de pintura estricta; sin incremento.
+
+Lector recorre childNodes del deck activo con las mismas cuotas de nodos/profundidad y compara todas las rutas de texto no vacío con las del plan fuente. Texto ordinario añadido, eliminado o desplazado rechaza la captura aunque los nodos esperados restantes conserven hashes. No declara igualdad completa del DOM ni cobertura de pseudo-elementos CSS, scripts/template/noscript/style, fuentes, visibilidad general o pintura. No modifica HTML/CSS ni ejecuta render real.
+
+**Validación:** seis pruebas controladas del lector/evidencia pasan, incluyendo inyección de texto adicional; compilación focalizada, typecheck web y diff. VM con DOM controlado, no Chrome real. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.95%**. Siguiente: comparación/máscaras estrictas de decks; resto de pendientes principales sin cambios. Objetivo activo.
+
+## Avance anterior — CAP-027: captura y persistencia privada de nodos de decks
+
+**Implementación estimada: 77.95%; CAP-027 sigue Parcial.** Flujo de contenido/geometría conectado, sin incremento hasta integrar medición estricta de pintura de decks.
+
+Plan fuente congela ventanas semiabiertas del runtime de transiciones y exclusiones estáticas (clip/track oculto u opacity cero); selección activa aplica límites por checkpoint. Nuevo lector CDP resuelve rutas childNodes dentro de la raíz del deck propiedad del clip, sin depender de IDs en HTML. IDs duplicados del clip/raíces ambiguas no eligen silenciosamente el primer nodo. Verifica texto exacto por hash, geometría/canvas/área/caracteres/profundidad/nodos; plaintext se descarta antes de devolver/persistir evidencia. Nodos ausentes, ocultos o fuera del canvas conservan INCOMPLETE. Scripts/template/noscript conservan limitaciones del plan.
+
+Capturador productivo ejecuta lectura en forward y reverse; exige igualdad exacta de contenido/geometría/disponibilidad aunque PNGs coincidan. Metadata conserva deckText y receipt pin deckTextSha256. Paquete privado y comparación de directorios verifican obligación, hash del plan, cada checkpoint, cobertura de direcciones/hashes, tiempos y bounds. Eliminar conjuntamente metadata y pin no evita obligación congelada. Scope `PREVIEW_TEXT_CONTENT_GEOMETRY_NOT_PAINT_OR_RENDER_FONT_EVIDENCE`; no acredita procedencia de fuentes ni causalidad de pintura. Contrato continúa INCOMPLETE por DECK_TEXT_EVIDENCE_INCOMPLETE.
+
+**Validación:** 59 pruebas controladas pasan (captura/evidencia deck 5, corpus/plan 11, contrato deck 5, capturador integrado 22, lectura privada existente 16), compilación focalizada, typecheck web y diff. VM prueba lector self-contained sobre DOM controlado; CDP inyectado prueba materialización/captura/paquete y reverse inestable. No es ejecución de Chrome/CSS/render real. Primera prueba de paquete corrigió fixture sin projectHash/contract; rerun completa 22/22. Sin QA formal, proveedor/FFmpeg/PostgreSQL, migraciones o rollout.
+
+**Pendientes explícitos:** métricas/máscaras de pintura de decks, texto/pseudo-elementos o nodos añadidos no descritos por fuente, interpretación general de CSS/visibilidad/oclusiones y evidencia efectiva de fuentes. Resolver rutas y hashes de nodos esperados no demuestra igualdad completa del árbol DOM. Siguen renderer/browser efectivos, SDR, gate global y diagnóstico integral. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.95%**. Objetivo activo.
+
+## Avance anterior — CAP-027: obligación productiva congelada de texto de decks
+
+**Implementación estimada: 77.95%; CAP-027 sigue Parcial.** Avance funcional del flujo de decks, sin incremento hasta cerrar captura/comparación estrictas.
+
+Contrato v4 admite deckTextPlan vinculado al mismo documentHash. Productor de snapshot deriva el plan desde documento autorizado en las dos construcciones (reutilización y revisión final). Opción deckText exige v4; flag server-only `COMPOSITION_CONFORMANCE_DECK_TEXT_V1=true` está apagada por defecto y no se activó. Query discrimina presencia/ausencia exactas de policy; verificación de manifiesto compara el plan completo en ambas direcciones. Contratos históricos sin obligación siguen compatibles.
+
+Construcción y lectura del preview recomputan el plan frente al documento, rechazando rutas/textos falsificados incluso con metadata/checksums propios coherentes. Particiones de eventos revalidan fuente y conservan deckTextPlan en cada hash autorizado. Mientras falta la medición, cualquier obligación con clips mantiene INCOMPLETE y motivo tipado DECK_TEXT_EVIDENCE_INCOMPLETE; métricas perfectas de imagen/texto nativo no sustituyen evidencia de decks. Worker rechaza PASS con esa limitación, incluso si se falsifica únicamente visual.status. No se relajan máscaras/tolerancias ni se acepta compilación como prueba visual.
+
+**Validación:** 82 pruebas controladas pasan (deck contract 5, referencias 9, worker 34, eventos 20, snapshot policy 6, texto nativo 8), compilación focalizada, typecheck web y diff. Incluyen incompatibilidad de versión, fuente/plan alterados, presencia/ausencia exactas, herencia de lotes, rechazo de PASS y regresiones existentes. Sin navegador/proveedor/FFmpeg/PostgreSQL reales, QA formal, migraciones o despliegue.
+
+**Siguiente cierre funcional:** captura de nodos por rutas fuente, comprobación de contenido/estructura y comparación estricta; luego completar flujo de máscaras de decks. Siguen renderer/browser/fuentes efectivos, SDR, gate global y diagnóstico integral. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.95%**. Objetivo activo.
+
+## Avance anterior — CAP-027: plan de texto derivado del HTML fuente
+
+**Implementación estimada: 77.95%; CAP-027 sigue Parcial.** Precondición funcional del flujo de decks, sin incremento hasta integrar captura/comparación estrictas.
+
+Nuevo módulo de dominio `composition-deck-text-plan.ts` deriva texto desde el HTML autorizado, no desde screenshots/DOM capturado. Usa Cheerio ya existente: rutas childNodes incluyen comentarios/whitespace; hashes preservan contenido exacto, entidades decodificadas y Unicode. No requiere IDs en HTML ni registra el texto en el plan. Vincula documentHash, clipId y sourceHtmlSha256. Verificación recomputa desde documento autorizado y rechaza planes con rutas/textos alterados u omisión de clips, aunque tengan schema válido y hash propio coherente.
+
+Presupuesto agregado: 1 MiB de HTML antes de parsear, 16,384 nodos, profundidad 64, 256 regiones por clip, 2,048 totales y límites de caracteres existentes. Scripts/plantillas/noscript dejan limitaciones explícitas; texto de style se excluye. No ejecuta HTML ni modifica compiler/runtime. El plan representa fuente, no visibilidad, fuentes efectivas, pseudo-elementos CSS, DOM medido ni pintura. Está conectado al corpus (hash del plan forma parte de caseSha256), todavía no al contrato productivo de captura/gate.
+
+**Validación:** 11 pruebas controladas pasan (corpus 5, plan 6), compilación focalizada y typecheck web; test verifica textos mixtos sin IDs, entidades, Unicode, scripts/inert, cuotas, reproducibilidad y rechazo de planes falsificados. QA formal, navegador/render real, migraciones y rollout aplazados.
+
+**Siguiente:** congelar/consumir plan productivo y medir nodos en preview sin debilitar obligaciones nativas, luego máscaras estrictas de decks. Otros pendientes centrales no cambian. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.95%**. Objetivo activo.
+
+## Avance anterior — CAP-027: corpus de decks y expectativas independientes
+
+**Implementación estimada: 77.95%; CAP-027 sigue Parcial.** Corpus pasa de 70% a 75% (peso 10%): +0.50 por añadir recetas de decks y ledger authored vinculado. No se concede cierre de paridad/máscaras de decks ni ejecución real.
+
+Cinco recetas × cuatro FPS preparan 20 documentos válidos: texto básico con acentos, wrapping, RTL, corte entre slides y rotación/opacidad. Factory y compiladores reales, HTML/CSS estático sin scripts/recursos externos. Ledger independiente del DOM capturado conserva textos exactos, IDs, dirección y ventanas semiabiertas, documentHash y SHA256; forma parte del hash del caso. No es todavía evidencia productiva de texto ni acredita fuentes efectivas. Total estructural preparado: 388 casos; las 28 recetas de video mantienen su condición de materialización real.
+
+**Validación:** cinco pruebas controladas pasan sobre los 20 documentos y compilación de cinco recetas en preview/render; compilación focalizada, typecheck web y diff. No se ejecutaron QA formal, navegador/proveedor/FFmpeg/PostgreSQL, migraciones ni despliegue. Guías HyperFrames aplicadas a fixtures deterministas y fondo hijo full-bleed; sin instalación/upgrade de herramientas.
+
+**Siguiente cierre:** integrar expectativas de decks con captura y comparación estrictas sin inferirlas de screenshots. Siguen evidencia efectiva de renderer/browser/fuentes, conversión SDR, gate global y diagnóstico integral. Decisión del renderer pendiente de usuario. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.95%**. Objetivo activo.
+
+## Avance anterior — CAP-027: diagnóstico de preparación del preview
+
+**Implementación estimada: 77.45%; CAP-027 sigue Parcial.** Refinamiento del diagnóstico ya contabilizado, sin incremento artificial por cantidad de pruebas o subetapas.
+
+La preparación de referencia distingue SOURCE_MATERIALIZATION, PREVIEW_CAPTURE y EVIDENCE_PERSISTENCE. La orquestación superior conserva esta frontera tipada en lugar de sustituirla por PREVIEW_REFERENCE; el clasificador existente conserva códigos compatibles con error_code. Fallos de limpieza secundarios mantienen etapa y política de reintento/rechazo originales. Ambos workspaces adquiridos se limpian de forma independiente; el rechazo de uno no omite el otro. No se atribuye causalidad interna al decoder/evaluator ni se conservan detalles privados de errores originales.
+
+**Validación:** 42 pruebas controladas pasan (pipeline 6, diagnóstico 3, worker/orquestación 33), compilación focalizada, typecheck web y revisión de diff. Incluyen las tres fronteras, preservación frente al wrapper superior y rechazo de persistencia simultáneo con fallo de limpieza. Sin QA formal, navegador/proveedor/FFmpeg/PostgreSQL reales, migraciones o despliegue.
+
+**Pendientes principales:** evidencia efectiva del renderer/browser/fuentes, conversión SDR, corpus/decks, gate global y diagnóstico integral. Decisión de ruta del renderer pendiente de respuesta del usuario. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.45%**. Objetivo activo.
+
+## Avance anterior — CAP-027: diagnóstico persistido de etapas fallidas y revisión de alcance
+
+**Implementación estimada: 77.45%; CAP-027 sigue Parcial.** Diagnóstico pasa de 85% a 90% (peso 5%): +0.25 por identificar/persistir la frontera fallida y conservar fallos de limpieza secundarios. No se concede diagnóstico completo de causas internas ni evidencia de renderer.
+
+Relectura de §6 del roadmap y §13.1 del prompt confirma los requisitos centrales: identidad efectiva de render/browser/compiler/assets/fonts/color, corpus completo, checkpoints/eventos, gates imagen/texto/tiempo/audio, conversión SDR, diagnóstico por etapas y release gate. La cantidad de refinamientos o pruebas no sustituye esos cierres. Máscaras por glifo/OCR no son una licencia para expandir indefinidamente el alcance: el objetivo central sigue siendo máscara estricta verificable y bloqueo de divergencias.
+
+Nuevo error de ejecución conserva una etapa tipada: REMOTE_SNAPSHOT, PREVIEW_REFERENCE, AUDIO_REFERENCE, RENDER_COMPARISON, EVENT_COMPARISON, REMOTE_RECHECK, REPORT_VALIDATION o RESOURCE_CLEANUP. Scope `FAILED_EXECUTION_STAGE_NOT_ROOT_CAUSALITY`: identifica dónde falló la orquestación, no atribuye automáticamente culpa a normalizador/evaluator/decoder/encoder. Worker persiste `CONFORMANCE_JOB_{ETAPA}_{FAILED|REJECTED}` en el campo error_code existente y devuelve failureStage/cleanupFailed solo para errores tipados. Formato cumple la restricción SQL ya existente; no se agregó/aplicó migración.
+
+No retiene cause, mensajes arbitrarios, rutas, URLs, valores Zod ni stack original. Errores de validación y códigos canónicos de integridad conservan rechazo sin reintento; fallos transitorios mantienen retry. Metadatos son inmutables. Si falla también cleanup, el código conserva la etapa primaria con sufijo WITH_CLEANUP, en lugar de borrar la causa operativa inicial. Archivos desconocidos siguen preservados: no hay borrado recursivo. Errores anteriores sin stage conservan clasificación genérica.
+
+**Validación:** 36 pruebas controladas pasan (diagnóstico 3, worker/orquestación 33), compilación focalizada, typecheck web y diff. Pruebas inyectan fallos en seis adapters, validan cleanup propio, rechazo permanente, ausencia de secretos, fallo de cleanup simultáneo y persistencia del código con report=null. Casos existentes de bindings, reportes/eventos, lease/CAS, pérdida de ACK y gates de PASS/FAIL/INCOMPLETE siguen pasando. Sin proveedor/navegador/FFmpeg/PostgreSQL reales, QA formal, rollout o migraciones.
+
+**Ruta prioritaria de cierre:** decisión sobre evidencia efectiva del renderer (consultada al usuario: contrato del proveedor actual o alternativa controlada sin reemplazo/despliegue). Esa decisión desbloquea identidad/render-fonts/SDR y después la auditoría del gate global. Trabajo independiente restante: corpus/decks y detalle del diagnóstico interno. CAP-027 no está detenido únicamente por QA; aún hay implementación principal pendiente. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.45%**. Objetivo activo.
+
+## Avance anterior — CAP-027: medición de halo con texto original fuera del canvas
+
+**Implementación estimada: 77.20%; CAP-027 sigue Parcial.** Imagen/SSIM/máscaras pasa de 87% a 88% (peso 15%): +0.15 por implementar el camino para halo medible con DOM text range enteramente fuera del canvas. Ausencia sin señal y oclusiones generales no se declaran completas.
+
+Snapshot v4 con geometría y máscaras congela `paintOffcanvasSeedPolicy=OFFCANVAS_FILTERED_PAINT_SEED_V1`. Sin esa política, lector conserva TEXT_OUTSIDE_CANVAS histórico. Cuando la geometría/filter ha sido verificada, blur es positivo y el rango original está fuera, el lector puede usar un punto inicial 1×1 acotado al canvas para la asignación reproducible del delta. Evidencia `paintSeed` conserva los bounds DOM originales; el punto no se presenta como geometría de texto medida ni como ausencia. Máscaras y expansión estrictas quedan obligatorias.
+
+Derivación/auditoría verifica que los bounds originales estén realmente fuera del canvas y que sourceRegions conserve exactamente el punto derivado. Expande al delta conjunto observado y compara la pintura visible. Si no aparece pintura medible, el comparador mantiene INCOMPLETE, no PASS; un seed sin máscara también es INCOMPLETE. Contratos sin la política, sin geometría v4 o sin máscara/expansión no pueden incorporar esta evidencia. Reutilización distingue presencia/ausencia exactas y los hashes de contratos de particiones heredan el campo. No se activaron flags, ni se cambió proveedor.
+
+**Validación:** 83 pruebas controladas pasan (seed 2, poses/captura 7, checkpoint DOM 13, productor 7, regiones 14, evidencia 6, contrato/archivos 8, snapshot 6, capturador 20), compilación focalizada y typecheck web. VM del lector y PNGs/CDP inyectados prueban opt-in, preservación de bounds, halo visible expandido, vacío incompleto, bounds originales falsos, seed alterado y rechazo en contrato anterior. No ejecutan Chrome/CSS ni render real; sin QA formal, FFmpeg, migraciones o rollout.
+
+**Pendientes:** ausencia filtrada sin señal medible, aislamiento/identidad por glifo y oclusiones generales. La pintura se suprime conjuntamente: un halo asignado a un seed no demuestra causalidad individual si existen otros textos. Siguen decks, renderer/entorno/fuentes efectivos, SDR, gate global y diagnóstico integral. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.20%**. Objetivo activo.
+
+## Avance anterior — CAP-027: pintura RGB medible sin depender del contraste de luminancia
+
+**Implementación estimada: 77.05%; CAP-027 sigue Parcial.** Corrección de informativeness dentro del flujo de máscaras ya contabilizado; no aumenta la estimación ni declara glifos/oclusiones/entorno resueltos.
+
+Comparador usa una máscara no vacía como señal de pintura RGB medible, en lugar de exigir además el probe histórico de contraste de luminancia. La derivación auditable garantiza diferencias superiores al umbral RGB entre PNG pintado/suprimido; una diferencia cromática puede cumplir ese umbral y tener luminancia inferior a 5. La comparación conserva obligatoriamente todos los píxeles de ROI y los de la máscara, los mismos límites de error/mismatch/shift y validación de alpha. No convierte el delta conjunto en identidad de glifo ni prueba de renderer/fuente.
+
+Sin máscara no vacía conserva el criterio anterior. Máscara vacía de texto visible no exento sigue INCOMPLETE; reglas explícitas de oculto, ausencia geométrica, baja opacidad u overlay opaco no cambian. El consumidor de archivos valida hashes, expansión y máscara desde el par privado antes de medir, por lo que el flujo productivo no acepta una mera declaración de pixelCount como prueba.
+
+**Validación:** 44 pruebas controladas pasan (máscaras 5, contrato/archivos 8, regiones 14, productor 7, expansión 4, evidencia 6), compilación focalizada y typecheck web. Caso unitario demuestra delta azul de 8 con luminancia baja: sin máscara INCOMPLETE, misma pintura con máscara PASS, retirada de pintura FAIL aunque el promedio ROI diluya el defecto. Caso integrado de directorios construye PNGs y captura CDP inyectada, guarda el par, recomputa la evidencia exigida por contrato y compara coincidencia/retirada. Sin navegador/renderer/FFmpeg real, QA formal, migraciones o rollout.
+
+Pendientes funcionales no cambian: ROI original fuera de canvas con halo visible, identidad por glifo y oclusiones generales; decks, renderer/entorno/fuentes efectivos, SDR, gate global y diagnóstico integral. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.05%**. Objetivo activo.
+
+## Avance anterior — CAP-027: expansión reproducible de regiones por delta de pintura
+
+**Implementación estimada: 77.05%; CAP-027 sigue Parcial.** Imagen/SSIM/máscaras pasa de 85% a 87% (peso 15%): +0.30 por implementar expansión y auditoría del halo observado. No se concede cierre de blur/oclusiones general, identidad por glifo ni QA.
+
+Nuevo algoritmo deriva rectángulos expandidos del delta RGB del par pintado/suprimido. Preserva cada ROI original completa; pintura superior al umbral fuera de su unión se asigna al rectángulo original más cercano, con desempate por orden semántico. Asignación es determinista, no causalidad por glifo. Incluye el halo observado de blur/sombra/overflow sin imponer una expansión gaussiana teórica ni descartar deltas distantes. No cambia tolerancias, no reduce ROI y no elimina checkpoints. Límite de 8,388,608 verificaciones de asignación evita trabajo regiones×canvas sin acotar; área expandida conserva la cuota agregada de 1,048,576 píxeles y canvas acotado. Excedentes fallan explícitamente, no se recortan.
+
+Captura conserva `sourceRegions` y `regionExpansionPolicy=JOINT_NATIVE_PAINT_DELTA_NEAREST_ROI_V1` junto al par privado y máscaras. Auditoría recomputa rectángulos desde esos insumos, exige igualdad exacta con la geometría persistida y después reconstruye máscaras; el control full-canvas sigue rechazando pintura externa. Snapshot que solicita máscaras congela también `paintRegionExpansionPolicy`; el capturador no puede desactivarla y el lector rechaza quitarla. Reutilización distingue presencia/ausencia exactas de ambas políticas y las identidades autorizadas de lotes conservan la nueva obligación. Versiones sin política de expansión siguen admitiendo sus ROIs históricas, sin reinterpretación retroactiva. Flag permanece apagada.
+
+**Validación:** 80 pruebas controladas pasan (expansión 4, productor 7, contrato 7, snapshot 6, captura 20, lectura privada 16, lotes 20), compilación focalizada y typecheck web. Incluyen empate estable, solapamientos, preservación de regiones, umbral exacto, alpha global, rechazo de cuotas/CPU, geometría alterada y eliminación de expansión requerida. Halo gaussiano se genera con Sharp como fixture controlado; no ejecuta CSS/Chrome ni acredita renderer. Comando `npm run test:composition-text-paint-mask` incorpora expansión. Sin QA formal, navegador/FFmpeg real, migraciones o rollout.
+
+**Pendientes:** ROI original enteramente fuera de canvas con halo visible aún queda indisponible en lector DOM; no se ha resuelto identidad por glifo, oclusión general ni todos los efectos. Probe de contraste/informativeness conserva su comportamiento y puede mantener INCOMPLETE en pintura de bajo contraste. Siguen decks, entorno/renderer/fuentes efectivos, SDR, gate global y diagnóstico integral. CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 77.05%**. Objetivo activo.
+
+## Avance anterior — CAP-027: detección de pintura truncada fuera de regiones
+
+**Implementación estimada: 76.75%; CAP-027 sigue Parcial.** No se incrementa por corregir cobertura del productor: expansión de regiones para blur/shadows/overflow todavía no está implementada.
+
+Inspección encontró que la derivación del par pintado/suprimido solo construía máscaras en las ROIs de texto; pintura fuera de todas ellas podía quedar sin máscara estricta. Ahora la derivación construye cobertura de la unión de regiones y verifica el delta RGB en todo el canvas autorizado. Cualquier cambio superior al umbral compartido (4) fuera de esa unión rechaza el par con `CONFORMANCE_TEXT_PAINT_OUTSIDE_CAPTURED_REGIONS`. Alpha no opaco también se rechaza fuera de regiones. No atribuye la pintura a glifos individuales ni confunde coincidencias de fondo con identidad tipográfica.
+
+El control se ejecuta en captura, construcción/lectura privada del paquete y comparación de directorios porque comparten la derivación. Pueden medirse cambios cubiertos por otra región de la unión, pero no omitirse cambios externos. Mantiene límites de canvas (3840×2160), regiones y área agregada; bitmap acotado al canvas y un recorrido lineal, sin búsqueda regiones×píxeles ni ampliación de cuotas. No relaja umbrales ni descarta checkpoints. Flag permanece apagada.
+
+**Validación:** 48 pruebas controladas pasan (productor/derivación 5, capturador 20, lectura privada 16, contrato 7), compilación focalizada y typecheck web. Caso específico verifica pintura dentro de ROI, delta externo igual al umbral, rechazo al excederlo, cobertura por segunda región y alpha externo inválido. Sin navegador/renderer/FFmpeg real, QA formal, migraciones o rollout.
+
+**Pendiente funcional explícito:** este cambio evita aceptar una máscara truncada; no completa soporte general de blur/sombras ni expansión de ROI. Debe implementarse la región de pintura expandida y volver a validar el flujo sin excepción automática. Otros pendientes de CAP-027 y porcentajes individuales no cambian. CAP-004/009/010/017/023/026: **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: par de pintura privado y recomputación auditable
+
+**Implementación estimada: 76.75%; CAP-027 sigue Parcial.** Imagen/SSIM/máscaras pasa de 80% a 85% (peso 15%): +0.75 por cerrar el flujo implementado de máscaras suplementarias nativas desde captura hasta lectura/recomputación. No acredita QA ni máscaras causales por glifo, blur, oclusiones generales, decks o entorno efectivo remoto.
+
+Capturador conserva `text-suppressed-{frameIndex}.png` únicamente para checkpoints que generan máscaras y solo en el recorrido forward; el reverse sigue exigiendo los mismos hashes/máscaras/restauración. Escritura privada exclusiva y cleanup de rutas poseídas. Ambos PNG cuentan en el presupuesto existente de 128 MiB por recorrido; no se amplía cuota, no se descartan checkpoints ni se diluye cobertura. Límite individual del par: 8 MiB por PNG.
+
+Nuevo módulo puro de derivación reproduce máscaras desde ambos PNGs, verifica formato/dimensiones/alpha/área y compara RLE canónico exactamente con el witness. Construcción/validación del paquete privado verifica hashes pintado/suprimido y recomputa el delta; conserva el insumo suprimido en ZIP. Lectura privada autoriza exclusivamente nombres derivados de checkpoints congelados, limita extracción dentro del presupuesto anterior y rechaza archivos suprimidos sin witness; revalida el paquete y recompone las máscaras después del download. Comparación directa de directorios también verifica/recalcula el par antes de medir. Hash de ZIP registrado por sí solo no sustituye la derivación.
+
+**Validación:** 57 pruebas controladas pasan (capturador 20, productor/derivación 4, lectura privada 16, contrato 7, máscara 4, evidencia 6), compilación focalizada, typecheck web y revisión de whitespace. Prueba integrada usa captura CDP inyectada, paquete, download simulado, extracción y verificación de insumo persistido. Rechaza supresión con hash cambiado, máscara RLE alterada con hashes válidos y PNG suprimido no declarado; comprueba cleanup. Sin Chrome/renderer/FFmpeg real, QA formal, migraciones o rollout.
+
+**Pendientes funcionales:** identidad de glifos y efectos/oclusiones generales, decks HTML, gate global, renderer/browser/fuentes efectivos, SDR y diagnóstico integral. Scope permanece `ALL_NATIVE_TEXT_SUPPRESSED_NOT_PER_GLYPH_CAUSALITY`: el par prueba delta de pintura nativa conjunta, no causalidad por elemento cuando se solapan textos. Recomputación auditable no demuestra por sí sola que la stylesheet haya ejecutado correctamente en un navegador real; eso requiere la campaña diferida con tester.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 76.75%**. Objetivo activo.
+
+## Avance anterior — CAP-027: obligación independiente de máscaras congelada
+
+**Implementación estimada: 76.00%; CAP-027 sigue Parcial.** Avance funcional del flujo de máscaras, sin declarar cerrada su recomputación auditable ni los restantes frentes. No se incrementa la estimación hasta conservar/verificar el frame suprimido y cerrar ese flujo vertical.
+
+Contrato v4 admite `textParity.paintMaskPolicy=NATIVE_TEXT_PAINT_SUPPRESSION_RESTORED_V1`, congelado por el productor de snapshot, no tomado de la captura. Opción `paintMasks` rechaza versiones anteriores. Flag server-only `COMPOSITION_CONFORMANCE_TEXT_PAINT_MASKS_V1=true` funciona exclusivamente con v4; no se activó ni se modificaron ambientes. Ambos contratos construidos en snapshot (consulta de reutilización y contrato final) reciben la misma obligación. La consulta discrimina presencia/ausencia exactas y la verificación del manifiesto almacenado rechaza cruces de política.
+
+El capturador deriva la obligación del contrato seleccionado y no permite desactivarla mediante opciones de operación; worker/CLI que usan ese capturador heredan el requisito sin una flag adicional de ejecución. Validación independiente exige máscaras e identidad de captura para toda región nativa capturada, manteniendo excepciones explícitas de probes de ausencia. Checkpoints incompletos continúan incompletos, no adquieren un PASS por omisión. Lectura/comparación y construcción del paquete privado rechazan incluso la eliminación conjunta de evidencia y checksum de texto. El paquete vincula también el hash de pintura al frame de su receipt.
+
+Todas las particiones de eventos conservan la política desde la raíz; sus hashes autorizados cambian frente a contratos sin máscaras. Compatibilidad de capturas históricas permanece: no se exige retroactivamente una obligación ausente del contrato original ni se relajan ROI/tolerancias.
+
+**Validación:** 63 pruebas controladas (contrato 7, snapshot/políticas 6, capturador 20, productor 4, evidencia 6, lotes 20), compilación focalizada, typecheck web y revisión de whitespace. Incluyen opt-out ignorado ante obligación, eliminación de ambas declaraciones, desconocimiento de política, identidad exacta de revisión y todas las identidades de lotes. CDP inyectado: no se certifican stylesheet real, Chrome, FFmpeg, renderer remoto, QA formal, migraciones o despliegue.
+
+**Siguiente cierre funcional:** conservar el PNG suprimido como insumo privado vinculado, validar/recalcular su delta al leer el paquete y acotar su presupuesto agregado; después abordar blur/oclusiones generales. Persisten gate global, renderer/entorno/fuentes efectivos, SDR, decks y diagnóstico integral. CAP-004/009/010/017/023/026: **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: productor integrado de máscaras y restauración
+
+**Implementación estimada: 76.00%; CAP-027 sigue Parcial.** Se implementó el productor automático opt-in, pero no aumenta la estimación hasta cerrar la obligación independiente del contrato y su evaluación completa. El apartado anterior describe el estado previo, no el capturador actual.
+
+`captureTextPaintMasks: true` conecta el pipeline y el capturador aislado: fuerza evidencia de texto, captura el frame con pintura nativa suprimida mediante una stylesheet temporal propia y comprueba la restauración del PNG original byte por byte mediante SHA-256, incluso ante fallo de supresión/captura. No modifica atributos originales, layout, fondos, movimiento, clipping o contenido. Genera máscaras RLE con cuotas existentes y las adjunta al checkpoint; vincula hashes pintado/suprimido, dimensiones y alcance `ALL_NATIVE_TEXT_SUPPRESSED_NOT_PER_GLYPH_CAUSALITY`. El recorrido forward/reverse compara también las máscaras y hashes. Se suprime todo el texto nativo seleccionado simultáneamente: no se atribuye causalidad individual en solapamientos.
+
+El esquema rechaza máscaras sin identidad de captura y capturas sin sus máscaras. El paquete privado conserva los metadatos. El comparador verifica el hash del frame pintado y decodifica exactamente los mismos bytes leídos, con límite de 8 MiB antes de acumular el archivo completo; no reabre la ruta después del checksum. ROI completa y tolerancias siguen obligatorias; una máscara vacía no acredita un glifo. Capturas anteriores sin máscaras mantienen compatibilidad.
+
+**Pendiente funcional:** exigir la política desde el contrato congelado, propagarla al worker/CLI y validar cobertura independiente; conservar/vincular el insumo suprimido cuando sea requerido para recomputación auditable. La stylesheet real aún no fue ejercitada en Chrome. Blur, oclusión general, identidad de glifos/fuentes y entorno remoto no se declaran resueltos por este productor.
+
+**Validación:** 58 pruebas controladas (contrato 6, máscaras 4, productor 4, evidencia 6, regiones 14, pipeline 5, capturador 19), compilación focalizada y typecheck web. Integración usa CDP inyectado y PNGs controlados; no certifica CSS/Chrome ni renderer remoto. Cubre restauración en errores, cambio del frame restaurado, repetibilidad, persistencia privada, hash alterado y tamaño excesivo. Sin QA formal, navegador real, FFmpeg, migraciones, despliegue o cambio de proveedor.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027: **Parcial, 76.00%**; siguen gate global/entorno/fuentes efectivos, SDR, decks, cierre contractual de máscaras/blur/oclusiones y diagnóstico integral. Objetivo activo.
+
+## Avance anterior — CAP-027: comparador suplementario de pintura de texto
+
+**Implementación estimada: 76.00%; CAP-027 sigue Parcial.** La medición por máscara está implementada; no aumenta el porcentaje ni cierra máscaras porque falta su productor automático, vínculo/repetibilidad de la captura suprimida y obligación congelada del contrato.
+
+Nuevo módulo deriva máscaras RLE del delta RGB entre una región pintada y otra con pintura de texto suprimida (insumos explícitos, no inferencia por contraste/OCR). Scope `SUPPLEMENTAL_PREVIEW_PAINT_PIXELS_NOT_GLYPH_IDENTITY`: incluye pintura/stroke/shadow detectada por diferencia, no acredita identidad de glifos, fuentes o renderer. Usa delta RGB 4 de la política compartida; rechazo de alpha no opaco, buffers/dimensiones incorrectos, cuotas y runs no canónicos. Máximo 1,048,576 píxeles y 65,536 runs por máscara, sin thinning.
+
+Regiones pueden portar máscara suplementaria con dimensiones iguales. Comparador conserva obligatoriamente toda la ROI y sus umbrales, y añade error/píxeles sobre la máscara para cada candidato de desplazamiento <=1 px. Ambos deben pasar; un defecto de pintura escaso que se diluía en una ROI grande ahora falla. Cambios fuera de la máscara siguen midiéndose en la ROI; máscara vacía de texto visible no exento produce INCOMPLETE. Trabajo de máscara agregado tiene presupuesto separado de 1,048,576 píxeles. El esquema privado de evidencia/hashing existente conserva el campo opcional; capturas anteriores sin máscara no se reinterpretan como evidencia de glifo.
+
+**Pendiente funcional explícito:** capturador actual aún no genera el par pintado/suprimido ni adjunta estas máscaras; pruebas construyen buffers controlados. No es entrega de una captura real, no se habilita una obligación de máscaras por omisión y no se afirma completado el flujo vertical. La siguiente implementación debe producir/restaurar DOM en navegador aislado, verificar el frame original tras restauración y repetibilidad forward/reverse, vincular identidades y exigir máscaras desde un contrato opt-in independiente.
+
+**Validación:** 43 pruebas controladas pasan (máscaras 4, regiones 14, evidencia 6, lotes 19), compilación focalizada y typecheck web. Prueba específica demuestra un píxel de pintura ausente que pasa el promedio de ROI pero falla la máscara. Otras cubren empty mask, RLE alterado/solapado/adyacente, fuera de límites, shift y alpha. Comando `npm run test:composition-text-paint-mask`. Sin navegador, renderer, FFmpeg, QA formal, migraciones o rollout.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. Gate global/entorno/fuentes, SDR, decks, flujo vertical de máscaras/blur/oclusiones y diagnóstico integral permanecen pendientes. Decisión de renderer aún abierta; objetivo activo.
+
+## Avance anterior — CAP-027: contraste dentro del soporte visible de texto
+
+**Implementación estimada: 76.00%; CAP-027 sigue Parcial.** No se incrementa: se corrige una condición del comparador, pero no se declara terminada la máscara por glifo, blur u oclusión general.
+
+El comparador de texto con pose geométrica congelada y `blur(0px)` calcula el contraste informativo únicamente en los centros de píxel dentro del soporte convexo visible. Un fondo contrastado fuera de un wipe parcial o fuera del soporte rotado no puede justificar por sí solo una región informativa. Sin contraste suficiente dentro del soporte, el texto queda `INCOMPLETE`. Este probe sigue siendo contraste, no OCR ni prueba inequívoca de un glifo.
+
+La comparación estricta de píxeles conserva la región completa, fondo, padding y límites existentes; no excluye píxeles fuera del soporte ni relaja tolerancias. Pintura inesperada fuera del recorte puede seguir fallando la región. Solo la prueba de informativeness usa el polígono. Soporte vacío/ausencia, texto oculto, baja opacidad y oclusión opaca existente conservan sus políticas; blur no recibe una supuesta prueba de ausencia derivada del soporte sin filtrar. No hay cambios de contratos, metadatos, migraciones o flags.
+
+**Validación:** 48 pruebas controladas pasan: comparador de regiones 14, geometría 9, evidencia de texto 6, lotes 19; compilación focalizada y typecheck web. Incluye winding CW/CCW, rotación, borde, degeneración, contraste externo sin texto informativo, contraste interno y pintura extra fuera del soporte. No se ejecutó navegador/renderer/FFmpeg real, QA formal o despliegue.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. Pendientes de CAP-027: entorno/renderer/fuentes efectivos (decisión abierta), gate global, SDR, decks, máscaras por glifo/blur/oclusiones y diagnóstico integral. Objetivo activo.
+
+## Avance anterior — CAP-027: ubicación editorial de divergencias
+
+**Implementación estimada: 76% (76.00% sin redondear); CAP-027 sigue Parcial.** Diagnóstico pasa de 80% a 85% (peso 5%): +0.25 por localizar fallos dentro del documento congelado. No se incrementan gate global, renderer, fuentes o color; la decisión sobre evidencia efectiva de render continúa pendiente.
+
+Nuevo módulo de ubicación construye una copia validada antes de ejecutar adapters y usa las ventanas de transición del runtime compartido. Para el primer fallo de cada lote reportado añade documento, frame, FPS, tiempo y hasta 16 hashes de IDs de clips con ventanas presentes en ese instante, con conteo de omisiones. No persiste IDs originales, labels, captions, assets o URLs. Scope `ACTIVE_RUNTIME_CLIPS_NOT_FAILURE_CAUSALITY`: enumera contexto temporal, no prueba visibilidad/pintado ni culpa un clip por la divergencia. Soporte identifica el clip calculando SHA-256 UTF-8 de su ID en el documento que corresponde al hash reportado.
+
+El esquema verifica tiempo/frame, unicidad, límites y vínculo con el primer fallo; el resumen rechaza una ubicación de otro documento. Coordenadas solo se agregan a frames de checkpoints autorizados del contrato; frames extraños/duplicados siguen siendo fallos sin recibir contexto documental inventado. Reportes anteriores sin ubicación mantienen compatibilidad. Persistencia privada existente y límites de reporte se conservan; no hay migraciones nuevas.
+
+**Validación:** 55 pruebas controladas pasan (ubicación 3, diagnósticos 3, lotes 19, worker 30), compilación focalizada y typecheck web. Incluye las tres alineaciones crossfade, ventanas semiabiertas, copia independiente frente a mutaciones, truncamiento explícito y vínculo documental alterado. Comando `npm run test:composition-event-diagnostics`. No se generó/decodificó MP4 ni ejecutó renderer, QA formal, migraciones o despliegue.
+
+CAP-004/009/010/017/023/026: **Completada; falta QA**. CAP-027 pendiente de gate global/entorno/fuentes efectivos, SDR, decks, máscaras/blur/oclusiones y diagnóstico integral de etapas. Objetivo activo: este avance independiente no sustituye la decisión arquitectónica requerida para cerrar renderer/entorno.
+
+## Revisión anterior — CAP-027: decisión requerida sobre evidencia efectiva de render
+
+**Implementación estimada: 76% (75.75% sin redondear); CAP-027 sigue Parcial.** Inspección del cliente Cloud, submission, polling y servicio de evidencia: la integración actual obtiene ID/estado/formato/duración/URLs del proveedor y vincula solicitud, job, revisión, asset y checksum verificado. No obtiene identidad efectiva de renderer/browser ni evidencia de uso de fuentes durante la ejecución que produjo el MP4. La evidencia CDP/font/executable del capturador local sigue teniendo scope preview; no debe reutilizarse como prueba de ejecución remota.
+
+Esto describe el código existente, **no demuestra que el proveedor carezca de un API o mecanismo de evidencia**. Debe confirmarse ese soporte antes de diseñar/adoptar su contrato; no se inventan endpoints o campos del proveedor. Si existe, integrar evidencia vinculada a job/revisión/MP4 y autenticar su origen. Si no existe, cerrar identidad efectiva exige acordar un renderer controlado para la salida evaluada. Un segundo render local de referencia no acredita el entorno del MP4 remoto original.
+
+**Consulta pública 2026-10-02:** la [guía oficial de procedencia](https://hyperframes.heygen.com/guides/rendering#render-provenance) documenta etiquetas `hyperframes_renderer`/`hyperframes_version` modificables y eliminables, expresamente no autenticadas. No bastan para cerrar la identidad efectiva ni el uso de fuentes. La [referencia Cloud](https://hyperframes.heygen.com/packages/cli#cloud-get-render-id) documenta consulta del detalle con URLs temporales; las páginas consultadas no establecen un contrato de evidencia autenticada de entorno/fuentes vinculado al checksum final. Esto es una limitación de lo documentado/revisado, no prueba de inexistencia de soporte privado del proveedor. No se ejecutó un render ni se contactó al proveedor.
+
+Requisitos que debe resolver la ruta elegida: (1) origen de evidencia autenticado y permisos por organización; (2) vínculo inequívoco request/job, revisión, project/document hashes y SHA-256 del MP4 verificado; (3) identidad efectiva de renderer/compiler/browser y perfil de salida, no versión de CLI del cliente; (4) uso real de fuentes por checkpoint/glifo con detección de fallback y hashes de archivos; (5) evidencia de tratamiento SDR/perfil, no solo tags del contenedor; (6) rechazo de evidencia ausente, alterada, incompleta o de otro render. Un recibo suministrado sin verificar su origen no satisface estos puntos.
+
+**Decisión de alcance solicitada:** mantener Cloud y confirmar soporte de evidencia del proveedor, o autorizar un renderer controlado con estrategia explícita de convivencia/sustitución y despliegue posterior. No se cambia el proveedor, la infraestructura, las credenciales ni el flujo de publicación sin autorización. No es un pendiente de QA; el gate global permanece conservador mientras se define esta ruta. Los otros pendientes funcionales (SDR, decks, máscaras/oclusiones y diagnóstico) no se consideran cerrados.
+
+Validación de esta revisión: lectura del código, sin nuevas pruebas de runtime ni campañas QA. CAP-004/009/010/017/023/026: **Completada; falta QA**. Sin migraciones o despliegue. Objetivo aún no completado.
+
+## Avance anterior — CAP-027: recomposición de obligaciones medidas
+
+**Implementación estimada: 76% (75.75% sin redondear); CAP-027 sigue Parcial.** Se implementa la recomposición de mediciones por lotes, sin acreditar aún el cierre del gate global de entorno/render.
+
+Nuevo módulo `composition-event-measurement-gate.ts`: recalcula audio esperado/pista, loudness, timing/RMS, playback declarado y tags de color a partir del reporte original, antes de sustituir únicamente la incompletitud visual de partición por el gate agregado. Rechaza obligaciones ausentes y discrepancias entre estado raíz y obligaciones medidas. Los tags usan el esquema compartido y deben tener política explícita; color ausente o `MEASURED_POLICY_NOT_SET` bloquea el candidato. Fallos dominan. El scope es `MEASURED_OBLIGATIONS_NOT_EFFECTIVE_RENDER_ENVIRONMENT_OR_QA`: un PASS de estas mediciones no certifica fuentes, conversión SDR o entorno efectivo ni aprueba publicación.
+
+Ejecutor incluye el nuevo gate en el reporte; worker lo recalcula contra la comparación original (no contra el estado combinado) y rechaza cambios de resultado/cobertura/obligaciones. El resultado global combina también este gate y conserva todos los bloqueos previos. No se promociona la raíz INCOMPLETE ni se cambia la prohibición SQL de PASS multi-lote; migraciones sin modificar/aplicar. Lectura de reportes históricos mantiene campo opcional.
+
+**Validación:** 56 pruebas controladas pasan: worker/ejecutor 30, recomposición 5, combinador 2 (81 combinaciones de cuatro estados), ejecución de lotes 19. Compilación focalizada, typecheck web y diff check. Comando `npm run test:composition-conformance-job-gates`. No se ejecutaron renderer, navegador, FFmpeg, proveedor o PostgreSQL reales ni QA formal.
+
+Siguiente implementación: evidencia efectiva de entorno/renderer y fuentes, antes de habilitar una promoción global; siguen pendientes conversión SDR, decks, máscaras/blur/oclusiones y diagnóstico completo. CAP-004/009/010/017/023/026: **Completada; falta QA**. Objetivo activo; QA, migraciones y rollout diferidos.
+
+## Avance anterior — CAP-027: bloqueo de cobertura sin métricas y composición del resultado
+
+**Implementación estimada: 76% (75.75% sin redondear); CAP-027 sigue Parcial.** Sin incremento: se corrige una brecha del gate existente, no se acredita el cierre del gate global ni evidencia nueva de renderer/entorno.
+
+El gate de cobertura exige métricas agregadas y coincidencia exacta de umbrales/SSIM con la medición raíz. Los resúmenes históricos sin métricas conservan lectura compatible, pero su cobertura se diagnostica `INCOMPLETE`, con `AGGREGATE_METRICS_MISSING`. Umbrales ausentes o distintos producen `AGGREGATE_METRIC_POLICY_MISMATCH`. La lista de causas admite todas las causas declaradas simultáneamente, sin truncar pendientes.
+
+El worker y el ejecutor comparten una función pura para combinar comparación raíz, ejecución de eventos y gate visual: cualquier `FAIL` domina; cualquier `INCOMPLETE` impide `PASS`. Una cobertura visual correcta no elimina incompletitud de la comparación raíz (audio, fuentes, color u otras obligaciones). El reporte persistible vuelve a calcular ese resultado. No cambia la prohibición SQL de aprobar globalmente múltiples lotes: sigue pendiente la recomposición completa y auditada de obligaciones; no se modificaron ni aplicaron migraciones.
+
+**Validación:** 51 pruebas controladas pasan (19 ejecución de lotes, 30 worker/ejecutor, 2 composición del resultado, incluyendo las 27 combinaciones de estados). Compilación focalizada, typecheck web y revisión de diff pasan. Comando repetible: `npm run test:composition-conformance-job-gates`; ejecución de lotes: `npm run test:composition-event-batch-execution`. No son QA real del renderer, codecs, navegador, proveedor o PostgreSQL.
+
+Pendientes funcionales: cierre del gate global, renderer/entorno/fuentes efectivos, conversión SDR, decks, máscaras/blur/oclusiones y diagnóstico completo. CAP-004/009/010/017/023/026 permanecen **Completada; falta QA**. QA formal, migraciones y despliegue siguen diferidos. Objetivo activo.
+
+## Avance anterior — CAP-027: generador ejecutable de MP4 del corpus
+
+**Implementación estimada: 76% (75.75% sin redondear); CAP-027 sigue Parcial.** Corpus pasa de 65% a 70% (peso 10%): +0.5 por implementación del flujo de generación/verificación local y CLI, no por ejecución real o aprobación QA. Los demás bloques mantienen su estimación. No se afirma que ya exista un MP4 generado real.
+
+Generador ejecuta argv con execFile sin shell, timeout 5 min/30 s y salida 128 KiB; toma AbortSignal. Crea subdirectorio único, escribe WAV/recibo con `wx`, encoding usa `-n`. Verifica MP4 <=100 MiB, archivos regulares sin symlink, SHA/size antes/después de probe, integridad del WAV y SHA de ejecutables antes/después (límite 1 GiB). Probe exige H.264/AAC, 1920×1080, FPS aprobado, duración 10 s ±1 frame y estéreo 48 kHz. Recibo vincula source y siete recetas, sin paths de binarios/URLs, con scope local encoding/probe, nunca conformidad o QA.
+
+En éxito conserva artefactos para el tester; fallo/cancelación limpia solo tres paths exactos propios. No hace eliminación recursiva; archivo inesperado queda para inspección y genera error seguro de cleanup. Mensajes/paths/stderr del proceso no se serializan. CLI usa binarios empaquetados, no instala dependencias ni escribe en Supabase. [Guía/comando](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_NATIVE_CONFORMANCE_CORPUS.md).
+
+**Validación:** 11 tests controlados pasan: generador 4 (incluye 10 variantes de fallo/mutación, cancelación y preservación de archivo inesperado), recetas de video 3 y medios 4. Compilación focalizada, typecheck y diff check pasan. Comando de tests: `npm run test:composition-video-corpus-generator`. El executor de tests simula coordinación/probe y usa output explícitamente no-MP4; no cuenta como generación/decode reales. `qa:composition-video-corpus:generate` está implementado y documentado, **no ejecutado**.
+
+Pendientes funcionales: gate global, renderer/entorno/fuentes efectivos, conversión SDR, decks, máscaras/blur/oclusiones y diagnóstico completo. QA deberá generar/probar MP4 y comparar video/crossfade/corpus reales, además de validar codecs/calibración. Sin QA formal, FFmpeg/browser/provider/PostgreSQL reales, migraciones aplicadas o rollout. CAP-004/009/010/017/023/026 siguen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: recetas de video/crossfade y encoding preparado
+
+**Implementación estimada: 75% (75.25% sin redondear); CAP-027 sigue Parcial.** No se incrementa por metadata de test ni por un plan de encoding aún no ejecutado. El pendiente de MP4 real permanece.
+
+Módulo separado prepara siete recetas vinculadas a identidad de source: split/trim por patches reales, crop contain/cover y crossfade audiovisual en las tres alineaciones. Fuente requerida: MP4 de 10 s/1920×1080/FPS aprobado/audio confirmado, checksum y tamaño explícitos. Los offsets/handles de ambas ventanas permiten las tres alineaciones; el mix plan consume el runtime compartido. La metadata suministrada no autoriza una revisión ni acredita decode/render.
+
+Función pura prepara argv FFmpeg con testsrc2 y WAV local, H.264/AAC estéreo, duración acotada, paths absolutos y `-n` sin overwrite. No ejecuta shell/codec ni realiza writes. Etiquetas bt709 no se presentan como prueba de conversión o perfil efectivo. Guía describe generación local, hash/probe reales y posterior integración de assets/revisión autorizada; no se incluyen comandos de despliegue ni ejecución automática.
+
+Tres tests controlados pasan: 28 combinaciones de recetas/FPS con offsets/handles/ventanas audio, argumentos locales de encoding y rechazo de input/metadata inválidos. Compilación focalizada, typecheck y diff check pasan. Comando: `npm run test:composition-video-corpus`. No se usaron bytes de video ficticios; la metadata controlada no se cuenta como asset real. El corpus mantiene 368 combinaciones con assets preparados, más 28 recetas de video condicionadas a generar/verificar MP4. [Guía ampliada](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_NATIVE_CONFORMANCE_CORPUS.md).
+
+Sin QA formal, FFmpeg/browser/provider/PostgreSQL reales, migraciones aplicadas o rollout. Pendientes: generación/verificación MP4 y conformidad real video/crossfade, gate global, renderer/entorno/fuentes efectivos, SDR, decks, máscaras/blur/oclusiones y diagnóstico completo por etapas. CAP-004/009/010/017/023/026 siguen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: diagnóstico acotado de particiones afectadas
+
+**Implementación estimada: 75% (75.25% sin redondear); CAP-027 sigue Parcial.** Se mantiene la rúbrica: este diagnóstico no cierra la clasificación completa por etapas ni el gate global.
+
+El coordinador deriva diagnóstico desde la reevaluación de samples/contrato, tanto al medir como al reanudar. Por cada uno de los primeros 16 lotes afectados conserva índice, SHA-256 del paquete, cantidad de fallos, primera métrica/frame y causas tipadas de incompletitud; elimina la causa de partición local, resuelta por el agregado. No copia mensajes del evaluador, captions, paths ni URLs firmadas. Scope explícito de lista parcial; informa total afectado y cantidad omitida. Paquetes durables siguen siendo la fuente para diagnóstico completo, no se borran ni se sobrescriben.
+
+Schema vincula entradas con los primeros lotes no PASS, hash/índice y FAIL versus INCOMPLETE. Rechaza vínculos alterados, conteos incoherentes, listas fuera del límite, duplicados y métricas desconocidas. Resúmenes legacy sin diagnóstico mantienen compatibilidad sin inventar causas. No cambia estados globales ni gates SQL/audio/lease/integridad.
+
+**Validación:** 52 pruebas controladas pasan: diagnóstico 3, lotes 19 y job 30. Incluyen redacción de mensajes sensibles, causas tipadas, mismo diagnóstico al reanudar, hash/índice/cantidad fabricados y reporte de capacidad máxima con 750 lotes FAIL/16 diagnósticos, dentro del presupuesto SQL preparado y límite del worker. Compilación focalizada, typecheck y diff check pasan. Comando: `npm run test:composition-event-diagnostics`. Sin QA formal ni browser/FFmpeg/provider/PostgreSQL reales, migraciones aplicadas o rollout.
+
+Pendientes: recomposición global auditable, video/crossfade del corpus, renderer/entorno/fuentes efectivos, conversión SDR, decks, máscaras/blur/oclusiones y clasificación diagnóstica completa por etapas. CAP-004/009/010/017/023/026 permanecen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: corpus de medios y audio con bytes reales
+
+**Implementación estimada: 75%; CAP-027 sigue Parcial.** El bloque corpus pasa de 60% a 65% (peso 10%): 74.75% + 0.5 = 75.25%, todavía 75% redondeado. No se cuenta QA ni se cierra la cobertura de video/crossfade solo por tener escenarios de audio.
+
+Extensión v1 con 9 recetas/36 documentos adicionales: crop/fit contain/cover sobre SVG, split/trim de WAV mediante patches reales del editor, gain de clip/pista, fades y ducking voice/music. Total preparado: 368 combinaciones estructurales. Módulo compartido centraliza carta de color y WAV float estéreo 10 s/8 kHz, con canales/envolvente distintos, MIME correcto, bytes nuevos y SHA-256 real. No se usan hashes ficticios ni audio etiquetado como video.
+
+Cuatro tests nuevos pasan: los 36 documentos/plan/checksums/RIFF/aislamiento, mezclas fuente deterministas, compilación de las 9 recetas en ambos targets (18 compilaciones) y rechazo de inputs/cobertura no implementados. Split conserva offsets/muestras a precisión float32; trim verifica silencios y source offset; gain/fades/ducking consumen los servicios reales del modelo fuente. Diferencia observada en interpolación de split <=6.6e-13; el test compara valores con precisión float32, no cambia tolerancias del producto. Las 4 pruebas del corpus nativo siguen pasando. Compilación focalizada, typecheck y diff check pasan.
+
+Comando: `npm run test:composition-media-corpus`. Guía ampliada: [corpus](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_NATIVE_CONFORMANCE_CORPUS.md). Esto no ejecuta browser, FFmpeg, proveedor, escucha, QA formal ni PostgreSQL; no certifica LUFS/true peak de la señal sintética. Split/trim/handles de video y crossfade audiovisual necesitan MP4 real; decoder/captura/encoder/calibración permanecen explícitamente pendientes, junto con gate global, fuentes/entorno efectivos, SDR, decks y máscaras/blur/oclusiones. Sin migraciones aplicadas ni rollout. Las otras seis capacidades siguen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: corpus nativo versionado, 332 combinaciones
+
+**Implementación estimada: 75%; CAP-027 sigue Parcial.** Desde 73.75%, corpus pasa de 50% a 60% (peso 10%) por escenarios nativos deterministas de todos los presets/transiciones y casos de captions/geometría/color: +1 = 74.75%, redondeado a 75%. Los demás bloques no cambian; QA no forma parte del porcentaje.
+
+Corpus v1: 38 recetas de motion (19 presets default/extremo), 33 de transición (5 tipos, 3 alineaciones y direcciones push/wipe), 5 captions (parsers SRT/VTT, karaoke, RTL y multi-lote), 4 geometrías y 3 ajustes de color. Se generan 332 documentos a 24/25/30/60 FPS, con IDs estables, schema válido, documentHash/caseSha256 reproducibles y aislamiento entre instancias. Carta de color usa SVG local real con checksum de sus bytes; no se aplica grading inválido a texto ni se simulan hashes de assets.
+
+Cuatro tests controlados pasan: cobertura del catálogo, matriz estructural completa/checkpoints/elegibilidad de transiciones, rechazo de inputs desconocidos y compilación real de las 83 recetas en ambos targets a 25 FPS (166 compilaciones, no renders). Compilación focalizada, typecheck y diff check pasan. Comando nuevo: `npm run test:composition-native-corpus`. Guía y límites: [corpus nativo](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_NATIVE_CONFORMANCE_CORPUS.md).
+
+El scope de recetas declara que no son evidencia de render. Permanecen explícitos los requisitos de medios/timing/split/trim/crop/fit, audio editorial, fuentes/procedencia, SDR/decoder, decks y entorno efectivo. Falta materializar y ejecutar baselines con browser/codecs/proveedor en QA; no se ejecutó esa campaña. Gate global, máscaras/blur/oclusiones y demás obligaciones funcionales siguen pendientes. Sin migraciones aplicadas ni rollout. CAP-004/009/010/017/023/026 siguen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: política visual congelada vinculada al agregado
+
+**Implementación estimada: 74%; CAP-027 sigue Parcial.** Se mantiene la estimación ponderada; no se afirma cierre del gate global.
+
+Las métricas por partición incluyen ahora los umbrales del contrato realmente reevaluado. El agregado exige igualdad de política entre lotes; un lote declarado PASS se rechaza si error absoluto, píxeles distintos, deriva o PSNR observados violan esos umbrales, además de los controles SSIM/texto existentes. El schema de umbrales se centralizó y rechaza valores no finitos. No se ajustan tolerancias para hacer pasar resultados.
+
+La comparación raíz conserva sus umbrales y el reporte durable vincula el agregado con esa política y mínimo SSIM. Con métricas nuevas no se acepta raíz sin política, política distinta ni mínimo distinto. Los resúmenes legacy sin métricas mantienen compatibilidad, no obtienen aprobación retrospectiva ni habilitan PASS multi-lote. Se preservan todos los controles de audio/lease/integridad y el bloqueo SQL global existente.
+
+**Validación:** 57 pruebas controladas pasan: lotes 19, job 30, conformance base 5 y composición audio 3 (matriz de 2,250 combinaciones). Incluyen umbrales mezclados, PASS con métricas fuera de tolerancia, vínculo raíz ausente/alterado y capacidad de 750 lotes. Compilación focalizada, typecheck y diff check pasan. Sin QA formal, browser/FFmpeg/provider/PostgreSQL reales, migraciones aplicadas o rollout.
+
+La inspección del cliente Cloud muestra que su contrato actual ofrece estado/ID/URLs de salida, pero no versión efectiva del renderer/browser ni procedencia de fuentes. Es evidencia funcional faltante, no algo que QA pueda suplir ni que deba extrapolarse desde preview. Quedan recomposición global, entorno/fuentes efectivos, conversión de color, decks, máscaras/blur/oclusiones y corpus/diagnóstico completo. Las otras seis capacidades siguen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: métricas visuales globales desde particiones evaluadas
+
+**Implementación estimada: 74%; CAP-027 sigue Parcial.** La rúbrica anterior de 73.25% mantiene sus demás bloques; diagnóstico pasa de 70% a 80% (peso 5%) por métricas globales trazables por partición y conservación del peor frame: +0.5 = 73.75%, redondeado a 74%. Es estimación de implementación, no porcentaje de QA ni aprobación del gate global.
+
+El coordinador genera métricas por lote desde la reevaluación de samples/contrato, tanto en medición nueva como al reanudar paquetes persistidos. El agregado suma checkpoints SSIM/texto y regiones esperadas/comprobadas; conserva mínimo SSIM/PSNR y máximo error absoluto, diferencia de píxeles y deriva temporal. No promedia un fallo aislado ni reemplaza la evidencia raíz con un falso reporte de 48 checkpoints. Scope explícito: métricas visuales de eventos, no atestación completa del render.
+
+El schema exige igualdad del agregado con su recomputación desde métricas locales, conteos compatibles con el plan, cobertura homogénea y política SSIM consistente. PASS de un lote exige texto completo y SSIM medido por encima de su umbral. Totales fabricados, métricas parciales, límites de regiones y políticas mezcladas se rechazan sin lanzar errores fuera de la validación. Resúmenes legacy sin métricas mantienen compatibilidad; no obtienen métricas nuevas ni aprobación retrospectiva.
+
+La migración de finalización **preparada, no aplicada** admite un resumen de hasta 768 KiB, dentro del límite existente de 1 MiB del reporte completo. Se comprobó un reporte sintético de capacidad máxima (750 lotes/36,000 checkpoints), con margen de separadores y 64 KiB para el resto del reporte. No se afirma ejecución PostgreSQL ni que la vinculación SQL recalcule métricas de imágenes. El bloqueo de PASS global multi-lote se conserva.
+
+**Validación:** 54 pruebas controladas pasan: lotes/métricas 19, job 29 y paquetes 6. Cubren fallo aislado, reanudación idéntica, agregado alterado, política distinta y capacidad máxima. Compilación focalizada, typecheck y diff check pasan. Sin QA formal, browser/FFmpeg/provider/PostgreSQL reales, SQL aplicado o rollout.
+
+Pendientes funcionales: recomposición global auditable junto con audio y demás obligaciones; identidad efectiva compiler/renderer/entorno/fuentes, conversión de color, decks, máscaras/blur/oclusiones y corpus/diagnóstico completo. CAP-004/009/010/017/023/026 permanecen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: cierre de aprobación implícita en audio exportado
+
+**Implementación estimada: 73%; CAP-027 sigue Parcial.** No se aumenta por corregir un gate existente ni por ampliar la matriz de pruebas; aún faltan obligaciones funcionales para cerrar la capacidad.
+
+La revisión del gate global encontró que el evaluador de exportación podía devolver PASS con expectativa de audio desconocida, loudness sin política o audio requerido sin mediciones temporales/RMS. Se extrajo la composición de estados a un módulo puro, sin ejecutar codecs, manteniendo el export previo para consumidores. Expectativa desconocida y mediciones obligatorias faltantes producen INCOMPLETE; FAIL medido sigue dominando. Audio explícitamente no requerido puede omitir mediciones no solicitadas, pero no ocultar fallos o una medición sin política. El comparador real transmite ahora el resultado RMS al gate.
+
+El reporte durable tipa presencia/loudness y, cuando esos campos están presentes, vuelve a evaluar sus obligaciones antes de aceptar PASS: no permite eliminar solo uno ni sobrescribir un estado inconcluso. Se conserva compatibilidad con reportes legacy sin ambos campos; **no se afirma que esto constituya atestación de una obligación omitida por un reporte legacy**. El gate global multi-lote sigue bloqueado en TypeScript y SQL hasta completar la recomposición y demás obligaciones.
+
+**Validación:** 72 pruebas controladas pasan: gate puro 3 (matriz de 2,250 combinaciones), loudness 7, timing 10, color 7, job 29 y lotes 16. Compilación focalizada, typecheck y diff check pasan. Comando nuevo: `npm run test:composition-exported-conformance-gate`. La expectativa del test MP4 legacy pasa a INCOMPLETE por audio desconocido; ese test con FFmpeg real no se ejecutó, conforme a la postergación de QA. Sin browser/FFmpeg/provider/PostgreSQL reales, migraciones aplicadas o rollout.
+
+Pendientes funcionales intactos: recomposición global auditable, compiler/renderer/entorno/fuentes efectivos, conversión de color, decks, máscaras/blur/oclusiones y corpus/diagnóstico completo. CAP-004/009/010/017/023/026 permanecen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: causas explícitas y diagnóstico de cobertura visual
+
+**Implementación estimada: 73%; CAP-027 sigue Parcial.** Se mantiene la rúbrica ponderada: este incremento permite distinguir cobertura por particiones de otras obligaciones incompletas, pero no cierra el gate global ni aumenta artificialmente el porcentaje por número de pruebas.
+
+El evaluador visual emite causas tipadas para samples faltantes, SSIM, texto nativo, procedencia de fuentes del renderer, etiquetas de color y cobertura limitada a una partición. El diagnóstico `eventVisualCoverageGate` resuelve únicamente la causa de partición cuando el agregado completo lo permite; conserva las demás causas y rechaza raíz ausente, plan distinto o incompletitud legacy sin explicación. FAIL local o agregado sigue dominando. Su scope declara explícitamente que no certifica audio, entorno ni atestación del render completo.
+
+El job incorpora ese diagnóstico y el schema durable exige igualdad con su recomputación desde raíz y agregado; un diagnóstico fabricado se rechaza. No se modifica la combinación conservadora del status global ni el bloqueo SQL de PASS multi-lote. Las causas son códigos acotados, no URLs ni contenido del usuario. Contratos legacy mantienen compatibilidad sin obtener aprobación retrospectiva.
+
+**Validación:** 60 pruebas controladas pasan: coordinador/diagnóstico 16, job 28, conformance base 5, color 7 y contrato de fuentes 4. Incluyen ausencia real de samples/SSIM/texto/color, procedencia tipográfica pendiente, resumen alterado y conservación de gates de audio/lease/CAS. Compilación focalizada, typecheck y diff check pasan. No se ejecutaron QA formal ni browser/FFmpeg/provider/PostgreSQL reales; ninguna migración fue aplicada.
+
+**Pendientes funcionales:** promoción global auditable desde paquetes completos y todas las obligaciones; identidad efectiva de compiler/renderer/entorno/fuentes, conversión de color, decks, máscaras/blur/oclusiones y corpus/diagnóstico completo. Las otras seis capacidades permanecen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: vínculo de paquetes en finalización SQL
+
+**Implementación estimada: 73%; CAP-027 sigue Parcial.** La migración queda preparada; no se incrementa por guardas lexicales ni se afirma cierre del gate global.
+
+Nueva migración **no aplicada**: `20261001160000_bind_event_summary_to_job_finalization.sql`. Verificador privado exige organización/revisión/MP4/documento/projectHash/raíz/plan y conteos congelados, y busca cada paquete por identidad completa mediante su PK. Comprueba checksum registrado, captura visual vinculada y linaje autorizado; calcula checkpoints medidos desde los samples presentes que corresponden al contrato visual y exige índices consecutivos, conteos por lote/totales y consistencia del status declarado. Esta vinculación no recalcula SSIM/texto/color desde imágenes ni sustituye la reevaluación de métricas del worker.
+
+La RPC pública de cierre conserva nombre y firma; el worker existente la llama sin cambios. El cierre previo se mueve a private y se revoca ejecución directa incluso a service_role. El nuevo wrapper toma el job por lease vigente, mantiene locks del snapshot/paquetes/capturas y verifica el agregado dentro de la misma transacción antes de delegar al finisher anterior. Se preservan sus gates completos de audio/playback, integridad remota, vínculo de assets/referencias y lease/CAS. Revisión sin eventos no admite un resumen de eventos; con eventos exige todos los paquetes. PASS global multi-lote permanece explícitamente bloqueado hasta completar/auditar su gate, incluso si la cobertura declara PASS. Falla/retry sin reporte sigue el flujo anterior.
+
+Rollback documentado restaura nombre/schema/grant del finisher previo y retira wrapper/verificador, sin borrar datos. Quedan pendientes QA PostgreSQL real, permisos, concurrencia/locks, CAS, aplicación y rollback de la migración; **no se afirma compilación o ejecución SQL**.
+
+34 pruebas controladas pasan: paquetes 6 (incluye guardas lexicales sobre vínculo, locks, delegación y cierre de bypass) y job 28 (audio/font/color/lease/CAS y agregado). Compilación focalizada, typecheck y diff check pasan. No browser/FFmpeg/provider/PostgreSQL reales, QA formal, SQL aplicado o rollout.
+
+Pendientes funcionales: gate visual global auditable desde paquetes/cobertura completa y demás obligaciones; identidad efectiva de renderer/entorno/compiler/fuentes/conversión de color; decks, máscaras/blur/oclusiones y corpus/diagnóstico completo. Otras seis capacidades **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: ejecución agregada integrada al job durable
+
+**Implementación estimada: 73%; CAP-027 sigue Parcial.** Respecto a la rúbrica de 72.25%, checkpoints pasa de 80% a 85% (peso 10%) y gate/evidencia de 85% a 90% (peso 10%) por integración de adquisición reanudable completa al job y enforcement del resumen: +0.5 +0.5 = 73.25%, presentado redondeado como 73%. Los otros bloques no cambian; no se cuentan QA, SQL aplicado o rollout.
+
+`executePersistedCompositionEventBatches` resuelve la revisión por tenant/id/projectHash/documento; los contratos sin descriptor mantienen el recorrido legacy y retornan null. Para eventos materializa el archivo autorizado, verifica nuevamente el source completo, exige igualdad del contrato con la revisión y recomputa la autorización de todos los hijos. Deriva identidad raíz y ejecuta el coordinador con los adapters de captura/comparación/persistencia. El materializado raíz se limpia en éxito y fallo; los paquetes/capturas durables no se borran. Dependencias explícitas permiten pruebas controladas sin browser/codec.
+
+`executeConformanceJob` invoca este recorrido después de comparación/audio y antes del segundo chequeo remoto. Contrato de eventos declarado por el comparador exige resultado agregado; no se acepta omitirlo. Reporte durable guarda `eventCheckpointExecution` separado: schema recalcula conteos y status desde todos los lotes, exige índices consecutivos, tamaño esperado por lote, hashes/scope y vínculo de organización/revisión/documento/MP4/plan. Un FAIL de lote domina globalmente; PASS de cobertura **no** convierte una comparación raíz INCOMPLETE en PASS. `preEventComparisonStatus` conserva el estado previo y comparación/status final siguen iguales, manteniendo el contrato SQL actual de finalización y todos sus gates de audio/integridad. No se finge aprobación del render.
+
+53 pruebas controladas pasan en cuatro suites: job 28, coordinador/entrypoint/adapters 15, paquetes 5 y visual event 5. Incluyen todos los lotes/reanudación, source o manifiesto alterado antes de ejecución, cleanup incluso en fallo, conteos fabricados, tenant/project ajenos, ejecución agregada omitida, FAIL/inconcluso y MP4 cambiado después de medir. Se conservan las pruebas de audio/playback/font/color/lease/CAS. Compilación focalizada, typecheck y diff check pasan. No Chromium/FFmpeg/provider/PostgreSQL QA real, SQL aplicado, flags activadas ni rollout.
+
+**Pendientes funcionales:** cierre del gate visual global desde cobertura completa (sin confundir INCOMPLETE por partición con otras obligaciones faltantes), auditoría/vínculo de paquetes agregados en finalización SQL, renderer/entorno/compiler/fuentes/color efectivos, decks, máscaras/blur/oclusiones y corpus/diagnóstico completo. Otras seis capacidades **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: adapters de captura, comparación y persistencia compuestos
+
+**Implementación estimada: 72%; CAP-027 sigue Parcial.** No se aumenta hasta conectar el recorrido agregado al job durable y verificar sus gates completos.
+
+`createPersistedCompositionEventBatchAdapters` compone los entrypoints existentes de captura privada autorizada, medición del MP4 y lectura/escritura de paquetes. Fija identidad raíz y paths/handles al crearse; valida tenant/revisión/projectHash/MP4/documento/raíz/plan en cada operación. Rechaza contrato hijo alterado antes de abrir captura. Los valores pasados al medidor están aislados; valida identidad del paquete retornado y conserva la relación interna identidad/checksum visual necesaria para persistir. No admite persistir un paquete que este adapter no midió; borra la relación tras registro exitoso. Los paquetes recuperados se entregan al coordinador, que recalcula sus métricas/obligaciones y no repite captura/medición.
+
+La cancelación se verifica antes/después de cada etapa asíncrona; después de captura cancelada no se mide ni se registra paquete. Las etapas existentes mantienen cleanup de workspaces; no se borran capturas durables útiles ni se exponen motivos privados de cancelación. Una captura no se interrumpe internamente todavía: cancelación se observa al regresar de esa etapa.
+
+29 pruebas controladas pasan en cuatro suites: coordinador/adapters 14, persistencia de paquetes 5, evidencia visual event 5 y pipeline 5. La prueba compuesta recorre todas las particiones del plan con dependencias controladas, luego crea otra instancia de adapters y reanuda sin capturar/medir nuevamente; verifica scope ajeno, contrato alterado antes de captura, persistencia sin medición y cancelación entre etapas. Compilación focalizada, typecheck y diff check pasan. No se ejecutan browser/FFmpeg/provider/PostgreSQL reales, QA formal, SQL ni rollout.
+
+**Pendiente funcional:** incorporar el coordinador y estos adapters al job/report durable, sin relajar identidad remota, audio o scopes de cobertura; completar renderer/entorno/compiler/fuentes/color efectivos, decks, máscaras/blur/oclusiones y corpus/diagnóstico. La composición de adapters no es prueba del circuito completo en ambiente real ni cierre de CAP-027. Otras seis capacidades **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: paquetes privados reanudables ligados al MP4
+
+**Implementación estimada: 72%; CAP-027 sigue Parcial.** Se mantiene hasta integrar adquisición/medición/persistencia en el job agregado y cerrar sus gates; no se cuenta una suite aislada como cierre del worker completo.
+
+`composition-conformance-event-batch-persistence.ts` implementa lectura/escritura de paquetes acotados a 4 MiB. Consulta revisión por organización/id, verifica projectHash, documento, contrato raíz canónico, descriptor del plan y hash hijo autorizado antes del RPC. Registro lleva checksum del paquete y de la captura visual; lectura exige identidad completa exacta y recalcula checksum canónico desde el schema. Los handles y parámetros escalares quedan capturados antes de llamadas asíncronas. Null solo indica ausencia autorizada; error de transporte/RPC no se interpreta como ausencia y no dispara una remediación silenciosa.
+
+La identidad incluye hash del MP4: otro video no puede reusar las mismas mediciones. No se guarda un PASS: el coordinador lee samples y recalcula resultados. SQL nueva **preparada, no aplicada**: `20261001150000_persist_event_batch_measurements.sql`, tabla privada con RLS, clave única por identidad completa y FK a la captura del lote, RPCs exclusivos service_role/search_path fijo, registro atómico idempotente y conflicto inmutable. Se valida autorización vigente de revisión/tenant/contrato/plan/captura tanto al registrar como al leer. Checksum canónico JS se comprueba en worker/lector; no se confunde con representación textual jsonb. Estrategia de rollback exporta paquetes previamente y no toca registros visual/audio ni Storage.
+
+23 pruebas controladas pasan en tres suites: persistencia de paquetes 5, coordinador/adapter 13 y evidencia visual de eventos 5. El coordinador usa los nuevos adapters de persistencia con RPC en memoria: primera medición, readback, reanudación sin medir otra vez, identidad de otro MP4, checksum alterado, identidad extraña, autorización ausente/alterada y conflicto sin overwrite. Las guardas SQL son lexicales: no acreditan compilación ni ejecución PostgreSQL. Compilación focalizada, typecheck y diff check pasan. Comando focal: `npm run test:composition-event-batch-persistence`.
+
+Pendientes funcionales intactos: composición de adapters reales de captura/medición/paquetes y conexión al job agregado durable; renderer/entorno/compiler/fuentes/color efectivos, decks, máscaras/blur/oclusiones y corpus/diagnóstico completo. Sin QA formal ni Chromium/FFmpeg/provider/PostgreSQL reales, migraciones aplicadas, flags activadas o rollout. Las otras seis capacidades siguen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: samples del comparador conectados al adapter de medición
+
+**Implementación estimada: 72%; CAP-027 sigue Parcial.** Se mantiene la rúbrica: falta cerrar persistencia de paquetes de medición y ejecución agregada en el worker, no se añade porcentaje por tests.
+
+`measureCompositionConformanceDirectories` conserva samples calculados de PNGs junto a hashes de documentos y tags del render; el entrypoint de comparación anterior mantiene exactamente su contrato de resultado. El comparador del MP4 usa la misma función y solo devuelve `visualMeasurements` cuando el worker solicita `includeVisualMeasurements=true`. El wrapper de referencias privadas transmite esa opción explícita sin alterar llamadas normales. Se conservan métricas de píxeles, SSIM, tiempo, texto y color; no se reconstruyen samples artificiales desde un PASS resumido.
+
+`measureCompositionEventBatchWithPersistedReference` enlaza esas mediciones con identidad del coordinador. Antes de comparar comprueba hash canónico/documento/descriptor del contrato seleccionado; después exige tenant/revisión/projectHash/checksum de referencia, linaje raíz/hijo/plan, hash real del MP4 reportado por el comparador y hashes de ambos documentos. Samples ausentes o evidencia ajena rechazan el paquete. El paquete contiene campos explícitos y schema estricto; campos adicionales del resultado no pueden sustituir su identidad/scope. No confía en el status agregado del comparador: el coordinador recalcula desde los samples y obligaciones congeladas.
+
+34 pruebas controladas pasan en cuatro suites: coordinador/adapter 13, color/comparador PNG 7, referencia persistida 6 y SSIM 8. Validan procedencia alterada, opción explícita, conservación de samples reales con PNGs controlados y regresiones del comparador previo. Compilación focalizada, typecheck y diff check pasan. No se ejecutó el test que decodifica MP4 con FFmpeg real, Chromium/provider/PostgreSQL QA, migraciones o rollout.
+
+Pendientes funcionales: persistencia privada y localización reanudable de paquetes de medición, adapters de captura/medición integrados con el worker agregado y su gate durable; renderer/entorno/compiler/fuentes/color efectivos, decks, máscaras/blur/oclusiones y corpus/diagnóstico completo. Las otras seis capacidades siguen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: persistencia privada autorizada por partición
+
+**Implementación estimada: 72%; CAP-027 sigue Parcial.** En la rúbrica existente, identidad congelada pasa de 50% a 55% (peso 15%) por autorización de contratos hijos en revisión, y gate/evidencia de 80% a 85% (peso 10%) por enforcement antes de upload/download y circuito privado de particiones: +0.75 +0.5 sobre 71 = 72.25%, presentado redondeado como 72%. Los otros bloques no cambian. No se contabiliza QA, aplicación de migraciones o rollout ni se concede cobertura global por una partición.
+
+`persistVisualConformanceEvidence` admite selección explícita de índice/contrato hijo como pareja obligatoria. Consulta la revisión por organización/id, valida contrato, índice, linaje y hash congelado antes de subir; conserva upload sin overwrite y readback SHA-256. Usa un RPC de eventos separado del registro raíz. El pipeline transmite índice a captura y contrato realmente capturado a persistencia, manteniendo cleanup de ambos workspaces.
+
+El lector solicita el RPC específico por tenant/revisión/checksum/índice y exige contexto de autorización obtenido del registro. Verifica el hash canónico completo del contrato contra el manifiesto congelado antes de descargar; luego revalida ZIP, recibo, linaje registrado y PNGs. Contrato alterado, autorización ausente o scope ajeno fallan cerrado. El comparador persistido ya recibe el índice vía su contrato de entrada y ahora conserva el linaje verificado en provenance; las métricas siguen siendo del contrato seleccionado, nunca se promueven a cobertura global.
+
+Migración nueva **preparada, no aplicada**: `20261001140000_persist_event_visual_conformance_evidence.sql`. Tabla event-only con RLS, sin acceso directo público/anon/authenticated/service-role, RPCs SECURITY DEFINER con search_path fijo y grants exclusivos service_role. Registro vincula revisión/organización/hash/índice/obligaciones/checkpoints, existencia de objeto y reintento idempotente; lectura devuelve raíz/manifiesto actuales. No modifica tablas/registros de evidencia raíz/audio. La identidad canónica JS del contrato se verifica en worker y lector: no se sustituye por hash de texto PostgreSQL jsonb, cuya canonicalización es distinta. Incluye estrategia de rollback con exportación previa, sin borrar objetos Storage. El SQL tiene revisión y guardas lexicales; **no se afirma compilación/ejecución PostgreSQL**.
+
+43 pruebas controladas pasan en cinco suites: nueva evidencia event 5 (incluye guarda lexical SQL), pipeline 5, comparador persistido 5, persistencia raíz 13 y lector raíz 15. Round-trip de partición hija con Storage/RPC en memoria, reintento exacto, obligación congelada, fallo antes de upload/download y propagación/provenance. Se corrigió una fixture duplicada de `hfId` sin relajar el schema. Compilación focalizada, typecheck y diff check pasan. Comando focal: `npm run test:composition-event-visual-evidence`.
+
+**Pendiente funcional:** adapters de medición/captura/comparación de todas las particiones y paquetes reanudables integrados al worker agregado; identidad efectiva renderer/compiler/browser/fuentes de sistema y conversión de color, decks, máscaras/blur/oclusiones, corpus/diagnóstico completo. Sin Chromium/FFmpeg/provider/PostgreSQL QA real, migraciones aplicadas, flags activadas ni rollout. Las otras seis capacidades siguen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: identidades de todas las particiones congeladas en revisión
+
+**Implementación estimada: 71%; CAP-027 sigue Parcial.** No se aumenta el porcentaje hasta cerrar autorización/persistencia/ejecución durable multi-lote.
+
+El snapshot opt-in de eventos ahora guarda `conformance_event_batch_authorization`: política versionada, scope de identidades (no cobertura medida), hash del documento, hash del contrato raíz, descriptor del plan y lista ordenada de hashes de contratos hijos. El índice de la lista corresponde al índice de partición. Schema estricto limita la lista a 750 entradas, exige raíz en posición 0, conteos exactos y hashes distintos; no se guardan copias de todos los contratos ni HTMLs por lote.
+
+Antes de activar una revisión reutilizada, el servicio recomputa la lista completa desde documento y contrato almacenado y exige igualdad. Ausencia, cambio o entradas incompletas fallan cerrado; una revisión anterior sin este manifiesto requiere nueva revisión, no se promueve retrospectivamente. La fixture de reutilización se normaliza con el mismo orden que la lectura persistente antes de calcular su hash; se corrigió una discrepancia detectada por el nuevo chequeo sin relajar contratos.
+
+El validador de paquetes puede comprobar un hijo contra contrato raíz y manifiesto obtenidos de una revisión autorizada, sin confiar en un hash arbitrario entregado por el productor de evidencia. Verifica identidad de raíz/documento/plan, posición y hash completo del hijo. El RPC y lector privados actuales todavía conservan el contrato raíz y no consumen este nuevo contexto: falta conectarlos y preparar su autorización SQL explícita. Ningún caller externo gana autorización por pasar este parámetro.
+
+68 pruebas controladas pasan en seis suites: coordinador/autorización 12, política snapshot 5 (matriz de 3,200 combinaciones), snapshot 5, captura 18, persistencia 13 y lector privado 15. Compilación focalizada, typecheck y diff check pasan. Sin QA formal ni Chromium/FFmpeg/provider/PostgreSQL reales, SQL aplicado, flags activadas o rollout. Pendientes adicionales intactos: entorno/renderer/compiler/fuentes/color efectivos, decks, máscaras/blur/oclusiones y corpus/diagnóstico completo. Otras seis capacidades **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: linaje verificable en evidencia de particiones
+
+**Implementación estimada: 71%; CAP-027 sigue Parcial.** El incremento no cierra el circuito durable multi-lote; se mantiene el porcentaje ponderado.
+
+Las capturas con descriptor de partición registran `eventBatchLineage`: política y scope explícitos de una partición de preview (no atestación global del render), SHA-256 del contrato raíz, SHA-256 del contrato hijo y descriptor completo. Se genera desde la derivación verificada, incluso para lote 0 cuando el caller no envía índice. Contratos sin descriptor conservan el flujo anterior.
+
+El paquete y el lector privado validan el linaje mediante el mismo validador: faltante, contrato/descriptor alterado o raíz distinta se rechazan. Para índice 0 exige igualdad de hash raíz/hijo; para un hijo exige contexto con documento y raíz autorizados, recomputa el contrato hijo completo y conserva todas las obligaciones. Un parámetro proporcionado por el caller no constituye por sí solo autorización. El RPC actual conserva su autorización de contrato raíz: no se amplía a hijos arbitrarios; falta congelar/autorizar sus identidades en el circuito durable y conectarlo al worker. Capturas anteriores con descriptor pero sin linaje requieren recaptura; no ganan ese vínculo retrospectivamente.
+
+57 pruebas controladas pasan en cuatro suites: coordinador/linaje 11, captura 18, persistencia 13 y lector privado 15. Incluyen raíz/hijo, ausencia/alteración de linaje, obligación de color conservada, linaje incluido en ZIP y rechazo al eliminarlo, además de regresiones de scope/Storage/readback. Compilación focalizada, typecheck y diff check pasan. Sin QA real de Chromium/FFmpeg/provider/PostgreSQL, migraciones aplicadas ni rollout.
+
+Pendientes funcionales intactos: autorización/persistencia/adquisición/comparación integral de particiones; renderer/entorno/compiler/fuentes/color efectivos; decks, máscaras/blur/oclusiones y corpus/diagnóstico completo. Las otras seis capacidades permanecen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: selección de particiones conectada a captura
+
+**Implementación estimada: 71%; CAP-027 sigue Parcial.** Se mantiene el porcentaje: esta entrega conecta selección y captura, pero no cierra persistencia privada/autorización de contratos hijos ni ejecución durable integral.
+
+`composition-conformance-event-batch-contract.ts` centraliza la verificación del contrato raíz contra documento, plan completo y expectativas de texto. Prepara el plan una sola vez y deriva cada contrato hijo conservando obligaciones congeladas de canvas, assets, texto, fuentes y color. Rechaza un hijo usado como raíz e índices inválidos; cada selección devuelve objetos aislados. El coordinador reanudable utiliza el mismo módulo, evitando dos implementaciones de derivación.
+
+La captura acepta `eventBatchIndex` opcional, valida la selección antes de abrir servidor/browser y usa sus checkpoints en ambos recorridos, expectativas de texto y testigos de fuentes. Devuelve el contrato realmente capturado. No modifica HTML, metadata ni contrato del snapshot materializado; sin índice conserva el comportamiento anterior. El contrato retornado no constituye autorización privada de un hijo ni una atestación del renderer: falta conectar esa identidad al paquete/lector/Storage/RPC y al worker integral.
+
+28 pruebas controladas pasan: coordinador/derivación 10 y captura 18. Cubren aislamiento, conservación de obligaciones, raíz falsa, índices inválidos antes de lanzamiento, snapshot original intacto, reanudación/checksum y regresiones de captura. Compilación focalizada, typecheck y diff check pasan. No se ejecutaron Chromium/FFmpeg/provider/PostgreSQL reales, QA formal, migraciones ni rollout.
+
+Pendientes funcionales: adquisición/comparación/persistencia autorizada de todas las particiones, entorno/compiler/renderer y color efectivos, prueba tipográfica del renderer/fonts de sistema, decks HTML, máscaras/blur/oclusiones y corpus/diagnóstico completo. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 permanecen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: identidad de particiones y coordinador reanudable
+
+**Implementación estimada: 71%; CAP-027 sigue Parcial.** No se sube el porcentaje todavía: el coordinador existe y se valida con adapters controlados, pero falta conectarlo a captura/Storage/RPC reales del worker. No se cuenta coordinación como cierre de adquisición ni un lote como cobertura global.
+
+Contrato v4 incorpora `checkpointBatch` con SHA-256 del plan completo, índice, conteo de lotes y total de checkpoints. Schema isomórfico valida índice/conteos y tamaño esperado de cada partición; selección/hashing server-only evita dependencias Node en contratos de cliente. Snapshot puede congelar lote 0 de planes mayores de 48; `eventBatchIndex` permite producir cada partición explícita. Productor/lector de source recomputan la selección desde documento y rechazan identidad/candidatos alterados; reutilización compara también el descriptor. Contratos single-batch anteriores sin descriptor conservan su lectura, sin convertirse en planes multi-lote. El helper legacy `requireSingleEventCheckpointBatch` mantiene su rechazo de overflow, pero el productor nuevo ya no se limita a él.
+
+El evaluador conserva `checkpointBatchCoverage` con scope `ONE_EVENT_PARTITION_NOT_GLOBAL_COVERAGE` y resultado local. Un lote correcto de un plan multi-lote produce INCOMPLETE global, no PASS. El schema durable rechaza promoción del lote a PASS global; el resumen del snapshot muestra descriptor y scope, evitando presentar únicamente el número de 48 como si fuese toda la cobertura.
+
+`composition-conformance-event-batch-execution.ts` implementa ejecución secuencial sobre el plan autorizado, construyendo contratos hijos desde las mismas obligaciones de texto/fonts/color. Cada paquete lleva tenant/revisión/project/video/document, hashes de contrato padre/hijo y descriptor. Revalida el checksum persistido, recomputa el resultado desde muestras —no confía en un status guardado— y exige readback exacto de escrituras nuevas. Reanudación conserva particiones previas y mide solo faltantes. Scope/contratos se copian antes de entregar a adapters; éstos no pueden modificar el contrato usado por el evaluador. Cancelación entre etapas evita persistencia tardía y no registra el motivo privado.
+
+El agregado usa scope `COMPLETE_NATIVE_EVENT_VISUAL_SAMPLE_COVERAGE_NOT_FULL_RENDER_ATTESTATION`: incluso un PASS de este agregado acredita solo cobertura de las muestras nativas recibidas, no autenticación independiente del renderer, captura/codec/audio ni aprobación de publicación. Los adapters deben comprobar autoridad e integridad de Storage; los adapters reales y su enlace al job aún faltan. No hay fallback del job actual al agregado ni eliminación de INCOMPLETE de fuentes/renderer.
+
+75 pruebas controladas en nueve suites pasan: coordinador 8, eventos 7, job 25, políticas snapshot 5, source/reference 9, conformidad 5, color 7, fonts contract 4 y snapshots 5. La matriz snapshot conserva 3,200 combinaciones. Incluye source productor/lector de todas las particiones, scope/hash incorrectos, muestras faltantes/corruptas, interrupción/reanudación, readback cambiado, checksum alterado, mutación de contrato y cancelación. Compilación focalizada/typecheck pasan. Comando focal: `npm run test:composition-event-batch-execution`.
+
+**Siguiente implementación obligatoria:** adapters privados de captura/medición y persistencia por lote, lineage autorizado respecto del snapshot padre, readback scoped y enlace del agregado completo con el gate del job sin omitir audio/fonts/color. Pendientes adicionales de §6 intactos: renderer/entorno/fuentes de sistema/color efectivos, decks HTML, máscaras/blur/oclusiones y corpus/diagnóstico completo. Sin Chromium/FFmpeg/provider/PostgreSQL QA real, flags activadas, despliegue o SQL aplicado. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 siguen **Completada; falta QA**; objetivo activo.
+
+## Avance anterior — CAP-027: plan completo de eventos nativos y particiones sin descarte
+
+**Implementación estimada: 71%; CAP-027 sigue Parcial.** No se incrementa el porcentaje todavía: se implementó el plan y su ruta single-batch, pero la captura/evidencia/job multi-lote sigue pendiente. No se reduce el requisito de §6 a documentos pequeños ni se contabiliza el particionamiento como ejecución completa.
+
+Auditoría del selector histórico: incluye inicio/final, muestreo uniforme, bordes de clips y freeze; cuando supera 48 reduce candidatos. No enumera explícitamente cada keyframe/cue/transición. Se conserva su significado legacy, sin afirmar que cubra todos los eventos. `composition-conformance-event-checkpoints.ts` implementa un plan distinto: vecinos before/at/after de bordes, cue/word de captions (relativos al clip), fades/freeze, ventanas runtime de transición, cambios de visibilidad y midpoints de cada tween. Reutiliza los schedulers reales de motion/transición, incluidos repeats/yoyo completos/parciales y los dos segmentos de DIP_TO_COLOR; no aproxima sus ventanas mediante una interpolación propia.
+
+Cuantización determinista a frame, con tolerancia explícita frente a ruido flotante en enteros/medios frames; mismo criterio para bordes y midpoints. Candidatos ordenados/deduplicados con razones sin texto del documento ni URLs. Particiones contiguas de máximo 48 conservan todos los candidatos; presupuesto de 131,072 referencias de razón rechaza overflow sin truncar. El plan no es evidencia de una captura.
+
+`checkpointPolicy=ALL_NATIVE_EVENT_NEIGHBORS_BATCHED_V1` es opt-in de contrato v4. `COMPOSITION_CONFORMANCE_EVENT_CHECKPOINTS_V1=true` permanece desactivada. Productor preliminar/final congela la misma selección; source productor/lector recomputan el plan desde documento y rechazan candidatos/razones alterados aun con SHA de contrato actualizado. Reutilización filtra presencia/ausencia y coteja identidad/candidatos antes de activar. Políticas legacy continúan legibles; no cambian retrospectivamente sus checkpoints.
+
+**Límite de implementación actual:** la captura durable procesa un lote. La política nueva admite únicamente planes que caben enteros en él; para más lotes produce `CONFORMANCE_EVENT_PLAN_REQUIRES_BATCH_EXECUTION`, nunca usa el primer lote ni adelgaza la lista para conceder PASS. Falta implementar adquisición/evidencia/aggregación durable de todas las particiones, con cobertura global y reanudación. Este bloqueo explícito evita false PASS, pero no sustituye ese trabajo funcional.
+
+66 pruebas controladas en ocho suites pasan: eventos 7, políticas snapshot 5, source/reference 9, conformidad 5, tags/color 7, fonts contract 4, snapshots 5 y job 24. La matriz del servicio snapshot cubre 3,200 combinaciones de visibilidad/manifest/fonts/color/event-policy. Pruebas de sub-frame, karaoke, yoyo parcial, transition handles/DIP, más de 48 candidatos y capacidad, source alterado/reuse. Se corrigieron fixtures de duración y canonicalización/rounding sin relajar expectativas. Compilación focalizada, typecheck y diff pasan. Comando focal: `npm run test:composition-event-checkpoints`.
+
+Sin Chromium/FFmpeg/provider/PostgreSQL QA real, flags activadas, despliegue o migraciones aplicadas. Pendientes adicionales intactos: renderer/entorno/fuentes de sistema/color efectivos, decks HTML, máscaras/blur/oclusiones y corpus/diagnóstico completo. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 siguen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: obligación de etiquetas congelada y reutilización segura
+
+**Implementación estimada: 71%; CAP-027 sigue Parcial.** Respecto a la línea base de 70%, el bloque fuentes/codecs/color pasa de 40% a 45% (peso 10%) y gate/evidencia de 75% a 80% (peso 10%): +0.5 +0.5 = +1 punto. Los demás pesos/avances permanecen iguales. Estimación de ingeniería por cierre funcional de la obligación y su enforcement, no por cantidad de tests; excluye QA, migraciones y rollout. Un promedio no sustituye el cierre requisito por requisito.
+
+`colorTagPolicy` es una obligación opt-in de contrato v4, no una medición copiada del DOM. `COMPOSITION_CONFORMANCE_COLOR_TAGS_V1=true` la selecciona únicamente junto a v4, y permanece desactivada. Contratos v1/v2/v3 y v4 previos no se reinterpretan. Productor preliminar/final usa la misma selección; reutilización filtra exactamente presencia/ausencia y valida el contrato almacenado antes de activar una revisión. Se verifica el cambio en ambas direcciones junto a políticas de texto y fuentes.
+
+El comparador MP4 toma la política autorizada del contrato aunque el caller no envíe `colorTagPolicyId`; pasa la medición de FFprobe al metadata del render. El comparador por directorios evalúa exclusivamente los tags del render, nunca sustituye por tags de preview. El evaluador puro recalcula contra la obligación congelada: ausencia produce INCOMPLETE, HDR/incompatibilidad FAIL y etiquetas compatibles permiten el gate específico TAGS_MATCH. La política/validación pura vive en `composition-color-tag-policy.ts`, sin dependencias de filesystem/codec/worker; el entrypoint QA previo reexporta para compatibilidad. Reportes durable incluyen campo tipado de color tanto en comparación como en visual y rechazan PASS con tags faltantes/incompatibles o estado fabricado.
+
+104 casos controlados en diez suites pasan: tags/color contract 7, política snapshot 5, job 24, fonts contract 4, lector privado 15, conformidad 5, captura 17, persistencia 13, snapshots 5 y source/reference 9. La suite del servicio de reutilización cubre 800 combinaciones de visibilidad/manifest/font-policy/color-policy. Incluye PNGs controlados idénticos con tags ausentes/correctos/HDR, omisión del caller, round-trip privado y eliminación del campo en ZIP registrado nuevamente. Una fixture inicial omitía el testigo vacío de texto y fue corregida sin relajar el gate; un comando usó un nombre incorrecto de suite y se repitió con el archivo real. Compilación focalizada, typecheck y diff pasan.
+
+**No cierra conversión efectiva:** TAGS_MATCH acredita declaraciones de stream, no transformación de píxeles, perfil de display/browser, renderer ni todos los frames. Aún faltan conversión/configuración SDR Rec.709 y entorno efectivos, prueba tipográfica del renderer/fonts de sistema, decks HTML, máscaras/blur/oclusiones y auditoría de corpus/checkpoints/diagnóstico de §6. No Chromium/FFmpeg/provider/PostgreSQL QA real, flags activadas, despliegue ni SQL aplicado. Las otras seis capacidades mantienen **Completada; falta QA**; objetivo activo.
+
+## Avance anterior — CAP-027: etiquetas de color del MP4 y gate explícito
+
+**Implementación estimada: 70%; CAP-027 sigue Parcial.** Se mantiene la línea base ponderada registrada abajo: este incremento cierra una brecha concreta de medición, pero no el bloque completo de color/fuentes/codecs. No se añade un punto porcentual por cantidad de tests o archivos.
+
+El probe del MP4 lee ahora `color_space`, `color_primaries`, `color_transfer` y `color_range` de la primera pista de video usada por el decoder; no toma etiquetas de audio. Campos validados y acotados, sin conservar URLs/campos arbitrarios. Nombres definidos en el [schema oficial de FFprobe](https://github.com/FFmpeg/FFmpeg/blob/master/doc/ffprobe.xsd). `composition-exported-color-tags.ts` separa medición, política y validación durable del resto del comparador.
+
+La política explícita `sdr-rec709-tags-v1` exige matrix/primaries/transfer `bt709` y rango declarado `tv` o `pc`. Etiquetas ausentes/unknown/unspecified/reserved son INCOMPLETE; incompatibles, incluyendo PQ/HLG, son FAIL; coincidencia es TAGS_MATCH, no prueba de conversión. Sin política devuelve MEASURED_POLICY_NOT_SET y mantiene compatibilidad histórica. CLI admite `--color-tag-policy sdr-rec709-tags-v1`; se puede seleccionar mediante `colorTagPolicyId` en el pipeline worker, sin activar rollout o flags.
+
+El resultado combinado conserva FAIL/INCOMPLETE; schema durable recalcula estado y listas exactas desde los tags para rechazar un resultado fabricado. Cuando ejecución selecciona la política, omitirla del reporte rechaza el job. Comparador persistido transmite el parámetro sin reemplazar rutas autorizadas, y cleanup/recheck/lease siguen existentes. Los reportes históricos sin campo son legibles, sin convertirse retrospectivamente en evidencia de color.
+
+50 pruebas controladas en cinco suites pasan: color tags 5, job 24, comparación persistida 4, loudness 7 y timing 10. Compilación focalizada/typecheck pasan. Incluye tags inválidos/acotados, ambos rangos, HDR, valores ausentes, estado falsificado, propagación de policy, omisión y limpieza. Comando focal: `npm run test:composition-exported-color-tags`. No se ejecutó FFprobe/FFmpeg real, Chromium/provider/PostgreSQL QA ni migraciones/despliegue.
+
+**Pendiente funcional, sin reducir §6:** congelar obligación de color en contrato autorizado y reutilización; verificar/conectar conversión efectiva SDR Rec.709 y perfil de navegador; evidencia efectiva del renderer/fonts, entorno/compiler, fonts de sistema, decks HTML, máscaras/blur/oclusiones y auditoría de corpus/checkpoints/diagnóstico. Etiquetar no equivale a convertir; no se cambia el motor de render para fingir cierre. Las otras seis capacidades mantienen **Completada; falta QA**; objetivo activo.
+
+## Avance anterior — CAP-027: identidad del archivo de lanzamiento y porcentaje de implementación
+
+**Estimación actual de implementación: 70%; CAP-027 sigue Parcial.** Es una estimación de ingeniería, no una métrica automatizada, porcentaje de tests verdes ni probabilidad de pasar QA. Excluye QA formal, aplicación de migraciones y rollout. La referencia es el alcance original de §6 del roadmap; los pesos quedan registrados para comparar siguientes entregas sin redefinir el objetivo. El cierre exige todos los requisitos, aunque el promedio ponderado sea alto.
+
+| Bloque de §6 | Peso | Implementación estimada | Pendiente funcional principal |
+| --- | ---: | ---: | --- |
+| Identidad congelada de documento, assets y entorno | 15% | 50% | Obligación independiente de browser/compiler/renderer/color efectivos |
+| Corpus de fixtures completo | 10% | 50% | Cobertura integral y auditoría de decks, RTL, color, presets y transiciones |
+| Checkpoints de bordes, efectos y cues | 10% | 80% | Auditoría exhaustiva y cobertura sin omisiones por límites |
+| Imagen, SSIM y máscaras de texto | 15% | 80% | Deck HTML, máscaras parciales por glifo, blur y oclusiones generales |
+| Tiempo y repetibilidad forward/reverse | 10% | 90% | Cierre de cobertura de todos los eventos del corpus |
+| Audio, RMS, loudness, true peak y A/V | 15% | 90% | Auditoría final de cobertura y políticas en todos los casos requeridos |
+| Fuentes, codecs y SDR Rec.709 | 10% | 40% | Prueba de fuentes del renderer, fonts de sistema y color efectivo |
+| Diagnóstico por etapas | 5% | 70% | Atribución completa de decoder/evaluator/encoder |
+| Gate seguro y evidencia durable | 10% | 75% | Integrar obligaciones faltantes de entorno/renderer y cerrar todos los gates |
+
+Cálculo: Σ(peso × avance del bloque) = **70%**. No existe una línea base porcentual anterior comparable; esta entrega inicia esa medición y no reclama un incremento porcentual retrospectivo.
+
+`composition-browser-executable-identity.ts` calcula SHA-256 en streaming del archivo regular que se lanza, con límite de 1 GiB y tamaño/mtime/ctime estables durante cada lectura. Captura aislada registra antes del spawn y vuelve a comprobar al finalizar; falta de identidad/verificador o cambio de bytes invalida la captura y limpia recursos. Metadata/receipt fijan identidad/pin; paquete y lector privados exigen presencia conjunta y hash exacto. No se persiste el path del ejecutable.
+
+Scope explícito: solo archivo de lanzamiento, no DLL/módulos cargados, identidad del inode ejecutado, sustitución y restauración entre lecturas, wrapper más binario real, sistema operativo/GPU ni renderer remoto. La evidencia opcional histórica no constituye todavía una obligación independiente del contrato; eliminar ambas copias no certifica entorno ni cierra ese pendiente. No se cambia el motor de render ni se activa ninguna flag.
+
+72 pruebas controladas en seis suites pasan: archivo de lanzamiento 3, identidad CDP 3, captura 17, persistencia 13, lector 14 y job 22. Cubren sustitución de igual tamaño, truncamiento, límites, pin ausente/cambiado, round-trip y rechazo de ZIP alterado cuyo hash fue registrado nuevamente. Compilación focalizada y typecheck pasan. Comando focal: `npm run test:composition-browser-executable-identity`. No se ejecutó QA real de Chromium/FFmpeg/provider/PostgreSQL ni se aplicaron migraciones/despliegues.
+
+CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 permanecen **Completada; falta QA**. CAP-027 conserva todos los pendientes funcionales de §6; objetivo activo hasta cerrarlos, no solo hasta obtener tests verdes.
+
+## Avance anterior — CAP-027: identidad observada del navegador de captura
+
+`composition-browser-identity.ts` consulta `Browser.getVersion` al navegador vivo antes de capturar y al finalizar los recorridos/audio. Valida y fija producto, revisión, protocolo, User-Agent y V8 con límites estrictos, ASCII sin controles y sin campos extra. Una respuesta incompleta o identidad que cambia durante la ejecución rechaza el paquete y conserva cleanup. No consulta launch path, argumentos, cookies ni variables de entorno. El scope `CAPTURE_BROWSER_SELF_REPORTED_VERSION_ONLY` explicita que esto no es SHA del ejecutable, attestation firmada ni identidad del renderer Cloud. Campos definidos por el [protocolo oficial CDP](https://github.com/ChromeDevTools/devtools-protocol/blob/master/json/browser_protocol.json).
+
+Metadata guarda `browserIdentity`; receipt fija `browserIdentitySha256`. El paquete privado exige presencia conjunta y hash exacto; el lector scoped revalida y preserva la identidad al extraer el ZIP. Capturas históricas sin campo siguen legibles sin adquirir retrospectivamente una prueba de entorno. Todavía falta una obligación de versión/entorno autorizada en el contrato y contraste con el renderer; eliminar ambas copias de este campo opcional no se presenta como una protección ya cerrada. Esta entrega registra evidencia observada, no presume equivalencia entre sistemas operativos, fuentes, GPU o perfiles de color.
+
+70 casos controlados en seis suites pasan: identidad browser 3, captura 16, persistencia 12, lector 13, job 22 y contrato fonts 4. Incluye identidad inválida/cambiada, cierre/cleanup del recorrido, pin ausente/cambiado y round-trip privado con hash ZIP registrado nuevamente. Compilación focalizada/typecheck y diff pasan. Comando focal: `npm run test:composition-browser-identity`. No Chromium/FFmpeg/provider/PostgreSQL QA real; ninguna flag activada, despliegue o migración aplicada.
+
+**CAP-027 sigue Parcial:** falta identidad congelada del entorno autorizado/compiler/renderer, prueba efectiva de fuentes del renderer, fuentes de sistema y color, además de decks HTML, máscaras/blur/oclusiones y auditoría de corpus/checkpoints/diagnósticos. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 mantienen **Completada; falta QA**. Objetivo activo, alcance original intacto.
+
+## Avance anterior — CAP-027: diagnóstico durable de evidencia faltante del renderer
+
+Inspección del contrato de integración actual (`HyperframesCloudRenderDetail` en `hyperframes-cloud.client.ts`): contiene estado, render_id, formato, duración y URLs; no incluye una prueba del uso de glifos/fuentes del proceso de render. Esto describe el contrato implementado en este repositorio, no afirma que el proveedor carezca de toda capacidad externa. La verificación de lineage/SHA del MP4 acredita identidad de bytes, no elecciones tipográficas del renderer. No se agregan campos ficticios, callbacks no soportados ni una segunda captura de preview presentada como render.
+
+El evaluador emite ahora `visual.fontUsage` con scope `RENDERER_GLYPH_PROVENANCE`, estado INCOMPLETE, razón `RENDERER_FONT_USAGE_EVIDENCE_UNAVAILABLE`, manifest SHA y cantidad de bindings requeridos. El schema durable valida explícitamente ese campo en lugar de conservarlo sin tipado vía passthrough, rechaza estados/scopes/counts alterados y bloquea PASS global cuando la prueba del renderer sigue faltando. La ejecución conserva el diagnóstico y lo incorpora a limitations, manteniendo checksum/document/revision y cleanup existentes. No certifica renderer ni cierra ese requisito: deja visible y accionable el pendiente que antes solo causaba INCOMPLETE general.
+
+35 pruebas controladas en cuatro suites pasan: contrato fonts 4, job 22, conformidad 5 y evidencia fonts 4. Incluye muestras visuales/textuales perfectas sin PASS, manipulación de diagnóstico, conservación a través de ejecución y cleanup. Compilación focalizada/typecheck y diff pasan. No Chromium/FFmpeg/provider/PostgreSQL QA real, flags activadas, despliegues o migraciones aplicadas.
+
+**CAP-027 sigue Parcial:** falta implementar adquisición/autenticación de evidencia desde el renderer efectivo y conectarla al gate; un diagnóstico de ausencia no sustituye esa implementación. Se puede avanzar en paralelo conceptual (sin cambiar backend de render ni ampliar autoridad) sobre identidad efectiva de browser/compiler/color, fuentes de sistema, decks HTML, máscaras/blur/oclusiones y corpus/checkpoints. Las otras seis capacidades permanecen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: obligación tipográfica independiente en contrato v4
+
+La política opt-in `DECLARED_CUSTOM_NATIVE_FONT_USAGE_V1` congela `fontUsageContract` con SHA canónico del manifest y bindings element→fontAssetId derivados exclusivamente del documento guardado. Schema isomórfico separado de hashing server-only evita introducir node:crypto en contratos de cliente. Productor y lector de fuente recomputan la obligación y rechazan manifest ausente, bindings recortados o identidad distinta aun si se actualizan los hashes de los archivos extraídos.
+
+`COMPOSITION_CONFORMANCE_FONT_USAGE_V1=true` selecciona la obligación solo junto a contrato v4; continúa desactivada. Snapshot construye contratos preliminar/final con el mismo manifest verificado. Reutilización filtra presencia/ausencia exacta de policy y coteja obligación completa antes de activar la revisión, en ambas direcciones del cambio. Los contratos históricos permanecen legibles sin promoverse implícitamente. No se reinterpretan V1/V2/V3 ni versiones previas de texto v4.
+
+Captura produce testigo/pin también para un manifest explícitamente vacío. Paquete privado, lector y comparador cotejan el manifest/bindings del testigo contra el contrato autorizado: eliminar conjuntamente metadata.fontUsage y receipt.fontUsageSha256, reducir bindings o sustituir manifest no evita la obligación. Los registros inválidos continúan rechazándose semánticamente, no solo por SHA. El evaluador conserva INCOMPLETE para contratos con bindings custom requeridos, incluso con muestras perfectas de imagen/texto, porque la evidencia de preview aún no certifica las elecciones de fuentes del renderer. Esta reserva debe sustituirse por un gate de renderer real, no eliminarse para obtener PASS.
+
+155 casos controlados en 15 suites pasan: contrato fonts 4, evidencia fonts 4, plataforma 6, carga 5, captura 15, bindings 7, materialización 8, persistencia 11, lector 12, job 20, políticas snapshot 5, fuente 9, snapshot 5, conformidad 5 y compilador 39. La prueba del servicio snapshot cubre 200 combinaciones de políticas/manifest extras/obligación tipográfica y bloquea activación incompatible. Incluye omisión de ambas copias, manifests vacíos y recorte de bindings dentro de un ZIP cuyo hash fue registrado nuevamente. Compilación focalizada/typecheck y diff pasan; no Chromium/FFmpeg/provider/PostgreSQL QA real. Comando focal: `npm run test:composition-font-usage-contract`. Sin flags activadas, despliegues ni migraciones aplicadas.
+
+**CAP-027 sigue Parcial:** siguiente requisito funcional es evidencia/gate de fuentes del renderer, incluida identidad efectiva del entorno. También quedan fuentes de sistema, color, decks HTML, máscaras parciales/blur/oclusiones y auditoría completa de corpus/checkpoints/diagnósticos. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 mantienen **Completada; falta QA**. Objetivo activo, alcance original intacto.
+
+## Avance anterior — CAP-027: evidencia tipográfica privada durable de preview
+
+`composition-font-usage-evidence.ts` define schema estricto con política `CUSTOM_NATIVE_PREVIEW_FONT_USAGE_V1`, scope `DECLARED_CUSTOM_NATIVE_PREVIEW_ONLY` y estado CAPTURED, nunca PASS. Conserva manifest/checksum, bindings element→fontAssetId, nombres internos/PostScript y counts medidos por checkpoint; no guarda texto documental ni URLs. Valida identidad del manifest, IDs únicos, cobertura exacta de los bindings activos respecto al testigo de texto, límites y ausencia probada. Fallback, familias distintas o cero glifos sin región/ausencia verificada rechazan. El manifest y las referencias remotas siguen siendo los del snapshot verificado, sin reemplazar archivos o estilos.
+
+Captura produce `metadata.fontUsage` y `receipt.fontUsageSha256` tras verificar forward/reverse. Paquete privado exige presencia conjunta del campo y su pin, evidencia de texto, validación semántica y hash exacto. El lector existente revalida al extraer el ZIP scoped/hash-pinned y conserva el testigo. El comparador directo también rechaza evidencia presente inválida antes de abrir PNGs; no puede ignorar un fallback explícitamente declarado. Se reutilizan almacenamiento, controles de tenant/revision/project y límites anteriores; no se agrega tabla, migración o secreto.
+
+Compatibilidad/alcance: el campo es opcional para captures históricos y no activa una nueva obligación por sí mismo. Aún falta congelar bindings/manifest como obligación independiente en el contrato autorizado, impedir omisión de ambas copias del campo en la política nueva y vincular el gate a evidencia del renderer. Esta evidencia de preview no certifica fonts de sistema, decks HTML, render o paridad completa; no se convierte CAPTURED en PASS. No se modifica retrospectivamente el significado de snapshots legacy.
+
+86 casos controlados en nueve suites pasan: evidencia fonts 4, plataforma 6, carga 5, captura 14, bindings 7, materialización 8, persistencia 11, lector 11 y job 20. Incluye round-trip del ZIP/lector, pin ausente/cambiado, fallback con hashes recalculados, identidad/cobertura y rechazo del comparador sin PNG. Compilación focalizada/typecheck y diff pasan. Comando focal: `npm run test:composition-font-usage-evidence`. No Chromium/FFmpeg/provider/PostgreSQL QA real, flags, despliegues ni migraciones aplicadas.
+
+**CAP-027 sigue Parcial:** quedan obligación contractual independiente y evidencia/gate de render, política de fuentes de sistema, identidad efectiva del entorno/color, decks HTML, máscaras parciales/blur/oclusiones y auditoría completa de corpus/checkpoints/diagnósticos. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 mantienen **Completada; falta QA**. Objetivo activo, alcance original intacto.
+
+## Avance anterior — CAP-027: detección de fallback en glifos nativos de preview
+
+`composition-platform-font-capture.ts` se suscribe a `CSS.fontsUpdated` antes de navegación/carga y habilita DOM/CSS. Vincula la familia CSS al nombre interno de plataforma únicamente cuando el evento identifica exactamente la ruta local hashed del manifest. No compara el alias editorial con el nombre interno, ni acepta local(), URLs externas, query/fragment o familia/ruta distintas. Identidades internas compartidas por contenidos diferentes o eventos inválidos bloquean; eventos sin font no certifican carga. Límites: 512 eventos y 32 registros de uso por elemento, con nombres/counts acotados.
+
+Tras medir/verificar el checkpoint nativo consulta `CSS.getPlatformFontsForNode`: todos los glifos de las fuentes declaradas deben reportar fuente custom y la familia interna vinculada. Un solo registro de fallback de sistema o fuente custom distinta rechaza el paquete, aunque PNGs y FontFace loaded coincidan. Cero glifos exige una región verificada con ausencia contractual (hidden o soporte geométrico vacío sin blur); una región ausente no recibe esa excepción. Libera cada referencia remota en finally y compara los registros transitorios de uso forward/reverse. Declared fonts fuerzan captura de texto también en contratos anteriores, evitando bypass con captureTextRegions=false.
+
+La [definición oficial CDP](https://github.com/ChromeDevTools/devtools-protocol/blob/master/json/browser_protocol.json) identifica familia interna/custom/count, y [Chromium](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/inspector/inspector_css_agent.cc) inspecciona texto de hasta dos niveles de layout. Esto cubre la estructura nativa emitida hoy, incluidos spans karaoke; no se generaliza a texto arbitrariamente anidado de decks. Una familia interna ambigua se rechaza en lugar de presumir identidad por alias.
+
+Validación: 40 casos controlados en cinco suites (plataforma 6, carga 5, captura integrada 14, bindings 7, materialización 8), compilación focalizada y typecheck. Incluye aliases internos distintos, un solo glyph fallback, cero glifos sin evidencia, eventos ausentes/ambigüedad/cuotas, liberación de referencias, fallo de setup y rechazo/cleanup en forward y reverse con PNG idéntico. Comando focal: `npm run test:composition-platform-fonts`. No Chromium/FFmpeg/provider/PostgreSQL QA real, flags, despliegues o migraciones aplicadas.
+
+**CAP-027 sigue Parcial:** esta detección runtime en preview aún no es evidencia durable obligatoria para ambos lados: falta schema/pin/persistencia/lector/gate de renderer y política de fuentes de sistema. También quedan entorno/color, decks HTML, máscaras parciales/blur/oclusiones y auditoría completa de corpus/checkpoints/diagnósticos. No se declara cobertura de glifos/archivos del render por extrapolación de preview. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 mantienen **Completada; falta QA**. Objetivo activo, alcance íntegro.
+
+## Avance anterior — CAP-027: carga explícita de fuentes en captura
+
+`composition-font-loading-capture.ts` verifica las FontFace existentes de cada familia del manifest congelado. Antes de crear el workspace de capturas carga explícitamente esas caras, sin inyectar fuentes ni modificar estilos. Exige declaraciones presentes, estado loaded, inventario máximo de 128 caras y timeout global de carga de 5 segundos. Acepta aliases equivalentes y declaraciones repetidas del mismo binding; las familias ambiguas con contenidos distintos ya son rechazadas por el contrato de snapshot. Cada checkpoint forward/reverse vuelve a exigir estado loaded antes del PNG, sin recargar para ocultar una regresión.
+
+La espera `document.fonts.ready` no certifica éxito: según [CSS Font Loading de W3C](https://www.w3.org/TR/css-font-loading-3/#font-face-set-ready), su promesa siempre se cumple. Por ello un error de decoder, declaración ausente, timeout, resultado CDP incompleto o cambio a error rechaza la captura. El error externo es fijo y no incorpora texto del navegador, URLs privadas ni contenido del documento. Fuentes ausentes del manifest histórico vacío no reciben una certificación nueva: este chequeo cubre exclusivamente las fuentes declaradas, no fuentes de sistema o decks no modelados.
+
+Validación: 33 casos controlados en cuatro suites (carga 5, captura integrada 13, bindings 7, materialización 8), compilación focalizada y typecheck. La prueba integrada comprueba orden antes del primer PNG, todos los checkpoints, fallos de preflight/forward/reverse y cierre/cleanup. Comando focal `npm run test:composition-font-loading`. Son FontFace/VM/CDP y bytes simulados; no se ejecuta Chromium/FFmpeg/provider/PostgreSQL QA real. Sin flags, despliegues o migraciones aplicadas.
+
+**CAP-027 sigue Parcial:** cargar correctamente el archivo no demuestra que todos los glifos usen esa fuente. Queda verificar uso efectivo/fallback por glifo en preview/render, identidad efectiva del entorno/color, decks HTML, máscaras parciales/blur/oclusiones y auditoría completa de corpus/checkpoints/diagnósticos. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 mantienen **Completada; falta QA**. Objetivo activo, alcance íntegro.
+
+## Avance anterior — CAP-027: identidad y cobertura de archivos de fuentes
+
+Se centraliza el contrato de `font-manifest.json` en `composition-conformance-font-bindings.ts`. Valida IDs únicos, MIME/tamaño/checksum, nombres con el mismo schema seguro del editor y cobertura exacta de IDs/familias usados por TEXT/CAPTION. Familias equivalentes con bytes diferentes se rechazan por resolución CSS ambigua; aliases del mismo contenido siguen permitidos. El snapshot valida antes de activar/reutilizar y devuelve 409 seguro ante registros no verificables. La reutilización exige identidad exacta de fuentes, no únicamente JSON containment que acepte extras.
+
+El productor de fuente congelada coteja los bindings CSS (ID, familia, formato y ruta local con hash) y fija `fontManifestSha256` en metadata privada. Un lector que recibe ese pin exige el manifest extraído y lo valida contra documento/pin. La materialización rechaza archivos declarados omitidos, familias cambiadas, duplicados o hashes reemplazados antes de descargar media; registra una copia canónica en el workspace owned. Captura reutiliza el resultado verificado, exige inventario físico exacto y verifica manifest/archivos antes y después del recorrido. No se confunde tamaño/hash válido con decodificación tipográfica correcta.
+
+Compatibilidad: fuentes congeladas anteriores sin pin siguen legibles, pero en materialización/captura deben cubrir los IDs/familias documentales; no se reescriben ZIPs históricos. Familias ambiguas previamente toleradas ahora bloquean snapshots: el contrato actual de font-face no distingue variantes de peso por asset, por lo que permitir resolución por orden sería inseguro para paridad. Sin nueva dependencia, migración, activación de flags o llamadas a provider.
+
+195 casos controlados en 19 suites pasan: los 175 anteriores, 7 nuevos de bindings/productor/lector, 8 de materialización y 5 del validador de upload. La prueba del servicio snapshot abarca las 25 combinaciones de políticas tanto con identidad de fuentes correcta como con un manifest almacenado que contiene extras; impide activación en el segundo caso. Compilación/typecheck, guard de 147 migraciones y diff pasan. Fonts binarios simulados prueban contratos e integridad, no decoder/Chromium real.
+
+**CAP-027 sigue Parcial:** falta comprobar las fuentes efectivamente usadas por glifo y rechazar fallback/errores de FontFace en el navegador y render, además de identidad efectiva de compiler/renderer/browser/color. Siguen pendientes máscaras parciales/blur/oclusiones, decks HTML y auditoría completa de corpus/checkpoints/diagnósticos. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 mantienen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: ausencia explícita fuera del canvas
+
+Cuando Range devuelve texto fuera del canvas, únicamente la política geométrica v4 con soporte documental vacío, blur cero y verificación DOM previa puede producir un `CANVAS_ABSENCE_PROBE`. El marcador distingue una comprobación del frame completo de una región geométrica de glifos: no inventa una posición del texto. Elementos ausentes, geometría no finita, soporte no vacío, blur activo y variantes anteriores mantienen rechazo/INCOMPLETE. Se conserva el candidato, su contenido/hash y la obligación de cobertura.
+
+Captura exige dimensiones exactas del canvas y prueba congelada; schema/evidencia privada/comparador rechazan probes parciales o sin soporte. Lectura privada exige contrato v4 con `NATIVE_TRANSFORM_CLIP_GEOMETRY_GSAP_V4`; el marcador se incluye en el hash del testigo. Materialización y recorrido forward/reverse conservan la obligación y el pin, sin cambiar flags, identidad de snapshots ni documentos históricos.
+
+El comparador escanea todo el frame sin shifts. Delta RGB continúa en 4 y MAE en 0.25; el probe tiene presupuesto explícito de **cero píxeles con delta mayor a 4** para no diluir un glifo inesperado en el promedio global. Varios probes comparten el resultado de un único escaneo de canvas, acotado por el límite de frame 4K. Las regiones normales conservan cuota agregada de 1,048,576 píxeles y sus umbrales anteriores. No se excluyen píxeles para conseguir un PASS. Esta comprobación deliberadamente conservadora puede rechazar ruido de codec en otras áreas: requiere evaluación posterior contra el corpus real, no relajación sin evidencia.
+
+175 pruebas controladas en 16 suites pasan: geometría 9, pose/captura 7, contrato 6, testigo 6, captura texto 13, regiones 12, transiciones 7, política snapshot 5, fuente 9, captura visual 12, compilador 39, motion 5, snapshot 5, persistencia 10, lector 10 y job 20. Incluye un solo píxel inesperado en 2048×2048, múltiples candidatos, probes parciales/legacy, hashes y recorrido completo. Compilación focalizada/typecheck pasan. No Chromium/FFmpeg/provider/SQL QA real, ni despliegue, flags activados o migraciones aplicadas.
+
+**CAP-027 continúa Parcial:** este incremento cubre ausencia fuera del canvas cuando el soporte completo es vacío y sin blur. Siguen pendientes intersecciones/máscaras por glifo, expansión de blur y oclusiones generales, decks HTML, entorno/versiones/fonts/color y auditoría de corpus/checkpoints/diagnósticos. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 mantienen **Completada; falta QA**. Objetivo activo, alcance original intacto.
+
+## Avance anterior — CAP-027: geometría congelada y verificación DOM
+
+La política explícita `NATIVE_TRANSFORM_CLIP_GEOMETRY_GSAP_V4` agrega `paintPose` a la presentación: matrices parentales y del sujeto, layout, inset, filtro y soporte convexo sin filtrar. Se deriva de las poses GSAP compartidas y se recompone independientemente al producir/leer la fuente congelada. Schema exige el campo para todos los textos de esta política y lo prohíbe en variantes anteriores. No confundir versión 4 de esta política con una nueva versión del contrato global: permanece contrato v4.
+
+Captura realiza una verificación DOM separada antes de medir regiones. Comprueba nodos/ownership estructural, viewport sin escala, matrices, orígenes, caja/padding/bordes, overflow, inset, filtros y ausencia de máscaras/perspectiva/transformaciones CSS individuales inesperadas. Admite codificación `matrix3d` solo cuando es exactamente reducible a 2D. Tolera 0.02 px para medición de pose; coeficientes e insets se acotan por dimensiones para no convertir tolerancia numérica en desplazamiento grande. No cambia el presupuesto de píxeles ni el desplazamiento local máximo de 1 px.
+
+El testigo fija la pose documental solo tras esa verificación y conserva igualdad contractual/privada y recorrido forward/reverse. La alteración de ambas copias de un testigo no puede inventar clipping. Para una región ya medida, soporte totalmente vacío con blur cero permite comparar ausencia sin shifts y admitir referencia plana; aparición de glifos en esa región falla con los mismos umbrales. Soporte vacío con blur activo no recibe esa excepción. Texto fuera del canvas aún conserva INCOMPLETE cuando falta región: no se fabrica un rectángulo ni se elimina la obligación.
+
+`COMPOSITION_CONFORMANCE_TEXT_GEOMETRY_V4=true`, exclusivamente junto a contrato v4, selecciona la política con prioridad sobre apariencia v3/transición v2/motion v1. Reutilización valida las 25 combinaciones de identidad entre ausencia y cuatro variantes. Ninguna flag se activó. Comando focal: `npm run test:composition-text-paint-pose`.
+
+170 casos en 16 suites pasan (geometría 9, pose/captura 6, contrato 6, testigo 5, captura texto 12, regiones 11, transiciones 7, selección snapshot 5, fuente 9, captura visual 11, compilador 39, motion 5, snapshot 5, persistencia 10, lector 10, job 20). Incluye materialización/captura completa con poses verificadas dos veces y rechazo/cleanup si cambia la verificación reverse. Compilación focalizada/typecheck y guards de 147 migraciones/6 checks SQL pasan; no QA real de Chromium/provider/FFmpeg/PostgreSQL.
+
+**CAP-027 sigue Parcial:** quedan tratamiento completo de máscaras/intersección por glifo y ausencia fuera del canvas, expansión de blur y oclusiones generales, decks HTML, entorno/versiones/fonts/color y auditoría del corpus/checkpoints/diagnósticos. Esta entrega conecta y verifica poses, no certifica todos esos alcances. Las otras seis capacidades siguen **Completada; falta QA**. Sin despliegues ni migraciones aplicadas; objetivo activo.
+
+## Avance anterior — CAP-027: base geométrica de soporte nativo
+
+Se incorpora `composition-text-paint-geometry.ts`, un proyector puro de polígonos convexos: motion con origen central, recorte por overflow/inset del padre, rotación de layout con origen superior izquierdo, desplazamiento porcentual PUSH y recorte final contra canvas. Una caja envolvente no se usa para inferir ausencia: contacto degenerado sin área devuelve soporte vacío. Parser de inset admite únicamente porcentajes rectangulares y ceros emitidos por el scheduler; máscaras no soportadas y valores no finitos se rechazan.
+
+La proyección GSAP existente ahora programa también posición/rotación/escala y expone `geometryAt`, reutilizando la pose por instante. No duplica easing ni loops. Rechaza filtros activos porque blur puede expandir la pintura más allá del polígono sin filtrar. Las políticas históricas de opacidad mantienen su salida y las regresiones pasan.
+
+82 casos en 7 suites pasan: 9 geometría, 7 transiciones, 12 captura de texto, 5 contrato, 5 scheduler motion, 5 selección de snapshots y 39 compilador. Incluye endpoints reales PUSH/SOFT_WIPE, recorridos reverse, rotación, escala, clipping parcial, máscaras cerradas y rechazo de blur. Comando reproducible: `npm run test:composition-text-geometry`. Son pruebas numéricas controladas, no QA de navegador/render real.
+
+**No se declara cerrado el gate geométrico:** esta base aún debe congelarse en una política explícita, verificarse contra poses/recortes DOM y conectarse a evidencia/comparador sin omitir glifos, sombras o píxeles inesperados. No se usa soporte vacío para aprobar regiones ni se modifica el contrato de snapshots previo. CAP-027 continúa **Parcial**; los pendientes de decks, entorno/versiones/fonts/color y auditoría de corpus siguen vigentes. Las otras seis capacidades mantienen **Completada; falta QA**. Sin flags, migraciones ni despliegues; objetivo activo.
+
+## Avance anterior — CAP-027: apariencia efectiva y evidencia acotada
+
+La política opt-in `NATIVE_TRANSITION_APPEARANCE_GSAP_V3` congela opacidad efectiva y IDs de overlays completamente opacos desde la programación GSAP compartida. Captura mide el producto de opacidades de los ancestros y lo coteja con el plan (deriva máxima 0.0001); el testigo conserva el valor congelado. Para aceptar un overlay exige cobertura del canvas completo, fondo RGB opaco, opacidad efectiva 1 y ausencia de máscaras, filtros, mezcla, radios y transformaciones incompatibles. No presume oclusión únicamente por el nombre o existencia del nodo.
+
+El comparador admite referencias planas solo cuando el contrato prueba invisibilidad, opacidad suficientemente tenue o overlay opaco verificado. Conserva delta RGB 4, MAE 0.25 y proporción máxima 0.0005; cambios de glifos siguen fallando. Un atacante no puede modificar conjuntamente expectativa y región para inventar un fade: ambas deben coincidir con el contrato documental independiente. No hay fallback a PASS por evidencia ausente.
+
+Límites: 1,024 referencias de overlay por checkpoint, 4,096 por captura y 4,096 inspecciones de ancestros de overlays por checkpoint. La proyección reutiliza la pose GSAP para todos los textos del mismo instante. La profundidad del overlay se centraliza sin cambiar los bytes CSS efectivos del compilador. `COMPOSITION_CONFORMANCE_TEXT_APPEARANCE_V3=true` selecciona esta variante solo en v4, con prioridad sobre v2/v1; sigue desactivado. Reutilización mantiene identidad exacta entre ausencia/v1/v2/v3.
+
+Validación técnica controlada: 152 casos en 14 suites de texto, testigo, captura, regiones, transiciones, selección de snapshots, fuente, compilador, motion, persistencia, lector y job; 6 guards SQL y guard de 147 migraciones. No implica QA real de Chromium, FFmpeg, provider o PostgreSQL. No se aplican migraciones, despliegues ni flags.
+
+**CAP-027 sigue Parcial:** faltan geometría/máscaras de wipe, push/motion fuera del canvas y otras oclusiones, texto de decks HTML, identidad efectiva de entorno/versiones/fonts/color y auditoría de corpus/checkpoints/diagnósticos. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 conservan **Completada; falta QA**. El objetivo permanece activo con el alcance íntegro.
+
+## Avance anterior — CAP-027: ventanas y opacidad de transición en el plan nativo
+
+Se extrae `scheduleCompositionTransitions`, compartido literalmente por preview/render y proyección numérica, para CROSS_DISSOLVE, BLUR_DISSOLVE, PUSH, SOFT_WIPE y DIP_TO_COLOR. Conserva easing, vectores/insets, blur y midpoint; una regresión del compilador dependía del nombre local del argumento anterior y se ajustó al scheduler extraído, manteniendo la comprobación de emisión del overlay.
+
+La política opt-in `NATIVE_MOTION_TRANSITION_OPACITY_GSAP_V2` proyecta sets/tweens de la opacidad parental además de motion del sujeto. Plan nativo incluye las ventanas extendidas de `buildCompositionTransitionRuntime`, no solo intervalos editoriales; conserva ambos sujetos antes/después del corte cuando sus handles son activos. Captions conservan límites absolutos de sus cues. V1 no se reinterpreta y sigue usando ventanas canónicas/motion únicamente.
+
+`COMPOSITION_CONFORMANCE_TRANSITION_VISIBILITY_V2=true`, solo con contrato v4, selecciona la nueva política con prioridad sobre flag v1. Productor/lector/captura reciben la política exacta, no un boolean que colapse variantes. Reutilización separa ausencia/v1/v2 y valida el plan antes de activación. Ninguna flag se activó y no hay despliegue ni migraciones aplicadas.
+
+102 casos en10 suites pasan:6 transición/visibilidad,5 política snapshot,5 snapshot,9 fuente,10 captura visual,4 contrato texto,10 captura/proyección texto,9 regiones,5 scheduler motion,39 compilador. Incluye source/captura antes del inicio canónico incoming, opacidad parental en dip midpoint, reverse y operaciones embebidas de los cinco tipos. Compilación focalizada/typecheck, guard147 migraciones y diff pasan. Solo GSAP numérico, VM/CDP/Storage/PNG controlados; no QA real de Chromium/provider/SQL.
+
+**CAP-027 sigue Parcial:** ventanas y opacidad no equivalen a geometría/oclusión. Falta tratar máscaras de wipe, push/motion fuera de canvas, regiones tapadas por overlay y contraste durante fades; se conserva rechazo/INCOMPLETE ante evidencia no informativa. También faltan decks HTML, entorno/versiones/fonts/color y audit corpus/checkpoints/diagnóstico. Las otras seis capacidades conservan **Completada; falta QA**. Objetivo activo, sin reducir alcance.
+
+## Avance anterior — CAP-027: selección e identidad segura de snapshots
+
+Se conecta `COMPOSITION_CONFORMANCE_MOTION_VISIBILITY_V1` al productor real de snapshots. Solo true exacto, junto con contrato v4, congela la política de opacidad nativa; no promueve contratos legacy ni habilita rollout de texto. Se lee una vez y se usa tanto para el contrato preliminar como para el definitivo. No se activó ningún flag.
+
+La búsqueda de reutilización ahora filtra explícitamente el campo JSON `visibilityPolicy`: eq para la política requerida, is null para ausencia. Evita que JSON containment reutilice una variante distinta al cambiar el flag en cualquier dirección. Antes de activar la revisión valida el contrato almacenado, versión, hash documental, política y plan completo de texto. Manifest se usa internamente y se excluye de la respuesta, preservando el payload público anterior. Documento/organización y demás restricciones de snapshot siguen vigentes; no se reescriben snapshots históricos.
+
+96 pruebas controladas en9 suites pasan:5 política/reutilización (incluye servicio real con Supabase simulado y ambas direcciones de cambio),5 snapshot,9 fuente,10 captura visual,4 contrato texto,10 captura/proyección texto,9 regiones,5 scheduler y39 compilador. Compilación focalizada y typecheck pasan. No prueba el filtro PostgREST contra BD real ni RLS/concurrencia; eso queda para QA. No migración, despliegue ni llamadas remotas de render.
+
+**CAP-027 sigue Parcial:** selección/identidad de esta política nativa ya tienen código; pendientes funcionales son ventanas/geometría/oclusiones de transiciones, motion fuera de canvas, texto de decks HTML, identidad efectiva entorno/versiones/fonts/color y audit corpus/checkpoints/diagnóstico. Las otras seis capacidades mantienen **Completada; falta QA**. El objetivo permanece activo.
+
+## Avance anterior — CAP-027: estados de visibilidad nativa congelados
+
+La API server-only `buildSnapshotConformanceContract({contractVersion:4,motionVisibility:true})` permite congelar la política explícita `NATIVE_MOTION_OPACITY_GSAP_V1`. Mantiene todas las expectativas activas TEXT/CAPTION, anotando VISIBLE/HIDDEN desde poses GSAP de la programación compartida. Easing, anclaje CLIP_END y loops completos/parciales usan el runtime real; no aproximaciones lineales. Sin política, los contratos anteriores conservan exactamente sus campos y tratamiento conservador de texto invisible.
+
+Productor/lector recomputan estados desde documento. El schema exige anotaciones para todas las expectativas únicamente cuando existe esa política. Captura verifica estado DOM y contenido, mide geometría aun con opacity cero sin mutar estilos, conserva regiones HIDDEN en el recorrido forward/reverse y las fija en metadata/hash privado. Estado DOM contrario a lo congelado se rechaza; falta de elemento/rectángulo continúa INCOMPLETE. Comparador local coteja visibilidad de expectativa/región; en HIDDEN compara ausencia en la región sin shifts y acepta fondos planos solo por esa expectativa explícita, no por ausencia de evidencia.
+
+Las regresiones detectaron y corrigieron dos fallos: el default Zod de motion compartía el array de animaciones entre documentos, y `time(0)` antes del primer tick podía omitir los sets iniciales. Defaults ahora se generan por instancia; el compilador inicializa explícitamente en cero y la proyección fuerza render numérico. No modifica snapshots ya congelados ni sus bytes.
+
+135 casos en12 suites pasan:10 captura/proyección texto,9 regiones,9 fuente,10 captura visual,5 scheduler,39 compilador,4 contrato texto,4 testigo,10 persistencia,10 lector,20 job y5 snapshot. Compilación focalizada/typecheck, guard147 migraciones y diff pasan. CDP/Storage/PNG controlados; no QA Chromium/provider/SQL real.
+
+**CAP-027 sigue Parcial.** La API de política está conectada a fuente/captura/comparación, pero aún falta selección automática y separación segura de identidad/reutilización en snapshots; no se añade ni activa flag de rollout hasta cerrar ese punto. No cubre todavía ventanas/geometría/oclusiones de transiciones, motion fuera de canvas o texto del deck HTML. Siguen pendientes entorno/versiones/fonts/color y audit corpus/checkpoints/diagnóstico. Las otras seis capacidades mantienen **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: programación de motion compartida
+
+Se extrae `scheduleCompositionMotion` de la función embebida del compilador a un módulo autocontenido: renderer/preview incorporan exactamente la misma función. Conserva orden de sets/tweens, easing GSAP, loops finitos con yoyo y cierre neutral del ciclo parcial. No se agrega dependencia ni se cambia la semántica editorial. Esta base permite evaluar poses numéricas desde el documento sin duplicar fórmulas de easing en el futuro gate de visibilidad.
+
+64 pruebas controladas pasan:4 scheduler (fades/fronteras/reverse, loops completos y parciales, easing GSAP directo, equivalencia de operaciones de función embebida mediante VM),39 compilador,8 fuente,4 contrato texto y9 captura visual. Compilación y typecheck pasan. No ejecución Chromium/provider ni QA formal; no migraciones/flags/despliegues. La regresión fuente conserva los pins existentes y no altera bytes de archivos previamente congelados.
+
+**No cierra aún visibilidad:** contrato v4 continúa conservador ante texto dinámicamente invisible. Falta congelar y verificar explícitamente las expectativas visibles/ocultas, incluir transición/geometría y luego decks HTML/entorno/fonts/color/corpus. CAP-027 sigue **Parcial**; CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 siguen **Completada; falta QA**. El objetivo permanece activo.
+
+## Avance anterior — CAP-027: gate de texto nativo v4 y validación documental
+
+El contrato v4 congela expectativas TEXT/CAPTION por checkpoint desde el documento guardado, con scope explícito `NATIVE_TEXT_AND_CAPTIONS`; no desde el DOM capturado. Conserva obligaciones audio/SSIM de versiones anteriores. `COMPOSITION_CONFORMANCE_TEXT_V4=true` selecciona v4 de forma estricta; no se habilitó el flag y las revisiones v1/v2/v3 no se reinterpretan. El productor server-only normaliza una sola vez al proyectar todos los checkpoints.
+
+Productor y lector de fuente recalculan el plan desde el documento: rechazan expectativas omitidas o contenido cambiado aunque hashes de archivos y documento sean coherentes. Captura v4 obliga regiones incluso si el llamador solicita false. El testigo privado debe coincidir exactamente con expectativas congeladas; el comparador PNG aplica la política local <=1px, MAE <=0.25 y proporción de píxeles fuera de tolerancia <=0.0005. Sin regiones/evidencia conserva INCOMPLETE; una falla local no queda escondida por SSIM o métricas globales aprobadas.
+
+El job duradero rechaza PASS con cobertura/checkpoints/política/scope inconsistentes. SQL preparado exige para v4 SSIM y texto completos, coteja política/scope congelados y recomputa el total esperado desde planes del contrato. La migración no fue aplicada: guards léxicos no prueban PostgreSQL/RLS/concurrencia. Versiones históricas conservan compatibilidad.
+
+Validación técnica:97 casos en12 suites pasan (4 contrato texto,8 fuente,20 job,9 captura visual,4 testigo,10 persistencia,10 lector,4 pipeline,7 captura texto,8 regiones,8 SSIM,5 snapshot), más6 guards SQL. Compilación focalizada, typecheck y guard147 migraciones pasan. PNG sintético y CDP/Storage controlados; no Chromium/FFmpeg/provider/SQL QA real. No despliegue, aprobación QA, migraciones ni flags activados.
+
+**CAP-027 sigue Parcial:** faltan visibilidad legítima durante motion/transition, texto del deck HTML, identidad efectiva de entorno/versiones/fonts/color y audit corpus/checkpoints/diagnóstico. El gate nativo v4 no certifica esos alcances. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 mantienen **Completada; falta QA**. Objetivo activo, sin reducir el alcance a texto nativo.
+
+## Avance anterior — CAP-027: regiones conectadas al recorrido y evidencia privada
+
+El opt-in explícito `captureTextRegions:true` conecta el adaptador al recorrido visual existente: captura cada checkpoint desde fuente autorizada y lo revisita hacia atrás. Exige igualdad exacta de IDs/hashes/geometría/disponibilidad con el forward, además del SHA PNG existente. Una región que cambia en reverse falla aun si los PNG coinciden. `prepareAndPersistVisualConformanceReference` propaga solo true explícito; flujo predeterminado queda intacto. No se activa ninguna flag ni se cambia aprobación/publicación.
+
+Metadata incorpora testigo schema1/policy `text-region-rgb-shift-one-v1`, repeatability `EXACT_TEXT_GEOMETRY_FORWARD_REVERSE_V1`, tiempos/frames/expectativas/regiones/motivos. El recibo fija `textParitySha256`. Package/persistencia/lector privado validan versión, cobertura/identidad, hash de contenido, tiempos exactos/canvas y pin del testigo, además del checksum ZIP scoped existente. Solo campos nombrados se canonizan para hash: orden de claves JSON no importa; las listas sí. Evidencia previa sin testigo/pin permanece legible, sin recibir una afirmación nueva.
+
+Límites agregados:2,048 candidatos por captura (incluye unavailable), máximo48 checkpoints y metadata/recibo <=1MiB antes de escritura; conserva quotas por checkpoint/frame/PNG. INCOMPLETE por candidato ausente/invisible se persiste como tal, aunque su metadata sea repetible; repeatability no significa paridad aprobada. Dos campos pin/testigo deben existir juntos; pin ausente o cambiado, cobertura falsa o tiempo/geometría inválidos fallan. Cleanup/isolation siguen independientes y probados.
+
+**CAP-027 sigue Parcial.** Está conectado recorrido→metadata→ZIP→lector, no todavía el cálculo de máscaras al comparador MP4 ni la obligación de texto al job/SQL. Falta contrato nuevo con expectativas independientes congeladas por checkpoint, visibilidad legítima de motion/transition y texto del deck HTML. V1/v2/v3 no se reinterpretan; un testigo opcional no cierra el gate completo. Pendientes posteriores: entorno/versiones/fonts/color y audit corpus/checkpoints. Las otras seis capacidades mantienen **Completada; falta QA**.
+
+Regresión técnica:59 casos en ocho suites pasan (4 testigo,8 captura visual,10 package/persistencia,10 lector,4 pipeline,7 captura texto,8 regiones,8 SSIM). Incluye captura native opt-in, reverse geometry mismatch con PNG igual, persistencia/readback del testigo, pin alterado aun con checksum ZIP registrado, límites/coverage, compatibilidad y limpieza. Compilación focalizada/typecheck, guard de147 migraciones y diff pasan. No Chromium/FFmpeg/PostgreSQL/Storage real ni QA formal; SQL sigue sin aplicar.
+
+## Avance anterior — CAP-027: proyección y captura de texto por checkpoint
+
+Se implementa `composition-text-checkpoint-capture`: plan desde el documento normalizado para TEXT y cues CAPTION nativos, con intervalos absolutos semiabiertos y hashes UTF8 del contenido exacto compilado (karaoke concatena words con espacios como el renderer, no supone identidad con cue.text). Excluye hidden de clip/track y layoutOpacity cero; conserva expectativas activas aunque el DOM falte o una animación las vuelva invisibles. Captura conservadora marca INCOMPLETE, no elimina esas filas para aprobar.
+
+Lector DOM inyectable autocontenido, sin mutaciones/CSS/OCR/red: consulta IDs explícitos y `Range.getBoundingClientRect`, redondea hacia afuera y recorta al canvas; registra invisibilidad/ausencia/geometría inválida. El adaptador CDP coteja identidad/cantidad, hashes y geometría y devuelve solo hashes/regiones/motivos, sin texto persistido. Límites:256 regiones,20,000 caracteres/elemento,65,536/checkpoint,64 ancestros y frame4K. Un callback ajeno/malformado o contenido cambiado no genera captura válida.
+
+Se corrige un fallo encontrado por prueba de IDs largos: la fábrica derivaba un cue inicial inválido al agregar `-cue-1` a un clip de128 caracteres. Ahora conserva IDs históricos válidos y usa `cue-1` (scoped por clip) cuando el schema rechaza la derivación. El lector de regiones admite IDs DOM de265 caracteres derivados de clip/cue válidos; no trunca identidades. La regresión de overlays nativos pasa.
+
+**Integración pendiente:** estas funciones aún no se invocan en el recorrido principal ni se persisten/exigen por contrato/job. Falta pin por checkpoint, verificación forward/reverse y cierre duradero; también resolver visibilidad legítima de motion/transition y cobertura de texto del deck HTML. Captura no reconstruye la semántica de opacity animado: lo no visible se conserva como INCOMPLETE, sin afirmación de cumplimiento. El nuevo núcleo no cambia contratos v1/v2/v3 ni flags.
+
+Validación técnica:7 captura/proyección,8 comparador local,8 SSIM y6 overlays (29 casos) pasan, con compilación/typecheck y diff. VM/CDP controlado, UTF8/RTL/karaoke, límites temporales, ausencia/invisibilidad, contenido ajeno, ID largo y bounding rect transformado; no Chromium ni QA formal. CAP-027 sigue **Parcial**; las otras seis capacidades **Completada; falta QA**. Objetivo activo.
+
+## Avance anterior — CAP-027: comparador local de regiones de texto (integración pendiente)
+
+Se añade el núcleo puro `composition-text-region-comparison` y policy `text-region-rgb-shift-one-v1`: comparación de regiones rectangulares de texto/caption con padding2 px, umbrales locales RGBdelta>4, mismatch<=0.05% y MAE<=0.25. Solo considera nueve desplazamientos dentro de ±1px; no alinea el frame completo ni permite movimientos mayores para aprobar. Conserva los gates de píxeles y MAE simultáneamente al elegir candidato. Hash de contenido e IDs deben corresponder a expectativas independientes; no guarda texto/PII en diagnósticos.
+
+Región esperada ausente o plana (rango luma<5) produce INCOMPLETE; glifo faltante/alterado o desplazamiento que no ajusta dentro del presupuesto produce FAIL. FAIL domina cobertura incompleta. Solo un match aprobado informa desplazamiento aceptado; no pretende medir el movimiento real cuando no existe match. Identidades inesperadas/duplicadas, hash ajeno, geometry/shape inválidos, alpha no opaco o presupuesto excedido fallan explícitamente. Máximo256 regiones y 1,048,576 píxeles comparados/checkpoint (solapamientos cuentan nuevamente), frame hasta4K; preflight comprueba presupuesto antes de escanear candidatos.
+
+**Este núcleo todavía no está conectado a captura/persistencia/comparación MP4/job y no cierra el gate de texto.** Falta obtener regiones visibles/contenido desde el preview autorizado, congelar expectativas por checkpoint, verificar repetibilidad/linaje de metadata y exigirlas en un contrato versionado y cierre duradero. Son máscaras de región, no segmentación semántica de glifos ni OCR del MP4. Fondos/sombras pueden hacer el gate más estricto; calibrar con corpus mediante QA, sin suavizar para pasar. No se modifica v3 ni se atribuye cumplimiento a evidencia antigua.
+
+Validación técnica: `npm run test:composition-text-regions` (8 casos) y regresión SSIM (8) pasan; compilación focalizada/typecheck y diff pasan. Fixtures incluyen desplazamientos ±1/2/3, glifo cambiado, texto faltante, región plana, hashes/identidades, transparencia, cuotas y FAIL+INCOMPLETE. No navegador/encoder real. Flags siguen apagadas y SQL sin aplicar.
+
+CAP-027 sigue **Parcial**: integración de texto, entorno/versiones/fonts/color y audit del corpus/checkpoints pendientes. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 conservan **Completada; falta QA**. El objetivo sigue activo.
+
+## Avance anterior — CAP-027: SSIM congelado y conectado al gate
+
+Contrato v3 opt-in estricto mediante `COMPOSITION_CONFORMANCE_VISUAL_V3=true` (**no activado**). Congela policy `ssim-gaussian-11-coded-bt709-luma-v1` y mínimo 0.995. V1/v2 siguen legibles y conservan umbrales; builder histórico por defecto continúa v2 y snapshot sin flags continúa v1. V3 mantiene requisito de audio y el comparador MP4 lo reconoce, sin perder esa obligación al evolucionar la versión.
+
+Comparador PNG calcula SSIM de resolución completa, Gaussian 11×11/sigma1.5, población ponderada, K1=.01/K2=.03, rango255 y luminancia RGB codificada con pesos .2126/.7152/.0722; bordes replicados, stride1, sin downsample, registro ni ajuste de gain. Se apoya en la [fórmula original de Wang et al.](https://www.cns.nyu.edu/pub/lcv/wang03-preprint.pdf), con decisiones de luminancia/borde explícitas de esta policy. No afirma equivalencia bit a bit con todas las implementaciones SSIM ni certifica Rec.709 del decoder. Píxeles/MAE/PSNR permanecen como gates independientes: SSIM de luminancia no sustituye diferencias de crominancia.
+
+Memoria de momentos acotada por ancho×11 filas (ring buffer), sin mapas de imagen completos; PNG/raw del comparador siguen en memoria. Decodificación limitada a 3840×2160 píxeles y SSIM rechaza alpha no opaco, dimensiones/canales/tamaños inválidos. V3 exige dimensiones reales iguales al canvas y SSIM por cada checkpoint; evidencia ausente queda INCOMPLETE, mismatch conocido FAIL aunque falten otros checkpoints. Reporte conserva mínimo observado/cobertura/policy; job rechaza umbral menor/cobertura falsa y la cola SQL preparada exige, para contratos v3/PASS, la misma policy/umbral/cobertura congelados. Fuente congelada y lector privado preservan exactamente v3; no upgrade/backfill de revisiones antiguas.
+
+Validación técnica: 69 casos en ocho suites (8 SSIM, 5 contrato, 19 job, 7 fuente, 5 snapshot, 9 persistencia, 9 lector y 7 captura visual) pasan. Incluye oráculo gaussiano 2D independiente, evicciones del ring buffer, campos constantes de fórmula cerrada, bordes estrechos, PNG real, transparencia, falsificación de thresholds y compatibilidad histórica. Tras prioridad FAIL v3 se repiten SSIM/contrato. Cinco guards SQL léxicos, compilación/typecheck, guard de 147 migraciones y diff pasan; no parsing/RLS/Chromium/FFmpeg real. Migraciones y flags siguen sin aplicar/activar.
+
+**CAP-027 sigue Parcial.** SSIM está implementado; falta gate específico de máscaras de texto/captions/desplazamiento <=1px, identidad efectiva de versiones/entorno/fonts/color y audit de corpus/checkpoints. Las otras seis capacidades continúan **Completada; falta QA**. No confundir gate SSIM con cierre visual completo ni QA.
+
+## Avance anterior — CAP-027: gate individual de inicio/fin por clip
+
+Se implementa `browser-media-boundaries-v1` sobre el plan de audio compartido con preview: ventanas activas, offsets, handles de crossfade, agotamiento de fuente AUDIO y loop del audio separado de VIDEO. El runtime verifica elementos y atributos contra ese plan antes de abrir el grafo, arma el observador al iniciar y registra primer `playing`, primer `pause/ended`, duración decodificada, conteos e interrupciones en frames nativos 48 kHz. Incluye SHA del plan ordenado de forma independiente del locale. Un elemento audible no previsto aborta; ningún conteo agregado sustituye una fila faltante.
+
+`browser-av-clock-and-boundaries-v2` incorpora el gate por clip además del límite A/V agregado: error de inicio/fin más quantum <=1 frame para PASS; intervalo que cruza tolerancia INCOMPLETE; error demostrado fuera o interrupción FAIL. Recibos históricos sin filas siguen legibles, pero no satisfacen este nuevo gate. Duración inexistente/cero, evento ausente o fuente agotada antes del intervalo no se inventan. Captura espera un pull adicional para observar eventos finales diferidos; si siguen ausentes no aprueba. El job recalcula el gate y el SQL de cierre preparado vuelve a comprobar cada fila contra tolerancias; registro preparado valida identidad/cobertura, ventanas y campos opcionales por versión.
+
+Se mantiene schema3 y v1/v2 sin reinterpretar evidencia, aislamiento/cleanup y flags apagadas. Migraciones **sin aplicar**; esto no implica validación PostgreSQL/RLS ni ejecución Chromium/FFmpeg real. Pruebas controladas incluyen reducer y runtime inyectado en VM, origen nativo, clip sin stop, loop frente a agotamiento/offset, límites inciertos, hash/duplicados, replay, NaN y medio inesperado. Comando específico: `npm run test:composition-playback-boundaries` (12 casos).
+
+Regresión técnica: 115 casos pasan en 11 suites (12 boundaries, 7 canonicalización, 19 referencia audio, 17 evidencia audio, 8 streaming, 7 captura playback, 7 captura visual, 18 job, 3 pipeline, 9 persistencia visual, 8 lector visual). Tras endurecer policy/identidades, se repiten los 30 casos boundaries/job sin fallos. Cuatro guards léxicos SQL, compilación focalizada, `npm run typecheck`, guard de 147 migraciones, sintaxis del runner y diff pasan. No certifica parsing, permisos ni concurrencia SQL. El comando typecheck es del package raíz, no del workspace web.
+
+**CAP-027 sigue Parcial.** Este incremento cierra código de cobertura individual de eventos, no QA ni sincronía semántica/acústica. Pendientes funcionales: SSIM/máscaras y desplazamiento de texto/captions, versiones/entorno/fonts/color y audit de corpus/checkpoints/diagnóstico. CAP-009, CAP-010, CAP-004, CAP-017, CAP-026 y CAP-023 permanecen **Completada; falta QA**. El objetivo continúa activo hasta cerrar esos requisitos.
+
+## Avance anterior — CAP-027: playback canónico, persistencia y gate coordinados
+
+Se conecta materialización autorizada → captura visual/playback en una sesión aislada → conversión streaming 48 kHz→8 kHz → pin a los frames visuales persistidos → ZIP privado/RPC → lectura del par exacto → comparación MP4 y gate de clock → recheck remoto/reporte. `HYPERFRAMES_CONFORMANCE_PLAYBACK_AUDIO_ENABLED` selecciona este productor de forma estricta; apagado mantiene el modelo histórico. El job rechaza un fallback a fuentes cuando solicitó playback, incluso ante un recibo ausente/malformado. La flag sigue apagada, junto con worker y audio largo.
+
+Schema3 canónico fija `BROWSER_MEDIA_OUTPUT_PCM_CANONICAL_V3` / `BROWSER_PLAYBACK_CAPTURED`, WAV 8 kHz, hash/peak del nativo 48 kHz, conversión sin gain/lag correction y testigo de playback. WAV nativo se verifica antes/después de FFmpeg, el stdout se escribe por chunks acotados con SHA y exige número exacto de samples, sin rellenar ni recortar pérdidas. V1/V2 y sus límites/procedencia se conservan. El pin visual canoniza claves y orden para soportar JSONB; incluye frames concretos, cuyo contenido se coteja en el registro RPC contra el visual autorizado. No convierte un modelo antiguo en captura real.
+
+`browser-av-clock-v1` combina deriva máxima del clock, lag medido, quantum observado y presupuesto de cuantización del lag. Solo permite PASS si el límite superior combinado <=20 ms y la deriva máxima del medio más quantum <=1 frame. Si el intervalo cruza tolerancia queda INCOMPLETE; si está fuera falla. Eventos/lag ausentes son INCOMPLETE. Comparador y schema de job conservan FAIL/INCOMPLETE aunque RMS/imagen pasen y rechazan bounds artificialmente menores que el testigo. La cola SQL preparada valida policy/testigo y recalcula las condiciones de PASS desde la evidencia enlazada.
+
+Nueva migración **preparada, sin aplicar** `20261001130000_persist_playback_audio_evidence.sql`: admite schema3, mantiene v1/v2 y RPC service-role, duración/counts/quantum/drift/versiones y frames exactos. Lectores compatibles primero; migraciones autorizadas después; productor opt-in al final. Rollback detiene nuevos playback, conserva lectores/objetos v3; no elimina ni reetiqueta evidencia. No hace backfill/requeue ni cambia aprobación/publicación. WAV nativo <=230,400,044 bytes a disco y canónico <=38,400,044 bytes; ZIP <=48 MiB. Dimensionar disco/RAM del job; Storage/ZIP siguen bufferizados y un job por worker.
+
+**CAP-027 sigue Parcial.** Conversión/admisión/pin/job y gate agregado ya tienen código. Falta demostrar cobertura individual de inicio/fin de cada medio (los máximos y conteos agregados no la sustituyen), SSIM/máscaras de texto, versiones/entorno/color y audit del corpus/checkpoints. QA Chromium/FFmpeg/SQL/Storage real sigue diferido. Las otras seis capacidades permanecen **Completada; falta QA**.
+
+Validación del incremento: 103 casos de servicios/captura/evidencia/job pasan en regresión controlada y cuatro guards léxicos SQL pasan (`test:composition-playback-audio-migration`). Incluye cambios de origen/archivo, truncación/NaN/clipping, pin visual ajeno, selección sin fallback, PASS/FAIL/INCOMPLETE y límites fabricados. Compilación focalizada, typecheck web, sintaxis del runner, guard de migraciones (147 SQL) y diff pasan. La revisión estática corrigió duplicación accidental de texto en el SQL preparado antes de cualquier aplicación; los guards impiden repetirla. No prueban parsing/RLS/concurrencia de PostgreSQL. Reporte playback declara `PLAYBACK_EVENT_COUNTS_NOT_PER_MEDIA_BOUNDARY_COVERAGE` mientras siga pendiente ese gate individual; un PASS agregado no equivale a cierre CAP-027 ni aprobación QA.
+
+> Los apartados siguientes conservan los cortes previos. Donde describen schema3 no admitido o playback sin conectar, corresponde al estado anterior a este incremento.
+
+## Avance anterior — audio largo por chunks, evidencia compatible
+
+### Incremento posterior — captura de la salida del navegador (integración aún parcial)
+
+Se implementan `composition-playback-capture-runtime`, consumidor PCM estricto y productor `captureBrowserPlaybackAudio`. Un AudioWorklet captura la mezcla de `audio.composition-audio` del preview ya materializado/autorizado; MediaElementAudioSource conserva volumen, pausas y seeks del elemento. No accede a micrófono, no usa ScriptProcessor obsoleto, no normaliza y no sustituye la ejecución real por mezcla offline. El capturador visual puede invocarlo explícitamente en el mismo browser aislado, después del seek reversible y antes del recheck de fuentes. Este modo no está conectado ni habilitado en el job productivo.
+
+El protocolo entrega PCM f32le estéreo nativo a 48 kHz, frame absoluto y crédito de hasta 96,000 frames (dos segundos / 768 KB de PCM); backpressure agotado detiene el procesador en vez de acumular mensajes ilimitados. El consumidor exige continuidad, origen estable, frames completos y samples finitos <=1; ninguna pérdida de inicio/hueco se rellena con ceros. WAV y SHA se escriben incrementalmente. Eventos de clock/media, errores, buffering y terminación prematura se observan; evidencia incluye conteos, deriva máxima y quantum efectivo. Es captura del grafo de audio, no del dispositivo físico ni prueba de sincronía semántica de labios.
+
+Seguridad: solo el modo explícito audio admite el módulo fijo generado en un origen loopback descartable. CSP permite exclusivamente esa URL para módulo/conexión/worklet y same-origin dentro del sandbox aislado; no se desactiva CSP, no se exponen rutas arbitrarias y siguen el proxy deny-outbound/interceptor exacto. Captura visual normal conserva sandbox opaco, `connect-src 'none'` y `worker-src 'none'`. El origen usa un perfil nuevo sin sesiones ni credenciales de la app. Capturas/audio limpian workspaces independientes incluso ante fallo de cierre.
+
+**No cierra todavía playback de CAP-027:** este productor emite recibo experimental schema3 nativo a 48 kHz, que el lector/persistencia v1/v2 aún rechaza deliberadamente. Falta conversión canónica a 8 kHz por streaming, admisión versionada, pin al visual persistido exacto, comparación/gates y conexión del job. Se reemplaza el prototipo 8 kHz (quantum típico 16 ms, insuficiente al sumarlo al lag) por captura 48 kHz (128 frames ~=2.667 ms). No significa precisión certificada: conservar quantum observado y presupuestarlo con la deriva medida y cuantización. WAV nativo máximo 230,400,044 bytes, escrito a disco, no dentro del ZIP de 48 MiB. La conversión debe generar el WAV canónico antes de persistir y limpiar ambos workspaces. No activar este modo como gate de aprobación antes de ese cierre.
+
+Siete nuevas pruebas controladas pasan: procesador ejecutado en VM, crédito/NaN/clipping, continuidad/origen/cola, productor con CDP simulado, SHA/cleanup, URL segura y CSP con HTTP real. Siete pruebas de captura visual pasan, incluida captura audio integrada en el mismo browser y cleanup independiente/idempotente. No se ejecuta Chromium/audio real ni QA del tester.
+
+Regresión final de este incremento: 91 casos pasan (19 referencia, 14 evidencia audio, 8 streaming, 7 playback, 7 captura visual, 3 pipeline, 9 package visual, 8 lector visual, 16 job), junto con compilación focalizada/typecheck y revisión de diff. Guard de migraciones permanece en 146 SQL. Header WAV se comparte entre los perfiles explícitos 8/48 kHz, manteniendo los bytes de v1/v2 sin ampliar sus límites. CAP-027 continúa parcial y el objetivo permanece activo.
+
+Se cierra el bloque de referencia y medición de audio de hasta 600 s. El productor procesa chunks de 80,000 frames (10 s): acumulador float64 estéreo de 1.28 MB y PCM de 640 KB, conservando tiempo absoluto, orden de suma, offsets, loops, automaciones y rechazo de clipping incluso en chunks tardíos. Escribe WAV incrementalmente y calcula SHA durante la escritura. El cache de fuentes sigue acotado a 128 MiB y 600 s por asset; agotar el presupuesto falla antes de lanzar otra decodificación.
+
+El medidor consume stdout del decoder con backpressure, cuotas y timeout incluyendo EOF sin cierre del proceso. No acumula PCM completo: mantiene envelopes canónicos de 5/20 ms, cuyo tamaño crece con la duración dentro del límite de 600 s. `stereo-envelope-v3` / `STEREO_ENERGY_ENVELOPE_STREAM_V3` conservan las tolerancias v2 y usan momentos centrados incrementales para que señales largas planas no produzcan correlación falsa por cancelación numérica. RMS continúa en policy v1, sin compensar lag ni normalizar ganancia.
+
+Recibos v1 siguen limitados a 120 s / 8 MiB. Los nuevos recibos v2 fijan `PREVIEW_RULES_STEREO_PCM_CHUNKED_V2`, `mixChunkFrames=80000`, hasta 600 s / ZIP de 48 MiB. WAV máximo: 38,400,044 bytes. Persistencia y lector verifican schema, duración exacta, contexto, SHA, header y PCM; el modelo conserva `SOURCE_MIX_REFERENCE_NOT_PLAYBACK_CAPTURE`. ZIP y SDK Storage todavía usan buffers completos: no se promete memoria constante del job. Operar un job por worker y dimensionar RAM/concurrencia antes de rollout.
+
+Migración preparada `20261001120000_extend_chunked_audio_evidence.sql`, **sin aplicar**; conserva RLS/RPC service-role y compatibilidad v1. Desplegar lectores v2 y medición v3, aplicar migraciones autorizadas y solo después habilitar producción larga mediante `HYPERFRAMES_CONFORMANCE_LONG_AUDIO_ENABLED=true`. Flag largo y worker permanecen apagados. Rollback: deshabilitar escrituras largas, conservar lectores/datos v2; no restaurar el constraint de 8 MiB sobre datos v2. Requests ya FAILED no se reencolan automáticamente al habilitar el flag.
+
+Validación controlada: 8 casos de streaming, 19 de referencia/mezcla, 14 de persistencia/lectura, 16 de job, 10 de RMS y 10 de timing pasan (77 casos). Incluye WAV/ZIP de cinco minutos, límites y cola parcial, errores/timeout de proceso y señal plana de diez minutos. Se corrige el fixture largo para congelar realmente 300 s, sin debilitar la validación. No se ejecutan FFmpeg/Chromium/Storage/PostgreSQL reales ni QA formal.
+
+**CAP-027 sigue Parcial.** El soporte >120 s ya no es una brecha. Para el cierre completo se audita el contrato del roadmap, no solo las pruebas existentes: falta referencia de playback/eventos y comprobar cobertura de SSIM/máscaras de texto, seek reversible, identidad de versiones/entorno y validación SDR. Las otras seis capacidades conservan **Completada; falta QA**. El objetivo activo es cerrar implementación, no habilitar producción ni sustituir el QA del tester.
+
+### Incremento de cierre — seek reversible
+
+El capturador vuelve a cada checkpoint en orden inverso después del recorrido hacia delante y exige SHA-256 PNG idéntico en el mismo instante. Comparte readiness de fuentes/medios, validación temporal, aislamiento y deadline; presupuesto de capturas <=128 MiB por recorrido y <=20 MiB por PNG. No duplica archivos ni cambia los checkpoints de una revisión congelada. Diferencia inversa falla con `CONFORMANCE_CAPTURE_REVERSE_SEEK_MISMATCH`, limpia el workspace y no entrega evidencia.
+
+El recibo nuevo incluye `seekRepeatability` con policy `EXACT_PNG_FORWARD_REVERSE_V1`, conteo y PASS. El empaquetador valida cobertura exacta; el lector conserva recibos previos sin atribuirles esa prueba. Desplegar lectores actualizados antes de escritores de este campo; no reetiquetar evidencia antigua. Comparación exacta puede ser más estricta que perceptual y revelar fuentes/decoders no deterministas: no se suaviza automáticamente para aprobar.
+
+Regresión controlada de ambos incrementos: 111 casos pasan (77 audio/job, 6 captura visual, 9 package/persistencia visual, 8 lector visual, 3 pipeline y 8 gate manual). Compilación focalizada, typecheck web, `node --check` del worker, guard de migraciones (146 SQL) y `git diff --check` pasan. Los adaptadores de codec/CDP/Storage/RPC son controlados; no constituye QA real ni validación SQL/RLS.
+
+### Audit de cierre del objetivo activo CAP-027
+
+Se usa §6 del roadmap como referencia; un gate de integración pendiente de ejecución no equivale a código faltante, pero una métrica o captura ausente sí. Orden de implementación restante:
+
+| Orden | Requisito | Evidencia actual / trabajo necesario |
+| --- | --- | --- |
+| Cerrado | Linaje, hashes, revisión, integridad remota y reporte privado | Snapshot verificado, referencias persistidas, segundo recheck y cierre CAS implementados; falta QA remoto/SQL. |
+| Cerrado | Duración/FPS/timestamps y audio final LUFS/true peak | Comparador implementado; falta codecs/calibración/corpus real. |
+| Cerrado | Audio largo y RMS canónico | Chunks <=600 s, recibos compatibles, RMS <=0.5 dB y lag acotado implementados; fuente todavía modelada. |
+| Cerrado | Seek hacia delante/atrás | Captura revisita checkpoints y verifica identidad exacta, con recibo explícito; falta Chromium real. |
+| Cerrado | Playback y eventos por clip / sincronía A/V | Captura, conversión, pin, persistencia y job conectados; gate v2 recalcula clock/lag/quantum e inicio/fin de cada medio. Ausencia de filas no aprueba. Falta QA browser/codec/SQL; no acredita lip-sync semántico/dispositivo físico. |
+| 2 | Texto/captions; SSIM implementado | Contrato v3 fija SSIM >=0.995 y el comparador/job/cola lo exigen; v1/v2 no se reetiquetan. Falta máscaras/gate específico de texto con desplazamiento <=1 px y QA del corpus. |
+| 3 | Versiones, fuentes y color | Registrar versión efectiva de renderer/compiler/browser, hashes de fonts y perfil de color; validar SDR Rec.709 y ausencia de fallback, no solo una etiqueta contractual. |
+| 4 | Cobertura/checkpoints y diagnóstico | Auditar bordes/keyframes/cues y corpus versionado; reportar mismatches por etapa y mantener FAIL/INCOMPLETE cuando falta evidencia requerida. No usar un fixture como prueba de todos los presets. |
+| Final | Auditoría de implementación y handoff a QA | Inspección requisito por requisito, regresión controlada y documentación operativa; marcar Completada; falta QA únicamente cuando ninguna fila funcional quede abierta. |
+
+No se activan flags, se aplican migraciones, se despliega ni se cambian aprobaciones/publicación durante este objetivo.
+
+## Avance 2026-09-30 — CAP-026: validación previa de mensajes
+
+La [política de mensajes](../../apps/web/src/domains/production/composition-editor/composition-preview-message-policy.ts) valida hash y generación antes de alterar el handshake o la UI. Corrige un ACK/error con generación válida y hash incorrecto que podía cancelar el watchdog antes de ser descartado. El editor mantiene la verificación de `event.source` y el parser estricto antes de esta política. El comportamiento legacy se conserva con sync V2 deshabilitado.
+
+Las [pruebas de integración entre módulos](../../apps/web/src/domains/production/composition-editor/__tests__/composition-preview-sync-state.test.ts) cubren fallo, reintento del mismo hash, mensajes de generación anterior, preparación lenta de medios y confirmación válida. `test:composition-preview-sync` pasa con 54 pruebas y el typecheck web pasa. Esta evidencia usa módulos reales con mensajes controlados; no monta React ni un iframe en navegador. QA autenticado y matriz de navegadores siguen pendientes; CAP-026 permanece parcial y sin rollout.
+
+## Avance 2026-09-30 — CAP-026: bloqueo de navegación fallida
+
+El editor conserva la generación que falló y la política rechaza todos sus mensajes hasta una nueva navegación. Así, un ACK tardío no borra el error ni habilita controles; tampoco se aplican tiempo, selección, layout o ACK de parche procedentes de esa carga. El bloqueo persiste si un guardado cambia la fase de sincronización y se libera al avanzar la generación. Al fallar se cancela el temporizador de handshake y se envía pausa a ambos previews; los mensajes de comparación y el comportamiento legacy mantienen su ruta existente.
+
+Validación local: las 55 pruebas de `test:composition-preview-sync`, typecheck web y `git diff --check` pasan. La prueba añadida recorre siete tipos de mensajes tras fallo, guardado y reintento. La pausa física de medios y el montaje React/iframe requieren verificación en navegador; QA formal permanece pendiente. CAP-026 continúa parcial y sync V2 deshabilitado.
+
+## Avance 2026-09-30 — CAP-026: ACK de parche durante guardado
+
+Los parches visuales conservan la generación donde se enviaron. Si el ACK llega antes de concluir la persistencia y el iframe se recarga o falla durante la espera, ese resultado no puede declarar sincronizada la nueva carga. Al avanzar la generación se cancelan las esperas pendientes del coordinador, se limpia el temporizador de handshake y se invalida la disponibilidad del runtime de inmediato. El contador de secuencia se conserva para rechazar ACK anteriores. Un fallo terminal sigue visible hasta la recuperación, incluso al completar el guardado.
+
+El coordinador convierte excepciones síncronas de envío en `SEND_REJECTED`, elimina la espera y permite el fallback habitual sin promesas rechazadas fuera del manejo de guardado. Se añadieron pruebas de cancelación/reintento, ACK ya resuelto durante navegación o fallo, y envío que lanza excepción. Pasan las 58 pruebas de `test:composition-preview-sync`, typecheck web y revisión del diff. No se ejecutó QA formal ni se habilitó sync V2; la carrera en navegador con persistencia real sigue pendiente de validar con tester.
+
+## Avance 2026-09-30 — CAP-026: revisiones aplicadas y restauradas
+
+La carga normal, la aplicación/deshacer de presets y propuestas y la restauración de snapshots usan `adoptSavedPreviewRevision`. Con sync V2, se reinicia el estado pendiente, se avanza la generación incluso para contenido idéntico, se cancelan esperas anteriores y se limpia el fallo previo. Corrige presets/propuestas que cambiaban el hash sin actualizar el estado de sincronización y snapshots que no invalidaban la generación fallida. Los controles esperan al ACK de la nueva carga.
+
+La prueba de regresión cubre adoptar contenido idéntico o distinto después de un fallo y rechazar el ACK de la navegación anterior. Pasan las 59 pruebas de `test:composition-preview-sync`, typecheck web y revisión del diff. La cobertura de módulos no sustituye el recorrido de presets/propuestas/snapshots con servicios reales; QA autenticado sigue pendiente y sync V2 permanece deshabilitado.
+
+## Avance 2026-09-30 — CAP-026: retorno desde previews temporales
+
+Descartar un preset o propuesta restablece la revisión guardada mediante `adoptSavedPreviewRevision`. Con sync V2 avanza la generación, invalida las confirmaciones anteriores y espera el ACK del documento guardado; conserva el playhead para restaurarlo al cargar. Ambos controladores bloquean el descarte durante la aplicación del cambio. La confirmación de un preview temporal ya no declara sincronizado el documento guardado.
+
+Si falla aplicar o deshacer una propuesta, la recuperación solo restablece disponibilidad cuando el iframe conserva su URL y generación y estaba listo o confirmó su carga durante la operación. Un fallo terminal se mantiene visible. La pausa usa el destino compatible con el sandbox de origen opaco, igual que los demás comandos del editor.
+
+Validación local: pasan las 59 pruebas existentes de `test:composition-preview-sync`, el typecheck web y la revisión del diff; las pruebas cubren contratos y políticas compartidas, pero no montan estos hooks ni el iframe. El recorrido de descarte y rollback en navegador queda pendiente del tester. CAP-026 permanece parcial y sync V2 deshabilitado por defecto.
+
+## Cómo mantener esta hoja
+
+- Actualizar cada fila al integrar un cambio o ejecutar un gate; añadir fecha, ambiente, resultado y enlace a evidencia reproducible. No registrar credenciales, URLs firmadas ni datos reales de usuarios.
+- **Implementación** describe cobertura funcional. **Local** describe pruebas automatizadas en un entorno controlado. **E2E** requiere un tenant y usuarios de QA aislados, con servicios y permisos reales. **QA** incluye revisión funcional/manual. **Rollout** exige aprobación explícita. Una columna aprobada no aprueba las siguientes.
+- Usar `Pendiente`, `Parcial`, `Verificado` o `No aplica` para validación; `No habilitado`, `Piloto` o `GA` para rollout. El estado `Verificado` exige reporte enlazado, no solamente la existencia de una suite.
+- Responsable y fecha objetivo: **sin asignar** hasta que el equipo los acuerde. Registrar cada decisión al pie de esta hoja, no inferirla del código.
+- Por instrucción del usuario, si el alcance funcional está implementado y lo restante es validación, marcar **Implementación = Completada** y mantener **QA = Pendiente**. Flags apagadas, calibración con medios reales o un ambiente de pruebas no disponible no significan que falte implementar la función. Una automatización todavía sin código sí conserva estado `Parcial`. `Completada` no autoriza habilitar flags, aplicar migraciones ni declarar `Verificado`.
+
+## Avance 2026-10-01 — CAP-027: job duradero y reporte íntegro
+
+> Incremento posterior vigente: ver el bloque de RMS/precisión temporal al pie de esta sección. Las referencias a 40 ms/RMS pendiente describen el corte anterior, no el estado actual.
+
+Se integra el bloque completo: encolado después de integridad exitosa de un nuevo render con referencia congelada v1 → claim exclusivo → snapshot MP4 en streaming con tamaño/checksum y linaje verificados → captura visual persistida → audio persistido ligado a esa captura → comparador del par exacto → segundo recheck remoto → reporte privado. La migración preparada `20260930160000_queue_full_conformance_reports.sql` agrega cola, renovación de reserva, cierre CAS y lectura scoped exclusiva del worker. No se aplica ni hace backfill.
+
+El worker renueva cada minuto, tiene lease de 30 minutos acotado a dos horas por intento, hasta cinco reservas y backoff de 30–900 segundos. Reserva perdida o ACK de cierre perdido no puede publicar un resultado tardío ni sobrescribir un éxito como fallo. Cierre SQL coteja organización, solicitud, revisión, job, asset, MP4 y par visual/audio. El reporte conserva mediciones completas hasta 1 MiB; `SUCCEEDED` significa ejecución, no `PASS`. FAIL/INCOMPLETE se persisten sin aprobar QA o publicación. Se corrige además el gate manual: el hash documental ahora pertenece explícitamente al reporte exportado, no a sus métricas visuales.
+
+Validación local: 16 pruebas del nuevo job, 7 del verificador/snapshot, 8 del worker de integridad, 8 del gate manual y 13 de audio persistido pasan con adaptadores controlados y filesystem real. Compilación focalizada, build API, typecheck web y guard de migraciones pasan (145 SQL). No se ejecutan Chrome/FFmpeg/Storage/PostgreSQL reales ni QA formal. Worker opt-in apagado; ver [operación del job](SOFLIA_ENGINE_FINAL_VIDEO_GATE.md).
+
+**El pendiente de job duradero/reporte está implementado. CAP-027 sigue Parcial por brechas funcionales del contrato de audio, no por ausencia de QA:** referencia/medición limitada a 120 s, modelo de fuentes en vez de captura de playback y política temporal de 40 ms/correlación que todavía no cubre los objetivos del roadmap de 20 ms A/V y diferencia RMS ≤0.5 dB por ventanas canónicas. Próximo bloque: cerrar ese contrato sin presentar calibración o una prueba como sustituto del código faltante. Las otras seis capacidades mantienen **Completada; falta QA**. Estos límites ya existían; se precisan ahora que el job deja de ser el bloqueo.
+
+### Incremento posterior 2026-10-01 — RMS canónico y precisión temporal v2
+
+Se centralizan y versionan las políticas: `stereo-envelope-v2` mide lag estéreo con bins de 5 ms, tolerancia máxima de 20 ms y presupuesto de cuantización de ±5 ms. El comparador MP4 pasa la duración de un frame real y estrecha la tolerancia al menor valor entre un frame y 20 ms. Un lag medido fuera del umbral falla; si su margen de cuantización cruza el umbral, queda INCOMPLETE. El margen describe la grilla, no un intervalo estadístico ni garantía de lip-sync/decoder. Silencio, repetición, programa plano/corto y borde de búsqueda siguen inconclusos.
+
+`stereo-rms-window-v1` compara ambos canales en ventanas canónicas de 20 ms sobre el mismo origen temporal, sin compensar lag ni normalizar ganancia. El límite es 0.5 dB por canal/ventana activa; incluye la última ventana parcial con número exacto de samples. Diferente cobertura es INCOMPLETE; cruce del piso de silencio en un canal falla. Ambos lados bajo RMS 0.0001 se cuentan como silencio, sin afirmar igualdad de nivel; todo silencioso es INCOMPLETE. Se conserva máximo/conteo de fallos y hasta ocho muestras diagnósticas finitas. Un fallo local no se diluye en un promedio global.
+
+La medición devuelve RMS y alineación separados, con estado agregado: cualquier diferencia falla y una medición ambigua nunca produce PASS. Corrige la correlación positiva ante ganancia constante, que ya no basta para aprobar el programa. Comparador del par persistido, gate manual, schema del job y cierre SQL rechazan PASS si falta RMS o si no pasó. La migración **todavía preparada y no aplicada** de la cola exige method/policy v2 y política RMS v1; no convierte evidencia histórica v1 en v2. No se agrega otra migración, no se cambia QA ni se activa el worker.
+
+Validación local: 10 pruebas RMS, nueve de timing, 16 del job, 13 de evidencia audio, 18 de referencia/mezcla y ocho del gate manual pasan (74 casos). Typecheck, compilación focalizada y guard de migraciones pasan. PCM/filesystem reales y decoders/RPC/comparadores controlados; no Chrome/FFmpeg/Storage/SQL reales ni QA formal.
+
+El bloque RMS/precisión temporal queda implementado. **CAP-027 conserva Parcial por soporte >120 s y referencia de playback/eventos reales; no por la falta del tester.** La correlación mide alineación de envolventes de audio contra el modelo, no identidad de contenido ni sync audiovisual semántico. Próximo bloque: referencia/medición larga por chunks con presupuestos de memoria, persistencia y contratos compatibles; no levantar solo el límite numérico. Las otras seis capacidades siguen **Completada; falta QA**.
+
+## Avance 2026-09-30 — CAP-027: persistencia y lectura autorizadas de audio
+
+Se implementa el bloque completo de almacenamiento de referencia de audio: validación WAV/PCM/metadatos/recibo contra la revisión y el registro visual, ZIP determinista ligado al checksum visual, subida privada sin sobrescritura, readback exacto y registro idempotente exclusivo del worker. La migración preparada `20260930150000_persist_audio_conformance_evidence.sql` agrega tabla privada con FK al visual y RPCs scoped de registro/lectura; no se aplica ni cambia QA/publicación.
+
+El lector requiere hashes concretos de visual y audio, verifica registro/ruta/contexto, comprueba bytes antes de descomprimir, limita entradas y expansión, revalida WAV/PCM/recibo y entrega paths propios al comparador. `prepareAndPersistAudioConformanceReference` limpia materialización/audio en éxito o fallo; `compareVideoWithPersistedConformanceReferences` consume el par persistido exacto, conserva FAIL/INCOMPLETE y rechaza comparación que omita audio temporal. No se selecciona la evidencia más reciente ni se sobrescriben objetos existentes.
+
+Validación local: 13 pruebas nuevas con WAV/ZIP/filesystem reales y Storage/RPC/comparador controlados; cubren determinismo, pérdida de confirmación, contexto ajeno, mediciones falsas, WAV/PCM corruptos, hash/archivo/recibo alterados, traversal/expansión y limpieza/coordinación. Typecheck y guard de migraciones pasan (144 archivos SQL). No ejecuta SQL/RLS real ni servicios de producción/FFmpeg/Chrome, no aplica migraciones ni habilita flags.
+
+Persistencia y consumo de audio quedan implementados; CAP-027 sigue **Parcial** por job duradero y reporte íntegro ligados al MP4 validado remotamente. La referencia persiste como modelo de fuentes, no grabación/atestación de playback. Las demás seis capacidades conservan **Completada; falta QA**. Ver [operación del audio persistido](SOFLIA_ENGINE_FINAL_VIDEO_GATE.md).
+
+## Avance 2026-09-30 — CAP-027: cierre de crossfade en referencia de audio
+
+Se sustituye la competencia entre tweens de crossfade y volumen por `buildCompositionPlaybackVolumeAutomations`: una única envolvente de volumen por clip. Audio usa crossfade lineal independiente del easing visual, multiplicado por las ganancias de fades/ducking existentes. La política común combina breakpoints con 16 segmentos por crossfade y evalúa linealmente los valores publicados; no promete un producto analítico continuo entre puntos. Preview y render serializan exactamente esa envolvente; la referencia PCM usa el mismo evaluador y las mismas ventanas/offsets del runtime de transiciones.
+
+La referencia admite ahora crossfades válidos; se conserva el rechazo de clipping y límites operativos. `audioEnvelopeVersion = 2` se incluye en runtime y recibo. Un snapshot congelado con crossfade sin ese contrato se rechaza antes de decodificar; no se modifica ni reinterpreta una revisión anterior. Para usarlo se requiere congelar una nueva revisión por el flujo normal del editor. CUT y documentos sin crossfade mantienen sus automaciones anteriores.
+
+Validación local: 38 pruebas de audio (15 loudness/timing, 18 referencia/coordinación, 5 envolvente) y 45 de compilador/metros pasan; typecheck y revisión del diff pasan. Se cubren extremos/midpoint, complementariedad, fades superpuestos, offsets de handles, igualdad preview/render/referencia y rechazo de policy legacy. Sin QA formal ni FFmpeg/Chrome/Supabase reales; sin migraciones o flags habilitadas.
+
+El bloque de crossfade queda implementado; CAP-027 permanece **Parcial** por persistencia autorizada del WAV y job duradero/reporte completo. La referencia sigue siendo un modelo de fuentes, no captura de playback; límites de duración y validación con medios reales siguen explícitos. Las otras seis capacidades mantienen **Completada; falta QA**.
+
+## Avance 2026-09-30 — CAP-027: referencia de mezcla de audio y comparación coordinada
+
+Se implementan plan desde documento guardado, mezcla PCM estéreo, WAV/metadata/recibo ligados al hash y generación desde materialización autorizada. Reutiliza ganancias y automaciones de fades/ducking del preview; conserva offsets, silencio de timeline, fin del audio y loop del audio separado de video. Verifica fuentes antes/después de decodificar. `compareVideoWithSourceAudioReference` une materialización → audio → visual persistido → comparador temporal existente y dispone ambos workspaces incluso al fallar.
+
+Se corrige un defecto del compilador: las automaciones del video apuntaban al contenedor visual en vez de su elemento de audio. Ahora seleccionan `<clip>-audio`, manteniendo fallback para clips AUDIO. Los snapshots congelados no se reescriben: si requieren esa automatización y contienen el runtime anterior, se rechaza la referencia como legacy incompatible.
+
+Es `SOURCE_MIX_REFERENCE_NOT_PLAYBACK_CAPTURE`, no grabación de Chromium ni identidad perceptual. Límites: 120 s, 64 clips, 600 s por fuente decodificada y 128 MiB de PCM. Crossfade de audio y saturación fallan explícitamente. No se modela un orden de tweens todavía ambiguo. No se persiste el WAV ni se conecta un job activo. Pendientes funcionales: casos no cubiertos, captura de playback si se requiere esa garantía, persistencia de audio y job duradero/reporte íntegro.
+
+Validación: 17 pruebas nuevas, 15 existentes de loudness/timing, 22 de evidencia y 45 de compilador/metros pasan. Typecheck pasa. Sin FFmpeg/Chrome/Supabase reales, QA formal, nuevas migraciones o flags habilitadas. CAP-027 sigue parcial; las otras seis capacidades mantienen **Completada; falta QA**. Ver [contrato operativo de audio](SOFLIA_ENGINE_FINAL_VIDEO_GATE.md).
+
+## Avance 2026-09-30 — CAP-027: lectura verificada y consumo de evidencia visual
+
+`readPersistedVisualConformanceEvidence` requiere organización, revisión y checksum concretos. Una RPC exclusiva de `service_role` une el registro privado con la revisión vigente; el lector valida ese contexto y la ruta generada antes de descargar. Comprueba hash/tamaño antes de descomprimir, acepta únicamente contrato/metadatos/recibo/PNGs esperados y limita la extracción por entrada y conjunto. Coteja el contrato completo contra BD, no solo el hash del documento, y reutiliza la validación de captura para comprobar imágenes y checkpoints. Los frames del recibo deben coincidir con el registro persistido.
+
+`compareVideoWithPersistedVisualReference` entrega esos paths verificados al comparador existente, conserva su resultado y limpia el workspace al terminar o fallar. La procedencia autorizada corresponde solo a la referencia visual: el MP4/recibo local necesita todavía el gate remoto de integridad; no se autentica audio ni se registra aprobación automática. La nueva migración de lectura está preparada, no aplicada.
+
+Validación local: 22 pruebas pasan (8 paquete/persistencia, 3 pipeline, 8 lector, 3 coordinación del comparador), con ZIPs/PNGs/filesystem reales y Storage/RPC/comparador controlados. Typecheck y guard de versiones pasan. No se ejecuta Chrome/FFmpeg/Supabase reales ni QA formal. CAP-027 continúa parcial por mezcla de referencia de audio y job completo; las otras seis capacidades mantienen **Completada; falta QA**. Ver [operación del lector](SOFLIA_ENGINE_FINAL_VIDEO_GATE.md).
+
+## Avance 2026-09-30 — CAP-027: gate unificado bajo demanda
+
+`qa:composition-final-video-gate` integra recheck de Storage → copia local aislada y hash acotado → recibo interno → comparador → segundo recheck → reporte vinculado. Rechaza cambios de asset/revisión/checksum/tamaño y no sobrescribe evidencia. No escribe en BD ni acepta recibos manuales. Pasan las 7 pruebas del coordinador, el build API y la compilación TypeScript del comparador. Ver [contrato y operación](SOFLIA_ENGINE_FINAL_VIDEO_GATE.md).
+
+Este bloque automatiza la secuencia al invocar el comando, no su ejecución después de cada render. Falta integración como job de producción y comparación temporal/contenido de audio; CAP-027 sigue parcial. No se ejecutó contra Supabase/FFmpeg reales, no se aplicó migración ni se realizó QA formal. Las otras seis capacidades conservan implementación completada y QA pendiente.
+
+## Avance 2026-09-30 — CAP-027: integridad posterior al import
+
+Se implementan cola privada y worker opt-in para verificar automáticamente nuevos imports MP4: encolado transaccional idempotente, claim exclusivo con lease/token, hasta cinco reservas, backoff y cierre cotejado con asset/revisión. Una reserva vencida no puede cerrar otra ejecución. El checksum sigue usando el verificador existente; no se aprueba QA ni se modifica el estado de publicación.
+
+Pasan 8/8 pruebas de coordinación del worker y 6/6 del verificador; build API y guard de versiones de migraciones pasan. La migración queda preparada, no aplicada: trigger, permisos y concurrencia SQL no se han probado en PostgreSQL. Worker apagado por defecto. Ver [operación y riesgos](SOFLIA_ENGINE_FINAL_VIDEO_GATE.md).
+
+Falta código para persistir/consumir capturas de preview en el job de conformidad completa y comparar temporalmente el contenido de audio. La automatización de integridad no equivale a automatizar el gate visual/audio completo. CAP-027 permanece parcial; las seis capacidades restantes conservan implementación completada con QA pendiente.
+
+## Revisión de cierre de implementación — 2026-09-30
+
+### Incremento posterior — evidencia visual persistida
+
+Se implementa ZIP determinista con validación de contexto/checkpoints/PNGs, subida sin sobrescritura, readback de hash/tamaño y RPC de registro exclusiva del worker. Una migración preparada agrega bucket privado, política restrictiva y tabla privada; no se aplica. El pipeline interno une materialización → captura → persistencia y limpia ambos workspaces ante éxito/fallo. Solo registra `VISUAL_CAPTURED_AUDIO_PENDING`, sin aprobación QA ni cambios del render/publicación.
+
+Pasan 8 pruebas del paquete/persistencia y 3 del pipeline, con Storage/RPC/etapas controlados. Falta integración real del SQL y navegador. La persistencia visual está implementada; quedan consumo verificado del paquete, captura/registro de audio y conexión al job completo. CAP-027 continúa parcial; las demás seis capacidades completadas con QA pendiente. Ver [operación y riesgos de persistencia](SOFLIA_ENGINE_FINAL_VIDEO_GATE.md).
+
+### Incremento posterior — captura visual restringida
+
+La referencia materializada ya puede capturarse por checkpoints en un servicio interno: servidor local allowlist con rangos, interceptación antes de navegar, CSP, perfil/entorno aislados, handshake del hash congelado y espera de medios. Se verifican hashes de fuentes antes/después y tiempos/dimensiones de PNGs. El recibo `VISUAL_CAPTURED_AUDIO_PENDING` liga la captura a revisión/proyecto/documento y registra hashes de imágenes. No implica PASS ni captura de audio.
+
+Validación: 6 pruebas con HTTP/filesystem/PNGs reales y CDP simulado; typecheck pasa. No ejecutan navegador real ni prueban sandbox/CSP/codec dentro de Chromium. Sin QA formal, persistencia remota, despliegue o flags habilitadas. Quedan mezcla de audio, persistencia de evidencia y job completo; CAP-027 sigue parcial. Las otras seis conservan implementación completada con QA pendiente. Ver [operación y riesgos de captura](SOFLIA_ENGINE_FINAL_VIDEO_GATE.md).
+
+### Incremento posterior — materialización verificada
+
+Un adaptador interno lee la revisión por organización/ID y descarga su ZIP por ruta y hash persistidos. La materialización extrae solo archivos permitidos y fuentes verificadas; descarga medios secuencialmente en streaming, cotejando tamaño/SHA-256 y límites de consumo. No admite URLs arbitrarias ni redirecciones. El recibo declara `MATERIALIZED_NOT_CAPTURED` y ofrece limpieza limitada al directorio propio.
+
+Validación local: 7 pruebas de ZIP/filesystem y Storage simulado; sin datos remotos reales ni QA formal. No se habilitaron flags ni se conectó el adaptador a un job activo. Materialización implementada; faltan captura visual/audio con red restringida, persistencia del paquete de evidencia y job de conformidad completa. CAP-027 sigue parcial; las otras seis capacidades permanecen completadas con QA pendiente. Ver [operación y límites](SOFLIA_ENGINE_FINAL_VIDEO_GATE.md).
+
+### Incremento posterior — fuente congelada de referencia
+
+Snapshots nuevos pueden incluir, tras `COMPOSITION_CONFORMANCE_REFERENCE_V1=true`, HTML de preview compilado desde el documento/contrato congelados y un manifiesto de hashes/medios locales. La reutilización exige versión de referencia cuando está activada; entry point del render y comportamiento por defecto se conservan. Un verificador valida los archivos extraídos, pero el consumidor debe comprobar antes el ZIP contra la revisión autorizada. El manifiesto declara medios pendientes de materializar y audio no capturado.
+
+Pasan 6 pruebas nuevas y 5 existentes de snapshots; no se generaron snapshots remotos, no se habilitó el flag y no se hizo QA formal. La persistencia de la fuente está implementada; faltan materialización verificada, capturas/mezcla en navegador y job de conformidad completa. CAP-027 permanece parcial. Ver [contrato de fuente congelada](SOFLIA_ENGINE_FINAL_VIDEO_GATE.md).
+
+### Incremento posterior — comparación temporal de audio
+
+El comparador MP4 y el gate unificado aceptan una mezcla de referencia con hash documental y SHA-256; comparan envolventes estéreo y miden lag con política provisional acotada. Un desfase/diferencia falla el reporte; silencio, repetición o límite de duración quedan inconclusos. Sin referencia se informa `NOT_REQUESTED`, sin declarar sincronía comprobada. Pasan 8 pruebas temporales y 7 de loudness; el gate incorpora cobertura de opciones y propagación de la referencia. Ver [alcance y limitaciones](SOFLIA_ENGINE_FINAL_VIDEO_GATE.md).
+
+CAP-027 sigue parcial: faltan generación/persistencia confiable de la mezcla de preview, capturas persistidas y ejecución automática de conformidad completa. La correlación de envolventes no certifica identidad del contenido. No se ejecutó FFmpeg real ni QA formal.
+
+Resultado: **6 capacidades con implementación completada y QA pendiente; 1 capacidad parcial**. Esta revisión reclasifica cobertura funcional, no resultados de pruebas ni aprobación de producción. Los estados parciales de los registros anteriores son históricos; la vista ejecutiva siguiente es el estado vigente.
+
+- CAP-017: waveform LOD, diagnóstico de fuente, metros estéreo de pico/RMS, normalización y gate de loudness del worker, más medición del MP4 exportado, están implementados. Restan FFmpeg real, CORS/autoplay, calibración, escucha y recorrido autenticado. La integración automática del control del video exportado se mantiene como pendiente de CAP-027, que cubre el gate transversal de exportación; no se exige una segunda implementación del analizador de audio.
+- CAP-026: actualización visual incremental, revisión fija, ACK por navegación, recuperación y métricas están implementados. Restan validación con servicios reales, medición sostenida, definición/aprobación de umbrales y rollout.
+- CAP-023: biblioteca/búsqueda, reemplazo compatible y relink conservador están implementados. Restan recorridos autenticados de permisos, fuente ausente, preservación editorial y exportación real.
+- CAP-009, CAP-010 y CAP-004 conservan implementación completada; sus próximos trabajos son regresión integrada y corrección de defectos si aparecen.
+- CAP-027 sigue parcial: el análisis de niveles no compara sincronía o contenido de audio y la verificación de integridad final todavía es un comando manual. Integrar esos controles no se sustituye con una ejecución de QA.
+
+La próxima implementación se concentra en CAP-027: coordinar verificación de integridad del asset final y reporte de conformidad ligados a la misma revisión/archivo, y definir/implementar la comparación temporal de audio. La aplicación de migraciones, despliegue y ejecución sobre datos reales permanecen diferidos. No agregar funcionalidades a las seis capacidades completas sin una brecha o defecto concreto.
+
+## Ruta de implementación por bloques — actualización 2026-09-30
+
+Cada entrega debe informar las siete capacidades y distinguir implementación completa de aprobación integral. La ausencia del tester bloquea E2E/QA, no la implementación de funciones pendientes. Se priorizan bloques funcionales con criterio de salida explícito; correcciones pequeñas de CAP-026 se atienden cuando exista un defecto concreto, sin convertirlas en una cola indefinida de refactorizaciones.
+
+| Bloque | Capacidad | Trabajo pendiente de implementación o integración | Condición externa para cierre integral |
+| --- | --- | --- | --- |
+| Audio editorial | CAP-017 | Implementación completada; diagnóstico, metros estéreo tras flag y medición final existentes. Automatización transversal de exportación seguida en CAP-027. | Worker FFmpeg real, CORS/autoplay, calibración/escucha y QA autenticado. |
+| Medios | CAP-023 | Implementación completada: biblioteca, replace y relink conservador. | Tenant aislado, pérdida real de fuente, permisos y exportación con el reemplazo. |
+| Conformidad | CAP-027 | Parcial: job/verificador/reporte, lag v3, RMS y audio largo <=600 s implementados. Resta cerrar playback/eventos y audit de gates visuales/entorno contra roadmap. | Migración/despliegue autorizados, exportación remota y corpus real. |
+| Sincronización | CAP-026 | Implementación completada: revisión fija, generación, ACK, recuperación y telemetría. | Sesión real, métricas sostenidas, umbrales acordados y navegadores. |
+| Regresión integrada | CAP-009, CAP-010, CAP-004 | Implementación completa; cambios adicionales requieren un defecto o brecha concreta. | Tester y recorridos integrados de historial, recuperación y acciones masivas. |
+
+El diagnóstico de audio no aprueba el clip ni la mezcla: las mediciones pertenecen al archivo completo y el pico estimado solo aplica ganancia constante. Un archivo que falló su análisis conserva el aviso después de atenuarlo. Fades, recortes, ducking y suma de pistas requieren medición final.
+
+## Vista ejecutiva
+
+| Prioridad | Capacidad | Fase | Implementación | Local | E2E | QA | Rollout | Próxima entrega verificable |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| P0 | CAP-009 Undo/redo general | 0 | Completada | Parcial | Pendiente | Pendiente | No habilitado | Recorrido autenticado de edición, deshacer/rehacer, recarga y efectos externos. |
+| P0 | CAP-027 Paridad medible preview/render | 0 + cierre transversal | Parcial | Parcial | Pendiente | Pendiente | No habilitado | Audio <=600 s, timing v3 y RMS implementados. Cerrar playback/eventos, SSIM/texto y entorno/color según audit del roadmap; QA pendiente. |
+| P0 | CAP-026 Preview sync productivo | 0 | Completada | Parcial | Pendiente | Pendiente | No habilitado | Medir latencia, frames obsoletos y fallos de sincronización en sesión autenticada. |
+| P0 | CAP-010 Autosave y recuperación | 0 | Completada | Parcial | Pendiente | Pendiente | No habilitado | Probar cierre abrupto, caída de red, conflicto entre pestañas y recuperación idempotente. |
+| P1 | CAP-004 Acciones masivas | 1 | Completada | Parcial | Pendiente | Pendiente | No habilitado | E2E de selección múltiple, operaciones atómicas, permisos y undo/redo. |
+| P1 | CAP-017 Waveform, metros y loudness | 2 | Completada | Parcial | Pendiente | Pendiente | No habilitado | Calibración de metros en navegador, ejecución de medición final con FFmpeg real y escucha. |
+| P1 | CAP-023 Media bin y reemplazo | 2 | Completada | Parcial | Pendiente | Pendiente | No habilitado | E2E autenticado de relink con fuente ausente, API → preview → render. |
+
+`Parcial` en **Local** reconoce contratos y smokes existentes, pero indica que todavía falta un reporte consolidado para la capacidad completa. Ninguna de las siete tiene aprobación de QA integral ni GA.
+
+Por decisión de implementación, los procesos E2E/QA con tester quedan diferidos. Mientras tanto se continúa con contratos, manejo de errores y validaciones técnicas locales; ninguna de estas ejecuciones cambia el estado de QA o habilita rollout.
+
+## Cola de entregas y dependencias
+
+| Orden | Entrega | Dependencia / razón | Criterio de salida |
+| --- | --- | --- | --- |
+| 0 | Preparar QA aislado | Tenant, roles, medios sintéticos y reales autorizados, cuentas de prueba, worker FFmpeg y acceso de prueba al proveedor remoto. No usar borradores productivos. | Identidades y datos de QA documentados, secretos fuera del repositorio, limpieza/retención acordada. |
+| 1 | QA de CAP-026 | Implementación completada. Una vista sincronizada y medible permite interpretar con confianza la paridad de CAP-027. | Smoke autenticado + métricas y umbrales acordados; no quedan frames obsoletos silenciosos. |
+| 2 | QA de CAP-017 y CAP-023 | Implementaciones completadas. Audio y sustitución de medios amplían el corpus real que debe comparar CAP-027. | Worker real y escucha; relink/replace seguro con asset identity estable y pruebas cross-tenant. |
+| 3 | Implementación pendiente y QA de CAP-027 | Job/reporte y mediciones RMS/timing v3/audio largo implementados; cerrar playback y gates restantes contra roadmap mientras QA sigue diferido. | Gates del contrato implementados y después corpus versionado preview/exportación local/remota dentro de tolerancias acordadas; diferencias justificadas. |
+| 4 | QA integrado de CAP-009, CAP-010 y CAP-004, más regresión de las siete | El código funcional existente no equivale a un flujo aprobado. | Matriz feliz/límite/error/autorización/concurrencia ejecutada; defectos P0/P1 cerrados o decisión formal de no liberar. |
+| 5 | Piloto y decisión de GA | Depende de evidencia de los pasos 0–4. | Monitoreo, rollback y responsables definidos; aprobación de Producto, QA y dueño técnico. |
+
+Las funciones experimentales de la Fase 3 (paths, rate, freeze) mantienen sus propias flags y gates; no son condición para cerrar estas siete capacidades ni se consideran GA por el éxito de este plan. Fases 4 (HTML editable) y 5 (AI-ready) quedan fuera del alcance.
+
+## Criterios de cierre por capacidad
+
+| Capacidad | Evidencia obligatoria antes de marcar E2E/QA como `Verificado` |
+| --- | --- |
+| CAP-009 | Comandos de edición representativos y operaciones compuestas; secuencia deshacer/rehacer estable tras recarga, permisos respetados y efectos externos no duplicados. |
+| CAP-027 | Checkpoints visuales y temporales, fuentes/codecs conocidos, audio y exportación remota; versión del renderer y tolerancias registradas; fallos producen reporte accionable. |
+| CAP-026 | Preview refleja la última revisión confirmada, detecta ACK obsoleto/recompilación fallida, tiene telemetría de latencia/error y un umbral de aceptación definido. |
+| CAP-010 | Crash/recarga, modo sin red, límite del journal, conflicto de pestañas y replay idempotente; nunca sobrescribe cambios ajenos sin aviso. |
+| CAP-004 | Duplicate/delete/ripple/insert/overwrite/copy-paste/align-distribute sobre selección múltiple; operación atómica o fallo claro, undo consistente y confirmación donde sea destructiva. |
+| CAP-017 | Waveform por LOD sin picos perdidos, caché invalidada al cambiar contenido; medición final de LUFS y true peak en worker real; silencio/error no aparecen como éxito; revisión auditiva. |
+| CAP-023 | Búsqueda, identidad de assets y replace/relink sin perder trims/efectos; incompatibilidad explícita, acceso por organización, URLs temporales no persistidas y render con el medio correcto. |
+
+## Matriz mínima de QA integrado
+
+| Escenario | Capacidades | Validación |
+| --- | --- | --- |
+| Editar, seleccionar, operar en lote, deshacer/rehacer, guardar y reabrir | 009, 010, 004 | Documento y preview coinciden; historial y recuperación no duplican mutaciones. |
+| Interrumpir guardado; usar dos pestañas y perder conectividad | 009, 010, 026 | Conflicto visible y recuperable; no hay pérdida silenciosa ni frame obsoleto presentado como vigente. |
+| Sustituir medio, perder archivo y relinkear; intentar acceso de otro tenant | 023, 026, 027 | Referencias preservadas, denegación de acceso y asset correcto en exportación. |
+| Generar waveform, normalizar audio y exportar | 017, 027 | Datos y picos coherentes, archivo final dentro de política de loudness, escucha satisfactoria. |
+| Render local y remoto de corpus versionado | 026, 027 | Comparación visual/temporal/audio, error budget y reporte de divergencias; incluir codecs y navegadores aprobados. |
+
+Las suites disponibles (`test:composition-timeline`, `test:composition-preview-sync`, `test:audio-processing`, `test:hyperframes-media`, `test:security-boundaries`, `qa:composition-preview-runtime`, `qa:composition-command-palette`, `qa:composition-waveform`, `qa:composition-media-replacement`, `qa:composition-conformance:ci`) son puntos de partida; registrar cada ejecución concreta abajo. Su existencia no es evidencia de aprobación. El [roadmap técnico](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_ARCHITECTURE_ROADMAP.md) describe contratos y limitaciones actuales.
+
+## Registro de evidencias y decisiones
+
+| Fecha | Capacidad | Ambiente / revisión | Prueba y resultado | Evidencia | Limitación / siguiente acción |
+| --- | --- | --- | --- | --- | --- |
+| 2026-09-30 | CAP-017/027 (audio del MP4 final) | Local, comandos de análisis controlados | 7/7 pruebas de medición/política/resultado combinado, typecheck web y revisión del diff pasan. Lee `input_i`, `input_tp`, `input_lra` y `input_thresh` de FFmpeg sobre la primera pista del MP4 sin modificarlo. Reporte v2 con política opcional `course-v1`; fallo de medición, silencio o incumplimiento invalidan el resultado aunque la parte visual pase. | [Medición](../../apps/web/src/domains/production/composition-editor/qa/composition-exported-audio-loudness.ts), [integración](../../apps/web/src/domains/production/composition-editor/qa/composition-exported-video-conformance.ts), [pruebas](../../apps/web/src/domains/production/composition-editor/__tests__/composition-exported-audio-loudness.test.ts) | El caso integrado existente no pudo iniciar FFmpeg por `spawn EPERM`; sus tres casos puros pasaron. No hay medición validada sobre un MP4 real ni QA con tester. Sin política, niveles medibles se registran como `MEASURED_POLICY_NOT_SET`; no se aprueba loudness. Política provisional explícita −16 LUFS ±1 LU y pico máximo −1 dBTP. Falta automatización de producción, exportación remota, sincronía/contenido de audio y escucha. Ambas capacidades siguen parciales. |
+| 2026-09-30 | CAP-017 (metros en vivo) | Local, flag apagada | Pasan 6 pruebas de metros, 39 del compilador, 10 del protocolo, typecheck web y revisión del diff. Runtime de mezcla estéreo, pico/RMS de muestras, retención de clipping y reset integrados con reproducción, pausa y buffering. Hasta 32 fuentes; 2048 muestras por canal cada 100 ms. | [Runtime](../../apps/web/src/domains/production/composition-editor/composition-audio-meter-runtime.ts), [panel](../../apps/web/src/domains/materials/components/composition-editor/CompositionAudioMeters.tsx), [pruebas](../../apps/web/src/domains/production/composition-editor/__tests__/composition-audio-meter-runtime.test.ts) | Flag `NEXT_PUBLIC_COMPOSITION_AUDIO_METERS` deshabilitada. Las pruebas de runtime usan APIs controladas; falta navegador real, CORS, autoplay y calibración. No mide LUFS/true peak ni aprueba el archivo exportado. CAP-017 permanece parcial. |
+| 2026-09-30 | CAP-017 (diagnóstico editorial) | Local, sin despliegue | `test:audio-processing` web: 22/22; typecheck web y revisión del diff pasan. El inspector consume mediciones existentes y calcula pico con ganancia logarítmica; cuatro casos añadidos cubren atenuación, silencio/mute/sin medición, exceso de pico, diagnóstico fallido persistente y ganancia inválida. | [Diagnóstico](../../apps/web/src/domains/production/audio-processing/audio-clip-diagnostics.ts), [panel](../../apps/web/src/domains/materials/components/composition-editor/CompositionAudioDiagnostics.tsx), [pruebas](../../apps/web/src/domains/production/audio-processing/__tests__/audio-analysis.service.test.ts) | No se ejecutó QA visual ni worker real. No mide mezcla, recorte, fades o ducking; metros en vivo y audio exportado siguen pendientes. CAP-017 continúa parcial. |
+| 2026-09-29 | CAP-027 (freeze experimental) | Local, MP4 sintético | `qa:composition-video-freeze`: tres checkpoints, diferencia de píxeles 0; MP4 local decodificado. | [Roadmap, Fase 3](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_ARCHITECTURE_ROADMAP.md#fase-3--edición-avanzada-justificada-ml-por-bloque) | No prueba exportación remota ni medios reales; no cambia el estado global de CAP-027. |
+| 2026-09-29 | CAP-027 (gate temporal) | Local, Edge/Chromium; fixture sintética | `test:composition-preview-sync` y `qa:composition-conformance:ci` pasan. El comparador mide cada captura contra su checkpoint esperado y entre targets; rechaza muestras inválidas/duplicadas. Reporte: 25/25, 0 fallos, error de píxeles 0, deriva temporal máxima 0 frames. | [Contrato y evaluador](../../apps/web/src/domains/production/composition-editor/composition-preview-render-conformance.ts), [comparador de capturas](../../apps/web/src/domains/production/composition-editor/qa/composition-conformance-files.ts) | Mide HTML local capturado, no el MP4 exportado por el proveedor ni su pista de audio; CAP-027 permanece parcial. |
+| 2026-09-29 | CAP-027 (MP4 local) | Local, FFmpeg empaquetado; fixture sintética | `test:composition-exported-video`: 3/3 casos pasan. Compara frames decodificados del MP4 con preview, valida resolución/FPS/duración y timestamps reales, y rechaza alteración visual o recibo SHA-256 incorrecto. | [Comparador MP4](../../apps/web/src/domains/production/composition-editor/qa/composition-exported-video-conformance.ts), [CLI](../../apps/web/src/domains/production/composition-editor/qa/run-composition-exported-video-conformance.ts) | El recibo local no está autenticado; no se probó MP4 remoto del proveedor, audio ni codecs/medios reales. CAP-027 permanece parcial. |
+| 2026-09-29 | CAP-027 (procedencia persistida) | Servicio local; sin datos remotos reales | `test:hyperframes-render-evidence`: 5/5 casos pasan. Un endpoint protegido por rol y empresa verifica solicitud → job → revisión congelada → asset final; solo reconoce el checksum si lleva la marca del verificador de Storage. | [Servicio de evidencia](../../apps/web/src/domains/production/hyperframes/hyperframes-render-evidence.service.ts), [endpoint](../../apps/web/src/app/api/production/hyperframes/renders/%5BrequestId%5D/evidence/route.ts) | Sin prueba integrada contra Supabase real; no sustituye QA visual/audio. |
+| 2026-09-29 | CAP-027 (integridad por rangos) | Importador Edge; respuestas HTTP sintéticas | `test:hyperframes-video-range`: 4/4 casos pasan. El probe exige un tamaño acotado y cada descarga verifica `Content-Range`, longitud y límite del cuerpo antes de enviarse a Storage. | [Validador de rangos](../../supabase/functions/_shared/hyperframes-video-range.ts), [importador](../../supabase/functions/import-hyperframes-video/index.ts) | Evita rangos desplazados o repetidos y consumo de memoria no acotado, pero no calcula SHA-256 global ni detecta contenido distinto en el mismo rango entre reintentos. Sin prueba Edge/Storage real. |
+| 2026-09-29 | CAP-027 (checksum final) | Proceso local Node; Storage simulado | `test:video-integrity`: 5/5 casos pasan. El verificador lee el MP4 final en streaming, exige tamaño exacto y URL firmada del objeto esperado; una RPC transaccional persiste SHA-256 solo tras validar solicitud, job, revisión, asset, ruta y tamaño. Una protección de BD impide a cuentas autenticadas falsificar campos de integridad del asset final. | [Verificador](../../apps/api/src/features/video-integrity/video-integrity.service.ts), [migración](../../supabase/migrations/20260929120000_record_hyperframes_final_video_checksum.sql) | No se ejecutó contra Storage/BD reales ni se desplegó como job automático. El objeto podría cambiar después de verificarse; se requiere política de inmutabilidad o revalidación antes de aprobación. Audio y paridad remota pendientes. |
+| 2026-09-29 | CAP-027 (detección de sobrescritura) | Proceso local Node; Storage simulado | `test:video-integrity`: 5/5 casos pasan. `check:hyperframes-final-video` vuelve a leer el objeto en streaming, exige checksum previamente emitido por el verificador y falla con `VIDEO_INTEGRITY_OVERWRITTEN` ante cambio de contenido, incluso con igual tamaño; no escribe en BD. | [Servicio](../../apps/api/src/features/video-integrity/video-integrity.service.ts), [comando](../../apps/api/src/features/video-integrity/verify-entry.ts) | Gate manual: no invalida la evidencia persistida ni detecta cambios hasta ejecutarse; falta prueba contra Storage real y automatización previa a aprobación de QA. |
+| 2026-09-29 | CAP-027 (puente a comparación MP4) | Proceso local Node; Storage simulado | `test:video-integrity`: 6/6 casos pasan y build API pasa. El recheck exige revisión congelada y hash documental coherentes con el job y puede emitir con `--receipt-output` un recibo nuevo `{documentHash, videoSha256}` compatible con el comparador de MP4. No sobrescribe evidencia previa. | [Servicio](../../apps/api/src/features/video-integrity/video-integrity.service.ts), [recibo](../../apps/api/src/features/video-integrity/video-integrity.receipt.ts), [comando](../../apps/api/src/features/video-integrity/verify-entry.ts) | No se ejecutó contra BD/Storage reales ni MP4 remoto; el recibo no está firmado y se puede editar después de emitirse. Falta QA visual/audio remoto y automatización. CAP-027 permanece parcial. |
+| 2026-09-30 | CAP-027 (timeline MP4 completa) | Local, FFmpeg empaquetado; MP4 sintético | `test:composition-exported-video`: 3/3 casos pasan. El comparador rechaza frames faltantes, timestamps repetidos, datos temporales inválidos y deriva superior al umbral del contrato; informa cantidad de frames y máxima deriva. | [Comparador MP4](../../apps/web/src/domains/production/composition-editor/qa/composition-exported-video-conformance.ts), [pruebas](../../apps/web/src/domains/production/composition-editor/__tests__/composition-exported-video-conformance.test.ts) | No cubre calidad de todos los píxeles entre checkpoints, pista de audio, exportación remota real ni codecs/medios diversos. CAP-027 permanece parcial. |
+| 2026-09-30 | CAP-027 (presencia de audio) | Local, contrato y probe sintético | `test:composition-preview-sync` pasa; snapshots: 5/5; evidencia persistida: 5/5; comparador: 2 pruebas puras pasan y TypeScript compila. El contrato v2 congela si existe una fuente audible activa; el reporte falla si el MP4 carece de pista requerida y el lector mantiene compatibilidad con v1. | [Contrato](../../apps/web/src/domains/production/composition-editor/composition-preview-render-conformance.ts), [comparador](../../apps/web/src/domains/production/composition-editor/qa/composition-exported-video-conformance.ts), [pruebas](../../apps/web/src/domains/production/composition-editor/__tests__/composition-exported-video-conformance.test.ts) | El caso integrado con MP4 no pudo ejecutarse en este entorno por `spawn EPERM` al iniciar FFmpeg; no se aplicó migración ni se probó render remoto. Lectores antiguos v1 requieren despliegue coordinado antes de generar v2. Presencia de pista no valida contenido, loudness, true peak ni sincronía. CAP-027 permanece parcial. |
+| 2026-09-30 | CAP-027 (rollout de contrato v2) | Local, sin despliegue | `test:composition-preview-sync` y 5/5 pruebas de snapshot pasan. La generación de snapshots conserva v1 por defecto y solo emite v2 si `COMPOSITION_CONFORMANCE_AUDIO_V2=true`; búsqueda de revisión existente y manifest usan la misma versión. Se probó selección estricta del flag y construcción v1/v2. | [Contrato](../../apps/web/src/domains/production/composition-editor/composition-preview-render-conformance.ts), [snapshot](../../apps/web/src/domains/production/composition-editor/composition-snapshot.service.ts) | No se habilitó el flag ni se hizo rollout. Quitar el flag detiene nuevos v2, pero los ya persistidos requieren lectores v2. Sigue pendiente QA de MP4/audio real. |
+| 2026-09-30 | CAP-027 (señal de audio exportado) | Local, salida FFmpeg sintética | TypeScript compila; 3/3 pruebas puras del comparador pasan. Preview y contrato comparten la regla de audio audible. Para un contrato v2 que exige audio, `volumedetect` informa media y pico de muestras; un pico ≤ -60 dBFS o silencio digital produce `FAIL`, sin atribuirle calidad de loudness o true peak. La suite del compilador de preview pasa 38/38. | [Regla compartida](../../apps/web/src/domains/production/composition-editor/composition-clip-audio.service.ts), [medición](../../apps/web/src/domains/production/composition-editor/qa/composition-exported-audio-signal.ts), [comparador](../../apps/web/src/domains/production/composition-editor/qa/composition-exported-video-conformance.ts) | El cuarto caso integrado requiere FFmpeg y sigue bloqueado por `spawn EPERM` en este entorno; no se verificó el análisis sobre un MP4 real. Un pico aislado puede pasar aunque el programa esté mal mezclado; faltan LUFS, true peak, sincronía y escucha. CAP-027 permanece parcial. |
+| 2026-09-29 | CAP-026 | Local, TypeScript + Edge/Chromium | `test:composition-preview-sync`, compilador (38 pruebas), typecheck y `qa:composition-preview-runtime`: pasan. El evento listo lleva hash y se ignoran confirmaciones obsoletas con sync V2 habilitado. | [Protocolo](../../apps/web/src/domains/production/composition-editor/composition-preview-protocol.ts), [estado](../../apps/web/src/domains/production/composition-editor/composition-preview-sync-state.ts) | Falta prueba E2E autenticada, medición p95 sostenida y matriz de navegadores; no cambia el estado global de CAP-026. |
+| 2026-09-30 | CAP-026 (observabilidad de sync) | Local, sin despliegue | Typecheck web y de pruebas pasan; 7/7 pruebas de telemetría y `test:composition-preview-sync` pasan. La ruta autenticada registra p95 por lote, muestras lentas, histograma fijo, conteos de resultados de guardado/parche y de ACK obsoleto/no verificable, fallo final de runtime y fallo de parche visual. | [Contrato y agregación](../../apps/web/src/domains/production/composition-editor/composition-preview-telemetry.ts), [instrumentación](../../apps/web/src/domains/materials/components/composition-editor/NativeCompositionPreview.tsx), [endpoint](../../apps/web/src/app/api/production/hyperframes/drafts/%5BdraftId%5D/preview-metrics/route.ts) | p95 por lote no es p95 sostenido; sumar los nueve buckets `[≤50, ≤100, ≤250, ≤500, ≤1000, ≤3000, ≤5000, ≤10000, >10000]` ms de todos los lotes permite estimarlo. Telemetría best-effort limitada a 100 eventos por sesión, sin garantía de entrega; falta sesión E2E autenticada, muestra representativa, umbrales acordados y matriz de navegadores. CAP-026 sigue parcial. |
+| 2026-09-30 | CAP-026 (revisión fija y carga fallida) | Local, sync V2 deshabilitado por defecto | `test:composition-preview-sync`, 7/7 pruebas de telemetría, 15/15 de persistencia documental y typecheck web pasan. Con sync V2, el iframe solicita la revisión guardada exacta en vez de compilar el puntero mutable; si no llega el ACK en 30 s, marca fallo, registra `PREVIEW_READY_TIMEOUT` y muestra un reintento. La búsqueda de una revisión por hash toma la ocurrencia más reciente cuando undo/redo repite contenido. La URL anterior se conserva con la flag apagada. | [URL versionada](../../apps/web/src/domains/production/composition-editor/composition-preview-comparison.ts), [watchdog](../../apps/web/src/domains/production/composition-editor/composition-preview-sync-state.ts), [lectura de revisiones](../../apps/web/src/domains/production/composition-editor/composition-document.service.ts), [editor](../../apps/web/src/domains/materials/components/composition-editor/NativeCompositionPreview.tsx) | El timeout es diagnóstico provisional, no umbral aprobado; para respuestas sin señal del iframe no distingue causa de red o autorización. Falta validar UX y latencia con tester. CAP-026 continúa parcial, sin rollout. |
+| 2026-09-30 | CAP-026 (fallo explícito de carga) | Local, sync V2 deshabilitado por defecto | Typecheck web, `test:composition-preview-sync` y 7/7 pruebas de telemetría pasan; el protocolo rechaza códigos no declarados y el documento de error solo emite un código fijo de causa, hash y versión mediante script con nonce. La ruta conserva JSON para consumidores anteriores y devuelve el puente HTML solo al solicitar `sync=2`; el editor acepta la señal únicamente desde el iframe activo y la revisión pendiente, registra `PREVIEW_LOAD_FAILED` y ofrece recargar documento o preview según la causa. | [Puente restringido](../../apps/web/src/domains/production/composition-editor/composition-preview-failure-bridge.ts), [protocolo](../../apps/web/src/domains/production/composition-editor/composition-preview-protocol.ts), [ruta](../../apps/web/src/app/api/production/hyperframes/drafts/%5BdraftId%5D/preview/route.ts), [editor](../../apps/web/src/domains/materials/components/composition-editor/NativeCompositionPreview.tsx) | El bridge clasifica errores de documento/compilación/dependencias tras autorización; fallos de autenticación, red o ejecución del script aún dependen del timeout. Falta QA con tester; CAP-026 sigue parcial y sin rollout. |
+| 2026-09-30 | CAP-026 (ACK por navegación) | Local, sync V2 deshabilitado por defecto | Typecheck web, `test:composition-preview-sync` y 38/38 pruebas del compilador pasan. El cliente avanza la generación al pedir una recarga, incluso del mismo hash; la ruta valida `r`, el compilador la añade a todos los mensajes del iframe y el puente de error la devuelve. El padre descarta tiempo, medios, selección, ACK y error de cargas anteriores antes de cambiar la UI. El watchdog también comprueba que siga esperando esa navegación. El render y la URL legacy no cambian. | [Comparación y parser](../../apps/web/src/domains/production/composition-editor/composition-preview-comparison.ts), [protocolo](../../apps/web/src/domains/production/composition-editor/composition-preview-protocol.ts), [compilador](../../apps/web/src/domains/production/composition-editor/composition-preview-compiler.service.ts), [editor](../../apps/web/src/domains/materials/components/composition-editor/NativeCompositionPreview.tsx) | Identifica navegaciones del iframe, no constituye autenticación del mensaje; el origen sigue siendo opaco y se valida `event.source`. Falta E2E autenticado y matriz de navegadores con tester. CAP-026 permanece parcial y sin rollout. |
+| 2026-09-30 | CAP-026 (autorización visible del preview) | Local, sync V2 deshabilitado por defecto | Typecheck web, `test:composition-preview-sync` y 7/7 pruebas de telemetría pasan. Los errores 401/403 para una navegación V2 versionada envían un puente HTML con código fijo, hash y generación; la ruta comprueba el permiso en la empresa activa y registra el rechazo sin datos sensibles. El editor distingue sesión expirada (enlace a login) de acceso denegado (sin reintento inútil), con política de recuperación testeada. El cliente también clasifica ambos resultados, aunque el endpoint de métricas los rechaza si la sesión o permiso ya no existe. Respuestas legacy conservan JSON. | [Ruta autenticada](../../apps/web/src/app/api/production/hyperframes/drafts/%5BdraftId%5D/preview/route.ts), [contrato](../../apps/web/src/domains/production/composition-editor/composition-preview-protocol.ts), [política de recuperación](../../apps/web/src/domains/production/composition-editor/composition-preview-load-error.ts), [telemetría](../../apps/web/src/domains/production/composition-editor/composition-preview-telemetry.ts) | El puente solo cubre respuestas originadas por esta ruta; fallos de red, CSP externo o middleware previo todavía dependen del timeout de 30 s. No hay prueba integrada de autorización ni QA de sesión real; CAP-026 sigue parcial y sin rollout. |
+| 2026-09-30 | CAP-026 (fallo de navegación y handshake) | Local, sync V2 deshabilitado por defecto | El iframe cargado sin ninguna señal válida del runtime se marca tras 5 s con reintento, mientras que un `onError` del iframe se reporta inmediatamente. Ambos casos requieren la generación activa, hash pendiente y ausencia de una señal válida; se registran por separado. El ACK final mantiene el watchdog de 30 s porque puede esperar decodificación de medios. | [Estado y guardas](../../apps/web/src/domains/production/composition-editor/composition-preview-sync-state.ts), [editor](../../apps/web/src/domains/materials/components/composition-editor/NativeCompositionPreview.tsx), [viewport](../../apps/web/src/domains/materials/components/composition-editor/CompositionPreviewViewport.tsx), [configuración](../../apps/web/src/domains/production/composition-editor/composition-preview-sync.config.ts) | `iframe.onerror` no es fiable para todos los errores HTTP; cuando el iframe nunca completa la navegación, el watchdog de 30 s sigue siendo necesario. Falta validar comportamiento real por navegador con tester. CAP-026 sigue parcial y sin rollout. |
+| 2026-09-30 | CAP-026 (transición terminal única) | Local, sync V2 deshabilitado por defecto | `test:composition-preview-sync` y typecheck web pasan. Error de carga, navegación, falta de handshake, timeout y fallo final de medio ahora comparten una transición que registra un solo evento, detiene el transporte, oculta el spinner y deja visible una recuperación coherente. Mensajes posteriores de playback/estado/error de medios no borran ni pisan el fallo terminal. La recuperación inicial de medios y la recarga tras parche visual fallido conservan su flujo no terminal. | [Controlador en editor](../../apps/web/src/domains/materials/components/composition-editor/NativeCompositionPreview.tsx) | La ruta permanece dentro del componente; falta una prueba integrada del flujo iframe→UI y el QA autenticado con tester. CAP-026 continúa parcial y sin rollout. |
+| 2026-09-30 | CAP-026 (controlador terminal aislado) | Local, sync V2 deshabilitado por defecto | La transición terminal quedó en un módulo de dominio con puertos explícitos para estado, telemetría y presentación; el componente solo adapta esos puertos a refs y setters. Las pruebas comprueban un único evento/presentación por fallo, nuevo fallo permitido tras recarga y alerta visible aunque falle la telemetría. `test:composition-preview-sync` incluye estas pruebas y el typecheck web pasa. | [Controlador](../../apps/web/src/domains/production/composition-editor/composition-preview-terminal-failure.ts), [pruebas](../../apps/web/src/domains/production/composition-editor/__tests__/composition-preview-terminal-failure.test.ts), [editor](../../apps/web/src/domains/materials/components/composition-editor/NativeCompositionPreview.tsx) | Los puertos se prueban de forma aislada, no sustituyen la prueba integrada de navegación del iframe ni QA autenticado; CAP-026 sigue parcial y sin rollout. |
+| 2026-09-29 | CAP-017 | Entorno local | Contratos y smoke de UI documentados. | [Roadmap, Fase 2](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_ARCHITECTURE_ROADMAP.md#fase-2--producción-eficiente-l) | FFmpeg real en worker y escucha pendientes. |
+| 2026-09-29 | CAP-017 | API local; imágenes worker aún sin construir | `test:audio-processing` y build API pasan. El worker ahora rechaza como terminal el AAC que incumpla loudness/true peak antes de subir waveform o resultado; ambas imágenes ejecutarán un smoke FFmpeg real durante su construcción. | [Gate de calidad](../../apps/api/src/features/audio-processing/audio-analysis.ts), [smoke de imagen](../../apps/api/src/features/audio-processing/qa/run-audio-ffmpeg-smoke.ts) | No se ejecutó el smoke en imagen: Docker/FFmpeg del worker no están disponibles aquí. Continúan pendientes build de ambas imágenes, escucha humana y QA autenticado; CAP-017 permanece parcial. |
+| 2026-09-29 | CAP-023 | Entorno local | Pruebas de dominio/persistencia documentadas. | [Roadmap, Fase 2](SOFLIA_ENGINE_MULTIMEDIA_EDITOR_ARCHITECTURE_ROADMAP.md#fase-2--producción-eficiente-l) | No hay mutación autenticada en tenant aislado ni smoke visual con medios reales. |
+| 2026-09-29 | CAP-023 | Local, TypeScript + Edge/Chromium | 14 pruebas de documento/persistencia y `qa:composition-media-replacement` pasan. El servidor valida checksum, tamaño, MIME/extensión, bucket, ruta, dimensiones y estado del medio antes de guardar el reemplazo. | [Validador de reemplazo](../../apps/web/src/domains/production/composition-editor/composition-replacement-asset.ts), [persistencia](../../apps/web/src/domains/production/composition-editor/composition-document.service.ts) | No comprueba existencia física del objeto ni ejecuta API autenticada → render remoto con medios reales. Relink de archivos ausentes sigue pendiente; CAP-023 permanece parcial. |
+| 2026-09-29 | CAP-023 (relink local) | Local, TypeScript + Edge/Chromium | El reemplazo verifica con Storage que el objeto candidato exista y coincida en tamaño antes del append; no exige la existencia de la fuente anterior. El editor ofrece «Revincular» al detectar una fuente ausente/inválida o un fallo de media. Pasan 14 pruebas de documento y el smoke de biblioteca con la opción de relink. | [Persistencia](../../apps/web/src/domains/production/composition-editor/composition-document.service.ts), [biblioteca](../../apps/web/src/domains/materials/components/composition-editor/CompositionStudioLibrary.tsx) | La comprobación de Storage no garantiza permanencia posterior ni verifica bytes/checksum; faltan tenant aislado, API real y render remoto con fuente perdida. CAP-023 sigue parcial. |
+
+Antes de cambiar un estado a `Verificado`, adjuntar un artefacto de CI o reporte persistente con commit, fecha, ambiente, datos de prueba anonimizados, resultado y fallos. Las referencias anteriores son constancia documental de pruebas parciales; no son sustituto de ese artefacto.
+
+## Decisiones abiertas para la próxima revisión
+
+| Decisión | Responsable | Necesaria antes de |
+| --- | --- | --- |
+| Tenant de QA, roles, medios de prueba y política de eliminación | Sin asignar | E2E autenticado |
+| Acceso/consumo de exportación remota de prueba | Sin asignar | Cierre CAP-027 |
+| Matriz oficial de navegadores y codecs | Sin asignar | Aprobación CAP-026/027 |
+| Umbrales de latencia preview y tolerancias de comparación visual/audio | Sin asignar | Gate medible CAP-026/027 |
+| Alcance UX de metros en vivo y semántica de relink de archivos ausentes | Sin asignar | Cierre CAP-017/023 |
+| Dueño técnico, QA, fecha objetivo y criterio de bloqueo de release por defecto | Sin asignar | Piloto |

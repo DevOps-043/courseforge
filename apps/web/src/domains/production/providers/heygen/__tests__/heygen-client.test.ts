@@ -162,6 +162,7 @@ describe("HeyGen separated track client", () => {
 
     assert.equal(capturedUrl, "https://api.heygen.com/v3/voices/speech");
     assert.deepEqual(capturedBody, {
+      engine: "starfish",
       speed: 1,
       text: "Hola mundo",
       voice_id: "voice-1",
@@ -169,6 +170,48 @@ describe("HeyGen separated track client", () => {
     assert.equal(result.durationSeconds, 2.75);
     assert.equal(result.requestId, "speech-request-1");
     assert.equal(result.wordTimestamps[1]?.word, "mundo");
+  });
+
+  it("pins speech to the catalog engine even when the voice defaults to ElevenLabs", async () => {
+    const requests: Record<string, unknown>[] = [];
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      fetchImpl: async (_input, init) => {
+        const body = JSON.parse(String(init?.body));
+        requests.push(body);
+        if (body.engine !== "starfish" && body.locale) {
+          return Response.json({ message: "ElevenLabs speech does not support locale selection." }, { status: 400 });
+        }
+        return Response.json({ data: { audio_url: "https://files.heygen.ai/voice.wav", duration: 1 } });
+      },
+    });
+
+    for (const options of [{ locale: "es-MX" }, { language: "es" }, {}]) {
+      await client.generateSpeech({ ...options, speed: 1.15, text: "Hola", voice_id: "voice-1" });
+    }
+
+    assert.deepEqual(requests, [
+      { locale: "es-MX", speed: 1.15, text: "Hola", voice_id: "voice-1", engine: "starfish" },
+      { language: "es", speed: 1.15, text: "Hola", voice_id: "voice-1", engine: "starfish" },
+      { speed: 1.15, text: "Hola", voice_id: "voice-1", engine: "starfish" },
+    ]);
+  });
+
+  it("does not retry or switch engines after speech rejection", async () => {
+    let attempts = 0;
+    const client = new HeygenClient({
+      apiKey: "test-key",
+      fetchImpl: async () => {
+        attempts += 1;
+        return Response.json({ message: "Voice does not support this engine." }, { status: 400 });
+      },
+    });
+
+    await assert.rejects(
+      () => client.generateSpeech({ locale: "es-MX", speed: 1, text: "Hola", voice_id: "voice-1" }),
+      (error: unknown) => error instanceof HeygenApiError && error.status === 400,
+    );
+    assert.equal(attempts, 1);
   });
 
   it("submits the generated audio URL as the avatar timing source", async () => {

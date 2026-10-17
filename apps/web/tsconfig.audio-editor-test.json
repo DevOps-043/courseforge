@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.audio-processing-test.json",
+  "compilerOptions": { "outDir": ".tmp/audio-editor-tests", "paths": {
+    "@/*": ["./src/*"],
+    "@hyperframes/core/color-grading": ["../../node_modules/@hyperframes/core/dist/colorGrading.d.ts"]
+  } },
+  "include": [
+    "src/domains/production/composition-editor/__tests__/composition-volume-envelope.test.ts",
+    "src/domains/production/composition-editor/__tests__/composition-audio-mix.service.test.ts",
+    "src/domains/production/composition-editor/__tests__/composition-playback-audio-envelope.test.ts",
+    "src/domains/production/composition-editor/__tests__/editor-patch.service.test.ts"
+  ]
+}

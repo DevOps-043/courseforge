@@ -3,6 +3,12 @@ import test from "node:test";
 import JSZip from "jszip";
 import { load } from "cheerio";
 import { materializeHyperframesRenderMedia } from "../hyperframes-render-media.service";
+import { createInitialCompositionDocument } from "../../composition-editor/composition-document.factory";
+import { hashCompositionDocument } from "../../composition-editor/composition-document.service";
+import { applyCompositionEditorPatches } from "../../composition-editor/editor-patch.service";
+import { COMPOSITION_COMPILATION_TARGETS, compileCompositionPreview } from "../../composition-editor/composition-preview-compiler.service";
+import { assertCompositionSnapshotRenderContract } from "../../composition-editor/composition-snapshot.service";
+import { buildHyperframesAssetVariableName } from "../hyperframes-asset-delivery.service";
 
 async function archive(html: string) {
   const zip = new JSZip();
@@ -60,5 +66,57 @@ test("does not accept unsafe delivery URLs or a missing entry point", async () =
   await assert.rejects(materializeHyperframesRenderMedia({ archive: bytes, entryPoint: "missing.html", assetVariables: {} }), /HTML de entrada/);
   for (const url of ["http://storage.test/a.mp3", "https://user:password@storage.test/a.mp3"]) {
     await assert.rejects(materializeHyperframesRenderMedia({ archive: bytes, entryPoint: "index.html", assetVariables: { cf_asset_voice: url } }), /HTTPS sin credenciales/);
+  }
+});
+
+test("preserves a frozen video tail from immutable snapshot through upload materialization", async () => {
+  const previousFlag = process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE;
+  process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE = "true";
+  try {
+    const assetId = "50000000-0000-4000-8000-000000000099";
+    const document = createInitialCompositionDocument({
+      animatedDeck: null,
+      assets: [{ checksum: "a".repeat(64), durationSeconds: 2, fileSizeBytes: 1024, hasAudio: false, mimeType: "video/mp4", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "broll/frozen.mp4", timelineRole: "BROLL" }],
+      plan: { accentColor: "#38BDF8", durationSeconds: 3, subtitle: "Prueba", title: "Frozen snapshot" },
+    });
+    document.canvas.durationSeconds = 3;
+    const video = document.clips.find((clip) => clip.kind === "VIDEO")!;
+    video.durationSeconds = 3;
+    const frozen = applyCompositionEditorPatches(document, [{ clipId: video.id, enabled: true, type: "clip.freeze-tail" }]);
+    assert.doesNotThrow(() => assertCompositionSnapshotRenderContract(frozen));
+    delete process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE;
+    const variable = buildHyperframesAssetVariableName(assetId);
+    const snapshotHtml = await compileCompositionPreview({
+      assetUrls: new Map(),
+      assetVariableNames: new Map([[assetId, variable]]),
+      document: frozen,
+      target: COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER,
+    });
+    const snapshot = new JSZip();
+    snapshot.file("index.html", snapshotHtml);
+    snapshot.file("composition-document.json", JSON.stringify(frozen));
+    const signedUrl = "https://storage.test/frozen.mp4?token=short-lived";
+    const originalBytes = await snapshot.generateAsync({ type: "uint8array" });
+    const preparedBytes = await materializeHyperframesRenderMedia({
+      archive: originalBytes, assetVariables: { [variable]: signedUrl }, entryPoint: "index.html",
+    });
+    const prepared = await JSZip.loadAsync(preparedBytes);
+    const $ = load(await prepared.file("index.html")!.async("string"));
+    const media = $(`video[id="${video.id}-media"]`);
+    assert.equal(media.length, 1);
+    assert.equal(media.attr("src"), signedUrl);
+    assert.equal(media.attr("data-var-src"), variable);
+    assert.equal(media.attr("data-start"), "0");
+    assert.equal(media.attr("data-duration"), "3");
+    assert.equal(media.attr("data-source-offset"), "0");
+    assert.equal(media.attr("data-media-start"), "0");
+    assert.equal(media.attr("loop"), undefined);
+    assert.equal($(`audio[id="${video.id}-audio"]`).length, 0);
+    assert.equal(hashCompositionDocument(JSON.parse(await prepared.file("composition-document.json")!.async("string"))), hashCompositionDocument(frozen));
+    assert.doesNotMatch(await (await JSZip.loadAsync(originalBytes)).file("index.html")!.async("string"), /short-lived/);
+    assert.doesNotMatch(await prepared.file("composition-document.json")!.async("string"), /short-lived/);
+  } finally {
+    if (previousFlag === undefined) delete process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE;
+    else process.env.NEXT_PUBLIC_COMPOSITION_VIDEO_FREEZE = previousFlag;
   }
 });

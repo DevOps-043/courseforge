@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.hyperframes-test.json",
+  "compilerOptions": {
+    "outDir": ".tmp/html-preview-channel-tests"
+  },
+  "include": [
+    "src/domains/production/composition-editor/composition-html-editing-preview-channel.contract.ts",
+    "src/domains/production/composition-editor/composition-html-editing-preview-channel.client.ts",
+    "src/domains/production/composition-editor/__tests__/composition-html-editing-preview-channel.test.ts"
+  ]
+}
