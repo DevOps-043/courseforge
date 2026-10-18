@@ -1,5 +1,7 @@
 "use client";
 
+import { CompositionAutosaveBoundary } from "./CompositionAutosaveBoundary";
+
 import { useEffect, useState } from "react";
 import type { CompositionClip, CompositionTrack } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
@@ -29,7 +31,7 @@ export function CompositionVideoRateControls({ clip, disabled, onPatch, track }:
     }))
   ));
 
-  return <section className="border-t border-slate-200 pt-3 dark:border-white/10">
+  return <CompositionAutosaveBoundary key={clip.id} value={rate} onCommit={() => onPatch([{ clipId: clip.id, playbackRate: rate, type: "clip.playback-rate" }], `Ajustó la velocidad de ${clip.label} a ${rate}×.`)} disabled={disabled}><section className="border-t border-slate-200 pt-3 dark:border-white/10">
     <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500" htmlFor={`rate-${clip.id}`}>Velocidad del video · experimental</label>
     <select
       id={`rate-${clip.id}`}
@@ -44,11 +46,6 @@ export function CompositionVideoRateControls({ clip, disabled, onPatch, track }:
       {rates.map((candidate) => <option key={candidate} value={candidate}>{candidate}×</option>)}
     </select>
     <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Solo B-roll sin audio. Conserva la duración del clip; el rango consumido de la fuente cambia. Restablece a 1× antes de cortar o recortar.</p>
-    <button
-      type="button"
-      disabled={disabled || rate === (clip.playbackRate || 1)}
-      onClick={() => void onPatch([{ clipId: clip.id, playbackRate: rate, type: "clip.playback-rate" }], `Ajustó la velocidad de ${clip.label} a ${rate}×.`)}
-      className="mt-2 rounded border border-cyan-200 px-2 py-1 text-[10px] font-bold text-cyan-800 disabled:opacity-50 dark:border-cyan-400/30 dark:text-cyan-200"
-    >Guardar velocidad</button>
-  </section>;
+
+  </section></CompositionAutosaveBoundary>;
 }

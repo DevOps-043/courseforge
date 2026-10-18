@@ -1,5 +1,7 @@
 "use client";
 
+import { CompositionAutosaveBoundary, useCompositionAutosavePending } from "./CompositionAutosaveBoundary";
+
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
@@ -169,6 +171,7 @@ function MotionAnimationRow({
   onPatch: CompositionMotionPatchHandler;
   selected: boolean;
 }) {
+  const autosavePending = useCompositionAutosavePending();
   const definition = animation.preset
     ? getCompositionMotionPresetDefinition(animation.preset.id)
     : null;
@@ -187,6 +190,7 @@ function MotionAnimationRow({
   const [validationError, setValidationError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (autosavePending) return;
     setDuration(String(animation.timing.durationSeconds));
     setOffset(String(animation.timing.offsetSeconds));
     setIntensity(String(animation.preset?.parameters?.intensity ?? definition?.defaultIntensity ?? 1));
@@ -194,6 +198,7 @@ function MotionAnimationRow({
     setCycleDuration(String(animation.loop?.cycleDurationSeconds ?? 1.5));
     setValidationError(null);
   }, [
+    autosavePending,
     animation.id,
     animation.preset?.parameters?.cycles,
     animation.preset?.parameters?.intensity,
@@ -210,6 +215,8 @@ function MotionAnimationRow({
   );
 
   const saveConfiguration = () => {
+    const required = [duration, offset, ...(definition && animation.preset ? [intensity, cycles] : []), ...(animation.loop ? [cycleDuration] : [])];
+    if (required.some((value) => !value.trim())) { setValidationError("Completa los valores de la animación antes de continuar."); return; }
     const durationValue = Number(duration);
     const offsetValue = Number(offset);
     const intensityValue = Number(intensity);
@@ -272,7 +279,7 @@ function MotionAnimationRow({
   };
 
   return (
-    <div onClickCapture={() => onSelectAnimation(animation.id)} className={`rounded-md bg-slate-50 px-2 py-2 dark:bg-white/5 ${selected ? "ring-2 ring-cyan-400" : ""}`}>
+    <CompositionAutosaveBoundary key={animation.id} value={{ duration, offset, intensity, cycles, cycleDuration }} onCommit={saveConfiguration} disabled={disabled}><div onClickCapture={() => onSelectAnimation(animation.id)} className={`rounded-md bg-slate-50 px-2 py-2 dark:bg-white/5 ${selected ? "ring-2 ring-cyan-400" : ""}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="min-w-0">
           <span className="block truncate text-[10px] font-semibold text-slate-700 dark:text-gray-200">
@@ -350,14 +357,7 @@ function MotionAnimationRow({
           {validationError}
         </p>
       )}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => void saveConfiguration()}
-        className="mt-1.5 w-full rounded border border-slate-300 px-2 py-1 text-[9px] font-bold text-slate-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-200"
-      >
-        Guardar animación
-      </button>
+
       {!animation.loop && <details className="mt-2 border-t border-slate-200 pt-1.5 dark:border-white/10">
         <summary className="cursor-pointer text-[9px] font-bold text-slate-500">
           Avanzado · keyframes ({animation.keyframes.length})
@@ -400,7 +400,7 @@ function MotionAnimationRow({
           })}
         </div>
       </details>}
-    </div>
+    </div></CompositionAutosaveBoundary>
   );
 }
 
@@ -417,6 +417,7 @@ function MotionKeyframeEditor({
   index: number;
   onPatch: CompositionMotionPatchHandler;
 }) {
+  const autosavePending = useCompositionAutosavePending();
   const keyframe = animation.keyframes[index]!;
   const propertyNames = Object.keys(keyframe.values) as Array<keyof typeof keyframe.values>;
   const [values, setValues] = useState<Record<string, string>>(() => (
@@ -431,6 +432,7 @@ function MotionKeyframeEditor({
     && index < animation.keyframes.length - 1;
 
   useEffect(() => {
+    if (autosavePending) return;
     setValues(Object.fromEntries(
       (Object.keys(keyframe.values) as Array<keyof typeof keyframe.values>)
         .map((name) => [name, String(keyframe.values[name])]),
@@ -438,7 +440,7 @@ function MotionKeyframeEditor({
     setEase(keyframe.ease || "none");
     setOffsetPercent(String(keyframe.offset * 100));
     setValidationError(null);
-  }, [animation.id, index, keyframe.ease, keyframe.offset, keyframe.values]);
+  }, [autosavePending, animation.id, index, keyframe.ease, keyframe.offset, keyframe.values]);
 
   const save = () => {
     const parsedValues = Object.fromEntries(
@@ -468,7 +470,7 @@ function MotionKeyframeEditor({
   };
 
   return (
-    <div className="rounded border border-slate-200 bg-white p-1.5 dark:border-white/10 dark:bg-slate-950">
+    <CompositionAutosaveBoundary key={`${animation.id}:${index}`} value={{values, ease, offsetPercent}} onCommit={save} disabled={disabled}><div className="rounded border border-slate-200 bg-white p-1.5 dark:border-white/10 dark:bg-slate-950">
       <div className="mb-1 flex items-center justify-between text-[9px] text-slate-500">
         <span>Pose {index + 1}</span>
         <span>{Math.round(keyframe.offset * 100)}%</span>
@@ -514,14 +516,7 @@ function MotionKeyframeEditor({
         )}
       </div>
       {validationError && <p className="mt-1 text-[8px] text-red-600">{validationError}</p>}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => void save()}
-        className="mt-1 w-full rounded border border-cyan-200 py-1 text-[8px] font-bold text-cyan-800 disabled:opacity-50 dark:border-cyan-400/30 dark:text-cyan-200"
-      >
-        Guardar pose
-      </button>
+
       {areCompositionSimplePathsEnabled()
         && animation.propertyGroup === "POSITION"
         && index > 0
@@ -538,7 +533,7 @@ function MotionKeyframeEditor({
         >
           Quitar punto de path
         </button>}
-    </div>
+    </div></CompositionAutosaveBoundary>
   );
 }
 

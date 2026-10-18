@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { CompositionAutosaveBoundary, useCompositionAutosavePending } from "./CompositionAutosaveBoundary";
+
+import { useEffect, useState } from "react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
 import {
@@ -26,7 +28,7 @@ export function CompositionVolumeEnvelopeControls(
   if (!areCompositionVolumeEnvelopeEditsEnabled()) return null;
   return (
     <VolumeEnvelopeDraftControls
-      key={`${props.clip.id}:${JSON.stringify(props.clip.volumeEnvelope ?? [])}`}
+      key={props.clip.id}
       {...props}
     />
   );
@@ -37,9 +39,11 @@ function VolumeEnvelopeDraftControls({
   disabled,
   onPatch,
 }: VolumeEnvelopeControlsProps) {
+  const autosavePending = useCompositionAutosavePending();
   const [points, setPoints] = useState<CompositionVolumeEnvelopePoint[]>(
     clip.volumeEnvelope ?? [],
   );
+  useEffect(() => { if (!autosavePending) setPoints(clip.volumeEnvelope ?? []); }, [autosavePending, clip.id, clip.volumeEnvelope]);
   const [message, setMessage] = useState<string | null>(null);
   const offset = clip.sourceOffsetSeconds ?? 0;
   const sourceDuration = clip.durationSeconds * (clip.playbackRate ?? 1);
@@ -62,8 +66,7 @@ function VolumeEnvelopeDraftControls({
       );
       return;
     }
-    if (
-      await onPatch(
+    const saved = await onPatch(
         [
           {
             type: "clip.volume-envelope",
@@ -72,12 +75,12 @@ function VolumeEnvelopeDraftControls({
           },
         ],
         "Ajustó la curva de volumen del clip.",
-      )
-    )
-      setMessage("Curva guardada. Reproduce para escuchar el resultado.");
+      );
+    if (saved) setMessage("Curva guardada. Reproduce para escuchar el resultado.");
+    return saved;
   };
   return (
-    <section
+    <CompositionAutosaveBoundary value={points} onCommit={save} disabled={disabled}><section
       className="mt-3 space-y-2 rounded-lg border border-slate-300 p-3 dark:border-white/15"
       aria-label="Curva de volumen"
     >
@@ -175,12 +178,13 @@ function VolumeEnvelopeDraftControls({
                 step="0.001"
                 disabled={disabled}
                 value={point.sourceTimeSeconds}
-                onChange={(event) =>
+                onChange={(event) => {
+                  if (!Number.isFinite(event.target.valueAsNumber)) return;
                   update(index, {
                     ...point,
-                    sourceTimeSeconds: Number(event.target.value),
-                  })
-                }
+                    sourceTimeSeconds: event.target.valueAsNumber,
+                  });
+                }}
                 className="w-full rounded border bg-transparent p-1"
               />
             </label>
@@ -199,7 +203,8 @@ function VolumeEnvelopeDraftControls({
                     : Math.round(20 * Math.log10(point.gain) * 10) / 10
                 }
                 onChange={(event) => {
-                  const db = Number(event.target.value);
+                  const db = event.target.valueAsNumber;
+                  if (!Number.isFinite(db)) return;
                   update(index, {
                     ...point,
                     gain: db <= -60 ? 0 : Math.pow(10, db / 20),
@@ -252,15 +257,13 @@ function VolumeEnvelopeDraftControls({
         <button type="button" disabled={disabled} onClick={() => setPoints([])}>
           Restablecer
         </button>
-        <button type="button" disabled={disabled} onClick={() => void save()}>
-          Guardar curva
-        </button>
+
       </div>
       {message && (
         <p role="status" className="text-[10px]">
           {message}
         </p>
       )}
-    </section>
+    </section></CompositionAutosaveBoundary>
   );
 }

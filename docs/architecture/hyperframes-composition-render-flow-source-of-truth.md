@@ -1,7 +1,7 @@
 # Fuente de verdad: documento, medios y render de composiciones HyperFrames
 
 Estado: **vigente; correccion P0 implementada, migracion de integridad pendiente de despliegue**  
-Ultima revision tecnica: 2026-09-04  
+Ultima revision tecnica: 2026-10-17
 Responsables: Production Engineering, Platform y QA  
 Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega de medios y HyperFrames Cloud.
 
@@ -82,6 +82,33 @@ Ninguna URL firmada forma parte del snapshot inmutable. Se genera justo antes
 del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 4. Contrato del documento editable
+
+- Autoguardado por interacción (2026-10-17): los controles de geometría, recorte,
+  motion/poses, texto/captions, color, audio/curvas, profundidad y velocidad no
+  requieren Guardar. El preview sigue siendo local durante el gesto; al finalizar
+  o tras 600 ms de pausa se envía un patch válido, deduplicando blur/Enter.
+  Una interrupción de pointer finaliza el último valor válido del control nativo.
+- `CompositionAutosaveCoordinator` coordina borradores con deshacer/rehacer,
+  cambio de herramienta, entrega y cambio de lección. No se guardan valores
+  numéricos vacíos como cero. Los efectos de sincronización de los inspectores
+  conservan el borrador mientras hay una interacción pendiente.
+- La cola conserva sus límites y falla cerrada, pero los comandos admitidos se
+  registran primero con `composition-pending-edits.ts`: máximo 50, 2 MiB y 24 h.
+  Los comandos no enviados sobreviven a la cancelación de la cola. Su recuperación
+  es explícita, comprueba el hash base y requiere resolver primero una escritura
+  incierta mediante el journal existente. El almacenamiento local no da autoridad:
+  toda escritura mantiene validación y permisos del servidor.
+- HTML guarda cada campo válido o grupo coherente mediante su host editorial;
+  se conserva validación, CAS, seguimiento, adopción y deshacer/rehacer HTML.
+  No se publica una revisión mediante el PUT nativo genérico. Procesar medios,
+  aprobar propuestas, crear recursos, snapshots, render y publicación siguen
+  siendo decisiones explícitas y no se activan por autoguardado.
+- Los límites del historial no cambian: deshacer de sesión hasta 50 acciones y
+  20 MiB; la consulta persistida lista 20 versiones. No se promete reversión de
+  efectos externos ni disponibilidad perpetua de recursos referenciados.
+- Regresión: `test:composition-autosave` y el fixture de navegador
+  `apps/web/tools/qa/composition-autosave.smoke.mjs`. El fixture usa persistencia
+  simulada; no acredita una sesión autenticada, SQL real ni render del proveedor.
 
 - Formato canonico: `courseforge-composition-v2`.
 - Concurrencia: hash SHA-256 estable, enviado como ETag fuerte en `If-Match`.
@@ -359,6 +386,11 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-17: autoguardado de herramientas editoriales, agrupación por interacción,
+  estado pendiente visible y copia recuperable de comandos aún no enviados.
+  Se conserva el host HTML y se retiran pasos de preparar/guardar por campo.
+  Especificación y evidencia: `openspec/changes/editor-action-autosave/`.
 
 - 2026-10-17: añadidos presets de animación específicos y resaltado sincronizado
   de fondo para Social, conservando posición, énfasis, timestamps y lectura V1.

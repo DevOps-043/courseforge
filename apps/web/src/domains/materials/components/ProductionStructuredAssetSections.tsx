@@ -25,6 +25,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { buildHeygenCourseQuery } from "@/domains/production/providers/heygen/heygen-preset-selection";
 import { getErrorMessage } from "@/lib/errors";
 import type {
   VoiceAudio,
@@ -1282,10 +1283,11 @@ export function AvatarVideoSection({
     const tenantPrefix = adminIndex > 0 ? currentPath.slice(0, adminIndex) : "";
     const returnUrl = new URL(window.location.href);
     returnUrl.searchParams.set("componentId", componentId);
-    const query = new URLSearchParams({
+    const query = buildHeygenCourseQuery({
+      avatarPresetId: selectedAvatarPresetId,
       componentId,
       returnTo: `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`,
-      source: "course",
+      voicePresetId: selectedVoicePresetId,
     });
 
     window.location.assign(`${tenantPrefix}/admin/heygen?${query.toString()}`);

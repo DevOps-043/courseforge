@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SceneVisualSelector } from "@/domains/materials/components/composition-editor/SceneVisualSelector";
 import type { SceneVisualCatalog } from "@/domains/production/composition-editor/composition-narrative.types";
 import Link from "next/link";
@@ -26,6 +26,11 @@ import {
 import { toast } from "sonner";
 import { EngineSelect } from "@/components/ui/EngineSelect";
 import { readApiResponse } from "@/lib/client/api-response";
+import { saveHeygenSceneEdits } from "@/domains/production/providers/heygen/heygen-scene-save.client";
+import {
+  resolveHeygenInitialPresetId,
+  resolveHeygenScenePresets,
+} from "@/domains/production/providers/heygen/heygen-preset-selection";
 import type { ProductionCourseContext } from "@/domains/production/course-context/production-course-context";
 import {
   buildSceneGenerateAllPlan,
@@ -234,6 +239,8 @@ export default function HeygenStudioClient({
   const componentId = searchParams.get("componentId");
   const source = searchParams.get("source");
   const returnTo = searchParams.get("returnTo");
+  const preferredAvatarPresetId = searchParams.get("avatarPresetId");
+  const preferredVoicePresetId = searchParams.get("voicePresetId");
   const isCourseContext = Boolean(componentId);
   const safeReturnTo =
     returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")
@@ -283,6 +290,11 @@ export default function HeygenStudioClient({
     last4: null,
   });
   const [isLoadingPresets, setIsLoadingPresets] = useState(false);
+  const [hasLoadedPresets, setHasLoadedPresets] = useState(false);
+  const sceneSaveInFlight = useRef(false);
+  const sceneSaveSequence = useRef(0);
+  const [isSavingSceneClips, setIsSavingSceneClips] = useState(false);
+  const [sceneSaveResult, setSceneSaveResult] = useState<{ kind: "success" | "error"; message: string } | null>(null);
   const [isSyncingCatalog, setIsSyncingCatalog] = useState(false);
   const [updatingPresetId, setUpdatingPresetId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -319,11 +331,16 @@ export default function HeygenStudioClient({
       setUnavailableCatalog((payload.data?.unavailable || { assets: [], avatars: [], voices: [] }) as UnavailableCatalog);
 
       setSelectedAvatarPresetId((current) =>
-        current || avatars.find((preset) => preset.is_default)?.id || avatars[0]?.id || "",
+        resolveHeygenInitialPresetId(avatars, current || preferredAvatarPresetId),
       );
       setSelectedVoicePresetId((current) =>
-        current || voices.find((preset) => preset.is_default)?.id || voices[0]?.id || "",
+        resolveHeygenInitialPresetId(voices, current || preferredVoicePresetId),
       );
+      setHasLoadedPresets(true);
+      if ((preferredAvatarPresetId && !avatars.some((preset) => preset.id === preferredAvatarPresetId))
+        || (preferredVoicePresetId && !voices.some((preset) => preset.id === preferredVoicePresetId))) {
+        toast.info("Algún preset elegido en Producción ya no está disponible. Revisa el avatar y la voz antes de generar.");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error al cargar presets.";
       setErrorMessage(message);
@@ -331,7 +348,7 @@ export default function HeygenStudioClient({
     } finally {
       setIsLoadingPresets(false);
     }
-  }, []);
+  }, [preferredAvatarPresetId, preferredVoicePresetId]);
 
   const loadConnection = useCallback(async () => {
     try {
@@ -446,7 +463,8 @@ export default function HeygenStudioClient({
   }, [componentId]);
 
   const refreshSceneClipStatuses = useCallback(async (notify: boolean) => {
-    if (!componentId) return;
+    if (!componentId || sceneSaveInFlight.current) return;
+    const saveSequenceAtRequest = sceneSaveSequence.current;
     if (notify) setIsCheckingClipStatus(true);
 
     try {
@@ -460,6 +478,7 @@ export default function HeygenStudioClient({
       }
 
       const clips = (payload.data?.clips || []) as AvatarSceneClip[];
+      if (sceneSaveInFlight.current || sceneSaveSequence.current !== saveSequenceAtRequest) return;
       setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
       setSceneClips(clips);
       await loadLatestJob();
@@ -723,6 +742,7 @@ export default function HeygenStudioClient({
   };
 
   const updateSceneClip = (clipId: string, patch: Partial<AvatarSceneClip>) => {
+    setSceneSaveResult(null);
     setSceneClips((current) =>
       current.map((clip) => (clip.id === clipId ? { ...clip, ...patch } : clip)),
     );
@@ -752,6 +772,7 @@ export default function HeygenStudioClient({
   });
 
   const insertSceneClipAt = (visibleIndex: number) => {
+    setSceneSaveResult(null);
     setSceneClips((current) => {
       const next: AvatarSceneClip[] = [];
       let visibleCursor = 0;
@@ -775,11 +796,11 @@ export default function HeygenStudioClient({
   };
 
   const deleteSceneClip = (clipId: string) => {
+    setSceneSaveResult(null);
     setSceneClips((current) =>
       reindexVisibleSceneClips(
         current.flatMap((clip) => {
           if (clip.id !== clipId) return [clip];
-          if (clip.origin === "manual") return [];
           return [{ ...clip, deleted: true, status: "DRAFT" as const }];
         }),
       ),
@@ -857,36 +878,47 @@ export default function HeygenStudioClient({
   };
 
   const saveSceneClips = async (clips: AvatarSceneClip[] = sceneClips) => {
-    if (!componentId) return clips;
-
-    const response = await fetch("/api/production/heygen/scenes", {
-      body: JSON.stringify({
-        avatarGenerationMode,
-        clips,
-        componentId,
-      }),
-      headers: { "Content-Type": "application/json" },
-      method: "PATCH",
-    });
-    const payload = await readApiResponse(response);
-
-    if (!response.ok || !payload.success) {
-      throw new Error(readApiErrorMessage(payload, "No se pudieron guardar las escenas."));
+    if (!componentId) throw new Error("Abre una lección de Producción para guardar sus escenas.");
+    if (sceneSaveInFlight.current) {
+      throw new Error("Ya se están guardando las escenas. Espera a que termine el guardado.");
+    }
+    if (isLoadingPresets || !hasLoadedPresets) {
+      throw new Error("Carga los presets de avatar y voz antes de guardar las escenas.");
     }
 
-    const nextClips = (payload.data?.clips || clips) as AvatarSceneClip[];
-    setVoiceClips((payload.data?.voiceClips || []) as VoiceSceneClip[]);
-    setSceneClips(nextClips);
-    return nextClips;
+    const resolvedClips = resolveHeygenScenePresets(clips, {
+      avatarPresetId: selectedAvatarPresetId,
+      voicePresetId: selectedVoicePresetId,
+    });
+
+    sceneSaveInFlight.current = true;
+    sceneSaveSequence.current += 1;
+    setIsSavingSceneClips(true);
+    setSceneSaveResult(null);
+    try {
+      const saved = await saveHeygenSceneEdits({
+        avatarGenerationMode,
+        clips: resolvedClips,
+        componentId,
+      });
+      setVoiceClips(saved.voiceClips);
+      setSceneClips(saved.clips);
+      return saved.clips;
+    } finally {
+      sceneSaveInFlight.current = false;
+      setIsSavingSceneClips(false);
+    }
   };
 
   const handleSaveSceneEdits = async () => {
     setErrorMessage(null);
     try {
       await saveSceneClips(sceneClips);
+      setSceneSaveResult({ kind: "success", message: "Cambios de escenas guardados." });
       toast.success("Cambios de clips guardados.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudieron guardar los clips.";
+      setSceneSaveResult({ kind: "error", message });
       setErrorMessage(message);
       toast.error(message);
     }
@@ -1499,7 +1531,10 @@ export default function HeygenStudioClient({
           ) : null}
 
           {isSceneMode ? (
-            <div className="mb-5 space-y-3">
+            <fieldset disabled={isSavingSceneClips} aria-busy={isSavingSceneClips} className="mb-5 min-w-0 space-y-3" onChangeCapture={() => setSceneSaveResult(null)}>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                Las escenas sin selección propia usan el avatar y la voz del panel. Las selecciones personalizadas se conservan al guardar.
+              </p>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm font-semibold text-gray-700 dark:text-slate-300">
                   {isLoadingScenes ? "Cargando escenas..." : `${visibleSceneClips.length} clips del video`}
@@ -1508,10 +1543,10 @@ export default function HeygenStudioClient({
                   <button
                     type="button"
                     onClick={handleSaveSceneEdits}
-                    disabled={isGeneratingClips || isLoadingScenes || isRecoveringHistoricalAssets}
+                    disabled={isSavingSceneClips || isGeneratingClips || isLoadingScenes || isLoadingPresets || !hasLoadedPresets || isRecoveringHistoricalAssets}
                     className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
                   >
-                    Guardar cambios
+                    {isSavingSceneClips ? <><Loader2 size={14} className="mr-2 inline animate-spin" />Guardando...</> : "Guardar cambios"}
                   </button>
                   <button
                     type="button"
@@ -1570,6 +1605,16 @@ export default function HeygenStudioClient({
                     Ninguna
                   </button>
                 </div>
+              </div>
+
+              <div role={sceneSaveResult?.kind === "error" ? "alert" : "status"} aria-live="polite" className="text-sm">
+                {isSavingSceneClips ? (
+                  <p className="text-gray-500 dark:text-slate-400">Guardando cambios de escenas...</p>
+                ) : sceneSaveResult ? (
+                  <p className={sceneSaveResult.kind === "error" ? "text-red-600 dark:text-red-300" : "text-emerald-700 dark:text-emerald-300"}>
+                    {sceneSaveResult.message}
+                  </p>
+                ) : null}
               </div>
 
               <InsertSceneClipButton
@@ -1824,7 +1869,7 @@ export default function HeygenStudioClient({
                   );
                 })
               )}
-            </div>
+            </fieldset>
           ) : null}
 
           {!isSceneMode ? (
@@ -1979,6 +2024,7 @@ export default function HeygenStudioClient({
                   type="button"
                   onClick={handleGenerateAllClips}
                   disabled={
+                    isSavingSceneClips ||
                     isGeneratingClips ||
                     isLoadingPresets ||
                     !connection.connected ||
@@ -1997,6 +2043,7 @@ export default function HeygenStudioClient({
                   type="button"
                   onClick={() => handleGenerateSelectedClips("voice_only")}
                   disabled={
+                    isSavingSceneClips ||
                     isGeneratingClips ||
                     isLoadingPresets ||
                     !connection.connected ||
@@ -2024,7 +2071,7 @@ export default function HeygenStudioClient({
                 <button
                   type="button"
                   onClick={handleCheckClipStatus}
-                  disabled={!connection.connected || isCheckingClipStatus || visibleSceneClips.length === 0}
+                  disabled={isSavingSceneClips || !connection.connected || isCheckingClipStatus || visibleSceneClips.length === 0}
                   className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
                 >
                   {isCheckingClipStatus ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}

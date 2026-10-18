@@ -50,7 +50,7 @@ function ScopedInspector({ scope, clipId, documentHash, host }: {
 }) {
   const { view, error, busy, consult, changeFields, restore, history } = useCompositionHtmlEditorialSession(scope, clipId, documentHash, host);
   return <CompositionHtmlPanel title="Contenido HTML editable" label="Inspector HTML editorial" busy={busy}
-    description={view ? (host ? "Campos disponibles para esta diapositiva. Los cambios se aplican al guardar la revisión." : "Campos disponibles en modo de solo lectura.")
+    description={view ? (host ? "Campos disponibles para esta diapositiva. Los cambios válidos se guardan automáticamente en una revisión." : "Campos disponibles en modo de solo lectura.")
       : host ? "Cambia los textos, imágenes y opciones que esta diapositiva tenga habilitados. Primero carga sus campos editables."
       : "Consulta los campos disponibles. La edición está deshabilitada en esta sesión."}>
     <button type="button" data-primary="true" disabled={busy} onClick={() => void consult()}>{busy ? "Cargando campos…" : view ? "Actualizar campos HTML" : "Cargar campos editables"}</button>
@@ -59,7 +59,7 @@ function ScopedInspector({ scope, clipId, documentHash, host }: {
       ? "Si esta diapositiva aún no está preparada, abre «Preparar campos HTML» debajo. Si ya lo está, revisa los permisos y la configuración de lectura."
       : "Pide a un administrador que revise si esta diapositiva tiene campos habilitados, los permisos y la configuración de lectura."}</p>}
     {!view && !error && <p>{host
-      ? "Después de cargar los campos: modifica un valor, pulsa «Preparar cambio» y guarda los cambios preparados. No se genera un video automáticamente."
+      ? "Después de cargar los campos: modifica un valor válido; se guardará automáticamente al terminar de editarlo. No se genera un video automáticamente."
       : "Pulsa «Cargar campos editables» para consultar los valores y límites disponibles. Esta consulta no modifica la diapositiva."}</p>}
     {view && <>
       <p>Revisión editorial {view.revisionVersion}. Plantilla {view.manifest.binding.templateId}.</p>

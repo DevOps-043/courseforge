@@ -1,16 +1,19 @@
 "use client";
 
+import { CompositionAutosaveBoundary, useCompositionAutosavePending } from "./CompositionAutosaveBoundary";
+
 import { useEffect, useState } from "react";
 import { areCaptionEffectsEnabled, type CompositionCaptionEffects } from "@/domains/production/composition-editor/composition-caption-effects.types";
 import { invalidateChangedCaptionText, retainCaptionCueWordWindow } from "@/domains/production/composition-editor/composition-caption-effects.service";
 import { CompositionCaptionEffectsControls } from "./CompositionCaptionEffectsControls";
-import { FileUp, Plus, Save, Subtitles, Trash2, Type } from "lucide-react";
+import { FileUp, Plus, Subtitles, Trash2, Type } from "lucide-react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
 import type {
   CompositionCaptionCue,
   CompositionTextLayerStyle,
 } from "@/domains/production/composition-editor/composition-text-layer.types";
+import { compositionTextLayerStyleSchema } from "@/domains/production/composition-editor/composition-text-layer.types";
 import { readCompositionApiResponse } from "@/domains/production/composition-editor/composition-editor-api.client";
 import {
   MAX_CAPTION_IMPORT_BYTES,
@@ -47,6 +50,7 @@ export function CompositionTextControls({
   const source = clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS"
     ? clip.source
     : null;
+  const autosavePending = useCompositionAutosavePending();
   const [text, setText] = useState("");
   const [cues, setCues] = useState<CompositionCaptionCue[]>([]);
   const [captionOrigin, setCaptionOrigin] = useState<"MANUAL" | "SRT" | "TRANSCRIPT" | "VTT">("MANUAL");
@@ -61,6 +65,7 @@ export function CompositionTextControls({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (autosavePending) return;
     if (!source) return;
     // The inspector is a local draft form and must reset when another persisted clip source is selected.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -73,7 +78,7 @@ export function CompositionTextControls({
     setCaptionPreset("");
     setCaptionImportSummary(null);
     setError(null);
-  }, [clip.id, source]);
+  }, [autosavePending, clip.id, source]);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +146,10 @@ export function CompositionTextControls({
   };
 
   const save = async () => {
+    if (!compositionTextLayerStyleSchema.safeParse({ ...style, fontAssetId }).success) {
+      setError("Revisa los valores de tipografía y estilo antes de continuar.");
+      return;
+    }
     const operations: CompositionEditorPatchOperation[] = [{
       clipId: clip.id,
       style: { ...style, fontAssetId },
@@ -169,10 +178,10 @@ export function CompositionTextControls({
       if (areCaptionEffectsEnabled()) operations.push({ clipId: clip.id, effects: captionEffects || null, type: "clip.caption-effects" });
     }
     setError(null);
-    await onPatch(operations, `Actualizó contenido y estilo de ${clip.label}.`);
+    return onPatch(operations, `Actualizó contenido y estilo de ${clip.label}.`);
   };
 
-  return <section className="border-t border-slate-200 pt-3 dark:border-white/10">
+  return <CompositionAutosaveBoundary key={clip.id} value={{text, style, fontAssetId, cues, captionOrigin, captionEffects}} onCommit={save} disabled={disabled} signal={captionImportSummary}><section className="border-t border-slate-200 pt-3 dark:border-white/10">
     <div className="mb-2 flex items-center gap-2">
       {source.type === "NATIVE_TEXT" ? <Type size={14} /> : <Subtitles size={14} />}
       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
@@ -183,7 +192,7 @@ export function CompositionTextControls({
       ? <textarea aria-label="Contenido de la capa de texto" dir="auto" style={{ unicodeBidi: "plaintext" }} value={text} maxLength={4_000} disabled={disabled} onChange={(event) => setText(event.target.value)} className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white" />
       : <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-slate-300 p-2 dark:border-white/15">
-          <div><p className="text-[10px] font-semibold text-slate-600 dark:text-gray-300">Importar subtítulos</p><p className="text-[9px] text-slate-400">SRT o WebVTT · máximo 1 MiB · reemplaza los cues al guardar</p></div>
+          <div><p className="text-[10px] font-semibold text-slate-600 dark:text-gray-300">Importar subtítulos</p><p className="text-[9px] text-slate-400">SRT o WebVTT · máximo 1 MiB · reemplaza los cues automáticamente al validar el archivo</p></div>
           <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 dark:border-white/15 dark:text-gray-300"><FileUp size={12} /> {isImportingCaptions ? "Importando…" : "Seleccionar archivo"}<input type="file" accept=".srt,.vtt,text/vtt,application/x-subrip" disabled={disabled || isImportingCaptions} className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void importCaptions(file); event.currentTarget.value = ""; }} /></label>
         </div>
         {captionImportSummary && <p role="status" className="rounded-md bg-emerald-50 px-2 py-1.5 text-[10px] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">{captionImportSummary}</p>}
@@ -229,12 +238,12 @@ export function CompositionTextControls({
     <p className="mt-2 text-[10px] leading-4 text-slate-500">La opacidad de la capa, del texto y del fondo son independientes. El preset de captions inicia con fondo transparente.</p>
     {fontError && <p className="mt-2 text-[10px] leading-4 text-amber-700 dark:text-amber-300">{fontError} Puedes continuar con las fuentes incluidas.</p>}
     {error && <p role="alert" className="mt-2 rounded-md bg-red-50 px-2 py-1.5 text-[10px] text-red-700 dark:bg-red-500/10 dark:text-red-200">{error}</p>}
-    <button type="button" disabled={disabled} onClick={() => void save()} className="mt-2 inline-flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"><Save size={13} /> Guardar texto</button>
-  </section>;
+
+  </section></CompositionAutosaveBoundary>;
 }
 
 function NumberField({ disabled, label, max, min, onChange, step = 0.05, value }: { disabled: boolean; label: string; max?: number; min?: number; onChange: (value: number) => void; step?: number; value: number }) {
-  return <label className="text-[10px] font-medium text-slate-600 dark:text-gray-300">{label}<input type="number" value={value} min={min} max={max} step={step} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-white/15 dark:bg-slate-950" /></label>;
+  return <label className="text-[10px] font-medium text-slate-600 dark:text-gray-300">{label}<input type="number" value={value} min={min} max={max} step={step} disabled={disabled} onChange={(event) => { if (Number.isFinite(event.target.valueAsNumber)) onChange(event.target.valueAsNumber); }} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-white/15 dark:bg-slate-950" /></label>;
 }
 
 function ColorField({ disabled, label, onChange, value }: { disabled: boolean; label: string; onChange: (value: string) => void; value: string }) {

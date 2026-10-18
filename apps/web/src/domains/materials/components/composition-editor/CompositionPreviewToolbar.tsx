@@ -56,6 +56,7 @@ interface CompositionPreviewToolbarProps {
   safeAreasVisible: boolean;
   saveError: string | null;
   saving: boolean;
+  pendingEdits?: boolean;
   snapEnabled: boolean;
   toolMenuOpen: boolean;
   toolMenuRef: RefObject<HTMLDivElement | null>;
@@ -67,7 +68,7 @@ interface CompositionPreviewToolbarProps {
   undoLabel: string | null;
 }
 
-export function CompositionPreviewToolbar({ canvas, onCanvasFormatChange, agentProposalActive, canRedo, canUndo, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, libraryOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenCommandPalette, onOpenLibrary, onOpenPresets, onRedo, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSafeAreas, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onUndo, onZoom, previewFullscreen, previewStatusLabel, previewZoom, redoLabel, removalRangeStartSeconds, safeAreasVisible, saveError, saving, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, undoLabel, visualCropEnabled }: CompositionPreviewToolbarProps) {
+export function CompositionPreviewToolbar({ canvas, onCanvasFormatChange, agentProposalActive, canRedo, canUndo, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, libraryOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenCommandPalette, onOpenLibrary, onOpenPresets, onRedo, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSafeAreas, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onUndo, onZoom, previewFullscreen, previewStatusLabel, previewZoom, redoLabel, removalRangeStartSeconds, safeAreasVisible, saveError, saving, pendingEdits, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, undoLabel, visualCropEnabled }: CompositionPreviewToolbarProps) {
   const toolsPanelRef = useRef<HTMLDivElement>(null);
   const historyPanelRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -130,7 +131,7 @@ export function CompositionPreviewToolbar({ canvas, onCanvasFormatChange, agentP
       </div>
       </div>
       <div className={styles.previewUtilities}>
-        <span role="status" data-state={saving ? "saving" : saveError ? "error" : "saved"} className={styles.saveStatus}>{saving ? "Guardando…" : saveError ? "Error" : "Guardado"}</span>
+        <span role="status" data-state={saving ? "saving" : saveError ? "error" : pendingEdits ? "pending" : "saved"} className={styles.saveStatus}>{saving ? "Guardando…" : saveError ? "Error" : pendingEdits ? "Pendiente" : "Guardado"}</span>
       <div className={styles.toolbarGroup} aria-label="Documento e inspector">
         <button type="button" onClick={onOpenCommandPalette} className={`${styles.toolIconButton} ${styles.secondaryToolbarControl}`} title="Comandos del editor (Ctrl/Cmd+K)" aria-label="Abrir paleta de comandos"><Command size={14} /></button>
         {!libraryOpen && <button type="button" onClick={onOpenLibrary} className={styles.toolIconButton} title="Abrir biblioteca y cerrar vista de referencia" aria-label="Abrir biblioteca"><PanelLeftOpen size={14} /></button>}

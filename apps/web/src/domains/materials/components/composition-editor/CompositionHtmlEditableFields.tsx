@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { CompositionAutosaveBoundary } from "./CompositionAutosaveBoundary";
 import { HTML_EDITING_LIMITS, isHtmlEditingDeclaredAttributeValue } from "@/domains/production/composition-editor/html-editing/html-editing.contract";
 import type { HtmlEditingInspectorView } from "@/domains/production/composition-editor/html-editing/html-editing-inspector.contract";
-import { stageHtmlEditingFieldOverride, stageHtmlEditingTargetReset, type HtmlEditingFieldOverride } from "@/domains/production/composition-editor/composition-html-editing-field-command.client";
+import { stageHtmlEditingFieldOverride, stageHtmlEditingTargetReset } from "@/domains/production/composition-editor/composition-html-editing-field-command.client";
 import { CompositionHtmlSlotsField } from "./CompositionHtmlSlotsField";
 import { CompositionHtmlChartField } from "./CompositionHtmlChartField";
 import { CompositionHtmlStyleRangeField } from "./CompositionHtmlStyleRangeField";
@@ -12,62 +13,34 @@ type Element = HtmlEditingInspectorView["manifest"]["elements"][number];
 export function CompositionHtmlEditableFields({ view, busy, onCommit }: {
   view: HtmlEditingInspectorView; busy: boolean; onCommit: (overrides: unknown) => Promise<boolean>;
 }) {
-  const [drafts, setDrafts] = useState<HtmlEditingFieldOverride[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const draftRef = useRef<HtmlEditingFieldOverride[]>([]), submitRef = useRef(false), mountedRef = useRef(true);
-  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
-  function updateDraft(next: HtmlEditingFieldOverride[]) { draftRef.current = next; setDrafts(next); setError(null); }
-  function stage(override: unknown) {
-    if (busy || submitRef.current) return;
-    try { updateDraft(stageHtmlEditingFieldOverride(view, draftRef.current, override)); }
-    catch { setError("No se pudo preparar el campo. Revisa sus opciones, permisos y los límites del lote."); }
+  const submitRef = useRef(false);
+  async function commit(prepare: () => unknown): Promise<boolean> {
+    if (busy || submitRef.current) return false;
+    submitRef.current = true; setSubmitting(true); setError(null);
+    try { return await onCommit(prepare()); }
+    catch { setError("No se confirmó el cambio HTML. Conserva el seguimiento antes de reintentar."); return false; }
+    finally { submitRef.current = false; setSubmitting(false); }
   }
-  function stageTargetReset(targetId: string) {
-    if (busy || submitRef.current) return;
-    try { updateDraft(stageHtmlEditingTargetReset(view, draftRef.current, targetId)); }
-    catch { setError("No se pudo preparar el original del elemento. Revisa permisos de recursos y el límite del lote; no se añadió un reset parcial."); }
-  }
-  async function commit() {
-    if (busy || submitRef.current || !draftRef.current.length) return;
-    submitRef.current = true; setSubmitting(true);
-    try {
-      if (await onCommit(structuredClone(draftRef.current)) && mountedRef.current) updateDraft([]);
-    } catch {
-      if (mountedRef.current) setError("No se pudo completar el guardado. Conserva el seguimiento y no repitas el envío automáticamente.");
-    } finally { submitRef.current = false; if (mountedRef.current) setSubmitting(false); }
-  }
-  const locked = busy || submitting;
   const targetGroups = new Map<string, Element[]>();
   for (const element of view.manifest.elements) {
-    const targetId = element.targetElementId ?? element.elementId;
-    targetGroups.set(targetId, [...(targetGroups.get(targetId) ?? []), element]);
+    const target = element.targetElementId ?? element.elementId;
+    targetGroups.set(target, [...(targetGroups.get(target) ?? []), element]);
   }
   return <div className="space-y-3" aria-label="Edición de campos HTML">
-    <p>Edita y pulsa «Preparar cambio». Después usa «Guardar cambios». Puedes agrupar hasta {HTML_EDITING_LIMITS.commandOverrides} campos por revisión.</p>
-    <div className="flex gap-2">
-      <button type="button" data-primary="true" disabled={locked || !drafts.length} onClick={() => void commit()}>{submitting ? "Guardando…" : `Guardar cambios (${drafts.length})`}</button>
-      <button type="button" disabled={locked || !drafts.length} onClick={() => updateDraft([])}>Descartar preparados</button>
-    </div>
+    <p>Los campos válidos se guardan automáticamente al terminar de editarlos. Cada cambio conserva su revisión e historial HTML.</p>
+    {submitting && <p role="status">Guardando revisión HTML…</p>}
     {error && <p role="alert">{error}</p>}
-    {[...targetGroups].some(([, fields]) => fields.length > 1) && <div aria-label="Restauración de elementos completos" className="space-y-2">
-      <p>Preparar el original de un elemento reemplaza sus cambios locales por resets de todos sus campos. Se publica únicamente al guardar el lote.</p>
-      {[...targetGroups].filter(([, fields]) => fields.length > 1).map(([targetId, fields]) => <div key={targetId}>
-        <span>{targetId} · {fields.map(field => field.label).join(", ")}</span>
-        <button type="button" disabled={locked} onClick={() => stageTargetReset(targetId)}>Preparar original del elemento ({fields.length} campos)</button>
-      </div>)}
-    </div>}
-    {drafts.length > 0 && <ul aria-label="Cambios preparados">{drafts.map(override => <li key={override.elementId}>
-      {view.manifest.elements.find(element => element.elementId === override.elementId)?.label} · {override.operation}
-      <button type="button" disabled={locked} onClick={() => updateDraft(draftRef.current.filter(value => value.elementId !== override.elementId))}>Quitar del lote</button>
-    </li>)}</ul>}
-    {view.manifest.elements.map(element => <EditableField key={`${view.revisionSha256}:${element.elementId}`}
-      element={element} view={view} busy={locked} onChange={stage} />)}
+    {[...targetGroups].filter(([, fields]) => fields.length > 1).map(([target, fields]) => <button key={target} type="button" disabled={busy || submitting}
+      onClick={() => void commit(() => stageHtmlEditingTargetReset(view, [], target))}>Restaurar elemento completo ({fields.length} campos)</button>)}
+    {view.manifest.elements.map(element => <EditableField key={`${view.revisionSha256}:${element.elementId}`} element={element} view={view} busy={busy || submitting}
+      onChange={override => commit(() => stageHtmlEditingFieldOverride(view, [], override))} />)}
   </div>;
 }
 
 function EditableField({ element, view, busy, onChange }: {
-  element: Element; view: HtmlEditingInspectorView; busy: boolean; onChange: (override: unknown) => void;
+  element: Element; view: HtmlEditingInspectorView; busy: boolean; onChange: (override: unknown) => Promise<boolean>;
 }) {
   if (element.kind === "SLOTS") return <CompositionHtmlSlotsField element={element} view={view} busy={busy} onChange={onChange} />;
   if (element.kind === "CHART") return <CompositionHtmlChartField element={element} view={view} busy={busy} onChange={onChange} />;
@@ -75,7 +48,7 @@ function EditableField({ element, view, busy, onChange }: {
   return <EditableScalarField element={element} view={view} busy={busy} onChange={onChange} />;
 }
 function EditableScalarField({ element, view, busy, onChange }: {
-  element: Exclude<Element, { kind: "SLOTS" | "CHART" | "RANGE_TOKEN" }>; view: HtmlEditingInspectorView; busy: boolean; onChange: (override: unknown) => void;
+  element: Exclude<Element, { kind: "SLOTS" | "CHART" | "RANGE_TOKEN" }>; view: HtmlEditingInspectorView; busy: boolean; onChange: (override: unknown) => Promise<boolean>;
 }) {
   const original = view.defaults.find(item => item.elementId === element.elementId);
   const override = view.state.overrides.find(item => item.elementId === element.elementId);
@@ -100,14 +73,14 @@ function EditableScalarField({ element, view, busy, onChange }: {
   function submit() {
     if (busy || !valid) return;
     const common = { elementId: element.elementId };
-    onChange(element.kind === "TEXT" ? { ...common, operation: "SET_TEXT", value: text,
+    return onChange(element.kind === "TEXT" ? { ...common, operation: "SET_TEXT", value: text,
       ...(element.localePolicy ? { locale: selectedLocale } : {}) }
       : element.kind === "IMAGE" ? { ...common, operation: "SET_IMAGE", assetId, fit }
         : element.kind === "THEME" ? { ...common, operation: "SET_THEME", tokenId: element.tokenId, choiceId }
           : element.kind === "ATTRIBUTE" ? { ...common, operation: "SET_ATTRIBUTE", attributeName: element.attributeName, value: attributeValue }
             : { ...common, operation: "SET_VISIBILITY", visible });
   }
-  return <form className="space-y-1 rounded border p-2" onSubmit={event => { event.preventDefault(); submit(); }}>
+  return <CompositionAutosaveBoundary value={{text, localeKey, assetId, fit, choiceId, attributeValue, visible}} onCommit={submit} disabled={busy} className="space-y-1 rounded border p-2">
     <fieldset disabled={busy} className="space-y-1">
       <legend>{element.label}</legend>
       {element.kind === "TEXT" && <label className="block">Texto
@@ -148,9 +121,8 @@ function EditableScalarField({ element, view, busy, onChange }: {
         <span className="block">Ocultarlo no elimina contenido, recursos ni historial.</span>
       </label>}
       <div className="flex gap-2">
-        <button type="submit" disabled={!valid}>Preparar cambio</button>
-        <button type="button" onClick={() => onChange({ operation: "RESET", elementId: element.elementId, property: element.kind })}>Preparar original</button>
+        <button type="button" data-composition-autosave-reset="true" onClick={() => onChange({ operation: "RESET", elementId: element.elementId, property: element.kind })}>Restaurar original</button>
       </div>
     </fieldset>
-  </form>;
+  </CompositionAutosaveBoundary>;
 }

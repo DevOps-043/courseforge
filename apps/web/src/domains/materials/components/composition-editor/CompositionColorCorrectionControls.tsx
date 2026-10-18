@@ -1,7 +1,9 @@
 "use client";
 
+import { CompositionAutosaveBoundary } from "./CompositionAutosaveBoundary";
+
 import { useEffect, useRef, useState } from "react";
-import { RotateCcw, Save } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionColorGrading } from "@/domains/production/composition-editor/composition-color-grading.types";
 import {
@@ -87,12 +89,13 @@ function CompositionColorCorrectionControlState({
     setPersisting(false);
     if (saved) {
       baselineRef.current = colorGrading;
-      return;
+      return true;
     }
 
     baselineRef.current = previousBaseline;
     setValues(toCompositionColorGradingControlValues(previousBaseline));
     onPreviewRef.current(clip.hfId, previousBaseline);
+    return false;
   };
 
   const save = () => persist(
@@ -108,7 +111,7 @@ function CompositionColorCorrectionControlState({
   const runtimeReady = runtimeStatus?.state === "active" || runtimeStatus?.state === "fallback" || runtimeStatus?.state === "inactive";
   const controlsDisabled = disabled || persisting || !runtimeReady;
 
-  return <section className="border-t border-slate-200 pt-3 dark:border-white/10">
+  return <CompositionAutosaveBoundary key={clip.id} value={values} onCommit={save} disabled={controlsDisabled}><section className="border-t border-slate-200 pt-3 dark:border-white/10">
     <div className="flex items-center justify-between gap-2">
       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Corrección de color</p>
       <span aria-live="polite" className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${dirty ? "bg-amber-100 text-amber-800 dark:bg-amber-400/10 dark:text-amber-200" : clip.colorGrading ? "bg-cyan-100 text-cyan-800 dark:bg-cyan-400/10 dark:text-cyan-200" : "bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-gray-400"}`}>
@@ -127,11 +130,11 @@ function CompositionColorCorrectionControlState({
     </div>
     {statusMessage && <p role={runtimeStatus?.state === "unavailable" ? "alert" : undefined} className={`mt-2 rounded-md px-2 py-1.5 text-[10px] leading-4 ${runtimeStatus?.state === "unavailable" ? "bg-amber-50 text-amber-800 dark:bg-amber-400/10 dark:text-amber-200" : runtimeStatus?.state === "fallback" ? "bg-cyan-50 text-cyan-800 dark:bg-cyan-400/10 dark:text-cyan-200" : "bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-gray-400"}`}>{statusMessage}</p>}
     <div className="mt-3 flex flex-wrap gap-1.5">
-      <button type="button" disabled={controlsDisabled || !dirty} onClick={() => void save()} className="inline-flex items-center gap-1 rounded-md bg-cyan-600 px-2 py-1 text-[10px] font-bold text-white disabled:opacity-50 dark:bg-cyan-400 dark:text-slate-950"><Save size={12} /> {persisting ? "Guardando…" : "Guardar color"}</button>
+
       <button type="button" disabled={controlsDisabled || (!dirty && !clip.colorGrading)} onClick={() => void reset()} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-600 disabled:opacity-50 dark:border-white/15 dark:text-gray-300"><RotateCcw size={12} /> Restablecer</button>
     </div>
     {disabled && <p className="mt-2 text-[10px] text-slate-500 dark:text-gray-400">Desbloquea la pista para modificar el color.</p>}
-  </section>;
+  </section></CompositionAutosaveBoundary>;
 }
 
 function ColorControl({ disabled, label, onChange, value }: {
@@ -143,8 +146,8 @@ function ColorControl({ disabled, label, onChange, value }: {
   return <label className="block text-[10px] font-medium text-slate-600 dark:text-gray-300">
     <span className="flex items-center justify-between gap-2"><span>{label}</span><span className="font-mono tabular-nums">{value}</span></span>
     <div className="mt-1 flex items-center gap-2">
-      <input aria-label={label} type="range" min="-100" max="100" step="1" value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} className="min-w-0 flex-1 accent-cyan-500" />
-      <input aria-label={`${label}, valor`} type="number" min="-100" max="100" step="1" value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} className="w-16 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-right font-mono text-[10px] text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white" />
+      <input aria-label={label} type="range" min="-100" max="100" step="1" value={value} disabled={disabled} onChange={(event) => { if (Number.isFinite(event.target.valueAsNumber)) onChange(event.target.valueAsNumber); }} className="min-w-0 flex-1 accent-cyan-500" />
+      <input aria-label={`${label}, valor`} type="number" min="-100" max="100" step="1" value={value} disabled={disabled} onChange={(event) => { if (Number.isFinite(event.target.valueAsNumber)) onChange(event.target.valueAsNumber); }} className="w-16 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-right font-mono text-[10px] text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white" />
     </div>
   </label>;
 }

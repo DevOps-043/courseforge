@@ -111,10 +111,15 @@ export const heygenAvatarClipSchema = z
   })
   .strict();
 
+// Guardar un borrador no exige que ya esté listo para sintetizar voz.
+export const heygenEditableAvatarClipSchema = heygenAvatarClipSchema.extend({
+  script_text: z.string().trim(),
+});
+
 export const heygenScenesPatchRequestSchema = z
   .object({
     avatarGenerationMode: z.enum(["scene_clips", "single_video", "voiceover"]).optional(),
-    clips: z.array(heygenAvatarClipSchema),
+    clips: z.array(heygenEditableAvatarClipSchema),
     componentId: z.string().uuid(),
   })
   .strict();
@@ -133,7 +138,7 @@ export const heygenGenerateClipsRequestSchema = z
     callbackUrl: z.string().url().optional(),
     caption: z.boolean().default(false),
     clipIds: z.array(z.string().trim().min(1)).min(1),
-    clips: z.array(heygenAvatarClipSchema),
+    clips: z.array(heygenEditableAvatarClipSchema),
     componentId: z.string().uuid(),
     engine: z.enum(["avatar_iv", "avatar_v"]).default("avatar_iv"),
     generationTarget: z.enum(["avatar", "voice_only"]),
@@ -149,7 +154,19 @@ export const heygenGenerateClipsRequestSchema = z
     speed: z.number().min(0.5).max(1.5).default(1),
     volume: z.number().min(0).max(1).default(1),
   })
-  .strict();
+  .strict()
+  .superRefine((request, context) => {
+    const selectedIds = new Set(request.clipIds);
+    request.clips.forEach((clip, index) => {
+      if (selectedIds.has(clip.id) && !clip.deleted && !clip.script_text) {
+        context.addIssue({
+          code: "custom",
+          message: `Agrega un guion a la escena ${clip.order} antes de generar.`,
+          path: ["clips", index, "script_text"],
+        });
+      }
+    });
+  });
 
 export const heygenGenerateSceneVoiceRequestSchema = z
   .object({

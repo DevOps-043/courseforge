@@ -96,6 +96,9 @@ import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import { COMPOSITION_PREVIEW_TELEMETRY_CONFIG } from "@/domains/production/composition-editor/composition-preview-telemetry";
 import { clampPreviewPlayhead, classifyPreviewTimeMessage, isPreviewRefreshRequired } from "@/domains/production/composition-editor/composition-preview-playhead.service";
 import { CompositionSaveQueue } from "@/domains/production/composition-editor/composition-save-queue";
+import { CompositionAutosaveCoordinator, type CompositionInteractionAutosave } from "@/domains/production/composition-editor/composition-interaction-autosave";
+import { CompositionAutosaveContext } from "./CompositionAutosaveBoundary";
+import { readCompositionPendingEdits, writeCompositionPendingEdits, settleCompositionPendingEdit, type CompositionPendingEdit } from "@/domains/production/composition-editor/composition-pending-edits";
 import { canCommitCompositionPreviewRuntimePatch, CompositionPreviewRuntimePatchCoordinator } from "@/domains/production/composition-editor/composition-preview-runtime-sync.client";
 import {
   CompositionCommandHistory,
@@ -191,6 +194,7 @@ export type { CompositionStudioAsset, CompositionStudioLesson } from "./composit
 
 type DocumentPayload = CompositionDocumentPayload;
 type SavePatchOptions = {
+  pendingEntryId?: string;
   historyMode?: "RECORD" | "REDO" | "UNDO";
   preservePreviewRuntime?: boolean;
   recoveryEntryId?: string;
@@ -274,11 +278,27 @@ type HistoricalRecoveryResponse = {
 
 /** The native assembly studio: library, full preview, timeline and contextual inspector. */
 export function NativeCompositionPreview(props: NativeCompositionPreviewProps) {
-  return <CompositionNarrativeExtractionHost draftId={props.draftId} enabled={process.env.NEXT_PUBLIC_NARRATIVE_EXTRACTION_ENABLED === "true"}
-    fragmentEnabled={process.env.NEXT_PUBLIC_NARRATIVE_FRAGMENT_ENABLED === "true"}><NativeCompositionPreviewSession {...props} /></CompositionNarrativeExtractionHost>;
+  return <CompositionNarrativeExtractionHost key={props.draftId} draftId={props.draftId} enabled={process.env.NEXT_PUBLIC_NARRATIVE_EXTRACTION_ENABLED === "true"}
+    fragmentEnabled={process.env.NEXT_PUBLIC_NARRATIVE_FRAGMENT_ENABLED === "true"}><NativeCompositionPreviewSession key={props.draftId} {...props} /></CompositionNarrativeExtractionHost>;
 }
 
 function NativeCompositionPreviewSession({ assets, componentId, compositionId, draftId, lessons, onAssetsChanged, onContinueToPublication, onRefreshProductionAssets, onSelectLesson, onVideoCompleted, selectedLessonId }: NativeCompositionPreviewProps) {
+  const autosaveCoordinatorRef = useRef(new CompositionAutosaveCoordinator());
+  const pendingOwnersRef = useRef(new Map<string, CompositionInteractionAutosave>());
+  const [pendingEdits, setPendingEdits] = useState<CompositionPendingEdit[]>([]);
+  const [localAutosavePending, setLocalAutosavePending] = useState(false);
+  useEffect(() => autosaveCoordinatorRef.current.subscribe(() => setLocalAutosavePending(autosaveCoordinatorRef.current.pending)), []);
+  useEffect(() => {
+    const warnPending = (event: BeforeUnloadEvent) => {
+      if (autosaveCoordinatorRef.current.pending || pendingEdits.length > 0) { event.preventDefault(); event.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", warnPending);
+    return () => window.removeEventListener("beforeunload", warnPending);
+  }, [pendingEdits.length]);
+  useEffect(() => {
+    try { setPendingEdits(readCompositionPendingEdits(window.localStorage, draftId)); }
+    catch { setSaveError("No se pudo leer la copia de cambios pendientes. Conserva este navegador y revisa su almacenamiento."); }
+  }, [draftId]);
   const narrativeExtractionHost = useNarrativeExtractionHost();
   const narrativeExtractionHostRef = useRef(narrativeExtractionHost);
   useEffect(() => { narrativeExtractionHostRef.current = narrativeExtractionHost; }, [narrativeExtractionHost]);
@@ -716,6 +736,9 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }, []);
 
   async function runNativeBypass(task: () => Promise<void>) {
+    if (!await autosaveCoordinatorRef.current.flush()) {
+      setSaveError("Hay valores pendientes que necesitan corrección o recuperación antes de continuar."); return;
+    }
     if (htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHostRef.current?.isBlocked()) {
       setSaveError("Hay una escritura editorial pendiente de confirmación o actualización. Revisa su seguimiento antes de editar."); return;
     }
@@ -917,6 +940,10 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     if (resolution.status === "ALREADY_COMMITTED") {
       try {
         clearCompositionRecoveryEntry(window.localStorage, draftId, resolution.entry.entryId);
+        settleCompositionPendingEdit(window.localStorage, draftId, resolution.entry.entryId, currentPayload.documentHash);
+        pendingOwnersRef.current.get(resolution.entry.entryId)?.confirmPersisted();
+        pendingOwnersRef.current.delete(resolution.entry.entryId);
+        setPendingEdits(readCompositionPendingEdits(window.localStorage, draftId));
       } catch {
         return;
       }
@@ -1561,6 +1588,10 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     setPlaying(false);
   };
   const selectClip = (hfId: string, preserveTimelineSelection = false) => {
+    if (autosaveCoordinatorRef.current.pending && !autosaveCoordinatorRef.current.isCommitting) {
+      void autosaveCoordinatorRef.current.flush().then((saved) => { if (saved) selectClip(hfId, preserveTimelineSelection); });
+      return;
+    }
     stopNarrativeRangePreview();
     const nextClip = payloadRef.current?.document.clips.find((clip) => clip.hfId === hfId);
     if (removalRangeStart && nextClip?.id !== removalRangeStart.clipId) setRemovalRangeStart(null);
@@ -1615,6 +1646,10 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     return true;
   };
   const clearSelection = () => {
+    if (autosaveCoordinatorRef.current.pending && !autosaveCoordinatorRef.current.isCommitting) {
+      void autosaveCoordinatorRef.current.flush().then((saved) => { if (saved) clearSelection(); });
+      return;
+    }
     setSelectedHfId(null);
     setSelectedAnimationId(null);
     setSelectedTimelineClipIds(new Set());
@@ -1762,14 +1797,67 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     setLibraryOpen(false);
     setToolMenuOpen(false);
   };
-  function savePatch(
+  async function recoverPendingEdits() {
+    if (!payloadRef.current || saveInFlightRef.current) return;
+    try {
+      const recovery = resolveCompositionRecovery(window.localStorage, draftId, payloadRef.current.documentHash);
+      if (recovery.status !== "NONE") {
+        setSaveError("Primero recarga la composición para comprobar la escritura anterior. No se repitió ningún envío."); return;
+      }
+      const entries = readCompositionPendingEdits(window.localStorage, draftId);
+      for (const entry of entries) {
+        const currentEntry = readCompositionPendingEdits(window.localStorage, draftId).find((candidate) => candidate.id === entry.id);
+        if (!currentEntry) continue;
+        if (currentEntry.baseHash !== payloadRef.current.documentHash) {
+          setSaveError("Los cambios pendientes parten de otra versión. Revisa el historial antes de recuperarlos."); return;
+        }
+        const saved = await savePatch(entry.operations, entry.summary, entry.source, { recoveryEntryId: entry.id });
+        if (!saved) return;
+      }
+    } catch { setSaveError("No se pudo recuperar la copia local. Los cambios pendientes se conservan."); }
+  }
+
+  async function savePatch(
     operations: CompositionEditorPatchOperation[],
     summary: string,
     source: "AGENT" | "USER" = "USER",
     options: SavePatchOptions = {},
   ): Promise<boolean> {
+    if (!options.recoveryEntryId && !await autosaveCoordinatorRef.current.flush()) return false;
     if (htmlEditorialHostRef.current?.isBlocked() || narrativeExtractionHost?.isBlocked()) return Promise.resolve(false);
-    return saveQueueRef.current!.enqueue(() => executeSavePatch(operations, summary, source, options, true));
+    const baseHash = payloadRef.current?.documentHash;
+    if (!baseHash) return false;
+    if (!options.recoveryEntryId && !saveInFlightRef.current && !autosaveCoordinatorRef.current.isRetrying) {
+      try {
+        if (resolveCompositionRecovery(window.localStorage, draftId, baseHash).status !== "NONE") {
+          setSaveError("Comprueba primero el guardado anterior con «Recargar»; los cambios pendientes se conservan."); return false;
+        }
+      } catch { setSaveError("No se pudo comprobar el seguimiento del guardado anterior."); return false; }
+    }
+    const entryId = options.recoveryEntryId || crypto.randomUUID();
+    try {
+      const entries = readCompositionPendingEdits(window.localStorage, draftId);
+      if (!entries.some((entry) => entry.id === entryId)) entries.push({ id: entryId, baseHash, createdAt: Date.now(), operations, source, summary });
+      writeCompositionPendingEdits(window.localStorage, draftId, entries);
+      setPendingEdits(entries);
+      const owner = autosaveCoordinatorRef.current.activeSession;
+      if (owner) pendingOwnersRef.current.set(entryId, owner);
+    } catch {
+      setSaveError("No se pudo conservar el cambio pendiente en este navegador. No se envió la edición.");
+      return false;
+    }
+    return saveQueueRef.current!.enqueue(async () => {
+      const saved = await executeSavePatch(operations, summary, source, { ...options, pendingEntryId: entryId }, true);
+      if (saved) {
+        try {
+          settleCompositionPendingEdit(window.localStorage, draftId, entryId, payloadRef.current?.documentHash);
+          setPendingEdits(readCompositionPendingEdits(window.localStorage, draftId));
+          if (options.recoveryEntryId) pendingOwnersRef.current.get(entryId)?.confirmPersisted();
+          pendingOwnersRef.current.delete(entryId);
+        } catch { setSaveError("El cambio se guardó; no se pudo actualizar la copia local de recuperación."); }
+      }
+      return saved;
+    });
   }
 
   async function executeSavePatch(
@@ -1793,6 +1881,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     let optimisticDocument: CompositionEditorDocument;
     try {
       optimisticDocument = applyCompositionEditorPatches(currentPayload.document, effectiveOperations, source);
+      if (JSON.stringify(optimisticDocument) === JSON.stringify(currentPayload.document)) return true;
     } catch (caught) {
       setSaveError(caught instanceof Error ? caught.message : "El cambio solicitado no es válido.");
       return false;
@@ -1878,6 +1967,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     if (!options.skipRecoveryJournal) {
       try {
         const recoveryEntry = await createCompositionRecoveryEntry({
+          entryId: options.pendingEntryId,
           baseDocumentHash: currentPayload.documentHash,
           draftId,
           operations: effectiveOperations,
@@ -1890,7 +1980,13 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         // Recovery replays interrupted sessions, never a failed save in this session.
         recoveryAttemptedEntryRef.current = recoveryEntry.entryId;
       } catch (recoveryError) {
-        console.warn("[CompositionRecovery] No se pudo registrar el cambio pendiente.", recoveryError);
+        payloadRef.current = currentPayload;
+        setPayload(currentPayload);
+        saveInFlightRef.current = false;
+        setSaving(false);
+        setSaveError("No se pudo conservar el seguimiento del guardado. La edición no se envió; el borrador sigue pendiente.");
+        setFailedSave({ operations, source, summary });
+        return false;
       }
     }
     const requestBody = JSON.stringify({ operations: effectiveOperations, source, summary });
@@ -2055,6 +2151,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function applyNarrativePreassembly() {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     if (componentId === null) { setSaveError("Este contenido independiente no importa ni preensambla fuentes de una lección."); return false; }
     return saveQueueRef.current!.enqueue(async () => {
       const currentPayload = payloadRef.current;
@@ -2110,6 +2207,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function addNativeOverlay(kind: NativeOverlayKind) {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const currentPayload = payloadRef.current;
     if (!currentPayload) return;
     try {
@@ -2135,6 +2233,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function generateTranscriptCaptions() {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const currentPayload = payloadRef.current;
     if (!currentPayload) return;
     try {
@@ -2160,6 +2259,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function addAssetToTimeline(asset: CompositionStudioAsset) {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const currentPayload = payloadRef.current;
     if (!currentPayload || !asset.isEditable) return;
     const baseClipId = asset.deckClip?.id || `asset-${asset.id}`;
@@ -2264,6 +2364,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function replaceSelectedClipSource(asset: CompositionStudioAsset) {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const document = payloadRef.current?.document;
     const clip = document?.clips.find((candidate) => candidate.hfId === selectedHfId);
     if (!document || !clip || selectedTimelineClipIds.size > 1 || clip.source.type !== "PRODUCTION_ASSET") return;
@@ -2345,6 +2446,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function setProductionIntro(asset: CompositionStudioAsset) {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const currentPayload = payloadRef.current;
     if (!currentPayload || !asset.isEditable || !asset.valid || !asset.mimeType.startsWith("video/")) return;
     const durationSeconds = asset.durationSeconds || 0;
@@ -2369,6 +2471,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function clearProductionIntro() {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const currentPayload = payloadRef.current;
     if (!currentPayload) return;
     const hasIntro = currentPayload.document.clips.some((clip) => (
@@ -2496,6 +2599,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function duplicateTimelineSelection() {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const currentDocument = payloadRef.current?.document;
     if (!currentDocument || selectedTimelineClipIds.size === 0) return;
     try {
@@ -2535,6 +2639,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function pasteTimelineClipboard() {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const currentDocument = payloadRef.current?.document;
     if (!currentDocument || saveInFlightRef.current) return;
     let clipIds: readonly string[];
@@ -2596,6 +2701,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function deleteTimelineSelection(ripple: boolean) {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const currentDocument = payloadRef.current?.document;
     if (!currentDocument || selectedTimelineClipIds.size === 0) return;
     const selectedCount = selectedTimelineClipIds.size;
@@ -2625,6 +2731,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     alignment: CompositionSelectionAlignment,
     target: CompositionSelectionAlignmentTarget,
   ) {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const currentDocument = payloadRef.current?.document;
     if (!currentDocument || selectedTimelineClipIds.size === 0) return;
     try {
@@ -2644,6 +2751,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function distributeTimelineSelection(axis: CompositionSelectionDistributionAxis) {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const currentDocument = payloadRef.current?.document;
     if (!currentDocument || selectedTimelineClipIds.size === 0) return;
     try {
@@ -2662,6 +2770,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function rollTimelineSelection(edge: "LEFT" | "RIGHT", deltaFrames: number, anchorClipId?: string) {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const currentDocument = payloadRef.current?.document;
     const selectedClipId = anchorClipId || [...selectedTimelineClipIds][0];
     if (!currentDocument || !selectedClipId) return;
@@ -2685,6 +2794,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function slideTimelineSelection(deltaFrames: number, anchorClipId?: string) {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     const currentDocument = payloadRef.current?.document;
     const selectedClipId = anchorClipId || [...selectedTimelineClipIds][0];
     if (!currentDocument || !selectedClipId) return;
@@ -2707,6 +2817,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function undoLastEdit() {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     if (saving || saveQueueRef.current?.snapshot().status !== "IDLE" || presetBusy || agentProposal || presetPreview) return;
     const entry = commandHistoryRef.current?.peekUndo();
     if (!entry) return;
@@ -2723,6 +2834,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function redoLastEdit() {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
     if (saving || saveQueueRef.current?.snapshot().status !== "IDLE" || presetBusy || agentProposal || presetPreview) return;
     const entry = commandHistoryRef.current?.peekRedo();
     if (!entry) return;
@@ -2750,12 +2862,16 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function restoreHistoryEntry(entry: CompositionDocumentHistoryEntry) {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
+    const payload = payloadRef.current;
     if (!payload || entry.version === payload.version) return;
     const restored = await savePatch([{ document: entry.document, type: "document.restore" }], `Restauró la versión ${entry.version} de la composición.`);
     if (restored) setHistory(null);
   }
 
   async function splitSelectedClipAtPlayhead() {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
+    const selectedClip = payloadRef.current?.document.clips.find((candidate) => candidate.hfId === selectedHfId) ?? null;
     if (!selectedClip) return;
     const clipEnd = selectedClip.startSeconds + selectedClip.durationSeconds;
     if (seconds <= selectedClip.startSeconds + 0.001 || seconds >= clipEnd - 0.001) {
@@ -2774,6 +2890,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function removeSelectedInterval() {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
+    const selectedClip = payloadRef.current?.document.clips.find((candidate) => candidate.hfId === selectedHfId) ?? null;
     if (!selectedClip || removalRangeStart === null) return;
     if (selectedClip.id !== removalRangeStart.clipId) {
       setSaveError("La marca pertenece a otro clip. Selecciona nuevamente el clip y vuelve a marcar el intervalo.");
@@ -2838,6 +2956,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function recalculateDuration() {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
+    const payload = payloadRef.current;
     if (!payload) return;
     let operations: CompositionEditorPatchOperation[];
     try {
@@ -2850,6 +2970,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   }
 
   async function organizeTimeline() {
+    if (!await autosaveCoordinatorRef.current.flush()) return;
+    const payload = payloadRef.current;
     if (!payload) return;
     const hasManualTiming = payload.document.clips.some((clip) => clip.timingSource === "USER_EDITED");
     const confirmation = hasManualTiming
@@ -3513,7 +3635,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   });
 
   return (
-    <section className={`${styles.studio} courseforge-composition-studio`} inert={htmlEditorialBusy || narrativeExtractionHost?.busy} aria-busy={htmlEditorialBusy || narrativeExtractionHost?.busy}>
+    <CompositionAutosaveContext.Provider value={autosaveCoordinatorRef.current}><section className={`${styles.studio} courseforge-composition-studio`} inert={htmlEditorialBusy || narrativeExtractionHost?.busy} aria-busy={htmlEditorialBusy || narrativeExtractionHost?.busy}>
+      {pendingEdits.length > 0 && !saving && <details className="rounded border border-amber-300 p-2 text-xs text-amber-800 dark:text-amber-200"><summary>{pendingEdits.length} cambios conservados para recuperación</summary><ul>{pendingEdits.map(entry => <li key={entry.id}>{entry.summary}</li>)}</ul><button type="button" disabled={Boolean(failedSave || recoveryConflict)} className="mt-2 underline" onClick={() => void recoverPendingEdits()}>Recuperar cambios no enviados</button></details>}
       {htmlEditorialHostRef.current && <CompositionHtmlRecoveryCenter draftId={draftId} compositionId={compositionId} host={htmlEditorialHostRef.current} document={payload?.document} />}
       {commandPaletteOpen && <CompositionCommandPalette items={commandPaletteItems} onClose={() => setCommandPaletteOpen(false)} onRun={runCompositionCommand} />}
       <CompositionPresetPanel
@@ -3526,7 +3649,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         onClose={() => setPresetPanelOpen(false)}
         onCreate={createCompositionPreset}
         onDismiss={dismissCompositionPresetPreview}
-        onPreview={previewCompositionPreset}
+        onPreview={async (presetId) => { if (await autosaveCoordinatorRef.current.flush()) await previewCompositionPreset(presetId); }}
         onReload={loadCompositionPresets}
         onUndo={undoLastCompositionPreset}
         open={presetPanelOpen}
@@ -3537,6 +3660,10 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           onDiscard={() => {
             try {
               clearCompositionRecoveryEntry(window.localStorage, draftId, recoveryConflict.entryId);
+              settleCompositionPendingEdit(window.localStorage, draftId, recoveryConflict.entryId);
+              pendingOwnersRef.current.get(recoveryConflict.entryId)?.discard();
+              pendingOwnersRef.current.delete(recoveryConflict.entryId);
+              setPendingEdits(readCompositionPendingEdits(window.localStorage, draftId));
               setRecoveryConflict(null);
             } catch {
               setSaveError("El navegador no permitió descartar la copia local. Revisa el almacenamiento del sitio.");
@@ -3552,7 +3679,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
             setFailedSave(null);
           }}
           onRetry={failedSave
-            ? () => void savePatch(failedSave.operations, failedSave.summary, failedSave.source)
+            ? () => void loadDocument()
             : undefined}
           retrying={saving}
         />
@@ -3585,7 +3712,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           onAddTextLayer={() => void addNativeOverlay("TEXT")}
           onClearIntro={clearProductionIntro}
           onInsertionModeChange={changeAssetInsertionMode}
-          onSelectLesson={onSelectLesson}
+          onSelectLesson={(lessonId) => { void autosaveCoordinatorRef.current.flush().then(async (saved) => { if (saved) { await saveQueueRef.current?.whenIdle(); onSelectLesson(lessonId); } }); }}
           onSelectAsset={selectClip}
           onSetIntro={setProductionIntro}
           selectedLessonId={selectedLessonId}
@@ -3615,7 +3742,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
             inspectorOpen={inspectorOpen}
             libraryOpen={libraryOpen}
             onCloseHistory={() => setHistory(null)}
-            onContinueToPublication={onContinueToPublication}
+            onContinueToPublication={onContinueToPublication ? () => { void autosaveCoordinatorRef.current.flush().then(async (saved) => { if (saved) { await saveQueueRef.current?.whenIdle(); onContinueToPublication(); } }); } : undefined}
             onHistoryOpen={() => void loadHistory()}
             onInspectorToggle={() => setManualInspectorOpen((current) => !current)}
             onOpenLibrary={openCompositionLibrary}
@@ -3634,7 +3761,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
               void loadCompositionPresets();
             }}
             onRedo={() => void redoLastEdit()}
-            onReload={() => void loadDocument()}
+            onReload={() => { if (failedSave || saveError || pendingEdits.length) void loadDocument(); else void autosaveCoordinatorRef.current.flush().then((saved) => { if (saved) void loadDocument(); }); }}
             onRestoreHistory={(entry) => void restoreHistoryEntry(entry)}
             onSplit={() => void splitSelectedClipAtPlayhead()}
             onToggleComparison={toggleComparison}
@@ -3669,6 +3796,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
             removalRangeStartSeconds={removalRangeStart?.seconds ?? null}
             safeAreasVisible={safeAreasVisible}
             saveError={saveError}
+            pendingEdits={localAutosavePending || pendingEdits.length > 0}
             saving={saving}
             snapEnabled={snapEnabled}
             toolMenuOpen={toolMenuOpen}
@@ -3808,7 +3936,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           <div className={styles.inspectorHeader}>
             <CompositionInspectorTabs
               activeTab={inspectorTab}
-              onSelect={setInspectorTab}
+              onSelect={(tab) => { void autosaveCoordinatorRef.current.flush().then((saved) => { if (saved) setInspectorTab(tab); }); }}
               selectedClipCount={selectedTimelineClipIds.size}
               transitionCount={payload.document.transitions?.items.length || 0}
             />
@@ -3825,11 +3953,11 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
             {inspectorTab === "properties" && <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} colorGradingStatus={selectedHfId ? colorGradingStatuses[selectedHfId] || null : null} componentId={componentId} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} sourcePreviewUrl={selectedSourcePreviewUrl} selectedAnimationId={selectedAnimationId} onAnimationSelect={(id) => { if (id && selectedClip) selectAnimation(id, selectedClip.hfId); else setSelectedAnimationId(null); }} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewColorGrading={(hfId, colorGrading) => postPreviewMessage({ type: "courseforge-composition-preview-color-grading", hfId, colorGrading })} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} />}
             {inspectorTab === "selection" && <CompositionSelectionPanel canPaste={canPasteTimelineClipboard} document={payload.document} editingGroupId={editingTimelineGroupId} frameStep={timelineFrameStep} keyboardEditMode={timelineKeyboardEditMode} onAlign={(alignment, target) => void alignTimelineSelection(alignment, target)} onClear={clearSelection} onCopy={copyTimelineSelection} onCreateGroup={createTimelineGroup} onDelete={() => void deleteTimelineSelection(false)} onDistribute={(axis) => void distributeTimelineSelection(axis)} onDuplicate={() => void duplicateTimelineSelection()} onEnterGroup={enterTimelineGroup} onExitGroup={exitTimelineGroup} onFrameStepChange={changeTimelineFrameStep} onInspectClip={(hfId) => selectClip(hfId, true)} onKeyboardEditModeChange={changeTimelineKeyboardEditMode} onPaste={() => void pasteTimelineClipboard()} onRippleDelete={() => void deleteTimelineSelection(true)} onRoll={(edge, deltaFrames) => void rollTimelineSelection(edge, deltaFrames)} onSlide={(deltaFrames) => void slideTimelineSelection(deltaFrames)} onUngroup={ungroupTimelineSelection} saving={saving} selectedClipIds={selectedTimelineClipIds} selectedGroupId={selectedTimelineGroupId} />}
             {inspectorTab === "transitions" && <TransitionControls document={payload.document} onAdd={(transition) => void savePatch([{ transition, type: "transition.add" }], `Añadió ${transition.type} entre dos clips.`)} onRemove={(transitionId) => void savePatch([{ transitionId, type: "transition.remove" }], "Quitó una transición entre clips.")} onSelect={selectTransition} onUpdate={(transitionId, settings) => void savePatch([{ settings, transitionId, type: "transition.update" }], "Ajustó una transición entre clips.")} saving={saving} selectedTransitionId={activeSelectedTransitionId} />}
-            {inspectorTab === "assistant" && <CompositionAgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={(instruction) => requestAgentProposal(instruction, Boolean(presetPreview))} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}
+            {inspectorTab === "assistant" && <CompositionAgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={async (instruction) => { if (await autosaveCoordinatorRef.current.flush()) await requestAgentProposal(instruction, Boolean(presetPreview)); }} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}
           </div>
         </aside>}
       </div>
-    </section>
+    </section></CompositionAutosaveContext.Provider>
   );
 }
 

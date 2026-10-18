@@ -33,7 +33,7 @@ export function CompositionCaptionEffectsControls({ effects, cues, disabled, onE
     <p className="text-[10px] text-slate-500">El preset se aplica a la capa y conserva los ajustes de frases personalizadas. No modifica el texto ni sus tiempos.</p>
     <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={effects !== undefined} disabled={disabled} onChange={(event) => onEffectsChange(event.target.checked ? { ...DEFAULT_CAPTION_EFFECTS } : undefined)} /> Configurar efectos de toda la capa</label>
     {effects && <CaptionEffectFields settings={effects} disabled={disabled} onChange={(patch) => onEffectsChange({ ...effects, ...patch })} />}
-    <p className="text-[10px] text-slate-500">Cada frase repite su entrada y salida. Sin configuración se conserva el karaoke original. Los cambios se aplican al guardar contenido y estilo.</p>
+    <p className="text-[10px] text-slate-500">Cada frase repite su entrada y salida. Sin configuración se conserva el karaoke original. Los cambios válidos se guardan automáticamente.</p>
     {cue && <>
       <label className="block text-xs">Frase a personalizar<select className={fieldClass} value={cue.id} disabled={disabled} onChange={(event) => setSelectedCueId(event.target.value)}>{cues.map((candidate, index) => <option key={candidate.id} value={candidate.id}>{index + 1}. {candidate.text.slice(0, 70)}</option>)}</select></label>
       <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cue.effects !== undefined} disabled={disabled} onChange={(event) => {

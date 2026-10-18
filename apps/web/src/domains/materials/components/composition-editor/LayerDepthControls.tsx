@@ -1,7 +1,9 @@
 "use client";
 
+import { CompositionAutosaveBoundary, useCompositionAutosavePending } from "./CompositionAutosaveBoundary";
+
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Layers2, Save } from "lucide-react";
+import { ArrowDown, ArrowUp, Layers2 } from "lucide-react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
 import {
@@ -17,17 +19,18 @@ interface LayerDepthControlsProps {
 }
 
 export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthControlsProps) {
+  const autosavePending = useCompositionAutosavePending();
   const [depth, setDepth] = useState(String(clip.layout.zIndex));
 
-  useEffect(() => setDepth(String(clip.layout.zIndex)), [clip.id, clip.layout.zIndex]);
+  useEffect(() => { if (!autosavePending) setDepth(String(clip.layout.zIndex)); }, [autosavePending, clip.id, clip.layout.zIndex]);
 
   const persistDepth = async (requestedDepth: number) => {
     const nextDepth = clampCompositionLayerDepth(requestedDepth);
     if (nextDepth === clip.layout.zIndex) {
       setDepth(String(nextDepth));
-      return;
+      return true;
     }
-    await onPatch(
+    return onPatch(
       [{ clipId: clip.id, layout: { zIndex: nextDepth }, type: "clip.layout" }],
       `Movió ${clip.label} al plano visual ${nextDepth}.`,
     );
@@ -35,15 +38,14 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
 
   const saveTypedDepth = () => {
     const requestedDepth = Number(depth);
-    if (!Number.isFinite(requestedDepth)) {
-      setDepth(String(clip.layout.zIndex));
+    if (!depth.trim() || !Number.isInteger(requestedDepth) || requestedDepth < COMPOSITION_LAYER_MIN || requestedDepth > COMPOSITION_LAYER_MAX) {
       return;
     }
-    void persistDepth(requestedDepth);
+    return persistDepth(requestedDepth);
   };
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 dark:border-white/10 dark:bg-white/5">
+    <CompositionAutosaveBoundary key={clip.id} value={depth} onCommit={saveTypedDepth} disabled={disabled}><div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 dark:border-white/10 dark:bg-white/5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Layers2 className="text-[var(--engine-accent-strong)]" size={15} />
@@ -86,20 +88,12 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
             step={1}
             value={depth}
             onChange={(event) => setDepth(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter") saveTypedDepth(); }}
             className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white"
           />
         </span>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={saveTypedDepth}
-          className="inline-flex items-center gap-1 rounded-md border border-[var(--engine-accent)] px-2 py-1.5 text-[10px] font-bold text-[#0A6455] disabled:opacity-40 dark:text-[var(--engine-accent)]"
-        >
-          <Save size={12} /> Guardar plano
-        </button>
+
       </label>
-    </div>
+    </div></CompositionAutosaveBoundary>
   );
 }
 
