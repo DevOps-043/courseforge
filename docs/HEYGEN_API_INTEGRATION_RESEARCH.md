@@ -2,6 +2,24 @@
 
 Fecha de investigacion: 2026-07-28
 
+## Actualización de importación externa — 2026-10-19
+
+El resto de este documento conserva el diagnóstico histórico de julio; no
+describe por sí solo el estado actual de toda la integración.
+`POST /api/production/import-external` consulta ahora `GET /v3/videos/{video_id}`
+mediante `HeygenClient` y el resolver de credenciales de la organización activa,
+después de autorizar el componente. No usa la clave global como fallback.
+Sin credencial de organización, la consulta por ID devuelve 409.
+
+Una URL directa en `videoUrl` evita la consulta al proveedor, incluso si también
+se envía un ID. Por compatibilidad, una URL en `videoId` tiene prioridad sobre
+`videoUrl`. Toda URL resuelta sigue sujeta a los controles de SSRF, redirecciones,
+MIME y tamaño antes de almacenarse. Se conservan 202 para video pendiente,
+422 para generación fallida y 502 para fallo HTTP del proveedor.
+
+Referencia: [consulta v3 de video](https://developers.heygen.com/reference/get-video).
+El cambio no acredita despliegue ni ejecución real contra HeyGen.
+
 ## Resumen ejecutivo
 
 Courseforge ya tiene la base correcta para incorporar HeyGen: los componentes de video guardan `assets.avatar_video`, existen `production_jobs` / `production_assets` para auditar proveedores, y la UI de Produccion Visual ya contempla una seccion de "Avatar Video" con importacion desde HeyGen. Sin embargo, la integracion actual es parcial: importa videos por `video_id` usando el endpoint legacy `v2/video_status`, no lista avatares privados, no crea renders desde scripts, no registra iteraciones de HeyGen como jobs auditables, no usa webhooks, y no modela la cuenta/avatares existentes como catalogo reusable.

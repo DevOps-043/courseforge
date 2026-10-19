@@ -13,14 +13,17 @@ import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract';
 import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response';
 import { mapExternalImportError } from '@/lib/server/external-import-error';
 import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger';
-import { readJsonResponseWithLimit } from '@/lib/server/outbound-http';
+import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
+import { HeygenApiError } from '@/domains/production/providers/heygen/heygen.client';
+import { getHeygenClientForOrganization, HeygenCredentialResolverError } from '@/domains/production/providers/heygen/heygen-credential-resolver.service';
+import { resolveExternalVideoSource } from '@/domains/production/providers/heygen/heygen-external-import-source';
 
 // Limit file sizes imported externally to 150MB to avoid server memory issues in serverless runtimes
 const MAX_IMPORT_SIZE_BYTES = 150 * 1024 * 1024;
 
 const IMPORT_TIMEOUT_MS = 60_000;
 const MAX_EXTERNAL_IMPORT_REQUEST_BYTES = 16 * 1024;
-const MAX_HEYGEN_STATUS_BYTES = 256 * 1024;
+const HEYGEN_LOOKUP_TIMEOUT_MS = 15_000;
 const importExternalSchema = z.object({
     provider: z.enum(['heygen', 'custom']),
     componentId: z.string().uuid(),
@@ -57,62 +60,32 @@ export async function POST(request: Request) {
 
         const admin = authorizedComponent.admin;
 
-        // 1. Resolve source video URL (Heygen API or direct URL)
-        let resolvedVideoUrl = videoUrl || '';
-
-        // If videoId is a direct URL, treat it as videoUrl
-        if (videoId && (videoId.startsWith('http://') || videoId.startsWith('https://'))) {
-            resolvedVideoUrl = videoId;
-        }
-
-        if (provider === 'heygen' && videoId && resolvedVideoUrl !== videoId) {
-            const heygenApiKey = process.env.HEYGEN_API_KEY;
-            if (!heygenApiKey) {
-                // If no API Key, we must rely on a direct videoUrl provided by frontend
-                if (!resolvedVideoUrl) {
-                    return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: 'Se requiere una URL directa para importar este video.', requestId, status: 400 });
+        const source = await resolveExternalVideoSource(
+            { provider, videoId, videoUrl },
+            async (providerVideoId) => {
+                const tenant = await resolveActiveTenantContext();
+                if (!tenant) {
+                    throw new HeygenCredentialResolverError('Empresa no válida o no autorizada.', 403);
                 }
-            } else {
-                // Fetch direct download URL from Heygen API
-                const heygenResponse = await fetch(`https://api.heygen.com/v2/video_status/${encodeURIComponent(videoId)}`, {
-                    headers: {
-                        'accept': 'application/json',
-                        'X-Api-Key': heygenApiKey,
-                    },
-                    signal: AbortSignal.timeout(15_000),
+                const { client } = await getHeygenClientForOrganization({
+                    organizationId: tenant.organizationId,
+                    supabase: admin,
+                    requestTimeoutMs: HEYGEN_LOOKUP_TIMEOUT_MS,
+                    allowGlobalFallback: false,
                 });
-
-                if (!heygenResponse.ok) {
-                    logger.warn('production.external_media.heygen_lookup_failed', { status: heygenResponse.status });
-                    return apiErrorResponse({ code: API_ERROR_CODE.providerError, message: 'No se pudo consultar el video en HeyGen.', requestId, retryable: heygenResponse.status >= 500 || heygenResponse.status === 429, status: 502 });
-                }
-
-                const heygenData = await readJsonResponseWithLimit<unknown>(
-                    heygenResponse,
-                    MAX_HEYGEN_STATUS_BYTES,
-                );
-                const data = typeof heygenData === 'object' && heygenData !== null && 'data' in heygenData
-                    && typeof heygenData.data === 'object' && heygenData.data !== null
-                    ? heygenData.data as Record<string, unknown>
-                    : null;
-                const status = typeof data?.status === 'string' ? data.status : undefined;
-                const url = typeof data?.video_url === 'string' ? data.video_url : undefined;
-
-                if (status === 'failed') {
-                    return apiErrorResponse({ code: API_ERROR_CODE.providerError, message: 'HeyGen informó que el video no pudo generarse.', requestId, status: 422 });
-                }
-
-                if (status !== 'completed' || !url) {
-                    return apiSuccessResponse({ pending: true, message: 'El video de HeyGen aún no está listo.' }, { requestId, status: 202 });
-                }
-
-                resolvedVideoUrl = url;
-            }
+                return client.getVideo(providerVideoId);
+            },
+        );
+        if (source.status === 'failed') {
+            return apiErrorResponse({ code: API_ERROR_CODE.providerError, message: 'HeyGen informó que el video no pudo generarse.', requestId, status: 422 });
         }
-
-        if (!resolvedVideoUrl) {
+        if (source.status === 'pending') {
+            return apiSuccessResponse({ pending: true, message: 'El video de HeyGen aún no está listo.' }, { requestId, status: 202 });
+        }
+        if (source.status === 'missing') {
             return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: 'No se pudo resolver la URL del video a importar.', requestId, status: 400 });
         }
+        const resolvedVideoUrl = source.url;
 
         // 2. Reject internal networks and redirects before reading a bounded body.
         const safeUrl = await assertSafeExternalMediaUrl(resolvedVideoUrl);
@@ -199,6 +172,13 @@ export async function POST(request: Request) {
         }, { requestId });
 
     } catch (error: unknown) {
+        if (error instanceof HeygenCredentialResolverError) {
+            return apiErrorResponse({ code: error.status === 403 ? API_ERROR_CODE.tenantForbidden : API_ERROR_CODE.conflict, message: error.message, requestId, status: error.status });
+        }
+        if (error instanceof HeygenApiError) {
+            logger.warn('production.external_media.heygen_lookup_failed', { status: error.status });
+            return apiErrorResponse({ code: API_ERROR_CODE.providerError, message: 'No se pudo consultar el video en HeyGen.', requestId, retryable: error.status === 408 || error.status >= 500 || error.status === 429, status: 502 });
+        }
         logger.error('production.external_media.import_failed', error);
         const mapped = mapExternalImportError(error, 'el origen externo');
         return apiErrorResponse({ ...mapped, requestId });

@@ -208,7 +208,6 @@ test("remaining production provider JSON is bounded at the response boundary", (
     join(webRoot, "src", "domains", "production", "hyperframes", "hyperframes-cloud.client.ts"),
     join(webRoot, "src", "domains", "production", "providers", "liveavatar", "liveavatar.client.ts"),
     join(webRoot, "src", "domains", "production", "providers", "heygen", "heygen-webhook.service.ts"),
-    join(webRoot, "src", "app", "api", "production", "import-external", "route.ts"),
     join(webRoot, "src", "domains", "production", "automation", "production-automation-dispatcher.service.ts"),
   ].map((path) => readFileSync(path, "utf8"));
 
@@ -216,6 +215,16 @@ test("remaining production provider JSON is bounded at the response boundary", (
     assert.match(source, /readJsonResponseWithLimit/);
     assert.doesNotMatch(source, /response\.json\(\)|heygenResponse\.json\(\)/);
   }
+});
+
+test("la importación externa delega HeyGen al cliente acotado v3 con credenciales tenant", () => {
+  const source = readFileSync(resolve(process.cwd(), "src/app/api/production/import-external/route.ts"), "utf8");
+  assert.match(source, /getAuthorizedMaterialComponentAdmin\(componentId\)/);
+  assert.match(source, /resolveActiveTenantContext\(\)/);
+  assert.match(source, /organizationId: tenant.organizationId/);
+  assert.match(source, /allowGlobalFallback: false/);
+  assert.match(source, /client.getVideo\(providerVideoId\)/);
+  assert.doesNotMatch(source, /process.env.HEYGEN_API_KEY|api\.heygen\.com\/v[12]\//);
 });
 
 test("the central HeyGen client bounds successful and error response bodies", () => {
