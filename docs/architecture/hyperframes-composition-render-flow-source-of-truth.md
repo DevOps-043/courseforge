@@ -83,6 +83,13 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 4. Contrato del documento editable
 
+- Plantillas HTML importadas (2026-10-19): el generador de diapositivas admite
+  `importedDesign` estático opcional. Antes de registrar un paquete se ejecuta
+  el productor y compilador editorial existentes. Los campos se vinculan a
+  texto, sin ejecutar código externo ni crear otra fuente de motion. La
+  importación no activa documentos, renders ni publicación. Perfil y límites:
+  [plantillas HTML importadas](imported-slide-templates.md).
+
 - Autoguardado por interacción (2026-10-17): los controles de geometría, recorte,
   motion/poses, texto/captions, color, audio/curvas, profundidad y velocidad no
   requieren Guardar. El preview sigue siendo local durante el gesto; al finalizar
@@ -386,6 +393,11 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-19: importación de familias HTML estáticas revisadas y reutilización
+  en la generación de diapositivas, conservando preflight editorial, tenant,
+  hashes y fuente única de motion. Especificación y evidencia:
+  `openspec/changes/import-html-slide-templates/`.
 
 - 2026-10-17: autoguardado de herramientas editoriales, agrupación por interacción,
   estado pendiente visible y copia recuperable de comandos aún no enviados.

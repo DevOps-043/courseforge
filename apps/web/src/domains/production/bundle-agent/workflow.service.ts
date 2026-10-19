@@ -166,6 +166,9 @@ export class BundleAgentWorkflowService {
       .limit(1)
       .maybeSingle();
 
+    if (artifactKind === "slide_template" && isRecord(latest?.spec_json) && latest.spec_json.importedDesign) {
+      throw new Error("La plantilla importada debe editarse desde «Revisar diseño» en la biblioteca.");
+    }
     // Repeated UI submissions are idempotent: do not create a new version or
     // an extra tool message when the normalized spec has not changed.
     if (latest?.spec_hash === specHash) {

@@ -10,6 +10,7 @@
 - [Protocolo de sincronización](PROTOCOLO_DE_INVESTIGACION_Y_SINCRONIZACION.md)
 - [HyperFrames: documento, medios y render](architecture/hyperframes-composition-render-flow-source-of-truth.md)
 - [ADR de motion](architecture/adr-composition-motion-source-of-truth.md)
+- [Plantillas HTML importadas](architecture/imported-slide-templates.md)
 - [Compliance HeyGen/HyperFrames](compliance/protocolo-actualizacion-heygen-hyperframes.md)
 
 Los documentos existentes conservan sus rutas. docs/archive/ contiene guías
