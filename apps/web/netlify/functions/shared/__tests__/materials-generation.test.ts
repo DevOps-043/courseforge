@@ -229,13 +229,14 @@ test("bounded model retries receive dialogue contract feedback instead of repeat
   assert.equal(input.fix_instructions, "Conserva el objetivo de audio original");
 });
 
-test("chained jobs await HTTP acceptance when Netlify build flags are absent", async (context) => {
-  const keys = ["NODE_ENV", "NETLIFY", "URL", "NEXT_PUBLIC_SUPABASE_URL", "BACKGROUND_FUNCTION_SECRET"] as const;
+test("los jobs encadenados conservan el deploy y esperan aceptación HTTP sin flags de build", async (context) => {
+  const keys = ["NODE_ENV", "NETLIFY", "URL", "DEPLOY_URL", "NEXT_PUBLIC_SUPABASE_URL", "BACKGROUND_FUNCTION_SECRET"] as const;
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   const originalFetch = globalThis.fetch;
   Reflect.deleteProperty(process.env, "NODE_ENV");
   delete process.env.NETLIFY;
   process.env.URL = "https://courseforge.example.com";
+  process.env.DEPLOY_URL = "https://build--courseforge.netlify.app";
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
   process.env.BACKGROUND_FUNCTION_SECRET = "test-background-secret-at-least-32-characters";
   context.after(() => {
@@ -250,7 +251,7 @@ test("chained jobs await HTTP acceptance when Netlify build flags are absent", a
   const fallback = async () => { localCalls++; };
   globalThis.fetch = async (url, options) => {
     remoteCalls++;
-    assert.equal(url, "https://courseforge.example.com/.netlify/functions/materials-generation-background");
+    assert.equal(url, "https://build--courseforge.netlify.app/.netlify/functions/materials-generation-background");
     const signed = JSON.parse(String(options?.body)) as { payload: string; signature: string };
     const envelope = JSON.parse(Buffer.from(signed.payload, "base64url").toString("utf8"));
     assert.deepEqual(envelope.value, { materialsId: "materials-1", artifactId: "artifact-1", version: 3, mode: "process-next" });
@@ -260,6 +261,12 @@ test("chained jobs await HTTP acceptance when Netlify build flags are absent", a
   await triggerNextLesson("materials-1", "artifact-1", "[test]", 3, fallback);
   assert.equal(remoteCalls, 1);
   assert.equal(localCalls, 0);
+
+  delete process.env.DEPLOY_URL;
+  await assert.rejects(triggerNextLesson("materials-1", "artifact-1", "[test]", 3, fallback), /Falta el destino/);
+  assert.equal(remoteCalls, 1);
+  assert.equal(localCalls, 0);
+  process.env.DEPLOY_URL = "https://build--courseforge.netlify.app";
 
   globalThis.fetch = async () => { throw new TypeError("fetch failed"); };
   await assert.rejects(triggerNextLesson("materials-1", "artifact-1", "[test]", 3, fallback), /fetch failed/);

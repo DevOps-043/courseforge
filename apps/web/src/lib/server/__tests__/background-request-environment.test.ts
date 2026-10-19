@@ -1,10 +1,45 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { resolveBackgroundFunctionOrigin } from "../background-function-origin";
 import {
   buildLocalBackgroundHandlerUrl,
   isLocalBackgroundInvocation,
   shouldDispatchBackgroundInProcess,
 } from "../background-request-environment";
+
+test("staging y previews conservan el despliegue aunque la URL pública apunte a producción", () => {
+  for (const origin of ["https://build-staging--courseforge.netlify.app", "https://build-preview--courseforge.netlify.app",
+    "https://build-production--courseforge.netlify.app"]) {
+    assert.equal(resolveBackgroundFunctionOrigin({ NODE_ENV: "production", URL: "https://courseforge.netlify.app",
+      NEXT_PUBLIC_APP_URL: "https://courseforge.netlify.app", DEPLOY_URL: "https://otro--courseforge.netlify.app" }, origin), origin);
+  }
+});
+
+test("el metadato del build funciona cuando Netlify no expone DEPLOY_URL en ejecución", () => {
+  assert.equal(resolveBackgroundFunctionOrigin({ NODE_ENV: "production", URL: "https://courseforge.netlify.app" },
+    "https://build--courseforge.netlify.app"), "https://build--courseforge.netlify.app");
+});
+
+test("sin captura usa DEPLOY_URL explícito y nunca la dirección pública ni el origen de un request", () => {
+  assert.equal(resolveBackgroundFunctionOrigin({ NODE_ENV: "production", DEPLOY_URL: "https://build--courseforge.netlify.app/" }, null),
+    "https://build--courseforge.netlify.app");
+  for (const NODE_ENV of ["production", undefined, "test"]) {
+    assert.throws(() => resolveBackgroundFunctionOrigin({ NODE_ENV, URL: "https://courseforge.netlify.app",
+      NEXT_PUBLIC_APP_URL: "https://courseforge.netlify.app", DEPLOY_PRIME_URL: "https://staging--courseforge.netlify.app" }, null), /Falta el destino/);
+  }
+});
+
+test("rechaza destinos inválidos sin recurrir a otro entorno", () => {
+  for (const origin of ["", "no-url", "http://localhost:8888", "https://user:password@example.com", "https://example.com/path",
+    "https://example.com?token=secret", "https://example.com#fragment"]) {
+    assert.throws(() => resolveBackgroundFunctionOrigin({ NODE_ENV: "production", DEPLOY_URL: "https://valid.example.com" }, origin));
+  }
+});
+
+test("desarrollo directo conserva destino local y Netlify nunca cae a localhost", () => {
+  assert.equal(resolveBackgroundFunctionOrigin({ NODE_ENV: "development" }, "https://old--courseforge.netlify.app"), "http://localhost:8888");
+  assert.throws(() => resolveBackgroundFunctionOrigin({ NODE_ENV: "development", NETLIFY: "true" }, null), /Falta el destino/);
+});
 
 test("builds direct-handler URLs independently from the configured public app URL", () => {
   const previousAppUrl = process.env.NEXT_PUBLIC_APP_URL;
