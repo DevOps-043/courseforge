@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { importedSlideDesignSchema } from "../import/imported-slide-design.contract";
 import { courseSourceReferenceSchema } from "./course-source-reference.contract";
 import { googleFontNativePinSchema } from "../../fonts/google-font-native-face.contract";
 
@@ -187,6 +188,7 @@ export const courseDeckSourceSnapshotSchema = z.object({
 });
 
 export const courseDeckSpecSchema = z.object({
+  importedDesign: importedSlideDesignSchema.optional(),
   appearance: courseDeckAppearanceSchema.default("light"),
   artifactId: z.string().min(1),
   designSystem: courseDeckDesignSystemSchema,

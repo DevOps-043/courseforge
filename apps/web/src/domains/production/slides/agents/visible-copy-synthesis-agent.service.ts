@@ -59,6 +59,7 @@ export interface VisibleCopySynthesisTrace {
 }
 
 interface SynthesizeVisibleCopyParams {
+  importedDesign?: CourseDeckSpec["importedDesign"];
   deckSpec: CourseDeckSpec;
   acceptedSlides?: CourseDeckSpec["slides"];
   deadlineAt?: number;
@@ -187,6 +188,12 @@ CONTRATO OBLIGATORIO:
 - Cada diapositiva debe desarrollar una idea distinta de su seccion. No repitas titulo y bullets entre slides ni cambies solo el numero para ocultar duplicados.
 - sectionNarrative es contexto pedagogico de esa seccion: sintetiza su idea sin transcribirlo ni mostrar instrucciones de produccion.
 - Cada elemento de slides debe usar exactamente id, title, subtitle opcional y bullets. No anides esos campos ni uses heading, points o content.
+${params.importedDesign ? `CAPACIDAD DE LAS PLANTILLAS IMPORTADAS:
+Elige una capacidad compatible con el tipo de cada slide. Respeta su cantidad de campos y máximos de caracteres; no omitas ideas ni evidencia para hacerlas caber. Cada bullet ocupa un campo de contenido. Si no existe campo de subtítulo, omítelo o cuenta ese texto como otro campo de contenido. La plantilla se selecciona y valida en servidor.
+${JSON.stringify(params.importedDesign.layouts.map(layout => ({ purpose: layout.purpose,
+  titleCharacters: layout.fields.find(field => field.role === "title")?.maxCharacters,
+  subtitleCharacters: layout.fields.find(field => field.role === "subtitle")?.maxCharacters,
+  bodyCharacters: layout.fields.filter(field => field.role === "body").map(field => field.maxCharacters) })))}` : ""}
 ${params.repairFeedback?.length ? `CORRECCIONES OBLIGATORIAS DEL INTENTO ANTERIOR:\n${JSON.stringify(params.repairFeedback)}` : ""}
 
 EVIDENCIA CURADA:

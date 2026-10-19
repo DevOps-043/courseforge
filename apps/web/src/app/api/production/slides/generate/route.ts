@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { normalizeImportedSlideDesign } from "@/domains/production/slides/import/imported-slide-design.service";
 import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
 import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
@@ -213,6 +214,7 @@ async function resolveSlideTemplateDesignSystem(params: {
   );
 
   return {
+    importedDesign: spec.importedDesign ? normalizeImportedSlideDesign(spec.importedDesign) : undefined,
     accent: typeof designTokens?.accent === "string" ? designTokens.accent : undefined,
     accent2: typeof designTokens?.accent2 === "string" ? designTokens.accent2 : undefined,
     background: typeof designTokens?.background === "string" ? designTokens.background : undefined,
@@ -626,6 +628,7 @@ export async function runSlideDeckGeneration(params: {
           };
         })()
       : await generateCourseDeckWithCopySynthesisQualityGate({
+          importedDesign: selectedSlideTemplate?.importedDesign,
           artifactId: authorizedComponent.artifactId,
           agentModels,
           agentPrompts,
@@ -651,6 +654,9 @@ export async function runSlideDeckGeneration(params: {
     const deckSpecWithTemplateCandidate = selectedSlideTemplate
       ? courseDeckSpecSchema.parse({
           ...generatedDeckSpec,
+          importedDesign: selectedSlideTemplate.importedDesign,
+          slides: selectedSlideTemplate.importedDesign
+            ? generatedDeckSpec.slides.map(slide => ({ ...slide, visualAssets: undefined })) : generatedDeckSpec.slides,
           appearance: input.appearance,
           designSystem: {
             ...generatedDeckSpec.designSystem,

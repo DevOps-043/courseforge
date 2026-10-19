@@ -52,6 +52,7 @@ function assetId(slideId: string, purpose: CourseVisualAssetPurpose, prompt: str
 }
 
 function slotsForSlide(deck: CourseDeckSpec, slide: CourseSlideSpec) {
+  if (deck.importedDesign) return [];
   const layout = slide.renderHints?.layout;
   if (!layout) return [];
   return deck.designSystem.visualSlots?.[layout] || GENERIC_SLOTS[layout] || [];
@@ -197,6 +198,7 @@ export function planDeckVisualAssets(params: {
   deckSpec: CourseDeckSpec;
   forceRegenerate?: boolean;
 }): CourseDeckSpec {
+  if (params.deckSpec.importedDesign) return { ...params.deckSpec, slides: params.deckSpec.slides.map(slide => ({ ...slide, visualAssets: undefined })) };
   const forceRegenerate = Boolean(params.forceRegenerate);
   const withBackgrounds = {
     ...params.deckSpec,

@@ -49,6 +49,7 @@ export interface CourseDeckGenerationResult {
 }
 
 interface GenerateCourseDeckParams {
+  importedDesign?: CourseDeckSpec["importedDesign"];
   agentModels?: SlideAgentModelConfig;
   agentPrompts?: SlideAgentPromptConfig;
   artifactId: string;
@@ -317,6 +318,7 @@ export async function generateCourseDeckWithCopySynthesisQualityGate(
         },
       }
     : await synthesizeDeckVisibleCopy({
+        importedDesign: params.importedDesign,
         deckSpec: draft.deckSpec,
         model: params.agentModels?.visibleCopy,
         prompt: params.agentPrompts?.visibleCopy,

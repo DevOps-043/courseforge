@@ -27,6 +27,7 @@ import { EngineSelect } from "@/components/ui/EngineSelect";
 import { SOFLIA_SLIDE_TEMPLATE_BACKGROUND } from "@/domains/production/slides/templates/slide-template-theme";
 import { GoogleFontPreparationControl } from "@/domains/production/fonts/components/GoogleFontPreparationControl";
 import type { GoogleFontNativePin } from "@/domains/production/fonts/google-font-native-face.contract";
+import { ImportSlideTemplateDialog } from "@/domains/production/slides/import/components/ImportSlideTemplateDialog";
 
 type SlideLayoutId = "center" | "closing" | "data" | "framework" | "split" | "split_reverse";
 type SlideTypeId = string;
@@ -754,6 +755,7 @@ export function SlideTemplateStudioClient() {
           <h1 className="mt-0.5 text-xl font-black tracking-tight">Crear plantilla HTML de slides</h1>
         </div>
         <div className="flex flex-wrap gap-2">
+          <ImportSlideTemplateDialog />
           <Link
             href={`${adminBasePath}/slides`}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:bg-[var(--engine-surface-solid)] dark:text-gray-200 dark:hover:bg-white/5"

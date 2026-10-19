@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { ImportSlideTemplateDialog } from "@/domains/production/slides/import/components/ImportSlideTemplateDialog";
+import { ImportedSlidePreview } from "@/domains/production/slides/import/components/ImportedSlidePreview";
 import {
   ArrowRight,
   CheckCircle2,
@@ -38,6 +40,7 @@ function StatusBadge({ status }: { status: SlideTemplateLibraryItem["status"] })
 }
 
 function TemplatePreview({ template }: { template: SlideTemplateLibraryItem }) {
+  if (template.preview_html) return <ImportedSlidePreview html={template.preview_html} title={template.title} />;
   const design = template.preview_design || {
     accent: "#00D4B3", accent2: "#2D7D6E", background: "#F7FAFC", muted: "#65758B", surface: "#FFFFFF", text: "#0A2540",
   };
@@ -82,9 +85,9 @@ export default async function SlideTemplatesLibraryPage({
           <h1 className="mt-3 text-3xl">Plantillas de diapositivas</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6">Administra las plantillas HTML de esta empresa. Cada una conserva su diseño, layouts, tipografías y configuración visual para los decks de SofLIA.</p>
         </div>
-        <Link href={`${adminBasePath}/slides/templates`} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--engine-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#10395f]">
+        <div className="flex flex-wrap gap-2"><ImportSlideTemplateDialog /><Link href={`${adminBasePath}/slides/templates`} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--engine-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#10395f]">
           <Plus size={17} /> Crear plantilla
-        </Link>
+        </Link></div>
       </header>
 
       {!result.success ? (
@@ -107,7 +110,7 @@ export default async function SlideTemplatesLibraryPage({
                 <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate text-base font-bold text-gray-950 dark:text-white">{template.title}</h2><p className="mt-1 line-clamp-2 min-h-10 text-xs leading-5 text-gray-500 dark:text-gray-400">{template.description || "Sin descripción."}</p></div><StatusBadge status={template.status} /></div>
                 <div className="mt-3 flex flex-wrap gap-1.5">{template.layouts.slice(0, 4).map((layout) => <span key={layout} className="rounded-md bg-gray-100 px-2 py-1 text-[10px] font-semibold text-gray-600 dark:bg-white/10 dark:text-gray-300">{layout}</span>)}{template.example_slide_count > 0 && <span className="rounded-md bg-[var(--engine-accent)]/10 px-2 py-1 text-[10px] font-semibold text-[var(--engine-accent-strong)]">{template.example_slide_count} slides</span>}</div>
                 {template.error_sanitized && <p className="mt-3 rounded-md bg-red-50 px-2.5 py-2 text-[11px] text-red-700 dark:bg-red-500/10 dark:text-red-300">{template.error_sanitized}</p>}
-                <div className="mt-4 flex gap-2"><Link href={editorHref} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5">Abrir <ArrowRight size={14} /></Link>{template.status === "PACKAGED" && <a href={downloadHref} className="inline-flex items-center justify-center rounded-lg border border-[var(--engine-accent)]/30 bg-[var(--engine-accent)]/10 px-3 py-2 text-[var(--engine-accent-strong)]" title="Descargar paquete"><Download size={15} /></a>}</div>
+                <div className="mt-4 flex gap-2">{template.imported ? <ImportSlideTemplateDialog conversationId={template.conversation_id} /> : <Link href={editorHref} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5">Abrir <ArrowRight size={14} /></Link>}{template.status === "PACKAGED" && <a href={downloadHref} className="inline-flex items-center justify-center rounded-lg border border-[var(--engine-accent)]/30 bg-[var(--engine-accent)]/10 px-3 py-2 text-[var(--engine-accent-strong)]" title="Descargar paquete"><Download size={15} /></a>}</div>
               </div>
             </article>;
           })}

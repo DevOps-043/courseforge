@@ -20,6 +20,7 @@ const PREFLIGHT_ANCHOR = Object.freeze({ organizationId: "00000000-0000-4000-800
   documentSha256: "0".repeat(64), clipId: "generated-slide-preflight" });
 
 const textGroups = [
+  { selector: "[data-cf-field]", key: "imported-text", label: "Campo importado", maximum: 900 },
   { selector: "h1 span, h2 span, h1, h2", key: "title", label: "Título", maximum: 180 },
   { selector: ".lead", key: "paragraph", label: "Texto", maximum: 900 },
   { selector: "li", key: "point", label: "Punto", maximum: 240 },
@@ -52,6 +53,8 @@ export function buildCourseDeckEditableArtifact(rawDeck: CourseDeckSpec, imageAs
   const readOnlyFields: Array<{ slideId: string; field: string; reason: string }> = [];
   const slides = selectedSlides.map(({ slide, html }) => {
     const fragment = load(html, {}, false);
+    const importedFields = new Map((deck.importedDesign?.layouts.find(layout => layout.id === fragment("section.slide").attr("data-imported-layout"))?.fields || [])
+      .map(field => [field.id, field]));
     // A narrative can reuse a slide in multiple clips. Each saved instance needs
     // its own IDs; changing IDs after compilation would break chart/CSS targets.
     const prefix = `cf-${digest(instance === undefined ? slide.id : JSON.stringify([slide.id, instance.clipId])).slice(0, 24)}`;
@@ -60,11 +63,13 @@ export function buildCourseDeckEditableArtifact(rawDeck: CourseDeckSpec, imageAs
       let position = 0;
       fragment(group.selector).each((_index, node) => {
         const target = fragment(node);
+        const importedField = importedFields.get(target.attr("data-cf-field") || "");
+        if (importedField?.role === "decoration") return;
         if (target.children().length || target.attr("data-courseforge-editable-id")) return;
         const value = target.text();
         if (!value.trim()) return;
         const elementId = `${prefix}-${group.key}-${++position}`;
-        const maximum = Math.max(group.maximum, Array.from(value).length);
+        const maximum = importedField?.maxCharacters ?? Math.max(group.maximum, Array.from(value).length);
         if (maximum > HTML_EDITING_LIMITS.textCharacters || /[<>\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)) {
           readOnlyFields.push({ slideId: slide.id, field: elementId, reason: "UNSUPPORTED_TEXT_VALUE" });
           return;

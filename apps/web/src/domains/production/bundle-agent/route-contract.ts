@@ -55,6 +55,7 @@ export function bundleAgentRouteErrorResponse(input: {
   }
   if (
     message.includes("debe tener entre")
+    || message.includes("plantilla importada debe editarse")
     || message.includes("No hay spec disponible")
     || message.includes("coincide visualmente")
   ) {

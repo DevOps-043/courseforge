@@ -2,6 +2,7 @@ import { renderCourseChartSvg } from "../charts/svg-chart-renderer.service";
 import { repairCommonUtf8Mojibake } from "../../text/mojibake.service";
 import type { CourseDeckSpec, CourseSlideSpec } from "../specs/course-deck.schema";
 import { resolveCourseDeckThemeForAppearance } from "./course-deck-theme.service";
+import { renderImportedCourseDeckSource } from "../import/imported-slide-renderer.service";
 
 function escapeHtml(value: string) {
   return repairCommonUtf8Mojibake(value)
@@ -861,6 +862,7 @@ function renderRuntime(deck: CourseDeckSpec) {
 
 /** Server-owned markup shared by the presentation and editorial producers. */
 export function renderCourseDeckSource(deck: CourseDeckSpec) {
+  if (deck.importedDesign) return renderImportedCourseDeckSource(deck, deck.importedDesign);
   const sortedSlides = [...deck.slides].sort((left, right) => left.order - right.order);
   return { css: renderCss(deck), slides: sortedSlides.map((slide, index) => ({
     slide, html: renderSlide(slide, deck, index === 0),
@@ -868,10 +870,9 @@ export function renderCourseDeckSource(deck: CourseDeckSpec) {
 }
 
 export function renderCourseDeckHtml(deck: CourseDeckSpec) {
+  const rendered = renderCourseDeckSource(deck);
   const sortedSlides = [...deck.slides].sort((left, right) => left.order - right.order);
-  const slides = sortedSlides
-    .map((slide, index) => renderSlide(slide, deck, index === 0))
-    .join("\n");
+  const slides = rendered.slides.map(slide => slide.html).join("\n");
 
   const fontStyle = deck.designSystem.font?.source === "uploaded" && deck.designSystem.font.cssUrl
     ? `<style>@font-face { font-family: '${escapeHtml(deck.designSystem.font.family)}'; src: url('${escapeHtml(deck.designSystem.font.cssUrl)}'); font-display: swap; }</style>`
@@ -888,7 +889,7 @@ export function renderCourseDeckHtml(deck: CourseDeckSpec) {
   <title>${escapeHtml(deck.sourceSnapshot.title || "SofLIA - Engine Deck")}</title>
   ${fontLink}
   ${fontStyle}
-  <style>${renderCss(deck)}</style>
+  <style>${rendered.css}</style>
 </head>
 <body>
   <div class="deck-shell">
