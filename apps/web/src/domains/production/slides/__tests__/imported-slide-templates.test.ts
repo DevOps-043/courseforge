@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { load } from "cheerio";
 import JSZip from "jszip";
-import { analyzeImportedSlideHtml, importedDesignPreview, normalizeImportedSlideDesign } from "../import/imported-slide-design.service";
-import { HtmlSlideImportError, htmlSlideImportRequestSchema } from "../import/imported-slide-design.contract";
+import { analyzeImportedSlideHtml, importedDesignPreview, normalizeImportedSlideDesign, withImportedSlidePreviews } from "../import/imported-slide-design.service";
+import { HTML_SLIDE_IMPORT_LIMITS, HtmlSlideImportError, htmlSlideImportRequestSchema } from "../import/imported-slide-design.contract";
+import { parseImportedSlideRequest } from "../import/imported-slide-request.service";
 import { sanitizeImportedCss } from "../import/imported-slide-sanitizer.service";
 import { assertHtmlSlideImportRole, prepareImportedSlidePackage, saveImportedSlidePackage } from "../import/imported-slide-catalog.service";
 import { renderImportedCourseDeckSource } from "../import/imported-slide-renderer.service";
@@ -28,6 +29,71 @@ function deckFor(source = fixtures[0]): CourseDeckSpec {
 }
 
 describe("importación de diseños HTML reutilizables", () => {
+  it("admite exactamente 2 MB de HTML y rechaza un byte adicional", () => {
+    const source = fixtures[0].replace("</script>", `${" ".repeat(HTML_SLIDE_IMPORT_LIMITS.sourceBytes - Buffer.byteLength(fixtures[0]))}</script>`);
+    assert.equal(Buffer.byteLength(source), HTML_SLIDE_IMPORT_LIMITS.sourceBytes);
+    assert.equal(analyzeImportedSlideHtml(source).design.layouts.length, 1);
+    assert.throws(() => analyzeImportedSlideHtml(`${source} `), /2 MB/);
+  });
+
+  it("analiza y guarda una familia editable mayor de 500 KB", async () => {
+    const path = `M0 0 ${"L1.00000000000000000000001 1.00000000000000000000001 ".repeat(1_000)}`;
+    const slide = `<section class="slide"><h1>Título</h1><p>Contenido</p><svg width="240" height="160" viewBox="0 0 240 160"><path d="${path}" /></svg></section>`;
+    const source = `<html><head><style>.slide{padding:80px;background:#f5eee0}h1{font-size:64px}p{font-size:32px}</style></head><body>${slide.repeat(10)}</body></html>`;
+    assert.ok(Buffer.byteLength(source) > 500_000);
+    const result = analyzeImportedSlideHtml(source);
+    assert.ok(Buffer.byteLength(JSON.stringify(result.design)) > 500_000);
+    const packaged = prepareImportedSlidePackage("Familia amplia", result.design);
+    assert.equal(packaged.importedDesign?.layouts.length, 10);
+    const response = withImportedSlidePreviews(result);
+    assert.equal(response.previews.length, 10);
+    assert.ok(Buffer.byteLength(JSON.stringify(response)) < HTML_SLIDE_IMPORT_LIMITS.responseBytes);
+    assert.equal(response.previews[0], importedDesignPreview(result.design, 0));
+    const catalog = createImportCatalogFixture();
+    await saveImportedSlidePackage({ admin: catalog.admin, organizationId: "organizacion-amplia", userId: "actor", platformRole: "ADMIN" }, "Familia amplia", result.design);
+    assert.equal([...catalog.tables.get("soflia_bundle_generation_runs")!.values()][0].status, "PACKAGED");
+    assert.equal(catalog.files.size, 1);
+  });
+
+  it("conserva límites de fragmentos y controla la expansión de previews", () => {
+    const design = analyzeImportedSlideHtml(fixtures[0]).design;
+    assert.throws(() => withImportedSlidePreviews({ design, report: "x".repeat(HTML_SLIDE_IMPORT_LIMITS.responseBytes) }), /5 MB/);
+    design.layouts[0].html = design.layouts[0].html.padEnd(HTML_SLIDE_IMPORT_LIMITS.fragmentCharacters + 1, " ");
+    assert.throws(() => normalizeImportedSlideDesign(design));
+    assert.throws(() => sanitizeImportedCss(" ".repeat(HTML_SLIDE_IMPORT_LIMITS.cssCharacters + 1)), HtmlSlideImportError);
+  });
+
+  it("cuenta bytes UTF-8 del archivo incluso si tiene menos caracteres", async () => {
+    const request = (html: string) => new Request("http://localhost/import", { method: "POST", body: JSON.stringify({ action: "analyze", html }) });
+    assert.equal((await parseImportedSlideRequest(request("é".repeat(HTML_SLIDE_IMPORT_LIMITS.sourceBytes / 2)))).success, true);
+    assert.deepEqual(await parseImportedSlideRequest(request("é".repeat(HTML_SLIDE_IMPORT_LIMITS.sourceBytes / 2 + 1))), { success: false, reason: "too_large" });
+    assert.throws(() => analyzeImportedSlideHtml("é".repeat(HTML_SLIDE_IMPORT_LIMITS.sourceBytes / 2 + 1)), /2 MB/);
+  });
+
+  it("limita el stream real sin confiar en Content-Length y cancela su lectura", async () => {
+    for (const headers of [{}, { "content-length": "10" }]) {
+      let canceled = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) { controller.enqueue(new Uint8Array(HTML_SLIDE_IMPORT_LIMITS.requestBytes + 1).fill(32)); },
+        cancel() { canceled = true; },
+      });
+      const request = new Request("http://localhost/import", { method: "POST", headers, body, duplex: "half" } as RequestInit & { duplex: "half" });
+      assert.deepEqual(await parseImportedSlideRequest(request), { success: false, reason: "too_large" });
+      assert.equal(canceled, true);
+    }
+    const declared = new Request("http://localhost/import", { method: "POST", body: "{}", headers: { "content-length": String(HTML_SLIDE_IMPORT_LIMITS.requestBytes + 1) } });
+    assert.deepEqual(await parseImportedSlideRequest(declared), { success: false, reason: "too_large" });
+    assert.equal(declared.bodyUsed, false);
+  });
+
+  it("rechaza JSON/UTF-8 inválidos y familias serializadas mayores de 2 MB", async () => {
+    for (const body of ["{", new Uint8Array([0xff])]) {
+      assert.deepEqual(await parseImportedSlideRequest(new Request("http://localhost/import", { method: "POST", body })), { success: false, reason: "invalid" });
+    }
+    const request = new Request("http://localhost/import", { method: "POST", body: JSON.stringify({ action: "save", design: { css: "x".repeat(HTML_SLIDE_IMPORT_LIMITS.designBytes) } }) });
+    assert.deepEqual(await parseImportedSlideRequest(request), { success: false, reason: "too_large" });
+  });
+
   for (const [index, fixture] of fixtures.entries()) {
     it(`conserva la estructura del diseño ${index + 1} y compila su exportación editable`, () => {
       const deck = deckFor(fixture);

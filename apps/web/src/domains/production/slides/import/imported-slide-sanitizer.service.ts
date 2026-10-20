@@ -1,7 +1,7 @@
 import { load } from "cheerio";
 import sanitizeHtml from "sanitize-html";
 import postcss from "postcss";
-import { HTML_SLIDE_IMPORT_LIMITS, HtmlSlideImportError } from "./imported-slide-design.contract";
+import { HTML_SLIDE_IMPORT_LIMITS, HTML_SLIDE_SOURCE_SIZE_LABEL, HtmlSlideImportError } from "./imported-slide-design.contract";
 
 const STATIC_TAGS = ["div", "section", "article", "main", "header", "footer", "aside", "p", "span", "strong", "em", "b", "i",
   "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "figure", "figcaption", "br",
@@ -80,7 +80,7 @@ export function sanitizeImportedMarkup(source: string): string {
 }
 
 export function cleanImportedDocument(html: string) {
-  if (Buffer.byteLength(html, "utf8") > HTML_SLIDE_IMPORT_LIMITS.sourceBytes) throw new HtmlSlideImportError("El HTML supera 500 KB.");
+  if (Buffer.byteLength(html, "utf8") > HTML_SLIDE_IMPORT_LIMITS.sourceBytes) throw new HtmlSlideImportError(`El HTML supera ${HTML_SLIDE_SOURCE_SIZE_LABEL}.`);
   const document = load(html);
   if (document("*").length > 10_000) throw new HtmlSlideImportError("El documento contiene demasiados elementos.");
   const removedScripts = document("script").length;

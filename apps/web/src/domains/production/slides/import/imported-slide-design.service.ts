@@ -2,7 +2,7 @@ import { load } from "cheerio";
 import { createHash } from "node:crypto";
 import {
   HTML_SLIDE_IMPORT_LIMITS, HtmlSlideImportError, importedSlideDesignSchema,
-  IMPORT_PREVIEW_CSP, type ImportedSlideDesign, type ImportedSlideLayout,
+  IMPORT_PREVIEW_CSP, formatHtmlSlideImportBytes, type ImportedSlideDesign, type ImportedSlideLayout,
 } from "./imported-slide-design.contract";
 import { cleanImportedDocument, sanitizeImportedCss, sanitizeImportedMarkup } from "./imported-slide-sanitizer.service";
 
@@ -55,9 +55,9 @@ export function analyzeImportedSlideHtml(html: string) {
 /** Revalida también el JSON persistido: el cliente y el modelo no conceden confianza. */
 export function normalizeImportedSlideDesign(value: unknown): ImportedSlideDesign {
   const parsed = importedSlideDesignSchema.parse(value);
-  if (Buffer.byteLength(JSON.stringify(parsed), "utf8") > HTML_SLIDE_IMPORT_LIMITS.sourceBytes) throw new HtmlSlideImportError("La familia de diseños supera 500 KB.");
+  assertImportedDesignByteBudget(parsed);
   if (new Set(parsed.layouts.map(layout => layout.id)).size !== parsed.layouts.length) throw new HtmlSlideImportError("Los diseños tienen identificadores repetidos.");
-  return { ...parsed, css: sanitizeImportedCss(parsed.css), layouts: parsed.layouts.map(layout => {
+  const normalized = { ...parsed, css: sanitizeImportedCss(parsed.css), layouts: parsed.layouts.map(layout => {
     const fragment = load(sanitizeImportedMarkup(layout.html), {}, false);
     const pending = fragment.root().contents().toArray().map(node => ({ node, depth: 1 }));
     let elements = 0;
@@ -85,6 +85,14 @@ export function normalizeImportedSlideDesign(value: unknown): ImportedSlideDesig
     });
     return { ...layout, html: fragment.html() };
   }) };
+  assertImportedDesignByteBudget(normalized);
+  return normalized;
+}
+
+function assertImportedDesignByteBudget(design: ImportedSlideDesign) {
+  if (Buffer.byteLength(JSON.stringify(design), "utf8") > HTML_SLIDE_IMPORT_LIMITS.designBytes) {
+    throw new HtmlSlideImportError(`La familia de diseños procesada supera ${formatHtmlSlideImportBytes(HTML_SLIDE_IMPORT_LIMITS.designBytes)}.`);
+  }
 }
 
 export function importedDesignDigest(design: ImportedSlideDesign): string {
@@ -95,5 +103,19 @@ export function importedDesignPreview(design: ImportedSlideDesign, index: number
   const normalized = normalizeImportedSlideDesign(design);
   const layout = normalized.layouts[index];
   if (!layout) throw new HtmlSlideImportError("El diseño solicitado no existe.");
-  return `<!doctype html><html lang="es"><head><meta http-equiv="Content-Security-Policy" content="${IMPORT_PREVIEW_CSP}"><style>html,body{margin:0;width:1920px;height:1080px;overflow:hidden}.cf-import-root{position:relative;width:1920px;height:1080px;overflow:hidden}${normalized.css}</style></head><body>${layout.html}</body></html>`;
+  return buildNormalizedPreview(normalized.css, layout.html);
+}
+
+function buildNormalizedPreview(css: string, html: string): string {
+  return `<!doctype html><html lang="es"><head><meta http-equiv="Content-Security-Policy" content="${IMPORT_PREVIEW_CSP}"><style>html,body{margin:0;width:1920px;height:1080px;overflow:hidden}.cf-import-root{position:relative;width:1920px;height:1080px;overflow:hidden}${css}</style></head><body>${html}</body></html>`;
+}
+
+/** Presupuesto independiente para la expansión de CSS/HTML en los previews. */
+export function withImportedSlidePreviews<T extends { design: ImportedSlideDesign }>(payload: T) {
+  const design = normalizeImportedSlideDesign(payload.design);
+  const response = { ...payload, design, previews: design.layouts.map(layout => buildNormalizedPreview(design.css, layout.html)) };
+  if (Buffer.byteLength(JSON.stringify(response), "utf8") + HTML_SLIDE_IMPORT_LIMITS.responseEnvelopeBytes > HTML_SLIDE_IMPORT_LIMITS.responseBytes) {
+    throw new HtmlSlideImportError(`Los previews completos superan ${formatHtmlSlideImportBytes(HTML_SLIDE_IMPORT_LIMITS.responseBytes)}. Reduce el CSS compartido o divide la familia de diseños.`);
+  }
+  return response;
 }

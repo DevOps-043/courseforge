@@ -8,9 +8,14 @@ En **Plantillas de diapositivas → Importar HTML**, carga el archivo, revisa ca
 
 Confirma la revisión y guarda. El paquete aparece en la biblioteca y en los selectores existentes de generación manual y automatizada. «Revisar diseño» abre una importación guardada; guardar modificaciones conserva la anterior como otro recurso inmutable.
 
+El flujo utiliza `EngineDialog`, igual que usuarios y confirmaciones. Su portal lo mantiene fuera de los estilos del encabezado; controles y avisos consumen los tokens del tema. El cuerpo tiene scroll interior y el encabezado y las acciones permanecen visibles en escritorio y móvil.
+
 ## Perfil inicial
 
-- HTML de hasta 500 KB con entre 1 y 12 secciones `.slide`, sin slides anidadas.
+- HTML de hasta 2 MB (2 000 000 bytes UTF-8, CSS incluido) con entre 1 y 12 secciones `.slide`, sin slides anidadas. Se valida el archivo en cliente y sus bytes reales en servidor.
+- La familia normalizada admite hasta 2 MB serializados. El transporte JSON y la respuesta con previews tienen presupuestos independientes de 5 MB; el servidor limita la lectura del stream aunque falte `Content-Length`. Los previews se generan desde una sola normalización y su tamaño se comprueba antes de responder.
+- Estos presupuestos dejan margen frente a los 6 MB documentados para funciones síncronas en [Netlify](https://docs.netlify.com/build/functions/configuration/). La [evidencia del cambio de tamaño](../../openspec/changes/expand-slide-import-size/reports/verification.md) distingue admisión, compatibilidad y límites de las pruebas.
+- El límite de archivo no garantiza compatibilidad: se conservan los topes de 120 000 caracteres CSS, 100 000 caracteres por fragmento, nodos/profundidad y el preflight del editor. Un archivo grande puede rechazarse por estos controles; repartir diseños entre archivos reduce el tamaño total, pero no elimina el límite de un fragmento individual.
 - Canvas 1920×1080. Se conserva HTML/CSS estático y SVG sin recursos externos.
 - Se retiran scripts, eventos, navegación, imágenes, fuentes y recursos externos. CSS con escapes, anidación o complejidad excesiva se rechaza. Animaciones y reglas de navegación se materializan como estado estático cuando es posible; el preview requiere revisión.
 - Las gráficas dinámicas no tienen binding en este perfil; su generación devuelve una incompatibilidad explícita. Tampoco se descargan assets ni se reconstruyen elementos dibujados exclusivamente por JavaScript.
@@ -39,8 +44,8 @@ El límite de 100 conversaciones activas se comprueba antes de admitir un recurs
 
 ## Verificación y reversión
 
-`npm run test:slide-template-import -w apps/web` comprueba saneamiento, estado visible, campos, capacidad, compilación editorial, hashes, separación de tenants y recuperación tras fallos. Está incluido en `test:coverage-gaps`, consumido por `verify`.
+`npm run test:slide-template-import -w apps/web` comprueba saneamiento, estado visible, campos, capacidad, compilación editorial, hashes, separación de tenants y recuperación tras fallos. También cubre la frontera de 2 MB, UTF-8 multibyte, lectura acotada sin confiar en cabeceras, familia editable mayor de 500 KB y presupuesto de previews. Está incluido en `test:coverage-gaps`, consumido por `verify`.
 
-El fixture de navegador `apps/web/tools/qa/import-slide-template.smoke.mjs` monta los componentes reales con API y persistencia simuladas. Valida carga, preview, revisión, guardado, escritorio y móvil. Sus capturas y resultados se generan bajo `apps/web/.tmp/html-template-import-qa/`; no valida Supabase real ni un archivo real de Open Design.
+El fixture de navegador `apps/web/tools/qa/import-slide-template.smoke.mjs` monta los componentes reales dentro de `engine-page-hero`, cargando CSS Modules y el sistema de estilos real, con API y persistencia simuladas. Valida carga, preview, revisión, guardado, contraste, Escape, retorno del foco y acciones visibles en claro/oscuro y escritorio/móvil. Sus capturas y resultados se generan bajo `apps/web/.tmp/html-template-import-theme-qa/`; usa fuentes de sistema de respaldo y no valida Supabase real ni un archivo real de Open Design. La corrección visual conserva evidencia en [su cambio OpenSpec](../../openspec/changes/fix-slide-import-modal-theme/reports/verification.md).
 
 Para revertir el acceso nuevo, ocultar los botones de importación. Mantener el lector/renderizador opcional mientras existan decks o paquetes que declaren `importedDesign`; no borrar fuentes, paquetes ni revisiones anteriores. La evidencia de esta entrega vive en [OpenSpec](../../openspec/changes/import-html-slide-templates/reports/verification.md).

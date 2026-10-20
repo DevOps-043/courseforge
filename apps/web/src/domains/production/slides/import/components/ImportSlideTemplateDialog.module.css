@@ -1,0 +1,219 @@
+.trigger,
+.secondary,
+.primary {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid var(--engine-border);
+  border-radius: 0.85rem;
+  padding: 0.65rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trigger,
+.secondary {
+  color: var(--engine-text);
+  background: var(--engine-surface-soft);
+}
+
+.trigger:hover,
+.secondary:hover {
+  border-color: var(--engine-border-active);
+  background: var(--engine-surface-hover);
+}
+
+.primary {
+  border-color: transparent;
+  color: var(--engine-on-action);
+  background: var(--engine-action);
+}
+
+.primary:disabled,
+.secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.body,
+.analysis,
+.previewColumn,
+.fields {
+  display: grid;
+  gap: 1rem;
+}
+
+.intro,
+.muted {
+  margin: 0;
+  color: var(--engine-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.intro {
+  border: 1px solid var(--engine-border);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--engine-surface-soft);
+}
+
+.field {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+  align-content: start;
+  color: var(--engine-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.control,
+.fileInput {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  border: 1px solid var(--engine-border);
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  color: var(--engine-text);
+  background: var(--engine-surface-soft);
+  font-size: 0.82rem;
+  font-weight: 400;
+}
+
+.control:focus-visible,
+.fileInput:focus-visible {
+  border-color: var(--engine-border-active);
+}
+
+.control:disabled,
+.fileInput:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.control option {
+  color: var(--engine-text);
+  background: var(--engine-surface-solid);
+}
+
+.fileInput {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fileInput::file-selector-button {
+  margin-right: 0.75rem;
+  border: 1px solid var(--engine-border);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.65rem;
+  color: var(--engine-text);
+  background: var(--engine-surface-solid);
+  font: inherit;
+  cursor: pointer;
+}
+
+.notice,
+.error,
+.success {
+  border: 1px solid color-mix(in srgb, var(--notice-color) 32%, var(--engine-border));
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  color: var(--engine-text);
+  background: color-mix(in srgb, var(--notice-color) 8%, var(--engine-surface-solid));
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.notice { --notice-color: var(--engine-warning); }
+.error { --notice-color: var(--engine-danger); }
+.success { --notice-color: var(--engine-success); }
+.notice p { margin: 0; }
+.notice p + p { margin-top: 0.35rem; }
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--engine-text-muted);
+  font-size: 0.8rem;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 1.25rem;
+}
+
+.fields {
+  min-width: 0;
+  gap: 0.65rem;
+}
+
+.fields h3 {
+  margin: 0;
+  color: var(--engine-text);
+  font-family: var(--font-system-ui);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.fieldList {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.fieldCard {
+  min-width: 0;
+  border: 1px solid var(--engine-border);
+  border-radius: 1rem;
+  padding: 0.85rem;
+  background: var(--engine-surface-soft);
+}
+
+.sample {
+  overflow-wrap: anywhere;
+  margin: 0 0 0.75rem;
+  color: var(--engine-text);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.fieldControls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8rem;
+  gap: 0.65rem;
+}
+
+.review {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  border: 1px solid var(--engine-border);
+  border-radius: 1rem;
+  padding: 0.9rem;
+  color: var(--engine-text);
+  background: var(--engine-surface-soft);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.review input {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15rem;
+  accent-color: var(--engine-action);
+}
+
+@media (max-width: 48rem) {
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+  .fieldControls { grid-template-columns: minmax(0, 1fr) 7rem; }
+}
