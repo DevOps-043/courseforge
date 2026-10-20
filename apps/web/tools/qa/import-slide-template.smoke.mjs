@@ -12,7 +12,7 @@ const { chromium } = runtimeModules
   ? await import(pathToFileURL(path.join(runtimeModules, "playwright/index.mjs")).href) : await import("playwright");
 const { analyzeImportedSlideHtml, withImportedSlidePreviews } = require(path.join(webRoot, ".tmp/remotion-tests/domains/production/slides/import/imported-slide-design.service.js"));
 const { parseImportedSlideRequest } = require(path.join(webRoot, ".tmp/remotion-tests/domains/production/slides/import/imported-slide-request.service.js"));
-const { HTML_SLIDE_IMPORT_LIMITS } = require(path.join(webRoot, ".tmp/remotion-tests/domains/production/slides/import/imported-slide-design.contract.js"));
+const { HTML_SLIDE_FILE_LIMITS } = require(path.join(webRoot, ".tmp/remotion-tests/domains/production/slides/import/imported-slide-file.contract.js"));
 const { prepareImportedSlidePackage } = require(path.join(webRoot, ".tmp/remotion-tests/domains/production/slides/import/imported-slide-catalog.service.js"));
 const fixture = `<!doctype html><html><head><style>
 body{background:#102f45;color:#fff;margin:0}.slide{width:1920px;height:1080px;padding:100px;box-sizing:border-box;display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center}
@@ -23,19 +23,24 @@ const output = path.join(webRoot, ".tmp/html-template-import-theme-qa");
 await mkdir(output, { recursive: true });
 const bundle = await build({ stdin: { contents: `import React from 'react'; import {createRoot} from 'react-dom/client';
 import {ImportSlideTemplateDialog} from './src/domains/production/slides/import/components/ImportSlideTemplateDialog';
+import {prepareImportedSlideFileInWorker} from './src/domains/production/slides/import/imported-slide-file.client';
+window.prepareSlideFileForQA=prepareImportedSlideFileInWorker;
 createRoot(document.getElementById('root')).render(<div className="soflia-engine-shell"><main className="engine-content"><header className="engine-page-hero"><h1>Plantillas de diapositivas</h1><p>Biblioteca de diseños de esta empresa</p><ImportSlideTemplateDialog/></header></main></div>);`, resolveDir: webRoot, loader: "tsx" },
   tsconfig: path.join(webRoot, "tsconfig.json"), bundle: true, write: false, format: "iife", platform: "browser", jsx: "automatic",
   outfile: path.join(output, "fixture.js"),
-  define: { "process.env": "{}" }, plugins: [{ name: "navegacion-local-del-fixture", setup(builder) {
+  define: { "process.env": "{}", "import.meta.url": JSON.stringify("http://courseforge.test/fixture.js") }, plugins: [{ name: "navegacion-local-del-fixture", setup(builder) {
     builder.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: "navigation", namespace: "fixture" }));
     builder.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({ contents: "export const useRouter=()=>({refresh(){window.refreshed=true}})", loader: "js" }));
   } }] });
+const workerBundle = await build({ entryPoints: [path.join(webRoot, "src/domains/production/slides/import/imported-slide-file.worker.ts")],
+  bundle: true, write: false, format: "iife", platform: "browser" });
 const css = await require("postcss")([require("@tailwindcss/postcss")()]).process(
   '@import "tailwindcss" source(none); @import "../../src/app/engine-design-system.css"; @source "../../src/domains/production/slides/import/components"; :root{--font-newsreader:Georgia;--font-inter-tight:Arial;--font-ibm-plex:Arial} body{padding:24px}',
   { from: path.join(webRoot, "tools/qa/import-qa.css") });
 const browser = await chromium.launch({ headless: true, channel: process.env.SLIDE_IMPORT_QA_BROWSER_CHANNEL || undefined });
 const failures = [];
 const checks = [];
+const transferredBytes = [];
 let saved = 0;
 let analyzedFiles = 0;
 const bundleScript = bundle.outputFiles.find(file => file.path.endsWith(".js")).text;
@@ -63,14 +68,26 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
 const page = await browser.newPage({ viewport });
 const label = `${theme}-${viewport.width}`;
 page.on("pageerror", error => failures.push(error.message));
+await page.addInitScript(() => {
+  window.workerLifecycle = { created: 0, terminated: 0 };
+  const NativeWorker = window.Worker;
+  window.Worker = class extends NativeWorker {
+    constructor(...arguments_) { super(...arguments_); window.workerLifecycle.created++; }
+    terminate() { window.workerLifecycle.terminated++; super.terminate(); }
+  };
+});
 await page.route("http://courseforge.test/**", async route => {
+  if (route.request().url().endsWith("/imported-slide-file.worker.ts")) {
+    await route.fulfill({ contentType: "text/javascript", body: workerBundle.outputFiles[0].text }); return;
+  }
   if (route.request().method() === "POST") {
     const parsed = await parseImportedSlideRequest(new Request(route.request().url(), { method: "POST", body: route.request().postData() }));
     assert.equal(parsed.success, true);
     const payload = parsed.data;
     if (payload.action === "analyze") {
       analyzedFiles++;
-      assert.ok(Buffer.byteLength(payload.html) > 500_000);
+      transferredBytes.push(Buffer.byteLength(payload.html));
+      assert.ok(Buffer.byteLength(payload.html) < 2000);
       const analyzed = analyzeImportedSlideHtml(payload.html);
       await route.fulfill({ json: { success: true, ...withImportedSlidePreviews(analyzed) } });
     } else {
@@ -81,6 +98,14 @@ await page.route("http://courseforge.test/**", async route => {
 });
   await page.goto("http://courseforge.test");
   await page.addScriptTag({ content: bundleScript });
+  await page.evaluate(async () => {
+    const controller = new AbortController();
+    const pending = window.prepareSlideFileForQA(new File(['<section class="slide"><h1>Cancelar</h1></section>'], "cancelar.html"), controller.signal, () => {});
+    controller.abort();
+    try { await pending; throw new Error("La preparación no se canceló"); }
+    catch (error) { if (error.message !== "Preparación cancelada.") throw error; }
+    if (window.workerLifecycle.created !== 1 || window.workerLifecycle.terminated !== 1) throw new Error("Worker cancelado sin terminar");
+  });
   await page.getByRole("button", { name: "Importar HTML" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.waitFor();
@@ -97,14 +122,31 @@ await page.route("http://courseforge.test/**", async route => {
   await page.getByLabel("Archivo HTML").setInputFiles({ name: "no-compatible.txt", mimeType: "text/plain", buffer: Buffer.from("archivo no compatible") });
   await page.getByRole("alert").waitFor();
   assert.ok(await contrast(page, '[role="dialog"] [role="alert"]') >= 4.5);
-  await page.getByLabel("Archivo HTML").setInputFiles({ name: "demasiado-grande.html", mimeType: "text/html", buffer: Buffer.alloc(HTML_SLIDE_IMPORT_LIMITS.sourceBytes + 1, 32) });
-  await page.getByRole("alert").filter({ hasText: "2 MB" }).waitFor();
-  const largerFixture = fixture.replace("</script>", `${" ".repeat(600_000 - Buffer.byteLength(fixture))}</script>`);
-  await page.getByLabel("Archivo HTML").setInputFiles({ name: "diseno-educativo.html", mimeType: "text/html", buffer: Buffer.from(largerFixture) });
+  // Construir File en el navegador evita transferir 100 MB de base64 por CDP.
+  const selectLargeFile = async (bytes, name) => page.getByLabel("Archivo HTML").evaluate((input, { bytes, name, fixture }) => {
+    const head = fixture.replace("</body></html>", '<img src="data:image/png;base64,');
+    const tail = '"></body></html>';
+    const padding = new Uint8Array(bytes - new TextEncoder().encode(head + tail).byteLength).fill(65);
+    const file = new File([head, padding, tail], name, { type: "text/html" });
+    const transfer = new DataTransfer(); transfer.items.add(file); input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, { bytes, name, fixture });
+  await selectLargeFile(HTML_SLIDE_FILE_LIMITS.bytes + 1, "demasiado-grande.html");
+  await page.getByRole("alert").filter({ hasText: "100 MB" }).waitFor();
+  const checkTransportExpansion = theme === "light" && viewport.width === 1440;
+  if (checkTransportExpansion) {
+    await page.getByLabel("Archivo HTML").setInputFiles({ name: "expansion-json.html", mimeType: "text/html", buffer: Buffer.concat([Buffer.from('<section class="slide"><h1>Control</h1><p>'), Buffer.alloc(900_000, 1), Buffer.from('</p></section>')]) });
+    await page.getByRole("alert").filter({ hasText: "tamaño de transporte" }).waitFor();
+    checks.push("JSON expandido rechazado en cliente antes de enviarlo a la API.");
+  }
+  const bytes = theme === "dark" && viewport.width === 1440 ? 100_000_000 : viewport.width === 390 ? 50_000_000 : 21_700_000;
+  await selectLargeFile(bytes, "diseno-educativo.html");
   await page.getByRole("heading", { name: "Campos reutilizables" }).waitFor();
+  const workers = checkTransportExpansion ? 3 : 2;
+  assert.deepEqual(await page.evaluate(() => window.workerLifecycle), { created: workers, terminated: workers });
   const save = page.getByRole("button", { name: "Guardar en plantillas" });
   assert.equal(await save.isDisabled(), true);
-  checks.push(`${label}: archivo de 600 KB admitido, archivo mayor de 2 MB rechazado; contraste, portal fuera del hero, Escape, retorno del foco y revisión obligatoria.`);
+  checks.push(`${label}: original de ${bytes} bytes preparado en Worker y reducido antes del HTTP; cancelación termina el Worker; archivo mayor de 100 MB rechazado; contraste, portal fuera del hero, Escape, foco y revisión obligatoria.`);
   const frame = page.frameLocator("iframe");
   await frame.getByText("Diseño educativo", { exact: true }).waitFor();
   const geometry = await frame.locator(".od-slide").evaluate(element => {
@@ -139,6 +181,6 @@ await page.route("http://courseforge.test/**", async route => {
   assert.equal(saved, 4);
   assert.equal(analyzedFiles, 4);
   assert.deepEqual(failures, []);
-  await writeFile(path.join(output, "result.json"), JSON.stringify({ checks, failures, persistence: "simulada; sin servicios externos" }, null, 2));
+  await writeFile(path.join(output, "result.json"), JSON.stringify({ checks, failures, transferredBytes, persistence: "simulada; sin servicios externos" }, null, 2));
   console.log(JSON.stringify({ checks, output }, null, 2));
 } finally { await browser.close(); }

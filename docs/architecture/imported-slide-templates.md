@@ -1,6 +1,6 @@
 # Plantillas HTML importadas
 
-Estado: implementación local, 2026-10-19. No implica despliegue ni validación con un export real del proveedor.
+Estado: implementación local, actualizada el 2026-10-20. No implica despliegue ni validación con un export real del proveedor.
 
 ## Uso
 
@@ -12,7 +12,8 @@ El flujo utiliza `EngineDialog`, igual que usuarios y confirmaciones. Su portal 
 
 ## Perfil inicial
 
-- HTML de hasta 2 MB (2 000 000 bytes UTF-8, CSS incluido) con entre 1 y 12 secciones `.slide`, sin slides anidadas. Se valida el archivo en cliente y sus bytes reales en servidor.
+- Archivo original de hasta **100 MB** (100 000 000 bytes). Antes de subirlo, un Web Worker local lee bloques de 256 KiB y retira scripts, comentarios, notas, navegación, imágenes y recursos excluidos, incluidas URLs CSS con base64. No ejecuta HTML ni descarga recursos. La UI muestra progreso, cancelación y un resumen de la reducción.
+- La fuente preparada enviada a la API admite hasta **2 MB UTF-8**, CSS incluido, con entre 1 y 12 secciones `.slide`, sin slides anidadas. Un original grande cuyo contenido útil exceda ese presupuesto falla con un mensaje diferente al límite del archivo. El servidor vuelve a sanear todo y comprueba sus bytes reales.
 - La familia normalizada admite hasta 2 MB serializados. El transporte JSON y la respuesta con previews tienen presupuestos independientes de 5 MB; el servidor limita la lectura del stream aunque falte `Content-Length`. Los previews se generan desde una sola normalización y su tamaño se comprueba antes de responder.
 - Estos presupuestos dejan margen frente a los 6 MB documentados para funciones síncronas en [Netlify](https://docs.netlify.com/build/functions/configuration/). La [evidencia del cambio de tamaño](../../openspec/changes/expand-slide-import-size/reports/verification.md) distingue admisión, compatibilidad y límites de las pruebas.
 - El límite de archivo no garantiza compatibilidad: se conservan los topes de 120 000 caracteres CSS, 100 000 caracteres por fragmento, nodos/profundidad y el preflight del editor. Un archivo grande puede rechazarse por estos controles; repartir diseños entre archivos reduce el tamaño total, pero no elimina el límite de un fragmento individual.
@@ -23,6 +24,10 @@ El flujo utiliza `EngineDialog`, igual que usuarios y confirmaciones. Su portal 
 - La inferencia inicial de roles es algorítmica y revisable por una persona. No se llama a un modelo para clasificar el HTML. El agente de copy existente recibe únicamente capacidades estructuradas, nunca el HTML como instrucciones.
 
 ## Contratos y seguridad
+
+La preparación local es una optimización del transporte, no una frontera de confianza. El original completo se queda en el dispositivo; solo la fuente reducida viaja por HTTP y el diseño normalizado se guarda en el paquete. Se conservan por separado los contadores de preparación local y los del saneamiento del servidor. Para conservar imágenes o archivar originales completos harían falta un contrato de assets y otra vía de almacenamiento.
+
+El worker se termina al completar, fallar, cancelar, desmontar el componente o agotar 120 segundos. La entrada tiene topes de 10 000 elementos y profundidad 80; los límites más estrictos del diseño/editor siguen en servidor. No se promete memoria constante: el parser puede retener un atributo individual grande, aunque la lectura sea por bloques y ocurra fuera del hilo UI.
 
 `courseforge-imported-slide-design-v1` vive en `importedDesign`, opcional en specs de paquetes y `course-deck-v1`. Su incorporación no cambia los layouts ni documentos anteriores. El [contrato](../../apps/web/src/domains/production/slides/import/imported-slide-design.contract.ts) centraliza límites y campos.
 
@@ -44,8 +49,8 @@ El límite de 100 conversaciones activas se comprueba antes de admitir un recurs
 
 ## Verificación y reversión
 
-`npm run test:slide-template-import -w apps/web` comprueba saneamiento, estado visible, campos, capacidad, compilación editorial, hashes, separación de tenants y recuperación tras fallos. También cubre la frontera de 2 MB, UTF-8 multibyte, lectura acotada sin confiar en cabeceras, familia editable mayor de 500 KB y presupuesto de previews. Está incluido en `test:coverage-gaps`, consumido por `verify`.
+`npm run test:slide-template-import -w apps/web` comprueba saneamiento, estado visible, campos, capacidad, compilación editorial, hashes, separación de tenants y recuperación tras fallos. También cubre originales sintéticos de 21,7/50/100 MB, reducción de URLs CSS entre bloques, frontera de 2 MB, UTF-8 multibyte, lectura acotada sin confiar en cabeceras, familia editable mayor de 500 KB y presupuesto de previews. Está incluido en `test:coverage-gaps`, consumido por `verify`.
 
-El fixture de navegador `apps/web/tools/qa/import-slide-template.smoke.mjs` monta los componentes reales dentro de `engine-page-hero`, cargando CSS Modules y el sistema de estilos real, con API y persistencia simuladas. Valida carga, preview, revisión, guardado, contraste, Escape, retorno del foco y acciones visibles en claro/oscuro y escritorio/móvil. Sus capturas y resultados se generan bajo `apps/web/.tmp/html-template-import-theme-qa/`; usa fuentes de sistema de respaldo y no valida Supabase real ni un archivo real de Open Design. La corrección visual conserva evidencia en [su cambio OpenSpec](../../openspec/changes/fix-slide-import-modal-theme/reports/verification.md).
+El fixture de navegador `apps/web/tools/qa/import-slide-template.smoke.mjs` monta los componentes reales dentro de `engine-page-hero`, cargando CSS Modules y el sistema de estilos real, con API y persistencia simuladas. Valida carga con el worker real y originales sintéticos hasta 100 MB, cancelación, expansión JSON, preview, revisión, guardado, contraste, Escape, retorno del foco y acciones visibles en claro/oscuro y escritorio/móvil. Sus capturas y resultados se generan bajo `apps/web/.tmp/html-template-import-theme-qa/`; usa fuentes de sistema de respaldo y no valida Supabase real ni un archivo real de Open Design. La corrección visual conserva evidencia en [su cambio OpenSpec](../../openspec/changes/fix-slide-import-modal-theme/reports/verification.md); la preparación de archivos grandes, en [su informe](../../openspec/changes/prepare-large-html-slide-files/reports/verification.md).
 
 Para revertir el acceso nuevo, ocultar los botones de importación. Mantener el lector/renderizador opcional mientras existan decks o paquetes que declaren `importedDesign`; no borrar fuentes, paquetes ni revisiones anteriores. La evidencia de esta entrega vive en [OpenSpec](../../openspec/changes/import-html-slide-templates/reports/verification.md).

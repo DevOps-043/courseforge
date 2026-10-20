@@ -5,6 +5,9 @@ import JSZip from "jszip";
 import { analyzeImportedSlideHtml, importedDesignPreview, normalizeImportedSlideDesign, withImportedSlidePreviews } from "../import/imported-slide-design.service";
 import { HTML_SLIDE_IMPORT_LIMITS, HtmlSlideImportError, htmlSlideImportRequestSchema } from "../import/imported-slide-design.contract";
 import { parseImportedSlideRequest } from "../import/imported-slide-request.service";
+import { prepareImportedSlideFile } from "../import/imported-slide-file-preparation.service";
+import { HTML_SLIDE_FILE_LIMITS } from "../import/imported-slide-file.contract";
+import { createImportedCssUrlReducer } from "../import/imported-slide-css-url-reducer";
 import { sanitizeImportedCss } from "../import/imported-slide-sanitizer.service";
 import { assertHtmlSlideImportRole, prepareImportedSlidePackage, saveImportedSlidePackage } from "../import/imported-slide-catalog.service";
 import { renderImportedCourseDeckSource } from "../import/imported-slide-renderer.service";
@@ -29,6 +32,73 @@ function deckFor(source = fixtures[0]): CourseDeckSpec {
 }
 
 describe("importación de diseños HTML reutilizables", () => {
+  for (const bytes of [21_700_000, 50_000_000, HTML_SLIDE_FILE_LIMITS.bytes]) {
+    it(`prepara un original de ${bytes} bytes y envía solo el diseño compacto`, async () => {
+      const prefix = fixtures[2].replace("</body></html>", '<img src="data:image/png;base64,');
+      const suffix = '"></body></html>';
+      const source = new Blob([prefix, Buffer.alloc(bytes - Buffer.byteLength(prefix + suffix), 65), suffix]);
+      const progress: number[] = [];
+      const result = await prepareImportedSlideFile(source, percent => progress.push(percent));
+      assert.equal(result.originalBytes, bytes);
+      assert.equal(result.removedResources, 1);
+      assert.equal(progress.at(-1), 100);
+      assert.ok(progress.every((percent, index) => index === 0 || percent >= progress[index - 1]));
+      assert.ok(result.preparedBytes < 2000);
+      assert.equal(Buffer.byteLength(result.html), result.preparedBytes);
+      assert.doesNotMatch(result.html, /data:image|<img/);
+      const design = analyzeImportedSlideHtml(result.html).design;
+      assert.match(design.css, /font-size:64px/);
+      assert.equal(prepareImportedSlidePackage("Original grande", design).importedDesign?.layouts.length, 1);
+      const request = new Request("http://localhost/import", { method: "POST", body: JSON.stringify({ action: "analyze", html: result.html }) });
+      assert.equal((await parseImportedSlideRequest(request)).success, true);
+    });
+  }
+
+  it("rechaza originales mayores de 100 MB antes de leer y diseños reducidos excesivos", async () => {
+    const oversized = { size: HTML_SLIDE_FILE_LIMITS.bytes + 1, slice() { throw new Error("No debe leer"); } } as unknown as Blob;
+    await assert.rejects(prepareImportedSlideFile(oversized), /100 MB/);
+    await assert.rejects(prepareImportedSlideFile(new Blob(["<p>", "x".repeat(HTML_SLIDE_IMPORT_LIMITS.sourceBytes), "</p>"])), /HTML\/CSS sin recursos supera 2 MB/);
+    for (const attribute of ["class", "style"]) {
+      await assert.rejects(prepareImportedSlideFile(new Blob([`<p ${attribute}="`, "a ".repeat(1_500_000), '">Contenido</p>'])), /HTML\/CSS sin recursos supera 2 MB/);
+    }
+    await assert.rejects(prepareImportedSlideFile(new Blob([new Uint8Array([0xff])])), /UTF-8/);
+    await assert.rejects(prepareImportedSlideFile(new Blob(["<div>".repeat(HTML_SLIDE_FILE_LIMITS.depth + 1)])), /complejidad/);
+  });
+
+  it("reduce URLs CSS grandes entre bloques y conserva texto, atributos y SVG", async () => {
+    const encoded = "A".repeat(3_000_000);
+    const html = fixtures[2].replace("</style>", `.slide{background:url("data:image/png;base64,${encoded}");color:#123456}</style>`)
+      .replace("<p>", `<script>window.noEjecutar=1;</script><!-- comentario --><p style="background:url('data:image/png;base64,${encoded}');color:red">`)
+      .replace("Explicación educativa", "Explicación &amp; &lt;educativa&gt;");
+    const prepared = await prepareImportedSlideFile(new Blob([html]));
+    assert.equal(prepared.removedCssUrls, 2);
+    assert.equal(prepared.removedScripts, 1);
+    assert.doesNotMatch(prepared.html, /data:image|window.noEjecutar|comentario/);
+    const result = analyzeImportedSlideHtml(prepared.html);
+    assert.match(result.design.layouts[0].html, /<svg/);
+    assert.match(result.design.layouts[0].html, /Explicación &amp; &lt;educativa&gt;/);
+    assert.match(result.design.css, /color:#123456/);
+  });
+
+  it("reconoce URLs CSS y sus comillas aunque cada carácter llegue por separado", () => {
+    const chunks: string[] = [];
+    let removed = 0;
+    const reducer = createImportedCssUrlReducer(chunk => chunks.push(chunk), () => removed++);
+    for (const character of `.slide{background:URL ("data:a)b\\\"c");color:red}p{background:url(data:b);font-size:32px}`) reducer.write(character);
+    reducer.end();
+    assert.equal(removed, 2);
+    assert.equal(chunks.join(""), ".slide{background:url();color:red}p{background:url();font-size:32px}");
+  });
+
+  it("retira notas extensas sin perder diseños después de etiquetas vacías legadas", async () => {
+    const html = fixtures[0].replace("<body>", `<body><basefont><section class="notes">${"x".repeat(3_000_000)}</section>`);
+    const prepared = await prepareImportedSlideFile(new Blob([html]));
+    assert.ok(prepared.preparedBytes < 2000);
+    const { design } = analyzeImportedSlideHtml(prepared.html);
+    assert.equal(design.layouts.length, 1);
+    assert.equal(design.layouts[0].fields[0].sample, "Portada original");
+  });
+
   it("admite exactamente 2 MB de HTML y rechaza un byte adicional", () => {
     const source = fixtures[0].replace("</script>", `${" ".repeat(HTML_SLIDE_IMPORT_LIMITS.sourceBytes - Buffer.byteLength(fixtures[0]))}</script>`);
     assert.equal(Buffer.byteLength(source), HTML_SLIDE_IMPORT_LIMITS.sourceBytes);

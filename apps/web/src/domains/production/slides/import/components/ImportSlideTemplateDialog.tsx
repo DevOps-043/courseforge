@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, Loader2 } from "lucide-react";
 import { EngineDialog } from "@/components/ui/EngineDialog";
-import { HTML_SLIDE_IMPORT_LIMITS, HTML_SLIDE_SOURCE_SIZE_LABEL, type ImportedSlideDesign, type ImportedSlideField } from "../imported-slide-design.contract";
+import { HTML_SLIDE_IMPORT_LIMITS, formatHtmlSlideImportBytes, type ImportedSlideDesign, type ImportedSlideField } from "../imported-slide-design.contract";
+import { HTML_SLIDE_FILE_LIMITS, HTML_SLIDE_FILE_SIZE_LABEL, type PreparedSlideFile } from "../imported-slide-file.contract";
+import { prepareImportedSlideFileInWorker } from "../imported-slide-file.client";
 import { ImportedSlidePreview } from "./ImportedSlidePreview";
 import styles from "./ImportSlideTemplateDialog.module.css";
 
@@ -14,8 +16,12 @@ interface ImportAnalysis {
   report: { removedScripts: number; removedResources: number; warnings: string[] };
 }
 
-async function importRequest(payload: unknown) {
-  const response = await fetch("/api/admin/slides/templates/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+async function importRequest(payload: unknown, signal?: AbortSignal) {
+  const body = JSON.stringify(payload);
+  if (new TextEncoder().encode(body).byteLength > HTML_SLIDE_IMPORT_LIMITS.requestBytes) {
+    throw new Error("El diseño preparado supera el tamaño de transporte admitido. Simplifica el contenido o divide los diseños.");
+  }
+  const response = await fetch("/api/admin/slides/templates/import", { method: "POST", headers: { "Content-Type": "application/json" }, body, signal });
   const result = await response.json();
   if (!response.ok || !result.success) throw new Error(result.error || "No se pudo completar la importación.");
   return result;
@@ -32,9 +38,14 @@ export function ImportSlideTemplateDialog({ onSaved, conversationId }: { onSaved
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [preparation, setPreparation] = useState<Omit<PreparedSlideFile, "html"> | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const activePreparation = useRef<AbortController | null>(null);
+  useEffect(() => () => activePreparation.current?.abort(), []);
 
   async function open() {
     setIsOpen(true);
+    setPreparation(null);
     if (!conversationId) return;
     setBusy(true); setError(""); setSaved(false); setReviewed(false);
     try {
@@ -46,17 +57,25 @@ export function ImportSlideTemplateDialog({ onSaved, conversationId }: { onSaved
 
   async function analyzeFile(file: File | undefined) {
     if (!file) return;
-    setError(""); setAnalysis(null); setDesign(null); setReviewed(false); setSaved(false);
-    if (!/\.html?$/i.test(file.name) || file.size > HTML_SLIDE_IMPORT_LIMITS.sourceBytes) {
-      setError(`Selecciona un archivo .html de hasta ${HTML_SLIDE_SOURCE_SIZE_LABEL}.`); return;
+    setError(""); setAnalysis(null); setDesign(null); setPreparation(null); setReviewed(false); setSaved(false);
+    if (!/\.html?$/i.test(file.name) || file.size > HTML_SLIDE_FILE_LIMITS.bytes) {
+      setError(`Selecciona un archivo .html de hasta ${HTML_SLIDE_FILE_SIZE_LABEL}.`); return;
     }
+    const controller = new AbortController();
+    activePreparation.current?.abort(); activePreparation.current = controller;
     setBusy(true);
+    setProgress(0);
     try {
-      const result: ImportAnalysis = await importRequest({ action: "analyze", html: await file.text() });
+      const prepared = await prepareImportedSlideFileInWorker(file, controller.signal, setProgress);
+      setProgress(null);
+      // Solo se conserva el resumen en React; el original nunca se envía.
+      const { html, ...summary } = prepared;
+      setPreparation(summary);
+      const result: ImportAnalysis = await importRequest({ action: "analyze", html }, controller.signal);
       setAnalysis(result); setDesign(result.design); setSelected(0);
       setTitle(file.name.replace(/\.html?$/i, "").slice(0, 120));
-    } catch (failure) { setError(failure instanceof Error ? failure.message : "No se pudo analizar el HTML."); }
-    finally { setBusy(false); }
+    } catch (failure) { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "No se pudo analizar el HTML."); }
+    finally { if (activePreparation.current === controller) { activePreparation.current = null; setProgress(null); setBusy(false); } }
   }
 
   function updateField(id: string, patch: Partial<ImportedSlideField>) {
@@ -86,16 +105,17 @@ export function ImportSlideTemplateDialog({ onSaved, conversationId }: { onSaved
       description="Conserva la estructura de tu diseño y define qué campos recibirá el contenido del agente."
       bodyClassName={styles.body}
       footer={<>
-        <button type="button" disabled={busy} onClick={() => setIsOpen(false)} className={styles.secondary}>{saved ? "Cerrar" : "Cancelar"}</button>
+        <button type="button" disabled={busy && progress === null} onClick={() => { activePreparation.current?.abort(); setIsOpen(false); }} className={styles.secondary}>{progress !== null ? "Cancelar preparación" : saved ? "Cerrar" : "Cancelar"}</button>
         {analysis && <button type="button" onClick={() => void save()} disabled={!reviewed || !title.trim() || busy || saved} className={styles.primary}>
           {busy && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}Guardar en plantillas
         </button>}
       </>}>
-      <p className={styles.intro}>Archivos HTML de hasta {HTML_SLIDE_SOURCE_SIZE_LABEL}, con CSS incluido. Formato inicial: secciones con clase «slide», canvas 1920 × 1080, texto y SVG estático. Los scripts, imágenes y recursos externos se retiran; revisa el resultado antes de guardar.</p>
+      <p className={styles.intro}>Archivos HTML de hasta {HTML_SLIDE_FILE_SIZE_LABEL}, con CSS incluido. Se preparan en tu dispositivo antes de enviarlos. Los scripts, imágenes y recursos embebidos o externos se retiran. El diseño reducido debe cumplir los límites del editor. Formato inicial: secciones con clase «slide», canvas 1920 × 1080, texto y SVG estático.</p>
       <label className={styles.field}>Archivo HTML
         <input type="file" accept=".html,.htm,text/html" disabled={busy} onChange={event => void analyzeFile(event.target.files?.[0])} className={styles.fileInput} />
       </label>
-      {busy && <p role="status" className={styles.status}><Loader2 className="animate-spin" size={16} /> Procesando la plantilla…</p>}
+      {busy && <p role="status" className={styles.status}><Loader2 className="animate-spin" size={16} /> {progress !== null ? `Preparando archivo en tu dispositivo… ${progress}%` : "Analizando o guardando la plantilla…"}</p>}
+      {preparation && <p className={styles.notice}>Archivo original: {formatHtmlSlideImportBytes(preparation.originalBytes)}. HTML enviado: {formatHtmlSlideImportBytes(preparation.preparedBytes)}. Retirados localmente: {preparation.removedScripts} scripts, {preparation.removedResources} recursos y {preparation.removedCssUrls} URLs CSS. El archivo original completo no se guarda.</p>}
       {error && <p role="alert" className={styles.error}>{error}</p>}
       {saved && <p role="status" className={styles.success}>Plantilla guardada. Ya puedes seleccionarla al generar diapositivas desde la biblioteca.</p>}
       {analysis && design && layout && <div className={styles.analysis}>
