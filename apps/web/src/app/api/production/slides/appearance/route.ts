@@ -68,6 +68,11 @@ export async function PATCH(request: Request) {
 
     const currentAssets = (authorized.component.assets || {}) as MaterialAssets;
     const currentSlides = currentAssets.slides;
+    const originalProfile = courseDeckSpecSchema.safeParse(currentSlides?.prepared_spec);
+    if (originalProfile.success && originalProfile.data.importedDesign?.editingMode === "html-text") {
+      return apiErrorResponse({ code: API_ERROR_CODE.conflict,
+        message: "Esta plantilla conserva sus colores originales; no admite las paletas del editor nativo.", requestId, status: 409 });
+    }
     if (!currentSlides?.html_content_path) {
       return apiErrorResponse({ code: API_ERROR_CODE.conflict, message: "No hay HTML de slides para cambiar su apariencia.", requestId, status: 409 });
     }

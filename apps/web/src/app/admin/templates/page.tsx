@@ -40,6 +40,7 @@ function StatusBadge({ status }: { status: SlideTemplateLibraryItem["status"] })
 }
 
 function TemplatePreview({ template }: { template: SlideTemplateLibraryItem }) {
+  if (template.preview_url) return <ImportedSlidePreview url={template.preview_url} title={template.title} />;
   if (template.preview_html) return <ImportedSlidePreview html={template.preview_html} title={template.title} />;
   const design = template.preview_design || {
     accent: "#00D4B3", accent2: "#2D7D6E", background: "#F7FAFC", muted: "#65758B", surface: "#FFFFFF", text: "#0A2540",

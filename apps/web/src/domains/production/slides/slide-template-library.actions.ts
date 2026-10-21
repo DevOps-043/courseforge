@@ -10,6 +10,7 @@ import { importedSlideDesignSchema } from "./import/imported-slide-design.contra
 export interface SlideTemplateLibraryItem {
   imported?: boolean;
   preview_html?: string | null;
+  preview_url?: string | null;
   id: string;
   conversation_id: string;
   organization_id: string;
@@ -60,7 +61,9 @@ export async function getSlideTemplatePackagesAction(): Promise<{ success: boole
       const conversation = conversationsById.get(run.conversation_id);
       const imported = importedSlideDesignSchema.safeParse(spec?.importedDesign);
       return [{ id: run.id, conversation_id: run.conversation_id, organization_id: run.organization_id, spec_id: run.spec_id || null,
-        imported: imported.success, preview_html: imported.success ? importedDesignPreview(imported.data, 0) : null,
+        imported: imported.success,
+        preview_url: imported.success && imported.data.editingMode === "html-text" ? `/api/production/slides/templates/${run.id}/preview` : null,
+        preview_html: imported.success && imported.data.editingMode !== "html-text" ? importedDesignPreview(imported.data, 0) : null,
         title: typeof spec?.title === "string" ? spec.title : conversation?.title || "Plantilla de slides", description: typeof spec?.description === "string" ? spec.description : null,
         package_id: typeof spec?.packageId === "string" ? spec.packageId : null, status: run.status, bundle_storage_path: run.bundle_storage_path || null, output_hash: run.output_hash || null,
         error_sanitized: run.error_sanitized || null, created_at: run.created_at, finished_at: run.finished_at || null,

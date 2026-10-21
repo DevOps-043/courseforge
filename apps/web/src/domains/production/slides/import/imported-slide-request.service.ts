@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { HTML_SLIDE_IMPORT_LIMITS, htmlSlideImportRequestSchema } from "./imported-slide-design.contract";
+import { HTML_SLIDE_IMPORT_LIMITS, htmlSlideImportRequestSchema, importedDesignStructuralValue } from "./imported-slide-design.contract";
 
 type ImportRequest = z.infer<typeof htmlSlideImportRequestSchema>;
 type ParsedImportRequest = { success: true; data: ImportRequest } | { success: false; reason: "invalid" | "too_large" };
@@ -31,7 +31,7 @@ export async function parseImportedSlideRequest(request: Request): Promise<Parse
       if (input.action === "analyze" && typeof input.html === "string"
         && new TextEncoder().encode(input.html).byteLength > HTML_SLIDE_IMPORT_LIMITS.sourceBytes) return { success: false, reason: "too_large" };
       if (input.action === "save" && input.design && typeof input.design === "object"
-        && new TextEncoder().encode(JSON.stringify(input.design)).byteLength > HTML_SLIDE_IMPORT_LIMITS.designBytes) return { success: false, reason: "too_large" };
+        && new TextEncoder().encode(JSON.stringify(importedDesignStructuralValue(input.design))).byteLength > HTML_SLIDE_IMPORT_LIMITS.designBytes) return { success: false, reason: "too_large" };
     }
     const parsed = htmlSlideImportRequestSchema.safeParse(value);
     return parsed.success ? { success: true, data: parsed.data } : { success: false, reason: "invalid" };

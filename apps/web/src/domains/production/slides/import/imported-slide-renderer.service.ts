@@ -4,6 +4,7 @@ import postcss from "postcss";
 import type { CourseDeckSpec, CourseSlideSpec } from "../specs/course-deck.schema";
 import { HtmlSlideImportError, type ImportedSlideDesign, type ImportedSlideLayout } from "./imported-slide-design.contract";
 import { normalizeImportedSlideDesign } from "./imported-slide-design.service";
+import { materializeImportedAssetCss } from "./imported-slide-asset-renderer";
 
 function contentValues(slide: CourseSlideSpec, layout: ImportedSlideLayout) {
   const body = slide.bodyBlocks.flatMap(block => block.kind === "bullets" ? block.items || [] : block.text ? [block.text] : []);
@@ -27,6 +28,7 @@ export function selectImportedLayout(design: ImportedSlideDesign, slide: CourseS
 /** Comparte la fuente entre presentación y exportación editorial. */
 export function renderImportedCourseDeckSource(deck: CourseDeckSpec, value: ImportedSlideDesign) {
   const design = normalizeImportedSlideDesign(value);
+  if (design.assets?.some(asset => !asset.base64)) throw new HtmlSlideImportError("Carga los recursos de la plantilla antes de generar su HTML.");
   const stylesheet = postcss.parse(design.css);
   // Las clases conservan estilos cuando el host editorial asigna sus propios IDs.
   // El CSS se comparte y no crece con cada instancia de diapositiva.
@@ -44,11 +46,14 @@ export function renderImportedCourseDeckSource(deck: CourseDeckSpec, value: Impo
     });
     for (const { field, value: text } of contentValues(slide, layout).values) {
       const target = fragment(`[data-cf-field="${field.id}"]`);
-      target.text(text);
+      if (field.role !== "decoration") {
+        const original = target.text();
+        target.text(`${original.match(/^\s*/)?.[0] ?? ""}${text}${original.match(/\s*$/)?.[0] ?? ""}`);
+      }
       if (field.role === "title") target.addClass("cf-import-title");
     }
     const label = slide.title.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     return { slide, html: `<section class="slide${index === 0 ? " active" : ""} cf-import-host" data-screen-label="${label}" data-title="${label}" data-imported-layout="${layout.id}">${fragment.html()}</section>` };
   });
-  return { css: `html,body{margin:0;width:100%;height:100%;overflow:hidden}.deck-shell{position:fixed;inset:0;overflow:hidden}.deck-stage{position:absolute;width:1920px;height:1080px;transform-origin:top left}.cf-import-host{position:absolute;inset:0;width:1920px;height:1080px;overflow:hidden;display:none}.cf-import-host.active{display:block}.cf-import-root{position:relative;width:1920px;height:1080px;overflow:hidden}\n${stylesheet.toString()}`, slides };
+  return { css: `html,body{margin:0;width:100%;height:100%;overflow:hidden}.deck-shell{position:fixed;inset:0;overflow:hidden}.deck-stage{position:absolute;width:1920px;height:1080px;transform-origin:top left}.cf-import-host{position:absolute;inset:0;width:1920px;height:1080px;overflow:hidden;display:none}.cf-import-host.active{display:block}.cf-import-root{position:relative;width:1920px;height:1080px;overflow:hidden}\n${materializeImportedAssetCss(stylesheet.toString(), design.assets)}`, slides };
 }

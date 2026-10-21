@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { normalizeImportedSlideDesign } from "@/domains/production/slides/import/imported-slide-design.service";
+import { detachedImportedDesign, hydrateImportedDesignForOrganization } from "@/domains/production/slides/import/imported-slide-bundle-assets.server";
 import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
 import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
@@ -214,7 +215,7 @@ async function resolveSlideTemplateDesignSystem(params: {
   );
 
   return {
-    importedDesign: spec.importedDesign ? normalizeImportedSlideDesign(spec.importedDesign) : undefined,
+    importedDesign: spec.importedDesign ? await hydrateImportedDesignForOrganization(normalizeImportedSlideDesign(spec.importedDesign), params) : undefined,
     accent: typeof designTokens?.accent === "string" ? designTokens.accent : undefined,
     accent2: typeof designTokens?.accent2 === "string" ? designTokens.accent2 : undefined,
     background: typeof designTokens?.background === "string" ? designTokens.background : undefined,
@@ -245,7 +246,9 @@ async function resolveDeckFontForRender(params: {
   admin: NonNullable<Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>>["admin"];
   deckSpec: CourseDeckSpec;
   organizationId: string;
-}) {
+}): Promise<CourseDeckSpec> {
+  if (params.deckSpec.importedDesign?.editingMode === "html-text") return { ...params.deckSpec,
+    importedDesign: await hydrateImportedDesignForOrganization(params.deckSpec.importedDesign, params) };
   const font = params.deckSpec.designSystem.font;
   if (font?.source !== "uploaded" || !font.fontAssetId) return params.deckSpec;
   const { data, error } = await params.admin.from(ORGANIZATION_FONT_TABLE)
@@ -722,8 +725,9 @@ export async function runSlideDeckGeneration(params: {
 
     const basePath = deckBasePath(componentId);
     if (!context.organizationId) throw new Error("COURSE_DECK_EDITORIAL_TENANT_REQUIRED");
-    const editableDeck = await storeGeneratedCourseDeckEditorial({ deck: deckSpec,
+    const editableDeck = deckSpec.importedDesign?.editingMode === "html-text" ? null : await storeGeneratedCourseDeckEditorial({ deck: deckSpec,
       organizationId: context.organizationId, componentId, supabase: authorizedComponent.admin });
+    const persistedDeckSpec = deckSpec.importedDesign ? { ...deckSpec, importedDesign: detachedImportedDesign(deckSpec.importedDesign) } : deckSpec;
     const specUpload = await uploadTextAsset({
       admin: authorizedComponent.admin,
       content: JSON.stringify(deckSpec, null, 2),
@@ -748,7 +752,7 @@ export async function runSlideDeckGeneration(params: {
       {
         artifact_id: context.artifactId,
         asset_type: PRODUCTION_ASSET_TYPES.SLIDE_DECK_SPEC,
-        content: deckSpec,
+        content: persistedDeckSpec,
         material_component_id: context.componentId,
         material_lesson_id: context.materialLessonId,
         lesson_id: context.lessonId,
@@ -851,7 +855,7 @@ export async function runSlideDeckGeneration(params: {
         qa_report: qaReport as unknown as Record<string, unknown>,
         selected_slide_template_run_id: selectedSlideTemplate?.selectedSlideTemplateRunId,
         selected_slide_template_title: selectedSlideTemplate?.title,
-        prepared_spec: deckSpec as unknown as Record<string, unknown>,
+        prepared_spec: persistedDeckSpec as unknown as Record<string, unknown>,
         editable_deck: editableDeck,
         spec_content_path: specUpload.storagePath,
       },

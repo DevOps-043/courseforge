@@ -38,7 +38,7 @@ export function ImportSlideTemplateDialog({ onSaved, conversationId }: { onSaved
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
-  const [preparation, setPreparation] = useState<Omit<PreparedSlideFile, "html"> | null>(null);
+  const [preparation, setPreparation] = useState<Omit<PreparedSlideFile, "html" | "assets"> | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const activePreparation = useRef<AbortController | null>(null);
   useEffect(() => () => activePreparation.current?.abort(), []);
@@ -69,9 +69,9 @@ export function ImportSlideTemplateDialog({ onSaved, conversationId }: { onSaved
       const prepared = await prepareImportedSlideFileInWorker(file, controller.signal, setProgress);
       setProgress(null);
       // Solo se conserva el resumen en React; el original nunca se envía.
-      const { html, ...summary } = prepared;
+      const { html, assets, ...summary } = prepared;
       setPreparation(summary);
-      const result: ImportAnalysis = await importRequest({ action: "analyze", html }, controller.signal);
+      const result: ImportAnalysis = await importRequest({ action: "analyze", html, editingMode: prepared.editingMode, assets }, controller.signal);
       setAnalysis(result); setDesign(result.design); setSelected(0);
       setTitle(file.name.replace(/\.html?$/i, "").slice(0, 120));
     } catch (failure) { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "No se pudo analizar el HTML."); }
@@ -110,7 +110,7 @@ export function ImportSlideTemplateDialog({ onSaved, conversationId }: { onSaved
           {busy && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}Guardar en plantillas
         </button>}
       </>}>
-      <p className={styles.intro}>Archivos HTML de hasta {HTML_SLIDE_FILE_SIZE_LABEL}, con CSS incluido. Se preparan en tu dispositivo antes de enviarlos. Los scripts, imágenes y recursos embebidos o externos se retiran. El diseño reducido debe cumplir los límites del editor. Formato inicial: secciones con clase «slide», canvas 1920 × 1080, texto y SVG estático.</p>
+      <p className={styles.intro}>Conserva el diseño HTML original y cambia sus campos de texto. Archivos de hasta {HTML_SLIDE_FILE_SIZE_LABEL}; imágenes y fuentes embebidas se deduplican y validan, con hasta 3 MB de recursos únicos. No se ejecutan scripts ni animaciones. Los recursos externos no se descargan. Canvas 1920 × 1080 con secciones «slide».</p>
       <label className={styles.field}>Archivo HTML
         <input type="file" accept=".html,.htm,text/html" disabled={busy} onChange={event => void analyzeFile(event.target.files?.[0])} className={styles.fileInput} />
       </label>
@@ -133,7 +133,8 @@ export function ImportSlideTemplateDialog({ onSaved, conversationId }: { onSaved
                 {design.layouts.map((item, index) => <option key={item.id} value={index}>{index + 1}. {item.label}</option>)}
               </select>
             </label>
-            <ImportedSlidePreview html={analysis.previews[selected]} title={`Preview de ${layout.label}`} />
+            <p className={styles.muted}>Vista estática del diseño procesado · animaciones no conservadas</p>
+            <ImportedSlidePreview html={analysis.previews[selected]} title={`Preview de ${layout.label}`} assets={design.assets} />
             <label className={styles.field}>Uso del diseño
               <select value={layout.purpose} disabled={busy || saved} onChange={event => { const purpose = event.target.value as typeof layout.purpose;
                 setReviewed(false); setDesign({ ...design, layouts: design.layouts.map((item, index) => index === selected ? { ...item, purpose } : item) });

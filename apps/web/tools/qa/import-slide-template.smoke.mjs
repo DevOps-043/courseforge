@@ -88,7 +88,7 @@ await page.route("http://courseforge.test/**", async route => {
       analyzedFiles++;
       transferredBytes.push(Buffer.byteLength(payload.html));
       assert.ok(Buffer.byteLength(payload.html) < 2000);
-      const analyzed = analyzeImportedSlideHtml(payload.html);
+      const analyzed = analyzeImportedSlideHtml(payload.html, payload);
       await route.fulfill({ json: { success: true, ...withImportedSlidePreviews(analyzed) } });
     } else {
       assert.equal(payload.reviewed, true); prepareImportedSlidePackage(payload.title, payload.design); saved++;
@@ -124,8 +124,8 @@ await page.route("http://courseforge.test/**", async route => {
   assert.ok(await contrast(page, '[role="dialog"] [role="alert"]') >= 4.5);
   // Construir File en el navegador evita transferir 100 MB de base64 por CDP.
   const selectLargeFile = async (bytes, name) => page.getByLabel("Archivo HTML").evaluate((input, { bytes, name, fixture }) => {
-    const head = fixture.replace("</body></html>", '<img src="data:image/png;base64,');
-    const tail = '"></body></html>';
+    const head = fixture.replace("</body></html>", '<script type="application/json">');
+    const tail = '</script></body></html>';
     const padding = new Uint8Array(bytes - new TextEncoder().encode(head + tail).byteLength).fill(65);
     const file = new File([head, padding, tail], name, { type: "text/html" });
     const transfer = new DataTransfer(); transfer.items.add(file); input.files = transfer.files;

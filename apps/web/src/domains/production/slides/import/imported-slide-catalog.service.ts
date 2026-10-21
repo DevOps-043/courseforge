@@ -4,6 +4,8 @@ import { buildSlideTemplatePackageZip, buildSlideTemplateSpecFromConversation } 
 import { buildCourseDeckEditableArtifact } from "../render/course-deck-editable-artifact.server";
 import { HtmlSlideImportError, type ImportedSlideDesign } from "./imported-slide-design.contract";
 import { importedDesignDigest, normalizeImportedSlideDesign } from "./imported-slide-design.service";
+import { detachedImportedDesign } from "./imported-slide-bundle-assets.server";
+import { renderCourseDeckHtml } from "../render/html-deck-renderer.service";
 
 function importIdentity(organizationId: string, hash: string, kind: string): string {
   const digest = createHash("sha256").update(JSON.stringify([organizationId, hash, kind])).digest("hex");
@@ -21,12 +23,14 @@ export function prepareImportedSlidePackage(title: string, value: ImportedSlideD
     title, importedDesign, description: "Diseño HTML importado y revisado para reutilizar contenido educativo.",
     changeSummary: "Importación de una familia HTML estática con campos revisados.",
   } });
-  for (const layout of importedDesign.layouts) {
+  if (importedDesign.assets?.some(asset => !asset.base64)) throw new HtmlSlideImportError("Reabre la plantilla para cargar sus recursos antes de guardar.");
+  for (const layout of importedDesign.editingMode === "html-text" ? [] : importedDesign.layouts) {
     const example = spec.examples[0] as unknown as import("../specs/course-deck.schema").CourseDeckSpec;
     try {
-      buildCourseDeckEditableArtifact({ ...example, importedDesign: { ...importedDesign, layouts: [{ ...layout, purpose: "any" }] },
+      const candidate = { ...example, importedDesign: { ...importedDesign, layouts: [{ ...layout, purpose: "any" as const }] },
         slides: [{ ...example.slides[0], title: "A", subtitle: undefined, chart: undefined, visualAssets: undefined,
-          bodyBlocks: [{ kind: "paragraph", text: "" }] }] });
+          bodyBlocks: [{ kind: "paragraph" as const, text: "" }] }] };
+      buildCourseDeckEditableArtifact(candidate);
     } catch {
       throw new HtmlSlideImportError(`${layout.label}: el diseño no es compatible con el editor de diapositivas. Simplifica su HTML/CSS antes de guardarlo.`);
     }
@@ -37,7 +41,8 @@ export function prepareImportedSlidePackage(title: string, value: ImportedSlideD
     slides: [{ ...baseExample.slides[0], type: first.purpose === "cover" ? "cover" : first.purpose === "summary" ? "summary" : "concept",
       title: "A", subtitle: undefined, chart: undefined, visualAssets: undefined, bodyBlocks: [{ kind: "paragraph", text: "" }] }] }];
   spec.templateManifest = { ...spec.templateManifest, id: `imported-${importedDesignDigest(importedDesign).slice(0, 24)}`,
-    importedDesignFormat: importedDesign.format };
+    importedDesignFormat: importedDesign.format, editingMode: importedDesign.editingMode ?? "native" };
+  if (importedDesign.editingMode === "html-text") renderCourseDeckHtml(spec.examples[0] as unknown as import("../specs/course-deck.schema").CourseDeckSpec);
   return spec;
 }
 
@@ -49,6 +54,10 @@ export async function saveImportedSlidePackage(context: BundleAgentAuthContext, 
   const conversationId = importIdentity(context.organizationId, hash, "conversation");
   const specId = importIdentity(context.organizationId, hash, "spec");
   const runId = importIdentity(context.organizationId, hash, "run");
+  if (spec.importedDesign?.editingMode === "html-text") {
+    spec.importedDesign.resourceBundleRunId = runId;
+    spec.examples = spec.examples.map(example => ({ ...example, importedDesign: spec.importedDesign }));
+  }
   const readRun = async () => {
     const { data, error } = await context.admin.from("soflia_bundle_generation_runs").select("id, status, bundle_storage_path, output_hash")
       .eq("id", runId).eq("organization_id", context.organizationId).maybeSingle();
@@ -70,7 +79,8 @@ export async function saveImportedSlidePackage(context: BundleAgentAuthContext, 
     { table: "soflia_bundle_conversations", row: { id: conversationId, artifact_kind: "slide_template", organization_id: context.organizationId,
       created_by: context.userId, title, status: "ACTIVE" } },
     { table: "soflia_bundle_specs", row: { id: specId, conversation_id: conversationId, organization_id: context.organizationId,
-      version_number: 1, spec_json: spec, spec_hash: hash, created_by: context.userId } },
+      version_number: 1, spec_json: { ...spec, importedDesign: detachedImportedDesign(spec.importedDesign!),
+        examples: spec.examples.map(example => ({ ...example, importedDesign: detachedImportedDesign(spec.importedDesign!) })) }, spec_hash: hash, created_by: context.userId } },
     { table: "soflia_bundle_generation_runs", row: { id: runId, conversation_id: conversationId, organization_id: context.organizationId,
       spec_id: specId, status: "QUEUED", model: "importacion-html-estatica-v1", input_hash: hash,
       validation_report: { info: { artifactKind: "slide_template", imported: true } } } },

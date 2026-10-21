@@ -1,7 +1,7 @@
 # Fuente de verdad: documento, medios y render de composiciones HyperFrames
 
 Estado: **vigente; correccion P0 implementada, migracion de integridad pendiente de despliegue**  
-Ultima revision tecnica: 2026-10-17
+Ultima revision tecnica: 2026-10-21
 Responsables: Production Engineering, Platform y QA  
 Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega de medios y HyperFrames Cloud.
 
@@ -23,6 +23,14 @@ El codigo y las migraciones prevalecen si este documento queda desactualizado;
 esa discrepancia es un defecto documental y debe corregirse en el mismo cambio.
 
 ## 2. Resumen del incidente SFX
+
+La importación de plantillas de diapositivas dispone de un perfil `html-text`
+para conservar HTML/CSS, fuentes e imágenes embebidas y sustituir campos de
+texto. Su paquete privado guarda recursos deduplicados y manifiestos; no genera
+un documento del editor geométrico ni importa animaciones a `document.motion`.
+Las reglas de autoridad y render nativo de este documento siguen vigentes.
+Contrato y evidencia: [plantillas HTML importadas](imported-slide-templates.md)
+y [validación de fidelidad](../../openspec/changes/preserve-imported-html-design/reports/verification.md).
 
 ### Sintoma
 
@@ -393,6 +401,9 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-21: delimitado el perfil HTML con campos de texto, recursos privados
+  y previews aislados; sin cambios al contrato de motion o render nativo.
 
 - 2026-10-19: importación de familias HTML estáticas revisadas y reutilización
   en la generación de diapositivas, conservando preflight editorial, tenant,

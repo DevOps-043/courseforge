@@ -1,4 +1,5 @@
 import { formatHtmlSlideImportBytes } from "./imported-slide-design.contract";
+import type { ImportedSlideAsset } from "./imported-slide-assets.contract";
 
 export const HTML_SLIDE_FILE_LIMITS = Object.freeze({
   bytes: 100_000_000,
@@ -16,6 +17,8 @@ export interface PreparedSlideFile {
   removedScripts: number;
   removedResources: number;
   removedCssUrls: number;
+  editingMode?: "html-text";
+  assets?: ImportedSlideAsset[];
 }
 
 export type SlideFileWorkerMessage =

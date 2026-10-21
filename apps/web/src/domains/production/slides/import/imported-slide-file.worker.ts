@@ -7,7 +7,7 @@ const port = globalThis as unknown as {
 };
 port.onmessage = async event => {
   try {
-    const result = await prepareImportedSlideFile(event.data.file, percent => port.postMessage({ type: "progress", percent }));
+    const result = await prepareImportedSlideFile(event.data.file, percent => port.postMessage({ type: "progress", percent }), true);
     port.postMessage({ type: "complete", result });
   } catch (error) {
     port.postMessage({ type: "error", message: error instanceof Error ? error.message : "No se pudo preparar el archivo HTML." });

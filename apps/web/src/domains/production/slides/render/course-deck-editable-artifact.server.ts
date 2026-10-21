@@ -31,8 +31,8 @@ const textGroups = [
 ] as const;
 
 export class CourseDeckEditorialError extends Error {
-  constructor(readonly code: "IMAGE_BINDING_MISSING" | "DUPLICATE_SLIDE_ID" | "INVALID_GENERATED_FIELD") {
-    super(`COURSE_DECK_EDITORIAL_${code}`); this.name = "CourseDeckEditorialError";
+  constructor(readonly code: "IMAGE_BINDING_MISSING" | "DUPLICATE_SLIDE_ID" | "INVALID_GENERATED_FIELD" | "HTML_TEXT_TEMPLATE") {
+    super(code === "HTML_TEXT_TEMPLATE" ? "Esta plantilla conserva HTML y campos de texto; no se convierte al editor nativo." : `COURSE_DECK_EDITORIAL_${code}`); this.name = "CourseDeckEditorialError";
   }
 }
 
@@ -43,6 +43,7 @@ export class CourseDeckEditorialError extends Error {
 export function buildCourseDeckEditableArtifact(rawDeck: CourseDeckSpec, imageAssetIds: ReadonlyMap<string, string> = new Map(),
   instance?: { clipId: string; slideIndex: number }) {
   const deck = courseDeckSpecSchema.parse(rawDeck);
+  if (deck.importedDesign?.editingMode === "html-text") throw new CourseDeckEditorialError("HTML_TEXT_TEMPLATE");
   if (new Set(deck.slides.map(slide => slide.id)).size !== deck.slides.length) throw new CourseDeckEditorialError("DUPLICATE_SLIDE_ID");
   const rendered = renderCourseDeckSource(deck);
   // Keep the full deck renderer/counts, but preflight only the requested saved

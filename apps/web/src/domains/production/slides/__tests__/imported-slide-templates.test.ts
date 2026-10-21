@@ -16,6 +16,18 @@ import { renderCourseDeckHtml } from "../render/html-deck-renderer.service";
 import { buildSlideTemplatePackageZip } from "../../bundle-agent/slide-template-package.service";
 import type { CourseDeckSpec } from "../specs/course-deck.schema";
 import { createImportCatalogFixture } from "./imported-slide-catalog.fixture";
+import { createHash } from "node:crypto";
+import { normalizeImportedAssets } from "../import/imported-slide-assets.server";
+import { detachedImportedDesign, hydrateImportedDesignBundle, hydrateImportedDesignForOrganization } from "../import/imported-slide-bundle-assets.server";
+import { hydrateImportedPreview } from "../import/imported-slide-asset-renderer";
+
+const tinyPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+kdzcAAAAASUVORK5CYII=";
+async function preservedDesign() {
+  const source = fixtures[0].replace("</style>", `.slide{background:#102030 url("data:image/png;base64,${tinyPng}") center/cover no-repeat}</style>`)
+    .replace("</section>", `<img src="data:image/png;base64,${tinyPng}" alt="Marca"><img src="data:image/png;base64,${tinyPng}" alt="Marca repetida"></section>`);
+  const prepared = await prepareImportedSlideFile(new Blob([source]), () => {}, true);
+  return analyzeImportedSlideHtml(prepared.html, prepared).design;
+}
 
 const fixtures = [
   `<html><head><style>body{margin:0;background:#102030;color:#fff}.slide{width:1920px;height:1080px;padding:80px;box-sizing:border-box}h1{font-size:72px}p{font-size:36px}</style></head><body><section class="slide active"><h1>Portada original</h1><p>Contenido original</p></section><script data-od-bridge>window.parent.postMessage('x','*')</script><nav class="deck-counter">Siguiente</nav></body></html>`,
@@ -32,6 +44,110 @@ function deckFor(source = fixtures[0]): CourseDeckSpec {
 }
 
 describe("importación de diseños HTML reutilizables", () => {
+  it("deduplica recursos y conserva el fondo y las imágenes del perfil HTML", async () => {
+    const design = await preservedDesign();
+    assert.equal(design.editingMode, "html-text");
+    assert.equal(design.assets?.length, 1);
+    assert.ok(design.assets![0].sha256);
+    assert.match(design.css, /background:#102030 url\("cf-asset:asset-1"\)/);
+    const response = withImportedSlidePreviews({ design });
+    assert.doesNotMatch(response.previews[0], /base64/);
+    const preview = hydrateImportedPreview(response.previews[0], design.assets);
+    assert.match(preview, /data:image\/png;base64/);
+    assert.doesNotMatch(preview, /cf-asset:/);
+    assert.equal(load(design.layouts[0].html)("img").length, 2);
+    assert.match(sanitizeImportedCss(`.slide{background:#102030 url('/private') center/cover no-repeat}`), /background:#102030 none center\/cover no-repeat/);
+  });
+
+  it("sustituye campos sin perder recursos y separa HTML del editor nativo", async () => {
+    const design = await preservedDesign();
+    const spec = prepareImportedSlidePackage("Conservar diseño", design);
+    const base = spec.examples[0] as unknown as CourseDeckSpec;
+    const deck = { ...base, importedDesign: design, slides: [{ ...base.slides[0], title: "Título nuevo", bodyBlocks: [{ kind: "paragraph" as const, text: "Contenido nuevo" }] }] };
+    const rendered = renderImportedCourseDeckSource(deck, design);
+    assert.match(rendered.slides[0].html, /Título nuevo/);
+    assert.match(rendered.slides[0].html, /Contenido nuevo/);
+    assert.equal((rendered.css.match(/content:url\("data:image\/png;base64/g) ?? []).length, 1);
+    assert.throws(() => buildCourseDeckEditableArtifact(deck), /no se convierte al editor nativo/);
+    assert.throws(() => renderCourseDeckHtml({ ...deck, importedDesign: detachedImportedDesign(design) }), /Carga los recursos/);
+  });
+
+  it("guarda solo manifiestos en BD y recupera binarios del ZIP con autoridad de organización", async () => {
+    const design = await preservedDesign();
+    const fixture = createImportCatalogFixture();
+    const context = { admin: fixture.admin, organizationId: "organizacion-a", userId: "actor", platformRole: "ADMIN" };
+    const saved = await saveImportedSlidePackage(context, "Recursos", design);
+    const stored = [...fixture.tables.get("soflia_bundle_specs")!.values()][0].spec_json as { importedDesign: typeof design };
+    assert.doesNotMatch(JSON.stringify(stored), /"base64"/);
+    assert.equal(stored.importedDesign.resourceBundleRunId, saved.generationRunId);
+    const hydrated = await hydrateImportedDesignForOrganization(stored.importedDesign, context);
+    assert.equal(hydrated.assets![0].base64, tinyPng);
+    assert.equal((await saveImportedSlidePackage(context, "Recursos", hydrated)).reused, true);
+    const zip = await JSZip.loadAsync([...fixture.files.values()][0]);
+    assert.equal(Object.keys(zip.files).filter(name => /^assets\/asset-.*\.png$/.test(name)).length, 1);
+    assert.doesNotMatch(await zip.file("package-spec.json")!.async("string"), /"base64"/);
+    assert.match(await zip.file("runtime/design-1.html")!.async("string"), /\.\.\/assets\/asset-1.png/);
+    await assert.rejects(hydrateImportedDesignForOrganization(stored.importedDesign, { ...context, organizationId: "organizacion-b" }), /esta organización/);
+  });
+
+  it("rechaza MIME falso, SVG activo, referencias cruzadas y binarios alterados", async () => {
+    assert.throws(() => normalizeImportedAssets([{ id: "asset-1", mimeType: "font/ttf", base64: tinyPng }]), /validación/);
+    for (const svg of ['<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><script>alert(1)</script></svg>', '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><image href="https://example.test/x"/></svg>']) {
+      assert.throws(() => normalizeImportedAssets([{ id: "asset-1", mimeType: "image/svg+xml", base64: Buffer.from(svg).toString("base64") }]), /validación/);
+    }
+    const design = await preservedDesign();
+    const altered = structuredClone(design); altered.assets![0].sha256 = "0".repeat(64);
+    assert.throws(() => normalizeImportedSlideDesign(altered), /validación/);
+    const missing = structuredClone(design); missing.assets = [];
+    assert.throws(() => normalizeImportedSlideDesign(missing), /manifiesto/);
+    const fontMismatch = structuredClone(design); fontMismatch.css += '@font-face{font-family:x;src:url("cf-asset:asset-1")}';
+    assert.throws(() => normalizeImportedSlideDesign(fontMismatch), /manifiesto/);
+  });
+
+  it("acota dimensiones y presupuestos decodificados de imágenes y fuentes", () => {
+    const invalidSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="-1" height="-1"/>';
+    assert.throws(() => normalizeImportedAssets([{ id: "asset-1", mimeType: "image/svg+xml", base64: Buffer.from(invalidSvg).toString("base64") }]), /validación/);
+    const png = Buffer.from(tinyPng, "base64");
+    png.writeUInt32BE(4096, 16); png.writeUInt32BE(4096, 20);
+    assert.throws(() => normalizeImportedAssets([1, 2].map(id => ({ id: `asset-${id}`, mimeType: "image/png", base64: png.toString("base64") }))), /validación/);
+    const woff = Buffer.alloc(48);
+    woff.write("wOF2"); woff.writeUInt32BE(48, 8); woff.writeUInt16BE(1, 12); woff.writeUInt32BE(15_000_000, 16);
+    assert.throws(() => normalizeImportedAssets([1, 2].map(id => ({ id: `asset-${id}`, mimeType: "font/woff2", base64: woff.toString("base64") }))), /validación/);
+  });
+
+  it("conserva posiciones CSS originales al envolver texto mixto como campos", () => {
+    const source = fixtures[0].replace("</style>", 'strong:last-child{white-space:nowrap}strong:nth-child(2){color:red}[class=":last-child"]{color:blue}</style>')
+      .replace("<p>Contenido original</p>", "<p>Texto <strong>énfasis</strong>.</p>");
+    const design = analyzeImportedSlideHtml(source, { editingMode: "html-text" }).design;
+    const fragment = load(design.layouts[0].html);
+    assert.match(fragment("strong").attr("class")!, /cf-source-position-1/);
+    assert.doesNotMatch(fragment("strong").attr("class")!, /cf-source-position-2/);
+    assert.equal(fragment("strong").is(":last-child"), false);
+    assert.match(design.css, /strong\.cf-source-position-1\{white-space:nowrap\}/);
+    assert.match(design.css, /\[class=":last-child"\]/);
+    const spec = prepareImportedSlidePackage("Texto mixto", design);
+    const base = spec.examples[0] as unknown as CourseDeckSpec;
+    const mixedFields = design.layouts[0].fields.filter(field => field.role === "body");
+    mixedFields.forEach(field => { field.role = "decoration"; });
+    mixedFields[0].role = "body";
+    const rendered = renderImportedCourseDeckSource({ ...base, slides: [{ ...base.slides[0], bodyBlocks: [{ kind: "paragraph", text: "Nuevo" }] }] }, design);
+    assert.match(load(rendered.slides[0].html)("p").html()!, />Nuevo <\/span><strong/);
+    assert.equal(load(rendered.slides[0].html)("p").text(), "Nuevo énfasis.");
+  });
+
+  it("limita la expansión del ZIP y verifica ruta y checksum antes de hidratar", async () => {
+    const design = await preservedDesign();
+    const manifest = detachedImportedDesign(design);
+    let downloads = 0;
+    const zip = new JSZip(); zip.file("assets/asset-1.png", Buffer.alloc(100_000));
+    const bytes = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+    const context = { organizationId: "organizacion-a", storagePath: `template-bundles/organizations/organizacion-a/slide-templates/imports/0000/${"a".repeat(64)}.slide-template.zip`,
+      outputHash: createHash("sha256").update(bytes).digest("hex"), admin: { storage: { from() { return { async download() { downloads++; return { data: { arrayBuffer: async () => Uint8Array.from(bytes).buffer }, error: null }; } }; } } } };
+    await assert.rejects(hydrateImportedDesignBundle(manifest, { ...context, organizationId: "organizacion-b" }), /organización/);
+    assert.equal(downloads, 0);
+    await assert.rejects(hydrateImportedDesignBundle(manifest, { ...context, outputHash: "0".repeat(64) }), /integridad/);
+    await assert.rejects(hydrateImportedDesignBundle(manifest, context), /tamaño declarado/);
+  });
   it("retira comentarios con escapes y conserva combinadores CSS válidos", () => {
     const css = sanitizeImportedCss(String.raw`/* Framework: \3c style> y <section> */ .axis > span{color:red}`);
     assert.equal(css.trim(), ".cf-import-root .axis > span{color:red}");

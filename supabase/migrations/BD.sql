@@ -1430,6 +1430,11 @@ CREATE TABLE public.organization_slide_fonts (
   storage_path text,
   created_by uuid,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  checksum_sha256 text CHECK (checksum_sha256 IS NULL OR checksum_sha256 ~ '^[a-f0-9]{64}$'::text),
+  file_size_bytes bigint CHECK (file_size_bytes IS NULL OR file_size_bytes >= 1 AND file_size_bytes <= 10485760),
+  mime_type text,
+  status text NOT NULL DEFAULT 'LEGACY'::text CHECK (status = ANY (ARRAY['LEGACY'::text, 'READY'::text, 'REJECTED'::text])),
+  storage_bucket text,
   CONSTRAINT organization_slide_fonts_pkey PRIMARY KEY (id),
   CONSTRAINT organization_slide_fonts_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id),
   CONSTRAINT organization_slide_fonts_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
@@ -1727,4 +1732,83 @@ CREATE TABLE public.syllabus_import_revisions (
   CONSTRAINT syllabus_import_revisions_pkey PRIMARY KEY (import_id, revision),
   CONSTRAINT syllabus_import_revisions_import_id_fkey FOREIGN KEY (import_id) REFERENCES public.syllabus_imports(id),
   CONSTRAINT syllabus_import_revisions_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.heygen_catalog_exclusions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL,
+  resource_kind text NOT NULL CHECK (resource_kind = ANY (ARRAY['avatar'::text, 'voice'::text])),
+  provider_id text NOT NULL,
+  excluded_at timestamp with time zone NOT NULL DEFAULT now(),
+  excluded_by uuid,
+  restored_at timestamp with time zone,
+  restored_by uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT heygen_catalog_exclusions_pkey PRIMARY KEY (id),
+  CONSTRAINT heygen_catalog_exclusions_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
+);
+CREATE TABLE public.narrative_extraction_receipts (
+  organization_id uuid NOT NULL,
+  draft_id uuid NOT NULL,
+  actor_id uuid NOT NULL,
+  command_id uuid NOT NULL,
+  request_fingerprint text NOT NULL CHECK (request_fingerprint ~ '^[a-f0-9]{64}$'::text),
+  document_id uuid NOT NULL,
+  receipt jsonb NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT narrative_extraction_receipts_pkey PRIMARY KEY (organization_id, draft_id, actor_id, command_id),
+  CONSTRAINT narrative_extraction_receipts_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id),
+  CONSTRAINT narrative_extraction_receipts_draft_id_fkey FOREIGN KEY (draft_id) REFERENCES public.video_composition_drafts(id),
+  CONSTRAINT narrative_extraction_receipts_document_id_fkey FOREIGN KEY (document_id) REFERENCES public.video_composition_draft_documents(id)
+);
+CREATE TABLE public.narrative_fragment_receipts (
+  organization_id uuid NOT NULL,
+  draft_id uuid NOT NULL,
+  actor_id uuid NOT NULL,
+  command_id uuid NOT NULL,
+  request_fingerprint text NOT NULL CHECK (request_fingerprint ~ '^[a-f0-9]{64}$'::text),
+  document_id uuid NOT NULL,
+  receipt jsonb NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT narrative_fragment_receipts_pkey PRIMARY KEY (organization_id, draft_id, actor_id, command_id),
+  CONSTRAINT narrative_fragment_receipts_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id),
+  CONSTRAINT narrative_fragment_receipts_draft_id_fkey FOREIGN KEY (draft_id) REFERENCES public.video_composition_drafts(id),
+  CONSTRAINT narrative_fragment_receipts_document_id_fkey FOREIGN KEY (document_id) REFERENCES public.video_composition_draft_documents(id)
+);
+CREATE TABLE public.render_worker_job_recovery_states (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  worker_id uuid NOT NULL,
+  organization_id uuid NOT NULL,
+  remote_table text NOT NULL CHECK (remote_table = ANY (ARRAY['production_jobs'::text, 'remotion_template_builds'::text, 'remotion_template_previews'::text])),
+  remote_job_id uuid NOT NULL,
+  job_type text NOT NULL CHECK (job_type = ANY (ARRAY['render'::text, 'template_build'::text, 'template_preview'::text])),
+  local_state text NOT NULL,
+  artifact_ready boolean NOT NULL DEFAULT false,
+  artifact_checksum text,
+  artifact_size_bytes bigint,
+  cleanup_policy text,
+  cleanup_status text,
+  last_reported_at timestamp with time zone NOT NULL DEFAULT now(),
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT render_worker_job_recovery_states_pkey PRIMARY KEY (id),
+  CONSTRAINT render_worker_job_recovery_states_worker_fkey FOREIGN KEY (worker_id) REFERENCES public.render_workers(id),
+  CONSTRAINT render_worker_job_recovery_states_organization_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id)
+);
+CREATE TABLE public.organization_google_font_bundles (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL,
+  font_id uuid NOT NULL,
+  candidate_sha256 text NOT NULL CHECK (candidate_sha256 ~ '^[a-f0-9]{64}$'::text),
+  manifest_text text NOT NULL CHECK (octet_length(manifest_text) >= 1 AND octet_length(manifest_text) <= 262144),
+  manifest jsonb NOT NULL,
+  registration_css_url text NOT NULL CHECK (char_length(registration_css_url) >= 1 AND char_length(registration_css_url) <= 2000),
+  status text NOT NULL DEFAULT 'PREPARED'::text CHECK (status = ANY (ARRAY['PREPARED'::text, 'REVOKED'::text])),
+  created_by uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT organization_google_font_bundles_pkey PRIMARY KEY (id),
+  CONSTRAINT organization_google_font_bundles_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id),
+  CONSTRAINT organization_google_font_bundles_font_id_fkey FOREIGN KEY (font_id) REFERENCES public.organization_slide_fonts(id),
+  CONSTRAINT organization_google_font_bundles_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
 );

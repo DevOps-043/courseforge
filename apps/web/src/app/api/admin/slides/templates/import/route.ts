@@ -4,6 +4,7 @@ import { assertHtmlSlideImportRole, saveImportedSlidePackage } from "@/domains/p
 import { analyzeImportedSlideHtml, normalizeImportedSlideDesign, withImportedSlidePreviews } from "@/domains/production/slides/import/imported-slide-design.service";
 import { HtmlSlideImportError } from "@/domains/production/slides/import/imported-slide-design.contract";
 import { parseImportedSlideRequest } from "@/domains/production/slides/import/imported-slide-request.service";
+import { hydrateImportedDesignForOrganization } from "@/domains/production/slides/import/imported-slide-bundle-assets.server";
 import { API_ERROR_CODE } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
 import { resolveCorrelationId } from "@/lib/server/operational-logger";
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
       message: parsed.reason === "too_large" ? "La importación excede el tamaño permitido." : "La solicitud de importación no es válida.",
       requestId, status: parsed.reason === "too_large" ? 413 : 400 });
     if (parsed.data.action === "analyze") {
-      const result = analyzeImportedSlideHtml(parsed.data.html);
+      const result = analyzeImportedSlideHtml(parsed.data.html, parsed.data);
       return apiSuccessResponse(withImportedSlidePreviews(result), { requestId });
     }
     if (parsed.data.action === "load") {
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
       if (error) throw error;
       if (!data?.spec_json?.importedDesign) return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound,
         message: "La plantilla importada no existe en esta organización.", requestId, status: 404 });
-      const design = normalizeImportedSlideDesign(data.spec_json.importedDesign);
+      const design = await hydrateImportedDesignForOrganization(normalizeImportedSlideDesign(data.spec_json.importedDesign), context);
       return apiSuccessResponse(withImportedSlidePreviews({ design, title: data.spec_json.title,
         report: { removedScripts: 0, removedResources: 0, warnings: ["Estás revisando una versión saneada. Guardar cambios crea otra versión en la biblioteca y conserva la anterior."] },
       }), { requestId });

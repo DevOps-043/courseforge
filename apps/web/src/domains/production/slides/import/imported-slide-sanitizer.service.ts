@@ -2,6 +2,8 @@ import { load } from "cheerio";
 import sanitizeHtml from "sanitize-html";
 import postcss from "postcss";
 import { HTML_SLIDE_IMPORT_LIMITS, HTML_SLIDE_SOURCE_SIZE_LABEL, HtmlSlideImportError } from "./imported-slide-design.contract";
+import { importedCssResourceFallback } from "./imported-slide-asset-renderer";
+import { importedAssetReference } from "./imported-slide-assets.contract";
 
 const STATIC_TAGS = ["div", "section", "article", "main", "header", "footer", "aside", "p", "span", "strong", "em", "b", "i",
   "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "figure", "figcaption", "br",
@@ -10,7 +12,7 @@ const SVG_ATTRIBUTES = ["viewbox", "width", "height", "x", "y", "x1", "x2", "y1"
   "d", "points", "fill", "stroke", "stroke-width", "opacity", "fill-opacity", "stroke-opacity", "transform", "text-anchor", "font-size"];
 
 /** Rechaza CSS con red o código ejecutable, incluidos tokens escapados. */
-export function sanitizeImportedCss(source: string, scoped = false): string {
+export function sanitizeImportedCss(source: string, scoped = false, embeddedAssets = false): string {
   if (source.length > HTML_SLIDE_IMPORT_LIMITS.cssCharacters) throw new HtmlSlideImportError("El CSS excede el límite de importación.");
   try {
     const stylesheet = postcss.parse(source);
@@ -24,11 +26,19 @@ export function sanitizeImportedCss(source: string, scoped = false): string {
     stylesheet.walkComments(comment => { comment.remove(); });
     if (/[\\<\u0000]/.test(stylesheet.toString())) throw new HtmlSlideImportError("El CSS contiene escapes o construcciones incompatibles.");
     stylesheet.walkAtRules(rule => {
+      if (embeddedAssets && rule.name.toLowerCase() === "font-face" && !rule.params) return;
       if (rule.name.toLowerCase() !== "media" || !/^[a-zA-Z0-9\s():.,\-]+$/.test(rule.params)) rule.remove();
     });
     stylesheet.walkDecls(declaration => {
+      const checkedValue = embeddedAssets ? declaration.value.replace(/url\(\s*["']?cf-asset:asset-[1-9][0-9]*["']?\s*\)/g, "none") : declaration.value;
       if (/url\s*\(|(?:image|image-set|cross-fade|src|expression|paint|element|attr)\s*\(|(?:https?:|data:|javascript:|\/\/)/i.test(declaration.value)
-        || /^(?:behavior|-moz-binding|animation|transition)/i.test(declaration.prop)) { declaration.remove(); return; }
+        && /url\s*\(|(?:image|image-set|cross-fade|src|expression|paint|element|attr)\s*\(|(?:https?:|data:|javascript:|\/\/)/i.test(checkedValue)
+        || /^(?:behavior|-moz-binding|animation|transition)/i.test(declaration.prop)) {
+        const fallback = importedCssResourceFallback(declaration.prop, checkedValue);
+        if (fallback && !/(?:https?:|data:|javascript:|\/\/|expression\s*\()/i.test(fallback)) declaration.value = fallback;
+        else declaration.remove();
+        return;
+      }
       if (declaration.prop === "position" && declaration.value.toLowerCase() === "fixed") declaration.value = "absolute";
     });
     stylesheet.walkRules(rule => {
@@ -56,10 +66,10 @@ export function sanitizeImportedCss(source: string, scoped = false): string {
   }
 }
 
-export function sanitizeImportedMarkup(source: string): string {
+export function sanitizeImportedMarkup(source: string, embeddedAssets = false): string {
   return sanitizeHtml(source, {
-    allowedTags: STATIC_TAGS,
-    allowedAttributes: { "*": ["id", "class", "style", "data-cf-field", "data-cf-design-id", "aria-label", ...SVG_ATTRIBUTES] },
+    allowedTags: embeddedAssets ? [...STATIC_TAGS, "img", "a", "small", "sup", "sub"] : STATIC_TAGS,
+    allowedAttributes: { "*": ["id", "class", "style", "data-cf-field", "data-cf-design-id", "aria-label", ...SVG_ATTRIBUTES], img: ["data-cf-resource", "alt"] },
     allowedSchemes: [], allowProtocolRelative: false, parseStyleAttributes: false,
     nonTextTags: ["script", "style", "textarea", "option", "noscript", "iframe", "object", "embed", "foreignobject"],
     transformTags: { "*": (tagName, attribs) => {
@@ -68,6 +78,11 @@ export function sanitizeImportedMarkup(source: string): string {
         attributes["data-cf-design-id"] = attributes["data-od-id"];
         delete attributes["data-od-id"];
       }
+      if (tagName === "img") {
+        const reference = importedAssetReference.exec(attributes.src ?? "");
+        if (reference) attributes["data-cf-resource"] = reference[1];
+        delete attributes.src;
+      }
       if (attributes.style) {
         let parsed: ReturnType<typeof postcss.parse>;
         try { parsed = postcss.parse(`span{${attributes.style}}`); }
@@ -75,7 +90,7 @@ export function sanitizeImportedMarkup(source: string): string {
         if (parsed.nodes.length !== 1 || parsed.first?.type !== "rule" || parsed.first.nodes.some(node => node.type !== "decl")) {
           throw new HtmlSlideImportError("Un estilo inline contiene construcciones incompatibles.");
         }
-        attributes.style = sanitizeImportedCss(`span{${attributes.style}}`, true).replace(/^span\s*\{|\}$/g, "");
+        attributes.style = sanitizeImportedCss(`span{${attributes.style}}`, true, embeddedAssets).replace(/^span\s*\{|\}$/g, "");
       }
       for (const attribute of SVG_ATTRIBUTES) {
         if (attributes[attribute] && /url\s*\(|[\\<>]|(?:https?:|data:|javascript:)/i.test(attributes[attribute])) delete attributes[attribute];
@@ -85,14 +100,14 @@ export function sanitizeImportedMarkup(source: string): string {
   });
 }
 
-export function cleanImportedDocument(html: string) {
+export function cleanImportedDocument(html: string, embeddedAssets = false) {
   if (Buffer.byteLength(html, "utf8") > HTML_SLIDE_IMPORT_LIMITS.sourceBytes) throw new HtmlSlideImportError(`El HTML supera ${HTML_SLIDE_SOURCE_SIZE_LABEL}.`);
   const document = load(html);
   if (document("*").length > 10_000) throw new HtmlSlideImportError("El documento contiene demasiados elementos.");
   const removedScripts = document("script").length;
-  const removedResources = document("img, video, audio, iframe, object, embed, link, image, use").length;
-  const css = sanitizeImportedCss(document("style").map((_index, node) => document(node).text()).get().join("\n"));
-  document("script, style, link, meta, base, img, video, audio, iframe, object, embed, image, use, nav, .deck-counter, .deck-hint, .notes").remove();
+  const removedResources = document(`${embeddedAssets ? "" : "img,"} video, audio, iframe, object, embed, link, image, use`).length;
+  const css = sanitizeImportedCss(document("style").map((_index, node) => document(node).text()).get().join("\n"), false, embeddedAssets);
+  document(`script, style, link, meta, base, ${embeddedAssets ? "" : "img,"} video, audio, iframe, object, embed, image, use, nav, .deck-counter, .deck-hint, .notes`).remove();
   document("*").each((_index, node) => {
     const element = document(node);
     element.removeAttr("data-cf-field");
