@@ -13,12 +13,13 @@ El flujo utiliza `EngineDialog`, igual que usuarios y confirmaciones. Su portal 
 ## Perfil inicial
 
 - Archivo original de hasta **100 MB** (100 000 000 bytes). Antes de subirlo, un Web Worker local lee bloques de 256 KiB y retira scripts, comentarios, notas, navegación, imágenes y recursos excluidos, incluidas URLs CSS con base64. No ejecuta HTML ni descarga recursos. La UI muestra progreso, cancelación y un resumen de la reducción.
-- La fuente preparada enviada a la API admite hasta **2 MB UTF-8**, CSS incluido, con entre 1 y 12 secciones `.slide`, sin slides anidadas. Un original grande cuyo contenido útil exceda ese presupuesto falla con un mensaje diferente al límite del archivo. El servidor vuelve a sanear todo y comprueba sus bytes reales.
+- La fuente preparada enviada a la API admite hasta **2 MB UTF-8**, CSS incluido, con entre 1 y 24 secciones `.slide`, sin slides anidadas. Un original grande cuyo contenido útil exceda ese presupuesto falla con un mensaje diferente al límite del archivo. El servidor vuelve a sanear todo y comprueba sus bytes reales.
 - La familia normalizada admite hasta 2 MB serializados. El transporte JSON y la respuesta con previews tienen presupuestos independientes de 5 MB; el servidor limita la lectura del stream aunque falte `Content-Length`. Los previews se generan desde una sola normalización y su tamaño se comprueba antes de responder.
 - Estos presupuestos dejan margen frente a los 6 MB documentados para funciones síncronas en [Netlify](https://docs.netlify.com/build/functions/configuration/). La [evidencia del cambio de tamaño](../../openspec/changes/expand-slide-import-size/reports/verification.md) distingue admisión, compatibilidad y límites de las pruebas.
 - El límite de archivo no garantiza compatibilidad: se conservan los topes de 120 000 caracteres CSS, 100 000 caracteres por fragmento, nodos/profundidad y el preflight del editor. Un archivo grande puede rechazarse por estos controles; repartir diseños entre archivos reduce el tamaño total, pero no elimina el límite de un fragmento individual.
 - Canvas 1920×1080. Se conserva HTML/CSS estático y SVG sin recursos externos.
-- Se retiran scripts, eventos, navegación, imágenes, fuentes y recursos externos. CSS con escapes, anidación o complejidad excesiva se rechaza. Animaciones y reglas de navegación se materializan como estado estático cuando es posible; el preview requiere revisión.
+- Se retiran scripts, eventos, navegación, imágenes, fuentes y recursos externos. Los comentarios CSS se eliminan antes de comprobar caracteres activos; combinadores válidos como `>` se conservan. CSS con escapes activos, anidación o complejidad excesiva se rechaza. Animaciones y reglas de navegación se materializan como estado estático cuando es posible; el preview requiere revisión.
+- Las anclas visuales `data-od-id` se convierten en `data-cf-design-id` en HTML y selectores CSS. Solo conservan estilos, sin conceder identidad editable ni autoridad.
 - Las gráficas dinámicas no tienen binding en este perfil; su generación devuelve una incompatibilidad explícita. Tampoco se descargan assets ni se reconstruyen elementos dibujados exclusivamente por JavaScript.
 - Los límites de caracteres son controles de capacidad, no una garantía de ajuste visual con cualquier fuente. El preview de importación usa contenido de muestra; QA de generación sigue siendo necesario.
 - La inferencia inicial de roles es algorítmica y revisable por una persona. No se llama a un modelo para clasificar el HTML. El agente de copy existente recibe únicamente capacidades estructuradas, nunca el HTML como instrucciones.
@@ -38,6 +39,8 @@ HTML se parsea con Cheerio y sanea con sanitize-html; CSS se parsea con PostCSS,
 El [renderizador importado](../../apps/web/src/domains/production/slides/import/imported-slide-renderer.service.ts) reemplaza campos mediante nodos de texto, conserva una sola copia de CSS por deck y selecciona diseños por propósito y capacidad. Si no existe uno compatible, falla sin truncar bloques ni sustituirlo por un diseño estándar.
 
 La exportación utiliza el productor editorial existente y su compilador independiente. No se debilita el catálogo de confianza ni se concede autoridad a atributos importados. Motion sigue siendo propiedad del documento de composición.
+
+La prueba local con `SofLIA_Highlands_Premium_EN_v4.html` confirma preparación y análisis de 16 diseños tras corregir los falsos positivos CSS. El preflight editorial todavía rechaza sus 16 layouts: contiene shorthand de fuentes, medidas calculadas y transformaciones inline fuera del perfil estático admitido. Analizar y mostrar previews no acredita que pueda guardarse como plantilla editable. Los resultados y límites están en [el informe de compatibilidad](../../openspec/changes/fix-opendesign-css-compatibility/reports/verification.md).
 
 ## Persistencia y recuperación
 

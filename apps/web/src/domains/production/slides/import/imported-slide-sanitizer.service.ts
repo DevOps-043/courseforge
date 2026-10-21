@@ -12,7 +12,6 @@ const SVG_ATTRIBUTES = ["viewbox", "width", "height", "x", "y", "x1", "x2", "y1"
 /** Rechaza CSS con red o código ejecutable, incluidos tokens escapados. */
 export function sanitizeImportedCss(source: string, scoped = false): string {
   if (source.length > HTML_SLIDE_IMPORT_LIMITS.cssCharacters) throw new HtmlSlideImportError("El CSS excede el límite de importación.");
-  if (/[\\<>\u0000]/.test(source)) throw new HtmlSlideImportError("El CSS contiene escapes o construcciones incompatibles.");
   try {
     const stylesheet = postcss.parse(source);
     const pending = stylesheet.nodes.map(node => ({ node, depth: 1 }));
@@ -23,6 +22,7 @@ export function sanitizeImportedCss(source: string, scoped = false): string {
       if ("nodes" in node && node.nodes) for (const child of node.nodes) pending.push({ node: child, depth: depth + 1 });
     }
     stylesheet.walkComments(comment => { comment.remove(); });
+    if (/[\\<\u0000]/.test(stylesheet.toString())) throw new HtmlSlideImportError("El CSS contiene escapes o construcciones incompatibles.");
     stylesheet.walkAtRules(rule => {
       if (rule.name.toLowerCase() !== "media" || !/^[a-zA-Z0-9\s():.,\-]+$/.test(rule.params)) rule.remove();
     });
@@ -32,6 +32,8 @@ export function sanitizeImportedCss(source: string, scoped = false): string {
       if (declaration.prop === "position" && declaration.value.toLowerCase() === "fixed") declaration.value = "absolute";
     });
     stylesheet.walkRules(rule => {
+      // El ancla visual no debe conservar el prefijo del controlador de OpenDesign.
+      rule.selector = rule.selector.replace(/(\[\s*)data-od-id(?=\s*(?:[~|^$*]?=|\]))/gi, "$1data-cf-design-id");
       if (rule.parent?.type === "rule" || /[&@]|:(?:has|host|host-context)\s*\(/i.test(rule.selector)) {
         throw new HtmlSlideImportError("El CSS anidado o sus selectores no son compatibles.");
       }
@@ -57,11 +59,15 @@ export function sanitizeImportedCss(source: string, scoped = false): string {
 export function sanitizeImportedMarkup(source: string): string {
   return sanitizeHtml(source, {
     allowedTags: STATIC_TAGS,
-    allowedAttributes: { "*": ["id", "class", "style", "data-cf-field", "aria-label", ...SVG_ATTRIBUTES] },
+    allowedAttributes: { "*": ["id", "class", "style", "data-cf-field", "data-cf-design-id", "aria-label", ...SVG_ATTRIBUTES] },
     allowedSchemes: [], allowProtocolRelative: false, parseStyleAttributes: false,
     nonTextTags: ["script", "style", "textarea", "option", "noscript", "iframe", "object", "embed", "foreignobject"],
     transformTags: { "*": (tagName, attribs) => {
       const attributes = { ...attribs };
+      if (attributes["data-od-id"] !== undefined) {
+        attributes["data-cf-design-id"] = attributes["data-od-id"];
+        delete attributes["data-od-id"];
+      }
       if (attributes.style) {
         let parsed: ReturnType<typeof postcss.parse>;
         try { parsed = postcss.parse(`span{${attributes.style}}`); }

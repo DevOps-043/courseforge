@@ -6,7 +6,7 @@ import { createImportedCssUrlReducer } from "./imported-slide-css-url-reducer";
 const discardedContainers = new Set(["script", "iframe", "object", "video", "audio", "nav"]);
 const discardedResources = new Set(["img", "image", "use", "embed", "link"]);
 const voidTags = new Set(["area", "base", "basefont", "br", "col", "command", "embed", "frame", "hr", "img", "input", "isindex", "keygen", "link", "meta", "param", "source", "track", "wbr"]);
-const retainedAttributes = new Set(["id", "class", "style", "viewbox", "width", "height", "x", "y", "x1", "x2", "y1", "y2",
+const retainedAttributes = new Set(["id", "class", "style", "data-od-id", "data-cf-design-id", "viewbox", "width", "height", "x", "y", "x1", "x2", "y1", "y2",
   "cx", "cy", "r", "rx", "ry", "d", "points", "fill", "stroke", "stroke-width", "opacity", "fill-opacity", "stroke-opacity", "transform", "text-anchor", "font-size"]);
 
 function escapeMarkup(value: string) {
@@ -55,7 +55,8 @@ export async function prepareImportedSlideFile(file: Blob, onProgress: (percent:
           reducer.write(value); reducer.end(); compact = chunks.join("");
         }
         if (compact.length > HTML_SLIDE_IMPORT_LIMITS.sourceBytes) throw preparedSizeError();
-        emit(` ${attribute}="${escapeMarkup(compact)}"`);
+        const normalizedAttribute = attribute === "data-od-id" ? "data-cf-design-id" : attribute;
+        emit(` ${normalizedAttribute}="${escapeMarkup(compact)}"`);
       }
       emit(">");
       if (name === "style") cssReducer = createImportedCssUrlReducer(emit, countCssUrl);

@@ -32,6 +32,33 @@ function deckFor(source = fixtures[0]): CourseDeckSpec {
 }
 
 describe("importación de diseños HTML reutilizables", () => {
+  it("retira comentarios con escapes y conserva combinadores CSS válidos", () => {
+    const css = sanitizeImportedCss(String.raw`/* Framework: \3c style> y <section> */ .axis > span{color:red}`);
+    assert.equal(css.trim(), ".cf-import-root .axis > span{color:red}");
+    assert.throws(() => sanitizeImportedCss(String.raw`.axis\3e span{color:red}`), /escapes/);
+    assert.throws(() => sanitizeImportedCss(`.axis{content:"<script>"}`), /incompatibles/);
+    assert.throws(() => sanitizeImportedCss(`.axis{color:\u0000red}`), /incompatibles/);
+  });
+
+  it("conserva anclas visuales OpenDesign sin conceder identidad editable", async () => {
+    const source = fixtures[0].replace("<p>", '<p data-od-id="chart-label" data-courseforge-editable-id="externo">')
+      .replace("</style>", '[data-od-id="chart-label"] > span{color:red}</style>');
+    const prepared = await prepareImportedSlideFile(new Blob([source]));
+    const { design } = analyzeImportedSlideHtml(prepared.html);
+    assert.match(design.css, /\[data-cf-design-id="chart-label"\] > span/);
+    assert.match(design.layouts[0].html, /data-cf-design-id="chart-label"/);
+    assert.doesNotMatch(JSON.stringify(design), /data-od-id|data-courseforge-editable-id/);
+    assert.equal(prepareImportedSlidePackage("Anclas visuales", design).importedDesign?.layouts.length, 1);
+  });
+
+  it("admite 16 y 24 diseños y rechaza familias mayores", () => {
+    for (const count of [16, HTML_SLIDE_IMPORT_LIMITS.slides]) {
+      const source = `<html><body>${'<section class="slide"><h1>Título</h1><p>Contenido</p></section>'.repeat(count)}</body></html>`;
+      assert.equal(analyzeImportedSlideHtml(source).design.layouts.length, count);
+      assert.throws(() => analyzeImportedSlideHtml(source.replace("</body>", `${'<section class="slide"><h1>Extra</h1></section>'.repeat(HTML_SLIDE_IMPORT_LIMITS.slides + 1 - count)}</body>`)), /24 diapositivas/);
+    }
+  });
+
   for (const bytes of [21_700_000, 50_000_000, HTML_SLIDE_FILE_LIMITS.bytes]) {
     it(`prepara un original de ${bytes} bytes y envía solo el diseño compacto`, async () => {
       const prefix = fixtures[2].replace("</body></html>", '<img src="data:image/png;base64,');

@@ -4,7 +4,7 @@ export const HTML_SLIDE_IMPORT_LIMITS = Object.freeze({
   sourceBytes: 2_000_000, designBytes: 2_000_000, requestBytes: 5_000_000, responseBytes: 5_000_000,
   responseEnvelopeBytes: 1024,
   cssCharacters: 120_000, fragmentCharacters: 100_000,
-  slides: 12, fields: 60, textCharacters: 900,
+  slides: 24, fields: 60, textCharacters: 900,
   sourceElements: 1500, sourceDepth: 40, cssNodes: 4096, cssDepth: 16,
 });
 export function formatHtmlSlideImportBytes(bytes: number): string {

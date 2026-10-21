@@ -11,7 +11,7 @@ export function analyzeImportedSlideHtml(html: string) {
   const sourceSlides = cleaned.document(".od-slide").toArray();
   if (!sourceSlides.length || sourceSlides.length > HTML_SLIDE_IMPORT_LIMITS.slides
     || sourceSlides.some(node => cleaned.document(node).find(".od-slide").length)) {
-    throw new HtmlSlideImportError("Se requieren entre 1 y 12 diapositivas .slide, sin diapositivas anidadas.");
+    throw new HtmlSlideImportError(`Se requieren entre 1 y ${HTML_SLIDE_IMPORT_LIMITS.slides} diapositivas .slide, sin diapositivas anidadas.`);
   }
   const layouts = sourceSlides.map((_source, index): ImportedSlideLayout => {
     const copy = load(cleaned.document.html());
