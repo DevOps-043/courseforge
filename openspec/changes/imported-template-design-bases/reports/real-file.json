@@ -1,0 +1,19 @@
+{
+  "source": "SofLIA_Highlands_Premium_EN_v4.html",
+  "sha256": "271ece268c6fcedac394246776a9d5991293ce046ddc0453d2a2201e629586e3",
+  "sourceLayouts": 16,
+  "derivedLayouts": [
+    "design-1",
+    "design-2",
+    "design-6"
+  ],
+  "uniqueAssets": 8,
+  "clearedFields": 4,
+  "contextBytes": 37043,
+  "responseBytes": 3557958,
+  "bundleBytes": 1848027,
+  "baseUnchanged": true,
+  "inlineAssetsInDatabase": false,
+  "provider": "Simulado",
+  "persistence": "BD/storage simulados, recursos y ZIP reales; sin generación pagada ni escritura remota."
+}

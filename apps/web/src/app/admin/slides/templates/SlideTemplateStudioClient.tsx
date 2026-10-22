@@ -28,6 +28,8 @@ import { SOFLIA_SLIDE_TEMPLATE_BACKGROUND } from "@/domains/production/slides/te
 import { GoogleFontPreparationControl } from "@/domains/production/fonts/components/GoogleFontPreparationControl";
 import type { GoogleFontNativePin } from "@/domains/production/fonts/google-font-native-face.contract";
 import { ImportSlideTemplateDialog } from "@/domains/production/slides/import/components/ImportSlideTemplateDialog";
+import { ImportedTemplateBasePicker } from "@/domains/production/slides/import/components/ImportedTemplateBasePicker";
+import { ImportedTemplateStudio } from "@/domains/production/slides/import/components/ImportedTemplateStudio";
 
 type SlideLayoutId = "center" | "closing" | "data" | "framework" | "split" | "split_reverse";
 type SlideTypeId = string;
@@ -431,6 +433,13 @@ function SlidePreview({
 }
 
 export function SlideTemplateStudioClient() {
+  const searchParams = useSearchParams();
+  if (searchParams.get("baseRunId") || searchParams.get("mode") === "imported") return <ImportedTemplateStudio />;
+  return <DefaultSlideTemplateStudioClient />;
+}
+
+function DefaultSlideTemplateStudioClient() {
+  const [basesRevision, setBasesRevision] = useState(0);
   const params = useParams<{ empresaSlug?: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -755,7 +764,7 @@ export function SlideTemplateStudioClient() {
           <h1 className="mt-0.5 text-xl font-black tracking-tight">Crear plantilla HTML de slides</h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <ImportSlideTemplateDialog />
+          <ImportSlideTemplateDialog onSaved={() => setBasesRevision(current => current + 1)} />
           <Link
             href={`${adminBasePath}/slides`}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 transition hover:bg-gray-100 dark:border-white/10 dark:bg-[var(--engine-surface-solid)] dark:text-gray-200 dark:hover:bg-white/5"
@@ -782,7 +791,8 @@ export function SlideTemplateStudioClient() {
         </div>
       </div>
 
-      <section className="grid h-[calc(100%-56px)] min-h-0 gap-3 xl:grid-cols-[minmax(380px,0.82fr)_minmax(560px,1.18fr)]">
+      <ImportedTemplateBasePicker adminBasePath={adminBasePath} revision={basesRevision} />
+      <section className="mt-3 grid h-[calc(100%-156px)] min-h-0 gap-3 xl:grid-cols-[minmax(380px,0.82fr)_minmax(560px,1.18fr)]">
         <div className="flex min-h-0 flex-col rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-[var(--engine-surface-solid)]">
           <div className="border-b border-gray-100 p-2.5 dark:border-white/10">
             <label className="block text-[11px] font-black uppercase text-gray-500 dark:text-gray-400">

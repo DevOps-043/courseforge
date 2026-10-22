@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { importedTemplateStudioOptionsSchema } from "../slides/import/imported-template-base.contract";
 import {
   bundleAgentArtifactKindSchema,
   bundleAgentMessageMetadataSchema,
@@ -28,6 +29,7 @@ export const addBundleAgentMessageRequestSchema = z.object({
 }).strict();
 
 export const createBundleAgentSpecRequestSchema = z.object({
+  importedBase: importedTemplateStudioOptionsSchema.optional(),
   artifactKind: bundleAgentArtifactKindSchema.optional(),
   overrides: z.record(z.string(), z.unknown()).optional(),
 }).strict();

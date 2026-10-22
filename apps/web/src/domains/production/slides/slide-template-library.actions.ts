@@ -8,6 +8,7 @@ import { importedDesignPreview } from "./import/imported-slide-design.service";
 import { importedSlideDesignSchema } from "./import/imported-slide-design.contract";
 
 export interface SlideTemplateLibraryItem {
+  design_base_run_id?: string | null;
   imported?: boolean;
   preview_html?: string | null;
   preview_url?: string | null;
@@ -61,6 +62,7 @@ export async function getSlideTemplatePackagesAction(): Promise<{ success: boole
       const conversation = conversationsById.get(run.conversation_id);
       const imported = importedSlideDesignSchema.safeParse(spec?.importedDesign);
       return [{ id: run.id, conversation_id: run.conversation_id, organization_id: run.organization_id, spec_id: run.spec_id || null,
+        design_base_run_id: typeof asRecord(spec?.designBase)?.runId === "string" ? spec!.designBase.runId : null,
         imported: imported.success,
         preview_url: imported.success && imported.data.editingMode === "html-text" ? `/api/production/slides/templates/${run.id}/preview` : null,
         preview_html: imported.success && imported.data.editingMode !== "html-text" ? importedDesignPreview(imported.data, 0) : null,

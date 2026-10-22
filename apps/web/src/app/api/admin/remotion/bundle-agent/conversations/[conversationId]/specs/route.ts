@@ -36,7 +36,7 @@ export async function POST(request: Request, context: RouteContext) {
     const body = parsed.data ?? {};
     const authContext = await resolveBundleAgentAuthContext();
     const service = new BundleAgentWorkflowService(authContext);
-    const spec = await service.createSpec(conversationId, body?.overrides, body?.artifactKind);
+    const spec = await service.createSpec(conversationId, body?.overrides, body?.artifactKind, body?.importedBase);
 
     return apiSuccessResponse({ spec }, { requestId, status: 201 });
   } catch (error) {

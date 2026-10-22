@@ -3,6 +3,7 @@ import { API_ERROR_CODE } from "@/lib/server/api-contract";
 import { apiErrorResponse } from "@/lib/server/api-response";
 import { createOperationalLogger } from "@/lib/server/operational-logger";
 import { sanitizeErrorMessage } from "./redaction.service";
+import { HtmlSlideImportError } from "../slides/import/imported-slide-design.contract";
 export * from "./request-contract";
 
 export function bundleAgentRouteErrorResponse(input: {
@@ -11,6 +12,10 @@ export function bundleAgentRouteErrorResponse(input: {
   requestId: string;
 }) {
   const message = sanitizeErrorMessage(input.error);
+  if (input.error instanceof HtmlSlideImportError && message.includes("administrador")) return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden,
+    message, requestId: input.requestId, status: 403 });
+  if (input.error instanceof HtmlSlideImportError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest,
+    message, requestId: input.requestId, status: message.toLowerCase().includes("no encontrada") ? 404 : 422 });
   if (input.error instanceof z.ZodError) {
     return apiErrorResponse({
       code: API_ERROR_CODE.invalidRequest,

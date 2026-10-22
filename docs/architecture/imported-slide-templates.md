@@ -8,6 +8,22 @@ En **Plantillas de diapositivas → Importar HTML**, carga el archivo, revisa ca
 
 Confirma la revisión y guarda. El paquete aparece en la biblioteca y en los selectores existentes de generación manual y automatizada. «Revisar diseño» abre una importación guardada; guardar modificaciones conserva la anterior como otro recurso inmutable.
 
+## Bases generales del estudio
+
+Una importación guardada también sirve como base para crear plantillas independientes. Desde la biblioteca, «Usar como base» abre el estudio con `baseRunId`; desde «Crear plantilla», el selector ofrece la base predeterminada y las importadas PACKAGED de la organización. Importar desde el estudio actualiza ese selector al guardar. «General» significa reutilizable dentro de la organización: no comparte diseños entre tenants.
+
+El estudio HTML muestra el diseño real en iframe aislado. Se pueden elegir una o varias composiciones, nombrar la nueva plantilla, solicitar cambios de texto/roles/estilo con IA y guardar un paquete independiente. Al reabrirlo continúa desde su última revisión, sin volver a los seis layouts fijos. Una derivada guardada puede usarse a su vez como base. La fuente permanece inmutable; la revisión de importación original sigue disponible.
+
+`designBase` fija run, spec, hash y título de origen por servidor. El lector exige ADMIN/SUPERADMIN y consultas de run PACKAGED y spec filtradas por organización. La creación persiste una conversación nueva y un borrador base antes de solicitar IA. Las revisiones posteriores mantienen procedencia y recursos; BD sigue almacenando manifiestos sin base64. El empaquetado hidrata recursos autorizados antes de producir el ZIP. No hay migraciones nuevas.
+
+`GET /api/admin/slides/templates/design-bases/:runId` entrega la base con previews acotados y `private, no-store`. El POST existente de specs admite `importedBase` con `baseRunId`, `layoutIds` y `reviseWithAi`. El cliente no puede imponer `importedDesign` ni procedencia mediante overrides. El workflow conserva la ruta predeterminada existente para creaciones sin base.
+
+La edición conversacional de importados usa Gemini, proveedor existente, con configuración de BUNDLE_AGENT por organización. Recibe instrucciones del usuario y estructura HTML/CSS sin binarios, como datos no confiables. Devuelve parches JSON de campos, etiquetas, propósitos y CSS estático; no HTML nuevo, scripts ni recursos. El servidor comprueba IDs, capacidad, título único, presupuesto y saneamiento completo. `clear` vacía texto real y conserva la caja; no equivale a ocultarlo con CSS. Las revisiones manuales/guardados no vuelven a llamar al modelo.
+
+Límites: contexto de edición 384 KB, respuesta 128 KB, CSS adicional 20 000 caracteres y timeout del proveedor 45 s. La admisión comprueba hasta 12 specs por usuario/organización en la última hora antes de revisar con IA; es un control por recuento, no una cuota transaccional ni una reserva de intentos fallidos. Un error del proveedor conserva el borrador y no inserta una revisión inválida. Los fallos previos a crear la primera spec pueden dejar una conversación vacía recuperable mediante el mismo intento en pantalla, como en el estudio existente.
+
+Este perfil no convierte a geometría nativa ni crea bindings matemáticos de gráficas. Los cambios visuales y los datos requieren revisión; vaciar algunos campos no certifica una limpieza editorial completa ni OCR de imágenes. La [evidencia de bases y estudio](../../openspec/changes/imported-template-design-bases/reports/verification.md) distingue las pruebas con proveedor simulado de una llamada real.
+
 El flujo utiliza `EngineDialog`, igual que usuarios y confirmaciones. Su portal lo mantiene fuera de los estilos del encabezado; controles y avisos consumen los tokens del tema. El cuerpo tiene scroll interior y el encabezado y las acciones permanecen visibles en escritorio y móvil.
 
 ## Perfiles y presupuestos

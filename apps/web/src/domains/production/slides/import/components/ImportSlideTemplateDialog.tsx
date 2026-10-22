@@ -117,7 +117,7 @@ export function ImportSlideTemplateDialog({ onSaved, conversationId }: { onSaved
       {busy && <p role="status" className={styles.status}><Loader2 className="animate-spin" size={16} /> {progress !== null ? `Preparando archivo en tu dispositivo… ${progress}%` : "Analizando o guardando la plantilla…"}</p>}
       {preparation && <p className={styles.notice}>Archivo original: {formatHtmlSlideImportBytes(preparation.originalBytes)}. HTML enviado: {formatHtmlSlideImportBytes(preparation.preparedBytes)}. Retirados localmente: {preparation.removedScripts} scripts, {preparation.removedResources} recursos y {preparation.removedCssUrls} URLs CSS. El archivo original completo no se guarda.</p>}
       {error && <p role="alert" className={styles.error}>{error}</p>}
-      {saved && <p role="status" className={styles.success}>Plantilla guardada. Ya puedes seleccionarla al generar diapositivas desde la biblioteca.</p>}
+      {saved && <p role="status" className={styles.success}>Plantilla guardada. Puedes usarla como base para crear nuevas plantillas en el estudio o seleccionarla al generar diapositivas.</p>}
       {analysis && design && layout && <div className={styles.analysis}>
         <div className={styles.notice}>
           <p>{design.layouts.length} diseños detectados. Scripts retirados: {analysis.report.removedScripts}. Recursos retirados: {analysis.report.removedResources}.</p>

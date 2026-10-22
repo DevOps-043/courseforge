@@ -32,6 +32,12 @@ Las reglas de autoridad y render nativo de este documento siguen vigentes.
 Contrato y evidencia: [plantillas HTML importadas](imported-slide-templates.md)
 y [validación de fidelidad](../../openspec/changes/preserve-imported-html-design/reports/verification.md).
 
+Las bases HTML importadas pueden originar nuevas plantillas desde el estudio,
+con procedencia fijada y revisiones de texto/CSS validadas. El preview utiliza
+el HTML importado y conserva recursos privados. Esta edición conversacional
+no crea geometría nativa ni altera `document.motion`; véase el contrato de
+[bases reutilizables](imported-slide-templates.md).
+
 ### Sintoma
 
 Al agregar un efecto de transicion, el enlace entre asset y borrador se crea,
@@ -401,6 +407,9 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-21: incorporado el flujo de bases importadas y derivados en el estudio;
+  sin cambios al documento nativo ni al contrato de motion.
 
 - 2026-10-21: delimitado el perfil HTML con campos de texto, recursos privados
   y previews aislados; sin cambios al contrato de motion o render nativo.

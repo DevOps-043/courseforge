@@ -10,6 +10,10 @@ import {
   type BundleAgentSpec,
 } from "./types";
 import { generateBundleSpecWithAi } from "./ai-spec.service";
+import { createImportedTemplateStudioSpec } from "../slides/import/imported-template-studio.service";
+import type { ImportedTemplateStudioOptions } from "../slides/import/imported-template-base.contract";
+import { hydrateImportedDesignForOrganization } from "../slides/import/imported-slide-bundle-assets.server";
+import { HtmlSlideImportError } from "../slides/import/imported-slide-design.contract";
 import {
   attachBundleDesignPlan,
   bundleVisualFingerprintSchema,
@@ -116,7 +120,7 @@ function shouldRefreshDefaultAgentConfig(value: unknown) {
 export class BundleAgentWorkflowService {
   constructor(private readonly context: BundleAgentAuthContext) {}
 
-  async createSpec(conversationId: string, overrides?: unknown, artifactKindInput?: unknown) {
+  async createSpec(conversationId: string, overrides?: unknown, artifactKindInput?: unknown, importedBase?: ImportedTemplateStudioOptions) {
     const conversation = await this.getConversation(conversationId);
     const artifactKind = bundleAgentArtifactKindSchema
       .catch("video_bundle")
@@ -128,7 +132,20 @@ export class BundleAgentWorkflowService {
       .eq("organization_id", this.context.organizationId)
       .order("created_at", { ascending: true });
 
-    const generated = artifactKind === "slide_template"
+    const { data: latest, error: latestError } = await this.context.admin.from("soflia_bundle_specs").select("*")
+      .eq("conversation_id", conversationId).eq("organization_id", this.context.organizationId)
+      .order("version_number", { ascending: false }).limit(1).maybeSingle();
+    if (latestError) throw latestError;
+    const importedStudio = artifactKind === "slide_template" && Boolean(importedBase || latest?.spec_json?.designBase);
+    if (importedBase && artifactKind !== "slide_template") throw new HtmlSlideImportError("Las bases HTML solo se aplican a plantillas de diapositivas.");
+    if (artifactKind === "slide_template" && isRecord(overrides) && (overrides.importedDesign || overrides.designBase)) {
+      throw new HtmlSlideImportError("Selecciona la base por su identificador; el cliente no puede conceder procedencia de diseño.");
+    }
+    if (importedStudio && importedBase?.reviseWithAi) await this.enforceImportedRevisionLimit();
+    const generated = importedStudio
+      ? await createImportedTemplateStudioSpec({ context: this.context, title: conversation.title, latestSpec: latest?.spec_json,
+          options: importedBase, messages: messages || [] })
+      : artifactKind === "slide_template"
       ? {
           model: "soflia-slide-template-deterministic-v1",
           source: "deterministic_fallback" as const,
@@ -144,7 +161,7 @@ export class BundleAgentWorkflowService {
           title: conversation.title,
           messages: messages || [],
         });
-    const spec = artifactKind === "slide_template"
+    const spec = importedStudio ? parseSlideTemplateAgentSpec(generated.spec) : artifactKind === "slide_template"
       ? parseSlideTemplateAgentSpec({
           ...generated.spec,
           ...(overrides && typeof overrides === "object" ? overrides : {}),
@@ -158,15 +175,7 @@ export class BundleAgentWorkflowService {
         ));
     const videoSpec = artifactKind === "video_bundle" ? bundleAgentSpecSchema.parse(spec) : null;
     const specHash = computeSpecHash(spec);
-    const { data: latest } = await this.context.admin
-      .from("soflia_bundle_specs")
-      .select("*")
-      .eq("conversation_id", conversationId)
-      .order("version_number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (artifactKind === "slide_template" && isRecord(latest?.spec_json) && latest.spec_json.importedDesign) {
+    if (!importedStudio && artifactKind === "slide_template" && isRecord(latest?.spec_json) && latest.spec_json.importedDesign) {
       throw new Error("La plantilla importada debe editarse desde «Revisar diseño» en la biblioteca.");
     }
     // Repeated UI submissions are idempotent: do not create a new version or
@@ -200,7 +209,9 @@ export class BundleAgentWorkflowService {
           ? "Spec estructurada generada por SofLIA con OpenAI y validada por contrato."
           : generated.source === "gemini"
             ? "Spec estructurada generada por SofLIA con Gemini y validada por contrato."
-            : artifactKind === "slide_template"
+            : importedStudio
+              ? "Nueva revisión creada desde la base importada; el diseño de origen se conserva."
+              : artifactKind === "slide_template"
               ? "Spec de plantilla de slides generada con contrato SofLIA Deck."
               : "Spec estructurada generada con fallback deterministico y validada por contrato.",
         metadata: {
@@ -383,6 +394,14 @@ export class BundleAgentWorkflowService {
     }
   }
 
+  private async enforceImportedRevisionLimit() {
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count, error } = await this.context.admin.from("soflia_bundle_specs").select("id", { count: "exact", head: true })
+      .eq("organization_id", this.context.organizationId).eq("created_by", this.context.userId).gte("created_at", since);
+    if (error) throw error;
+    if ((count || 0) >= HOURLY_GENERATION_LIMIT) throw new Error("Se alcanzó el limite horario de revisiones por usuario. Intenta más tarde.");
+  }
+
   private async enforceGenerationLimit() {
     const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const { count, error } = await this.context.admin
@@ -443,6 +462,10 @@ export class BundleAgentWorkflowService {
     specJson: unknown,
   ) {
     const spec = parseSlideTemplateAgentSpec(specJson);
+    if (spec.importedDesign) {
+      spec.importedDesign = await hydrateImportedDesignForOrganization(spec.importedDesign, this.context);
+      spec.examples = spec.examples.map(example => ({ ...example, importedDesign: spec.importedDesign }));
+    }
     const run = await this.createGenerationRun(conversationId, specId, null, spec);
 
     try {
