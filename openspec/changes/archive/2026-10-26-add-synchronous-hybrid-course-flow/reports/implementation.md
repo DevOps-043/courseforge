@@ -37,7 +37,7 @@ El usuario confirmó formatos web/imprimibles, acceso interno y generación coor
 | Lint global | Correcto con eslint . --quiet del workspace web. | Las advertencias históricas siguen siendo advertencias según la configuración existente, sin debilitar reglas. |
 | docs:audit | Ejecutado; evidencia temporal regenerada. | El reporte inicial compara historial anterior; se contrastó el cambio actual con sus archivos primarios. |
 
-Los comandos y dependencias temporales se describen en la [guía operativa](../../../../docs/operations/synchronous-hybrid-courses.md). El script de QA conserva fixtures en .tmp/course-delivery-qa. Las pruebas SQL no leen .env.
+Los comandos y dependencias temporales se describen en la [guía operativa](../../../../../docs/operations/synchronous-hybrid-courses.md). El script de QA conserva fixtures en .tmp/course-delivery-qa. Las pruebas SQL no leen .env.
 
 ## Revisión adversarial del mismo agente
 
@@ -69,4 +69,4 @@ No hay un rechazo pendiente que se esté eludiendo mediante otro mecanismo.
 - Ensayar recuperación/rollback con procesos concurrentes reales, límites de proveedor y despliegue Netlify.
 - Definir retención y limpieza autorizada de historial/runs; no se implementa eliminación automática.
 - Resolver la compuerta global OpenSpec y el aprovisionamiento de dependencias de desarrollo del entorno.
-- Integrar en la rama objetivo antes de archivar OpenSpec. El cambio permanece abierto.
+- Integrado en staging el 2026-10-26 y archivado después de la integración. El archivo conserva las tareas operativas pendientes; ver [evidencia de integración](staging-integration.md).

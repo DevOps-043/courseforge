@@ -22,7 +22,7 @@ La edición conversacional de importados usa Gemini, proveedor existente, con co
 
 Límites: contexto de edición 384 KB, respuesta 128 KB, CSS adicional 20 000 caracteres y timeout del proveedor 45 s. La admisión comprueba hasta 12 specs por usuario/organización en la última hora antes de revisar con IA; es un control por recuento, no una cuota transaccional ni una reserva de intentos fallidos. Un error del proveedor conserva el borrador y no inserta una revisión inválida. Los fallos previos a crear la primera spec pueden dejar una conversación vacía recuperable mediante el mismo intento en pantalla, como en el estudio existente.
 
-Este perfil no convierte a geometría nativa ni crea bindings matemáticos de gráficas. Los cambios visuales y los datos requieren revisión; vaciar algunos campos no certifica una limpieza editorial completa ni OCR de imágenes. La [evidencia de bases y estudio](../../openspec/changes/imported-template-design-bases/reports/verification.md) distingue las pruebas con proveedor simulado de una llamada real.
+Este perfil no convierte a geometría nativa ni crea bindings matemáticos de gráficas. Los cambios visuales y los datos requieren revisión; vaciar algunos campos no certifica una limpieza editorial completa ni OCR de imágenes. La [evidencia de bases y estudio](../../openspec/changes/archive/2026-10-26-imported-template-design-bases/reports/verification.md) distingue las pruebas con proveedor simulado de una llamada real.
 
 El flujo utiliza `EngineDialog`, igual que usuarios y confirmaciones. Su portal lo mantiene fuera de los estilos del encabezado; controles y avisos consumen los tokens del tema. El cuerpo tiene scroll interior y el encabezado y las acciones permanecen visibles en escritorio y móvil.
 

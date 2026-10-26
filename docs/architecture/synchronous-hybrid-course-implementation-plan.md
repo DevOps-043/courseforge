@@ -3,8 +3,8 @@
 Fecha: 2026-10-26.
 Estado: implementación local bajo habilitación, sin despliegue; ver [operación](../operations/synchronous-hybrid-courses.md) y tareas OpenSpec para el progreso real.
 Fuente de alcance: [análisis de estructuración](synchronous-hybrid-course-flow-analysis.md).
-Cambio de desarrollo: [propuesta OpenSpec](../../openspec/changes/add-synchronous-hybrid-course-flow/proposal.md).
-Seguimiento ejecutable: [tareas](../../openspec/changes/add-synchronous-hybrid-course-flow/tasks.md).
+Cambio de desarrollo: [propuesta OpenSpec](../../openspec/changes/archive/2026-10-26-add-synchronous-hybrid-course-flow/proposal.md).
+Seguimiento ejecutable: [tareas](../../openspec/changes/archive/2026-10-26-add-synchronous-hybrid-course-flow/tasks.md).
 
 ## 1. Objetivo y límites
 
@@ -243,7 +243,7 @@ No eliminar tablas, prompts, archivos ni configuración como rollback inicial. L
 
 ## 9. Definición de terminado
 
-- Escenarios de la [especificación](../../openspec/changes/add-synchronous-hybrid-course-flow/specs/synchronous-hybrid-authoring/spec.md) cubiertos y evidencia reproducible.
+- Escenarios de la [especificación](../../openspec/changes/archive/2026-10-26-add-synchronous-hybrid-course-flow/specs/synchronous-hybrid-authoring/spec.md) cubiertos y evidencia reproducible.
 - Ocho etapas, sin nueva aprobación de agenda, guía o coordinación híbrida.
 - Configuración editable efectiva y fijada por ejecución para toda generación nueva.
 - Paquete sincrónico utilizable, coherente y seguro por audiencia; Nexus completo en híbrido.

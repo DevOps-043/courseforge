@@ -4,7 +4,7 @@
 - Base de inspección: HEAD `e90b75f0`, rama local `codex/imported-template-design-bases`, 2026-10-26. No se selecciona esta rama como base de integración; revalidarla y aislar implementación material al iniciarla.
 - Trabajo previo conservado: modificación del catálogo `docs/README.md` y análisis nuevo de flujo en docs/architecture. No se sustituyen ni se mezclan con código de producto.
 - Alcance actualizado: implementación local del flujo, migración aditiva, configuración, pruebas y documentación, conservando la planificación previa.
-- Fuente: [análisis revisado](../../../docs/architecture/synchronous-hybrid-course-flow-analysis.md), que incorpora el requisito posterior de configuración de modelos y prompts.
+- Fuente: [análisis revisado](../../../../docs/architecture/synchronous-hybrid-course-flow-analysis.md), que incorpora el requisito posterior de configuración de modelos y prompts.
 - No objetivos: SQL remoto, publicación, despliegue, pruebas con proveedores reales ni operación de una clase en vivo.
 - Dominios/contratos: configuración del curso, agenda, sesiones, plan, fuentes, materiales, producción, paquete, modelos, prompts y jobs tenant-aware.
 - Autorización posterior: implementar; formatos web/imprimibles y acceso interno confirmados; coordinación de ramas autorizada al pulsar el botón. No se leyeron secretos ni se probaron proveedores reales.

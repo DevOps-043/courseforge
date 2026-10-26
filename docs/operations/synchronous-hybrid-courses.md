@@ -95,4 +95,4 @@ La prueba aplica la migración sobre un esquema fixture mínimo. Comprueba sinta
 
 La [QA de documentos](../../scripts/qa-course-delivery-exports.mjs) requiere compilar la suite del dominio y disponer de Playwright/navegador. COURSE_DELIVERY_PLAYWRIGHT_PATH permite usar el runtime disponible y COURSE_DELIVERY_BROWSER_CHANNEL un navegador instalado. Solo usa datos sintéticos y guarda HTML, capturas e impresión A4 en .tmp.
 
-La evidencia y límites se conservan en el [reporte de implementación](../../openspec/changes/add-synchronous-hybrid-course-flow/reports/implementation.md).
+La evidencia y límites se conservan en el [reporte de implementación](../../openspec/changes/archive/2026-10-26-add-synchronous-hybrid-course-flow/reports/implementation.md).

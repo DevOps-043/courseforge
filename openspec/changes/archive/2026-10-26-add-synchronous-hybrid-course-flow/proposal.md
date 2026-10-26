@@ -15,7 +15,7 @@ Engine organiza planes y materiales por lección Nexus. Se necesita preparar ses
 - Entrega por audiencia en la etapa final y Ensamble no requerido sin audiovisual.
 - Persistencia aditiva, control de revisiones y recuperación por unidad.
 
-El [plan de implementación](../../../docs/architecture/synchronous-hybrid-course-implementation-plan.md) define entregas E0 a E7 y decisiones previas. No son pasos del producto.
+El [plan de implementación](../../../../docs/architecture/synchronous-hybrid-course-implementation-plan.md) define entregas E0 a E7 y decisiones previas. No son pasos del producto.
 
 ## Capabilities
 
@@ -27,7 +27,7 @@ El [plan de implementación](../../../docs/architecture/synchronous-hybrid-cours
 
 Dominios artifacts, syllabus, plan, curation, materials, production y publication; Configuración; estados compartidos y jobs Netlify. La migración aditiva y el código están escritos localmente, sin SQL remoto ni despliegue. Evidencia y límites en el reporte de implementación.
 
-El [análisis](../../../docs/architecture/synchronous-hybrid-course-flow-analysis.md) conserva evidencia primaria; el [diseño](design.md) fija fronteras y alternativas. Destino inicial recomendado: entrega en Engine, pendiente de formatos y acceso. No se presupone soporte receptor de SofLIA para sesiones.
+El [análisis](../../../../docs/architecture/synchronous-hybrid-course-flow-analysis.md) conserva evidencia primaria; el [diseño](design.md) fija fronteras y alternativas. Destino inicial recomendado: entrega en Engine, pendiente de formatos y acceso. No se presupone soporte receptor de SofLIA para sesiones.
 
 ## No objetivos
 

@@ -1,6 +1,6 @@
 # Tareas de implementación
 
-Estado: implementación local bajo habilitación. Los checks indican código/verificación local, no despliegue ni piloto; ver reports/implementation.md para los límites. Las entregas E0 a E7 corresponden al [plan](../../../docs/architecture/synchronous-hybrid-course-implementation-plan.md); no son nuevas etapas del producto.
+Estado: implementación local bajo habilitación. Los checks indican código/verificación local, no despliegue ni piloto; ver reports/implementation.md para los límites. Las entregas E0 a E7 corresponden al [plan](../../../../docs/architecture/synchronous-hybrid-course-implementation-plan.md); no son nuevas etapas del producto.
 
 ## E0. Diseño y decisiones
 
@@ -68,8 +68,8 @@ Estado: implementación local bajo habilitación. Los checks indican código/ver
 - [ ] E7.4 Ejecutar verificaciones aplicables, regresión Nexus/publicación y revisión adversarial documentada.
 - [ ] E7.5 Documentar métricas, diagnóstico, reanudación, limpieza de huérfanos y rollback; obtener línea base.
 - [ ] E7.6 Ejecutar piloto/habilitación únicamente en entorno y organización autorizados; registrar resultados.
-- [ ] E7.7 Sincronizar documentación de capacidades implementadas y evidencia; archivar OpenSpec solo tras integración objetivo.
+- [x] E7.7 Sincronizar documentación de capacidades implementadas y evidencia; archivar OpenSpec solo tras integración objetivo.
 
 ## Pendientes de cierre
 
-E4.4 y E7.2 requieren el recorrido autenticado completo de las modalidades; las suites y adaptadores locales no lo sustituyen. E7.4 tiene verificaciones locales y revisión del mismo agente, pero verify:pr no está verde. E7.5 conserva guía y fixtures, pendiente de línea base real. E7.6 necesita piloto autorizado. E7.7 no se cierra ni archiva antes de integración.
+E4.4 y E7.2 requieren el recorrido autenticado completo de las modalidades; las suites y adaptadores locales no lo sustituyen. E7.4 tiene verificaciones locales y revisión del mismo agente, pero verify:pr no está verde. E7.5 conserva guía y fixtures, pendiente de línea base real. E7.6 necesita piloto autorizado. E7.7 se cierra tras integrar en staging el 2026-10-26; el archivo conserva los cinco pendientes operativos sin darlos por completados. Ver [integración](reports/staging-integration.md).

@@ -2,7 +2,7 @@
 
 ## Contexto y evidencia
 
-El [análisis](../../../docs/architecture/synchronous-hybrid-course-flow-analysis.md) contiene la evidencia primaria. El [plan](../../../docs/architecture/synchronous-hybrid-course-implementation-plan.md) desarrolla las entregas; la [guía operativa](../../../docs/operations/synchronous-hybrid-courses.md) y el reporte de implementación describen el código local bajo habilitación, sin despliegue.
+El [análisis](../../../../docs/architecture/synchronous-hybrid-course-flow-analysis.md) contiene la evidencia primaria. El [plan](../../../../docs/architecture/synchronous-hybrid-course-implementation-plan.md) desarrolla las entregas; la [guía operativa](../../../../docs/operations/synchronous-hybrid-courses.md) y el reporte de implementación describen el código local bajo habilitación, sin despliegue.
 
 ## Decisiones
 
