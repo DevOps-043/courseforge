@@ -25,6 +25,7 @@ interface MaterialsProfile {
 }
 
 interface MaterialsFormProps {
+  coordinatedReview?: boolean;
   artifactId: string;
   className?: string;
   profile?: MaterialsProfile;
@@ -60,6 +61,7 @@ function groupLessonsByModule(lessons: MaterialLesson[]) {
 }
 
 export function MaterialsForm({
+  coordinatedReview = false,
   artifactId,
   className = "",
   profile,
@@ -251,7 +253,7 @@ export function MaterialsForm({
         />
       )}
 
-      <MaterialsQaReviewPanel
+      {!coordinatedReview && <MaterialsQaReviewPanel
         isReadyForQA={isReadyForQA}
         isApproved={isApproved}
         allLessonsApprovable={allLessonsApprovable}
@@ -260,7 +262,7 @@ export function MaterialsForm({
         onQaNoteChange={setQaNote}
         onSubmitToQA={submitToQA}
         onDecision={handleQADecision}
-      />
+      />}
 
       {isApproved && <MaterialsApprovedBanner qaDecision={materials.qa_decision} />}
 

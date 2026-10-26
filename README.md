@@ -12,6 +12,8 @@ SofLIA - Engine crea cursos completos a partir de una idea o de un paquete SCORM
 
 El producto es un flujo operativo con aprobaciones humanas, contratos de datos versionados, configuracion por organizacion, importacion de assets externos, monitoreo de consumo de IA y una capa de produccion audiovisual (editor de composicion, HeyGen, slides, efectos de sonido y procesamiento de audio).
 
+El código incorpora autoría sincrónica e híbrida bajo habilitación explícita, desactivada por defecto: agenda, plan y materiales por sesión dentro de las ocho etapas, con modelos/prompts configurables y entrega HTML imprimible desde Engine. Requiere migración y piloto autorizado; no se presenta como capacidad ya desplegada. Ver [operación y límites](docs/operations/synchronous-hybrid-courses.md).
+
 ## Tabla De Contenidos
 
 1. [Stack](#stack)

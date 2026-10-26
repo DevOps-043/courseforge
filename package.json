@@ -84,7 +84,7 @@
     "test:composition-worker-runtime": "npm run build:composition-worker && node --test scripts/composition-worker-runtime.test.mjs apps/web/tools/controlled-hyperframes/materialized-producer-collector.test.mjs apps/web/tools/controlled-hyperframes/materialized-producer-bridge-configuration.test.mjs",
     "start:composition-conformance-worker": "npm run build -w apps/api && npm run build:composition-worker && node scripts/run-composition-conformance-worker.mjs",
     "qa:composition-final-video-gate": "npm run build -w apps/api && npm run build:composition-worker && node scripts/run-composition-final-video-gate.mjs",
-    "verify": "npm run lint && npm run typecheck && npm run architecture:cycles && npm run db:migrations:check && npm run test:security-boundaries && npm run test:audio-processing && npm run test:coverage-gaps -w apps/web",
+    "verify": "npm run lint && npm run typecheck && npm run architecture:cycles && npm run db:migrations:check && npm run test:security-boundaries && npm run test:audio-processing && npm run test:coverage-gaps -w apps/web && npm run test:course-delivery",
     "docs:audit": "powershell -ExecutionPolicy Bypass -File scripts/audit-documentation.ps1",
     "compliance:sbom": "powershell -ExecutionPolicy Bypass -File scripts/generate-sbom.ps1",
     "compliance:check": "node scripts/check-third-party-compliance.mjs",
@@ -96,7 +96,8 @@
     "openspec:validate": "openspec validate --all --strict --no-interactive",
     "test:harness": "node --test scripts/quality/harness.test.mjs scripts/capture-background-deployment.test.mjs",
     "verify:harness": "node scripts/quality/run-gate.mjs --harness-only",
-    "verify:pr": "node scripts/quality/run-gate.mjs"
+    "verify:pr": "node scripts/quality/run-gate.mjs",
+    "test:course-delivery": "npm run test:course-delivery --workspace=apps/web"
   },
   "devDependencies": {
     "@fission-ai/openspec": "1.8.0",

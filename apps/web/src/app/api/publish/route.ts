@@ -14,6 +14,7 @@ import { dispatchBackgroundFunctionJson } from '@/lib/server/background-function
 import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger';
 import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract';
 import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response';
+import { assertDeliveryPublicationReady } from '@/domains/course-delivery/services/delivery-publication';
 
 const MAX_PUBLISH_REQUEST_BYTES = 8 * 1024;
 
@@ -63,6 +64,11 @@ export async function POST(request: Request) {
 
         if (tenant.platformRole === 'CONSTRUCTOR') {
             return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: 'Falta de permisos. Solo Arquitectos y Admins pueden publicar.', requestId: correlationId, status: 403 });
+        }
+        try {
+            await assertDeliveryPublicationReady(admin, artifactId, tenant.organizationId);
+        } catch {
+            return apiErrorResponse({ code: API_ERROR_CODE.conflict, message: 'Revisa la modalidad y aprueba el paquete completo y vigente antes de publicar. Los cursos sincrónicos se entregan desde Engine.', requestId: correlationId, status: 409 });
         }
 
         const { request: publicationRequest, lessons, artifact, materialsPackage } =

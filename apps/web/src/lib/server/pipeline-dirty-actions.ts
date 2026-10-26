@@ -23,7 +23,7 @@ export async function markDownstreamDirtyAction(
     { index: 3, table: "instructional_plans" },
     { index: 4, table: "curation" },
     { index: 5, table: "materials" },
-    { index: 7, table: "publication_requests" },
+    { index: 8, table: "publication_requests" },
   ];
 
   const targets = downstreamSteps.filter((step) => step.index > stepIndex);

@@ -110,7 +110,7 @@ export async function runCurationWorkflowV2(params: {
       .from("instructional_plans")
       .select("lesson_plans")
       .eq("artifact_id", artifactId)
-      .single(),
+      .maybeSingle(),
     supabase
       .from("artifacts")
       .select(
@@ -123,7 +123,8 @@ export async function runCurationWorkflowV2(params: {
   if (planResult.error) throw new Error(planResult.error.message);
   if (artifactResult.error) throw new Error(artifactResult.error.message);
   if (syllabusResult.error) throw new Error(syllabusResult.error.message);
-  if (syllabusResult.data?.input_mode === "PROVIDED_SYLLABUS") {
+  const effectivePlan = await mergeDeliveryCurationPlan(supabase, artifactId, planResult.data?.lesson_plans);
+  if (syllabusResult.data?.input_mode === "PROVIDED_SYLLABUS" && planResult.data) {
     const { data: version, error } = await supabase.from("instructional_plans").select("syllabus_content_version").eq("artifact_id", artifactId).single();
     if (error) throw error;
     if (syllabusResult.data.state !== "STEP_APPROVED" || version?.syllabus_content_version !== syllabusResult.data.content_version) {
@@ -139,7 +140,7 @@ export async function runCurationWorkflowV2(params: {
     artifactResult.data,
     syllabusResult.data,
   );
-  const lessons = buildLessonsToProcess(planResult.data.lesson_plans).map(
+  const lessons = buildLessonsToProcess(effectivePlan).map(
     (lesson): CurationLesson => ({
       lesson_id: lesson.lesson_id,
       topics: sourceLessons.get(lesson.lesson_id)?.topics || [],
@@ -380,3 +381,4 @@ export async function runCurationWorkflowV2(params: {
     });
   return inserted;
 }
+import { mergeDeliveryCurationPlan } from "../../../../src/domains/course-delivery/services/delivery-curation";

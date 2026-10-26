@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "baseUrl": ".",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "incremental": false,
+    "outDir": ".tmp/course-delivery-tests",
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["src/domains/course-delivery/__tests__/*.test.ts"]
+}

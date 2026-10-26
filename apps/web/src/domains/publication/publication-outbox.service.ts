@@ -1,6 +1,7 @@
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getSofliaInboxEnv } from "@/lib/server/env";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
+import { assertDeliveryPublicationReady } from "@/domains/course-delivery/services/delivery-publication";
 import {
   hashPublicationPayload,
   PUBLICATION_OUTBOX_LEASE_SECONDS,
@@ -50,6 +51,13 @@ export class PublicationOutboxService {
     }
     if (parsedPayload.data.course.slug !== claim.idempotency_key) {
       return this.recordRetryableFailure(claim, "OUTBOX_IDEMPOTENCY_KEY_MISMATCH");
+    }
+    const { data: artifact, error: artifactError } = await this.supabase.from("artifacts")
+      .select("organization_id").eq("id", parsedPayload.data.source.artifact_id).single();
+    if (artifactError || !artifact) return this.recordRetryableFailure(claim, "DELIVERY_ARTIFACT_UNAVAILABLE");
+    if (artifact.organization_id) {
+      try { await assertDeliveryPublicationReady(this.supabase, parsedPayload.data.source.artifact_id, artifact.organization_id); }
+      catch { return this.recordRetryableFailure(claim, "DELIVERY_PACKAGE_NOT_READY"); }
     }
 
     const inboxEnv = getSofliaInboxEnv();

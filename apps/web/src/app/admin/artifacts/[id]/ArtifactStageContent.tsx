@@ -1,6 +1,8 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
+import { DeliveryStagePanel } from "@/domains/course-delivery/components/DeliveryStagePanel";
+import type { CourseDeliveryController } from "@/domains/course-delivery/hooks/useCourseDelivery";
 import { SyllabusGenerationContainer } from "@/domains/syllabus/components/SyllabusGenerationContainer";
 import { InstructionalPlanGenerationContainer } from "@/domains/plan/components/InstructionalPlanGenerationContainer";
 import { SourcesCurationGenerationContainer } from "@/domains/curation/components/SourcesCurationGenerationContainer";
@@ -22,6 +24,7 @@ import type {
 } from "./artifact-view.types";
 
 interface ArtifactStageContentProps {
+  delivery: CourseDeliveryController;
   activeTab: "content" | "validation";
   artifact: ArtifactViewRecord;
   basePath: string;
@@ -52,6 +55,7 @@ interface ArtifactStageContentProps {
 const STAGE_WRAPPER = "animate-in fade-in slide-in-from-right-4 duration-300";
 
 export function ArtifactStageContent({
+  delivery,
   activeTab,
   artifact,
   basePath,
@@ -78,9 +82,15 @@ export function ArtifactStageContent({
   setFeedback,
   validation,
 }: ArtifactStageContentProps) {
+  const mode = delivery.snapshot?.workspace.document.config.mode || "NEXUS";
+  const sessions = mode !== "NEXUS";
+  const nexus = mode !== "SYNCHRONOUS";
+  const sessionPanel = <DeliveryStagePanel controller={delivery} stage={currentStep} />;
+  if (sessions && [3, 5, 6, 8].includes(currentStep) && !nexus) return sessionPanel;
+  if (sessions && currentStep === 7 && !nexus) return <div className={STAGE_WRAPPER}><p>Ensamble no requerido: este curso no necesita producción audiovisual.</p><button className="mt-4 rounded border px-4 py-2" onClick={() => setCurrentStep(8)}>Continuar a entrega</button></div>;
   if (currentStep === 1) {
     return (
-      <ArtifactBaseStage
+      <div>{sessionPanel}<ArtifactBaseStage
         artifact={artifact}
         profile={profile}
         activeTab={activeTab}
@@ -100,7 +110,7 @@ export function ArtifactStageContent({
         onReject={onRejectBase}
         onRegenerate={onRegenerate}
         onContinue={() => setCurrentStep(2)}
-      />
+      /></div>
     );
   }
 
@@ -114,6 +124,7 @@ export function ArtifactStageContent({
           onNext={() => setCurrentStep(3)}
           profile={profile}
         />
+        {sessions && sessionPanel}
       </div>
     );
   }
@@ -121,7 +132,9 @@ export function ArtifactStageContent({
   if (currentStep === 3) {
     return (
       <div className={STAGE_WRAPPER}>
+        {sessions && sessionPanel}
         <InstructionalPlanGenerationContainer
+          coordinatedReview={sessions}
           artifactId={artifact.id}
           onNext={() => setCurrentStep(4)}
           profile={profile}
@@ -148,7 +161,8 @@ export function ArtifactStageContent({
   if (currentStep === 5) {
     return (
       <div className={STAGE_WRAPPER}>
-        <MaterialsForm artifactId={artifact.id} profile={profile} />
+        {sessions && sessionPanel}
+        <MaterialsForm artifactId={artifact.id} profile={profile} coordinatedReview={sessions} />
       </div>
     );
   }
@@ -156,6 +170,7 @@ export function ArtifactStageContent({
   if (currentStep === 6) {
     return (
       <div className={STAGE_WRAPPER}>
+        {sessions && sessionPanel}
         <VisualProductionContainer
           artifactId={artifact.id}
           assetsComplete={assetsComplete}
@@ -181,6 +196,7 @@ export function ArtifactStageContent({
   if (currentStep === 8) {
     return (
       <div className={STAGE_WRAPPER}>
+        {sessions && sessionPanel}
         <PublicationClientView
           artifactId={artifact.id}
           artifactTitle={artifact.idea_central || "Artefacto"}

@@ -32,6 +32,7 @@ import {
 } from "@/domains/plan/lib/plan-iteration";
 
 interface InstructionalPlanGenerationContainerProps {
+  coordinatedReview?: boolean;
   artifactId: string;
   onNext?: () => void;
   profile?: {
@@ -43,6 +44,7 @@ const PLAN_POLL_INTERVAL_MS = 3000;
 const PLAN_REFRESH_DELAY_MS = 2000;
 
 export function InstructionalPlanGenerationContainer({
+  coordinatedReview = false,
   artifactId,
   onNext,
   profile,
@@ -65,7 +67,7 @@ export function InstructionalPlanGenerationContainer({
     useState<VideoDurationPolicy>({
       ...DEFAULT_VIDEO_DURATION_POLICY,
     });
-  const canReview = REVIEWER_ROLE_SET.has(profile?.platform_role || "");
+  const canReview = !coordinatedReview && REVIEWER_ROLE_SET.has(profile?.platform_role || "");
   const lastKnownPlanStateRef = useRef<string | null>(null);
   const lastKnownValidationRef = useRef(false);
   const promptInitializedRef = useRef(false);

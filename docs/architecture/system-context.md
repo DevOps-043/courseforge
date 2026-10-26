@@ -6,6 +6,8 @@ SofLIA - Engine es una plataforma multi-tenant para crear, validar, producir y p
 
 ## Estado Real Del Sistema
 
+- **Autoría sincrónica e híbrida bajo habilitación**: el dominio course-delivery integra agenda, sesiones, configuración de IA y documentos imprimibles en las ocho etapas. Está desactivado por defecto mediante SYNCHRONOUS_COURSES_ENABLED y admite lista de organizaciones. Requiere migración aditiva y piloto; no se aplicó SQL remoto ni se desplegó. Ver [operación](../operations/synchronous-hybrid-courses.md).
+
 - **Monorepo npm workspaces**: `apps/web` y `apps/api`.
 - **Frontend**: Next.js 16, React 19, TypeScript, TailwindCSS 4, Zustand, Remotion Player.
 - **Backend web**: Next.js API routes y Netlify Functions para jobs largos del pipeline.

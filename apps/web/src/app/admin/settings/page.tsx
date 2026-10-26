@@ -1,6 +1,7 @@
 import { Gauge } from 'lucide-react';
 import { CurationSettingsManager } from '@/domains/curation/components/CurationSettingsManager';
 import { VideoStudioSettings } from '@/domains/production/components/VideoStudioSettings';
+import { DeliverySettingsPanel } from '@/domains/course-delivery/components/DeliverySettingsPanel';
 
 export default function SettingsPage() {
   return (
@@ -14,6 +15,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-6">
+        <DeliverySettingsPanel />
         <section className="engine-settings-shell">
           <div className="engine-settings-intro">
             <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-500">

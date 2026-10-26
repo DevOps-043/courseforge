@@ -3,6 +3,8 @@
 import { BookOpen, CheckCircle2, FileText, Layers, Target } from "lucide-react";
 
 interface ArtifactWorkflowStepperProps {
+  assemblyRequired?: boolean;
+  deliveryOnly?: boolean;
   canAccessMaterialsStep: boolean;
   canAccessProductionStep: boolean;
   canAccessPostproductionStep: boolean;
@@ -93,6 +95,8 @@ function StepItem({
 }
 
 export function ArtifactWorkflowStepper({
+  assemblyRequired = true,
+  deliveryOnly = false,
   canAccessMaterialsStep,
   canAccessProductionStep,
   canAccessPostproductionStep,
@@ -111,8 +115,8 @@ export function ArtifactWorkflowStepper({
       "Fuentes",
       "Materiales",
       "Produccion",
-      "Ensamble",
-      "Publicar",
+      assemblyRequired ? "Ensamble" : "Ensamble no requerido",
+      deliveryOnly ? "Entregar" : "Publicar",
     ][currentStep - 1] ?? "Curso";
 
   return (
@@ -193,7 +197,7 @@ export function ArtifactWorkflowStepper({
         <StepDivider compact={compact} done={stepStatus.productionDone} />
         <StepItem
           compact={compact}
-          label="Ensamble"
+          label={assemblyRequired ? "Ensamble" : "Ensamble · No requerido"}
           active={currentStep === 7}
           onClick={() => onStepChange(7)}
           icon={<Layers size={17} />}
@@ -203,7 +207,7 @@ export function ArtifactWorkflowStepper({
         <StepDivider compact={compact} done={stepStatus.postproductionDone} />
         <StepItem
           compact={compact}
-          label="Publicar"
+          label={deliveryOnly ? "Entregar" : "Publicar"}
           active={currentStep === 8}
           onClick={() => onStepChange(8)}
           icon={<Target size={17} />}

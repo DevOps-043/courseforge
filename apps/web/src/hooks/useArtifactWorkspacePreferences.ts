@@ -20,6 +20,7 @@ const SCROLL_RESTORE_TOLERANCE_PX = 2;
 interface UseArtifactWorkspacePreferencesParams {
   artifactId: string;
   canAccessStep: (step: ArtifactWorkflowStep) => boolean;
+  ready?: boolean;
 }
 
 interface UseArtifactWorkspacePreferencesResult {
@@ -30,6 +31,7 @@ interface UseArtifactWorkspacePreferencesResult {
 export function useArtifactWorkspacePreferences({
   artifactId,
   canAccessStep,
+  ready = true,
 }: UseArtifactWorkspacePreferencesParams): UseArtifactWorkspacePreferencesResult {
   const [currentStep, setCurrentStepState] = useState<ArtifactWorkflowStep>(
     ARTIFACT_WORKFLOW_FIRST_STEP,
@@ -53,6 +55,7 @@ export function useArtifactWorkspacePreferences({
   }, [isRestored]);
 
   useEffect(() => {
+    if (!ready) return;
     const preferences = loadArtifactWorkspacePreferences(window.localStorage, artifactId);
     const restoredStep = resolveRestoredArtifactWorkflowStep(
       preferences,
@@ -64,7 +67,7 @@ export function useArtifactWorkspacePreferences({
     currentStepRef.current = restoredStep;
     setCurrentStepState(restoredStep);
     setIsRestored(true);
-  }, [artifactId]);
+  }, [artifactId, ready]);
 
   useEffect(() => {
     if (!isRestored) return;

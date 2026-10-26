@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useCourseDelivery } from "@/domains/course-delivery/hooks/useCourseDelivery";
 import {
   getArtifactGenerationSnapshotAction,
   regenerateArtifactAction,
@@ -99,10 +100,14 @@ export default function ArtifactClientView({
   }>({ show: false, message: "", type: "info" });
 
   const snapshot = buildWorkflowSnapshot(artifact, publicationRequest);
+  const delivery = useCourseDelivery(artifact.id);
+  const hasSessions = Boolean(delivery.snapshot && delivery.snapshot.workspace.document.config.mode !== "NEXUS");
+  const coursePlanApproved = hasSessions ? Boolean(delivery.snapshot?.readiness.planReady) : isInstructionalPlanApproved(snapshot);
+  const courseMaterialsApproved = hasSessions ? Boolean(delivery.snapshot?.readiness.materialsReady) : isMaterialsApprovedFromSnapshot(snapshot);
   const syllabusApproved = isSyllabusApproved(snapshot);
-  const planApproved = isInstructionalPlanApproved(snapshot);
+  const planApproved = coursePlanApproved;
   const curationApproved = isCurationApprovedFromSnapshot(snapshot);
-  const materialsApproved = isMaterialsApprovedFromSnapshot(snapshot);
+  const materialsApproved = courseMaterialsApproved;
   const baseDone = reviewState === "approved" || syllabusApproved;
 
   const canAccessStep = useCallback((step: ArtifactWorkflowStep) => {
@@ -116,6 +121,7 @@ export default function ArtifactClientView({
   const { currentStep, setCurrentStep } = useArtifactWorkspacePreferences({
     artifactId: artifact.id,
     canAccessStep,
+    ready: Boolean(delivery.snapshot) || Boolean(delivery.error),
   });
 
   useEffect(() => {
@@ -361,6 +367,8 @@ export default function ArtifactClientView({
         />
 
         <ArtifactWorkflowStepper
+          assemblyRequired={delivery.snapshot?.readiness.assembly ?? true}
+          deliveryOnly={delivery.snapshot?.workspace.document.config.mode === "SYNCHRONOUS"}
           canAccessMaterialsStep={canAccessMaterialsStep}
           canAccessProductionStep={canAccessProductionStep}
           canAccessPostproductionStep={canAccessPostproductionStep}
@@ -386,6 +394,7 @@ export default function ArtifactClientView({
 
       <div className={isAssemblyStudio ? "min-h-0 flex-1 overflow-hidden" : ""}>
         <ArtifactStageContent
+          delivery={delivery}
           activeTab={activeTab}
           artifact={artifact}
           basePath={basePath}

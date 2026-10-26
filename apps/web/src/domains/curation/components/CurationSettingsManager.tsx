@@ -495,6 +495,7 @@ function getPromptsForSetting(settingType: string, prompts: SystemPrompt[]) {
 
   return prompts
     .filter((prompt) => {
+      if (prompt.code.startsWith("SYNCHRONOUS_")) return false;
       const code = prompt.code.toUpperCase();
       return !LEGACY_PROMPT_CODES.has(code) && matcher(code);
     })

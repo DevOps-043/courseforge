@@ -56,12 +56,7 @@ async function resolveManualSourceLesson(
   artifactId: string,
   requestedLesson: ManualSourceLessonInput,
 ) {
-  const { data: plan, error } = await admin
-    .from("instructional_plans")
-    .select("lesson_plans")
-    .eq("artifact_id", artifactId)
-    .single();
-  if (error) throw new Error(error.message);
+  const { plan } = await fetchArtifactAndPlanForCuration(admin, artifactId);
   const requestedTitle = normalizeLessonKey(requestedLesson.lessonTitle);
   const requestedId = normalizeLessonKey(requestedLesson.lessonId);
   const lesson = buildLessonsToProcess(plan.lesson_plans).find(
@@ -140,14 +135,10 @@ function validationColumns(
 export async function getCurationSnapshotAction(artifactId: string) {
   try {
     const { admin, artifact } = await getArtifactAdminContext(artifactId);
-    const [snapshot, { data: plan, error: planError }, prompt] =
+    const [snapshot, { plan }, prompt] =
       await Promise.all([
         fetchCurationSnapshot(admin, artifactId),
-        admin
-          .from("instructional_plans")
-          .select("lesson_plans")
-          .eq("artifact_id", artifactId)
-          .maybeSingle(),
+        fetchArtifactAndPlanForCuration(admin, artifactId),
         resolvePromptWithMetadata(
           admin,
           CURATION_PROMPT_CODE,
@@ -155,7 +146,6 @@ export async function getCurationSnapshotAction(artifactId: string) {
           artifact.organization_id,
         ),
       ]);
-    if (planError) throw new Error(planError.message);
 
     const lessons = buildLessonsToProcess(plan?.lesson_plans);
     const lessonRequirements = lessons.map((lesson) => ({
@@ -681,21 +671,16 @@ export async function updateCurationStatusAction(
     const { finalStatus, decision } = mapCurationStatus(status);
     if (finalStatus === "PHASE2_APPROVED") {
       const [
-        { data: plan, error: planError },
+        { plan },
         { data: curation, error: curationError },
       ] = await Promise.all([
-        admin
-          .from("instructional_plans")
-          .select("lesson_plans")
-          .eq("artifact_id", artifactId)
-          .single(),
+        fetchArtifactAndPlanForCuration(admin, artifactId),
         admin
           .from("curation")
           .select("id")
           .eq("artifact_id", artifactId)
           .single(),
       ]);
-      if (planError) throw new Error(planError.message);
       if (curationError) throw new Error(curationError.message);
       const { data: rows, error: rowsError } = await admin
         .from("curation_rows")

@@ -7,6 +7,16 @@ import { getActiveOrganizationId, getAuthBridgeUser } from '@/utils/auth/session
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 import { isSupportedMaterialsModel } from '@/shared/ai/materials-model-provider';
+import { REVIEWER_ROLE_SET } from '@/lib/pipeline-constants';
+
+async function getSettingsEditor() {
+  const user = await getAuthBridgeUser();
+  if (!user) return null;
+  const tenant = await resolveActiveTenantContext();
+  if (tenant) return tenant.userId === user.id && REVIEWER_ROLE_SET.has(tenant.platformRole || '') ? user : null;
+  const { data, error } = await getAdminClient().from('profiles').select('platform_role').eq('id', user.id).maybeSingle();
+  return !error && ['ADMIN', 'SUPERADMIN'].includes(data?.platform_role || '') ? user : null;
+}
 
 interface ModelSettingsUpdateInput {
   fallback_model?: string | null;
@@ -471,7 +481,7 @@ export async function getSystemPromptsAction() {
 }
 
 export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
-    const user = await getAuthBridgeUser();
+    const user = await getSettingsEditor();
 
     if (!user) {
       return { success: false, error: 'Unauthorized' };
@@ -480,17 +490,24 @@ export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
     const activeOrgId = await getResolvedActiveOrgId();
     const supabaseAdmin = getAdminClient();
 
-    const { data: existing, error: existingError } = await supabaseAdmin
+    let promptQuery = supabaseAdmin
       .from('system_prompts')
       .select(SYSTEM_PROMPT_SELECT_FIELDS)
-      .eq('id', prompt.id)
-      .single();
+      .eq('id', prompt.id);
+    promptQuery = activeOrgId
+      ? promptQuery.or(`organization_id.is.null,organization_id.eq.${activeOrgId}`)
+      : promptQuery.is('organization_id', null);
+    const { data: existing, error: existingError } = await promptQuery.single();
 
     if (existingError || !existing) {
       return { success: false, error: existingError?.message || 'Prompt no encontrado' };
     }
 
     const existingPrompt = existing as SystemPrompt;
+    if (existingPrompt.organization_id && existingPrompt.organization_id !== activeOrgId) return { success: false, error: 'No puedes modificar prompts de otra organización.' };
+    if (existingPrompt.code.startsWith('SYNCHRONOUS_')) {
+      return { success: false, error: 'Usa la configuración sincrónica para modificar estos prompts con sus permisos y versionado.' };
+    }
     if (promptsHaveSameContent(existingPrompt, prompt)) {
       return {
         success: true,
@@ -590,7 +607,8 @@ export async function getModelSettingsAction() {
  * No-ops if the org has no override for that code.
  */
 export async function resetPromptToDefaultAction(promptCode: string) {
-  const user = await getAuthBridgeUser();
+  if (promptCode.startsWith('SYNCHRONOUS_')) return { success: false, error: 'Usa la configuración sincrónica para este prompt.' };
+  const user = await getSettingsEditor();
 
   if (!user) {
     return { success: false, error: 'Unauthorized' };
@@ -729,7 +747,7 @@ export async function getSystemPromptHistoryAction(promptCode: string) {
 }
 
 export async function restorePromptVersionAction(promptId: string) {
-  const user = await getAuthBridgeUser();
+  const user = await getSettingsEditor();
 
   if (!user) {
     return { success: false, error: 'Unauthorized' };
@@ -746,6 +764,7 @@ export async function restorePromptVersionAction(promptId: string) {
     .from('system_prompts')
     .select(SYSTEM_PROMPT_SELECT_FIELDS)
     .eq('id', promptId)
+    .or(`organization_id.is.null,organization_id.eq.${activeOrgId}`)
     .single();
 
   if (selectedError || !selected) {
@@ -753,6 +772,7 @@ export async function restorePromptVersionAction(promptId: string) {
   }
 
   const selectedPrompt = selected as SystemPrompt;
+  if (selectedPrompt.code.startsWith('SYNCHRONOUS_')) return { success: false, error: 'Usa la configuración sincrónica para este prompt.' };
   const isAllowedScope =
     !selectedPrompt.organization_id || selectedPrompt.organization_id === activeOrgId;
 
@@ -792,7 +812,8 @@ export async function restorePromptVersionAction(promptId: string) {
 
 // Actualiza un batch completo de configuraciones de modelo
 export async function updateModelSettingsAction(settings: ModelSettingsUpdateInput[]) {
-  const user = await getAuthBridgeUser();
+  if (settings.some(setting => setting.setting_type.startsWith('SYNCHRONOUS_'))) return { success: false, error: 'Usa la configuración sincrónica para estos modelos.' };
+  const user = await getSettingsEditor();
 
   if (!user) {
     return { success: false, error: 'Unauthorized' };
@@ -845,7 +866,7 @@ export async function updateModelSettingsAction(settings: ModelSettingsUpdateInp
     };
 
     if (!activeOrgId && setting.id > 0) {
-      return supabaseAdmin.from('model_settings').update(payload).eq('id', setting.id);
+      return supabaseAdmin.from('model_settings').update(payload).eq('id', setting.id).is('organization_id', null).eq('setting_type', setting.setting_type);
     }
 
     if (activeOrgId) {

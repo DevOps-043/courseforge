@@ -3,6 +3,7 @@ import { CURATION_STATES } from "@/lib/pipeline-constants";
 import type { Curation, CurationRow } from "../types/curation.types";
 import { SYSTEM_GENERATED_CURATION_ROW_FILTER } from "../lib/curation-row-rules";
 import { isGenerationStale } from "@/lib/pipeline-generation-policy";
+import { mergeDeliveryCurationPlan } from "@/domains/course-delivery/services/delivery-curation";
 
 type ServiceRoleClient = ReturnType<typeof getServiceRoleClient>;
 
@@ -208,7 +209,8 @@ export async function fetchArtifactAndPlanForCuration(
     throw new Error(`Database error fetching plan: ${planError.message}`);
   }
 
-  if (!plan) {
+  const lessonPlans = await mergeDeliveryCurationPlan(admin, artifactId, plan?.lesson_plans);
+  if (!lessonPlans.length) {
     throw new Error(
       "No Instructional Plan found. Please go back to Step 3 and generate/approve the plan first.",
     );
@@ -216,7 +218,7 @@ export async function fetchArtifactAndPlanForCuration(
 
   return {
     artifact: artifact as ArtifactCurationSummary,
-    plan: plan as InstructionalPlanSummary,
+    plan: { lesson_plans: lessonPlans } as InstructionalPlanSummary,
   };
 }
 

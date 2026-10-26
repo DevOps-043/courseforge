@@ -11,6 +11,9 @@
 - [HyperFrames: documento, medios y render](architecture/hyperframes-composition-render-flow-source-of-truth.md)
 - [ADR de motion](architecture/adr-composition-motion-source-of-truth.md)
 - [Plantillas HTML importadas](architecture/imported-slide-templates.md)
+- [Propuesta de flujo sincrónico e híbrido, sin etapas adicionales](architecture/synchronous-hybrid-course-flow-analysis.md)
+- [Plan de implementación del flujo sincrónico e híbrido](architecture/synchronous-hybrid-course-implementation-plan.md)
+- [Operación del flujo sincrónico e híbrido](operations/synchronous-hybrid-courses.md)
 - [Compliance HeyGen/HyperFrames](compliance/protocolo-actualizacion-heygen-hyperframes.md)
 
 Los documentos existentes conservan sus rutas. docs/archive/ contiene guías
