@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../../../../config/app";
 import React from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { EngineDialog } from '@/components/ui/EngineDialog';
@@ -23,7 +24,7 @@ export const PublishSuccessModal: React.FC<PublishSuccessModalProps> = ({
         size="compact"
         eyebrow="Publicación en curso"
         title={title}
-        description="Courseforge conservará y reconciliará el envío hasta confirmarlo."
+        description={`${APP_CONFIG.name} conservará y reconciliará el envío hasta confirmarlo.`}
         icon={<CheckCircle2 />}
         footer={(
             <button

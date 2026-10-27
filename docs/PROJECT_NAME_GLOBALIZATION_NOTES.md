@@ -2,6 +2,8 @@
 
 Fecha: 2026-07-29
 
+Actualización 2026-10-27: el inventario siguiente conserva la fotografía histórica. La centralización se implementa en la rama `codex/global-branding`; el contrato vigente y el procedimiento para cambiar nombre, logo y contacto están en [identidad global](architecture/product-branding.md). El nuevo nombre aún no está definido. La evidencia local se registra en [global-branding](../openspec/changes/global-branding/proposal.md).
+
 ## Proposito
 
 Documentar las referencias actuales a nombres de producto/marca como `CourseForge`, `Courseforge`, `SofLIA - Engine`, `Soflia Engine`, `Soflia` y `Sofia`, y dejar guardada la intencion de cambio para una rama futura.
@@ -184,4 +186,4 @@ Puede actualizarse al final o dejarse como referencia historica. No es necesario
 
 ## Nota importante
 
-Este documento no implementa el cambio. Solo deja inventariado el estado actual y la decision de preferir configuracion interna en codigo sobre environment variables.
+Este documento original solo inventarió el estado de julio y la decisión de usar configuración interna. La implementación posterior y sus límites se describen en la fuente vigente enlazada al inicio; los conteos y líneas de este inventario no se presentan como actuales.

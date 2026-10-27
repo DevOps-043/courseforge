@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../src/config/app";
 import { Handler } from "@netlify/functions";
 import {
   createGeminiClient,
@@ -176,7 +177,7 @@ export const handler: Handler = async (event) => {
       input: {
         locale: "es",
         metadata: {
-          brandLabel: "SofLIA - Engine",
+          brandLabel: APP_CONFIG.name,
         },
         template: "course-module",
       },

@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_CONFIG } from "../../../../config/app";
 import { COMPOSITION_CANVAS_FORMATS, resolveCompositionCanvasFormat } from "@/domains/production/composition-editor/composition-canvas-format";
 import { requestCompositionDocumentSave } from "@/domains/production/composition-editor/composition-document-save-request";
 import { createHtmlEditingPreviewSession } from "@/domains/production/composition-editor/composition-html-editing-preview-channel.contract";
@@ -3305,8 +3306,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         setAssemblyError(
           importFailed && !providerFailed
             ? completedVideo
-              ? "HeyGen terminó este render, pero Courseforge no pudo importar el video final. El último video completado sigue disponible; revisa el diagnóstico antes de reintentar."
-              : "HeyGen terminó este render, pero Courseforge no pudo importar el video final. Revisa el diagnóstico antes de reintentar."
+              ? `HeyGen terminó este render, pero ${APP_CONFIG.name} no pudo importar el video final. El último video completado sigue disponible; revisa el diagnóstico antes de reintentar.`
+              : `HeyGen terminó este render, pero ${APP_CONFIG.name} no pudo importar el video final. Revisa el diagnóstico antes de reintentar.`
             : completedVideo
               ? "HeyGen reportó que este render falló. El último video completado sigue disponible para publicación; puedes reintentar esta revisión sin perderlo."
               : "HeyGen reportó que este render falló. Puedes volver a intentarlo.",

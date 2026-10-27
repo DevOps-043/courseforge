@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import crypto from "crypto";
 import { bundleAgentSpecSchema, type BundleAgentSpec } from "./types";
 import { attachBundleDesignPlan } from "./design-plan.service";
@@ -66,7 +67,7 @@ function inferTitle(userText: string, fallbackTitle?: string | null) {
   }
 
   const firstRequirement = extractRequirements(userText)[0];
-  return (firstRequirement || fallbackTitle || "SofLIA video bundle").slice(0, 120);
+  return (firstRequirement || fallbackTitle || `${APP_CONFIG.assistant.displayName} video bundle`).slice(0, 120);
 }
 
 function inferRequiredAssets(userText: string) {
@@ -435,8 +436,8 @@ export function buildSpecFromConversation(input: {
     fallbackTransition: sceneSwapOnSlideChange ? "scene-swap" : "crossfade",
   });
   const changeSummary = input.messages.filter((message) => message.role === "USER").length > 1
-    ? `SofLIA adjusted the bundle draft using the latest feedback: ${latestUserText.slice(0, 220)}`
-    : "SofLIA generated a controlled video bundle draft from the conversation.";
+    ? `${APP_CONFIG.assistant.displayName} adjusted the bundle draft using the latest feedback: ${latestUserText.slice(0, 220)}`
+    : `${APP_CONFIG.assistant.displayName} generated a controlled video bundle draft from the conversation.`;
 
   return normalizeBundleAgentSpecForRendering(bundleAgentSpecSchema.parse({
     title,

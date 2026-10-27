@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_CONFIG } from "../../../config/app";
 import { useEffect, useState } from "react";
 import { Loader2, Save, Sparkles } from "lucide-react";
 import { PremiumSelect } from "@/shared/components/PremiumSelect";
@@ -79,7 +80,7 @@ export function VideoStudioSettings() {
             <div>
               <h3 className="font-bold text-slate-900 dark:text-white">Asistente de edición</h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-gray-400">
-                Selecciona el modelo que prepara propuestas para SofLIA. Cada propuesta requiere aprobación.
+                Selecciona el modelo que prepara propuestas para {APP_CONFIG.assistant.displayName}. Cada propuesta requiere aprobación.
               </p>
             </div>
           </div>

@@ -1,3 +1,5 @@
+import { APP_CONFIG } from "../../config/app";
+import { escapeBrandingHtml } from "../../config/branding-html";
 import { NextResponse } from "next/server";
 import type { IntegrationCredentialProvider } from "@/domains/production/cloud-storage/types";
 
@@ -40,7 +42,7 @@ export function oauthPopupResponse({
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <title>SofLIA - Engine OAuth</title>
+    <title>${escapeBrandingHtml(APP_CONFIG.name)} OAuth</title>
     <style>
       body {
         align-items: center;
@@ -75,9 +77,9 @@ export function oauthPopupResponse({
   <body>
     <main>
       <h1>${status === "success" ? "Conexion completada" : "No se pudo completar la conexion"}</h1>
-      <p>${status === "success" ? "Esta ventana se cerrara automaticamente." : "Corrige la configuracion y vuelve a intentarlo desde SofLIA - Engine."}</p>
+      <p>${status === "success" ? "Esta ventana se cerrara automaticamente." : `Corrige la configuracion y vuelve a intentarlo desde ${escapeBrandingHtml(APP_CONFIG.name)}.`}</p>
       ${visibleMessage ? `<code>${visibleMessage}</code>` : ""}
-      <p><a href="${normalizedRedirectPath.replace(/[<>&"]/g, "")}">Volver a SofLIA - Engine</a></p>
+      <p><a href="${normalizedRedirectPath.replace(/[<>&"]/g, "")}">Volver a ${escapeBrandingHtml(APP_CONFIG.name)}</a></p>
     </main>
     <script>
       const payload = {

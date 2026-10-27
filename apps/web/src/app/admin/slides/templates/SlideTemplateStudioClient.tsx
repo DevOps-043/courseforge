@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_CONFIG } from "../../../../config/app";
 import { useEffect, useId, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -238,7 +239,7 @@ async function fetchJson(input: RequestInfo | URL, init?: RequestInit, timeoutMs
 function getRoleLabel(role: string) {
   if (role === "USER") return "Tu";
   if (role === "TOOL") return "Sistema";
-  return "SofLIA";
+  return APP_CONFIG.assistant.displayName;
 }
 
 function getFontFamily(modifiers: TemplateModifiers) {
@@ -344,7 +345,7 @@ function SlidePreview({
       <div className="grid h-full grid-cols-12 gap-3" style={{ padding: scaledPadding }}>
         {modifiers.showBrandMark && (
           <div className={`${variant === "thumbnail" ? "hidden" : "flex"} col-span-12 items-center justify-between text-[8px] font-black uppercase tracking-wider text-[var(--studio-muted)]`}>
-            <span>SofLIA</span>
+            <span>{APP_CONFIG.shortName}</span>
             <span>{slideType.id.replace(/_/g, " ")}</span>
           </div>
         )}

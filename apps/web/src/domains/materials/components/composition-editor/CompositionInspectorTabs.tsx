@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../../config/app";
 import { ArrowRightLeft, MousePointer2, SlidersHorizontal, Sparkles, type LucideIcon } from "lucide-react";
 
 import styles from "./CompositionStudio.module.css";
@@ -21,7 +22,7 @@ const INSPECTOR_TABS: InspectorTabDefinition[] = [
   { icon: SlidersHorizontal, id: "properties", label: "Propiedades" },
   { icon: MousePointer2, id: "selection", label: "Selección" },
   { icon: ArrowRightLeft, id: "transitions", label: "Transiciones" },
-  { icon: Sparkles, id: "assistant", label: "SofLIA" },
+  { icon: Sparkles, id: "assistant", label: APP_CONFIG.assistant.displayName },
 ];
 
 export function CompositionInspectorTabs({

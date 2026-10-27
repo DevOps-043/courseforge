@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_CONFIG } from "../../../config/app";
 import { useState } from "react";
 
 import {
@@ -52,7 +53,7 @@ export function CurationSetupView({
           Paso 4: Curaduria de Fuentes
         </h2>
         <p className="text-gray-500 dark:text-[var(--engine-text-muted)] text-base leading-relaxed max-w-2xl ml-12">
-          GPT busca fuentes web y SofLIA - Engine valida automaticamente su
+          GPT busca fuentes web y {APP_CONFIG.name} valida automaticamente su
           acceso, contenido y calidad hasta completar cada leccion.
         </p>
       </div>
@@ -74,7 +75,7 @@ export function CurationSetupView({
           </div>
 
           <p className="text-gray-600 dark:text-[var(--engine-text-muted)] text-sm leading-relaxed mb-6 max-w-lg">
-            SofLIA Engine investigara fuentes recientes por leccion, validara
+            {APP_CONFIG.name} investigara fuentes recientes por leccion, validara
             cada URL y repondra automaticamente las que fallen.
           </p>
 

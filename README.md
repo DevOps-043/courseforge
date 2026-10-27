@@ -16,6 +16,8 @@ El código incorpora autoría sincrónica e híbrida bajo habilitación explíci
 
 ## Tabla De Contenidos
 
+La identidad de presentación se configura en `apps/web/src/config/app.ts`, sin variables de entorno. El nombre nuevo aún está pendiente; la integración externa SofLIA y los identificadores técnicos mantienen compatibilidad. Ver [identidad global y procedimiento de cambio](docs/architecture/product-branding.md).
+
 1. [Stack](#stack)
 2. [Estructura Del Repo](#estructura-del-repo)
 3. [Como Correrlo](#como-correrlo)

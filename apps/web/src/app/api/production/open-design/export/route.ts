@@ -1,3 +1,5 @@
+import { APP_CONFIG } from "../../../../../config/app";
+import { escapeBrandingHtml } from "../../../../../config/branding-html";
 import { z } from 'zod';
 import { createClient } from '@/utils/supabase/server';
 import {
@@ -465,7 +467,7 @@ export async function POST(request: Request) {
         </ul>
       </div>
       <div class="slide-footer">
-        <span>SofLIA - Engine</span>
+        <span>${escapeBrandingHtml(APP_CONFIG.name)}</span>
         <span>Plantilla Corporativa</span>
       </div>
     </div>

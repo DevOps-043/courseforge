@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_CONFIG } from "../../../../config/app";
 import { useRef, useState } from "react";
 import { useCompositionPanelFocus } from "./useCompositionPanelFocus";
 import styles from "./CompositionStudio.module.css";
@@ -133,13 +134,13 @@ export function CompositionPresetPanel({
                   onClick={() => setMode("INSTRUCTIONS")}
                   className={`rounded-md px-2 py-2 text-xs font-bold transition-colors ${mode === "INSTRUCTIONS" ? "bg-violet-600 text-white shadow-sm shadow-violet-950/30 dark:bg-violet-400 dark:text-slate-950" : "text-slate-500 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"}`}
                 >
-                  Con SofLIA
+                  Con {APP_CONFIG.assistant.displayName}
                 </button>
               </div>
               <label className="mt-3 block text-[11px] font-bold text-slate-600 dark:text-slate-300">Nombre<input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} className="mt-1 w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm font-normal outline-none focus:border-cyan-500 dark:border-white/15" placeholder="Ej. Academia dinámica" /></label>
               <label className="mt-3 block text-[11px] font-bold text-slate-600 dark:text-slate-300">Descripción<input value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} className="mt-1 w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm font-normal outline-none focus:border-cyan-500 dark:border-white/15" placeholder="Cuándo conviene usarlo" /></label>
               {mode === "INSTRUCTIONS" && <label className="mt-3 block text-[11px] font-bold text-slate-600 dark:text-slate-300">Instrucción<textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} maxLength={1500} rows={4} className="mt-1 w-full resize-none rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm font-normal outline-none focus:border-cyan-500 dark:border-white/15" placeholder="Presentador abajo a la derecha, diapositivas completas y entradas suaves…" /></label>}
-              <p className="mt-2 text-[10px] leading-4 text-slate-500">{mode === "MANUAL" ? "Detectaremos secuencia, composición, audio y animaciones parametrizables de la versión guardada." : "SofLIA propondrá una composición segura y el sistema extraerá el patrón; la aplicación final seguirá siendo determinista."}</p>
+              <p className="mt-2 text-[10px] leading-4 text-slate-500">{mode === "MANUAL" ? "Detectaremos secuencia, composición, audio y animaciones parametrizables de la versión guardada." : `${APP_CONFIG.assistant.displayName} propondrá una composición segura y el sistema extraerá el patrón; la aplicación final seguirá siendo determinista.`}</p>
               <button type="button" disabled={creating || busy || name.trim().length < 3 || (mode === "INSTRUCTIONS" && instruction.trim().length < 3)} onClick={() => void create()} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">{creating ? <Loader2 className="animate-spin" size={14} /> : mode === "INSTRUCTIONS" ? <Sparkles size={14} /> : <Save size={14} />} Crear preset</button>
             </section>
           </div>

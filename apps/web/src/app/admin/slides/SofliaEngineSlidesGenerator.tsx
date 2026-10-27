@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_CONFIG } from "../../../config/app";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, BookOpen, FileJson, FileText, Layers3, Loader2, RefreshCw, WandSparkles } from "lucide-react";
@@ -179,7 +180,7 @@ export function SofliaEngineSlidesGenerator({
           customSlides,
           locale: "es",
           metadata: {
-            brandLabel: "SofLIA - Engine",
+            brandLabel: APP_CONFIG.name,
             subtitle: subtitle.trim() || undefined,
             title: title.trim() || undefined,
           },
@@ -208,8 +209,8 @@ export function SofliaEngineSlidesGenerator({
       setLastGeneratedUrl(previewUrl);
       toast.success(
         payload.reused
-          ? "Deck SofLIA - Engine recuperado"
-          : "Deck SofLIA - Engine generado",
+          ? `Deck ${APP_CONFIG.name} recuperado`
+          : `Deck ${APP_CONFIG.name} generado`,
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo generar el deck.");
@@ -318,7 +319,7 @@ export function SofliaEngineSlidesGenerator({
             value={appearance}
             onValueChange={(value) => setAppearance(value as SlidesAppearance)}
             options={[
-              { value: "light", label: "Claro", description: "Predeterminado SofLIA" },
+              { value: "light", label: "Claro", description: `Predeterminado ${APP_CONFIG.shortName}` },
               { value: "dark", label: "Oscuro", description: "Superficies oscuras con acentos de marca" },
             ]}
           />
@@ -354,7 +355,7 @@ export function SofliaEngineSlidesGenerator({
           </div>
 
           <div className="engine-slide-paper">
-            <span className="engine-slide-paper__index">SOFLIA / 16:9</span>
+            <span className="engine-slide-paper__index">{APP_CONFIG.shortName} / 16:9</span>
             {slidesInputMode === "json" ? (
               <textarea
                 value={customSlidesJson}
@@ -373,7 +374,7 @@ export function SofliaEngineSlidesGenerator({
             )}
             <div className="engine-slide-paper__footer">
               <span>{selectedCandidate?.lessonTitle || "Sin lección seleccionada"}</span>
-              <span>Deck SofLIA</span>
+              <span>Deck {APP_CONFIG.shortName}</span>
             </div>
           </div>
           {lastGeneratedUrl ? (

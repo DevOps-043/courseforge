@@ -1,3 +1,5 @@
+import { APP_CONFIG } from "../../../config/app";
+
 /**
  * Default prompts for materials generation and video production,
  * decomposed by component type.
@@ -149,7 +151,7 @@ export const sofliaDialoguePromptDefault = `## Actividad Conversacional SofLIA (
 Genera una configuracion evaluable para que SofLIA Learning ejecute una conversacion adaptativa. No generes un guion rigido, no generes scenes, no escribas respuestas esperadas del usuario palabra por palabra y no reveles la rubrica interna en el mensaje visible.
 
 **Objetivo del componente:**
-SofLIA debe poder conversar, retar, dar pistas, rescatar y evaluar evidencia semantica. Course Engine solo debe producir la configuracion: objetivo, escenario, criterios, evidencia, errores comunes, pistas, retos, rescate, rubrica, politica, estilo, analitica y versionado.
+SofLIA debe poder conversar, retar, dar pistas, rescatar y evaluar evidencia semantica. ${APP_CONFIG.name} solo debe producir la configuracion: objetivo, escenario, criterios, evidencia, errores comunes, pistas, retos, rescate, rubrica, politica, estilo, analitica y versionado.
 
 **Reglas de diseno:**
 - Genera por evidencias observables, no por coincidencias exactas.

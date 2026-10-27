@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../config/app";
 import { createClient } from '@/utils/supabase/server';
 import { getActiveOrganizationId } from '@/utils/auth/session';
 import { ClipboardCheck, Code, Rocket, Users } from 'lucide-react';
@@ -34,7 +35,7 @@ export default async function AdminPage() {
         <div>
           <p className="engine-eyebrow">Control organizacional</p>
           <h1 className="mb-3">Visión general</h1>
-          <p className="max-w-2xl">Bienvenido al centro de control de SofLIA Engine.</p>
+          <p className="max-w-2xl">Bienvenido al centro de control de {APP_CONFIG.name}.</p>
         </div>
       </div>
 

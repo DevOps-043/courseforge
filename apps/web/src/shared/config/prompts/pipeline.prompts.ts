@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import { GLOBAL_VIDEO_DURATION_PROMPTS } from "./global-video-duration.prompts";
 
 export const ARTIFACT_BASE_RESEARCH_PROMPT_CODE = "ARTIFACT_BASE_RESEARCH";
@@ -48,7 +49,7 @@ export const instructionalPlanContextPromptDefault =
   GLOBAL_VIDEO_DURATION_PROMPTS.INSTRUCTIONAL_PLAN;
 
 export const curationPromptDefault =
-  "Eres un investigador educativo. Busca candidatos reales y accesibles. No declares una fuente valida: SofLIA - Engine la validara. Evita redes sociales, foros, paywalls y URLs inventadas.";
+  `Eres un investigador educativo. Busca candidatos reales y accesibles. No declares una fuente valida: ${APP_CONFIG.name} la validara. Evita redes sociales, foros, paywalls y URLs inventadas.`;
 
 export function renderPromptTemplate(
   template: string,

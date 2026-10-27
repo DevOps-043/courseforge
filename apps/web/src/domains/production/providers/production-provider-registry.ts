@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import {
   PRODUCTION_JOB_TYPES,
   PRODUCTION_PROVIDERS,
@@ -14,7 +15,7 @@ interface ProductionProviderDefinition {
 const PROVIDERS: ProductionProviderDefinition[] = [
   {
     key: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
-    name: "SofLIA - Engine Slides",
+    name: `${APP_CONFIG.name} Slides`,
     jobTypes: [
       PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
       PRODUCTION_JOB_TYPES.SLIDE_DECK_EXPORT,

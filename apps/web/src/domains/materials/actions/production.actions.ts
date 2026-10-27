@@ -1,5 +1,6 @@
 "use server";
 
+import { APP_CONFIG } from "../../../config/app";
 import { getErrorMessage } from "@/lib/errors";
 import {
   getAccessToken,
@@ -1585,7 +1586,7 @@ export async function cancelRemotionAssemblyJobsAction(artifactId: string, jobId
         worker_heartbeat_at: now,
         provider_error: {
           code: "USER_CANCELLED",
-          message: "El ensamblado fue detenido desde SofLIA - Engine.",
+          message: `El ensamblado fue detenido desde ${APP_CONFIG.name}.`,
           stage: "user_cancelled",
         },
       })

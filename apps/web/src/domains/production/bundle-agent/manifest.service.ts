@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import type { BundleAgentSpec } from "./types";
 import type { BundleBlueprint } from "./blueprint.service";
 import {
@@ -41,11 +42,11 @@ export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlue
       properties: {
         ...(spec.propsSchema.properties || {}),
         accentColor: { type: "string", description: "Color de acento opcional." },
-        avatarClips: { type: "array", description: "Clips de avatar normalizados por SofLIA - Engine." },
+        avatarClips: { type: "array", description: `Clips de avatar normalizados por ${APP_CONFIG.name}.` },
         avatarVideoUrl: { type: "string", description: "URL publica del video de avatar/talking head." },
         bgMusicUrl: { type: "string", description: "URL publica de musica de fondo." },
         bgMusicVolume: { type: "number", description: "Volumen relativo de musica de fondo entre 0 y 1." },
-        brollClips: { type: "array", description: "Clips B-roll normalizados por SofLIA - Engine." },
+        brollClips: { type: "array", description: `Clips B-roll normalizados por ${APP_CONFIG.name}.` },
         deckCss: { type: "string", description: "CSS saneado y scoped de diapositivas HTML animadas." },
         deckFonts: { type: "array", description: "Google Fonts permitidas para diapositivas HTML animadas." },
         animationVariant: { type: "string", description: "Ritmo de animacion elegido desde la direccion creativa." },
@@ -53,7 +54,7 @@ export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlue
         expandMissingSupportMedia: { type: "boolean", description: "Expande slide o B-roll cuando falta el otro soporte visual." },
         layoutOverrides: { type: "array", description: "Manifiestos de ajustes visuales no destructivos del editor de layout." },
         sceneSwapOnSlideChange: { type: "boolean", description: "Intercambia izquierda/derecha al cambiar de diapositiva." },
-        slides: { type: "array", description: "Slides renderizables normalizadas por SofLIA - Engine." },
+        slides: { type: "array", description: `Slides renderizables normalizadas por ${APP_CONFIG.name}.` },
         timelineOverrides: { type: "array", description: "Manifiestos de ajustes temporales no destructivos del editor de timeline." },
         timelinePlan: { type: "object", description: "Plan temporal compilado para apertura, contenido, cierre y overlays." },
         totalDurationInFrames: { type: "integer", description: "Duracion total resuelta para el render." },

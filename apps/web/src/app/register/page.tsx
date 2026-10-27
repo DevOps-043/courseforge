@@ -1,5 +1,6 @@
 'use client';
 
+import { APP_CONFIG } from "../../config/app";
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -76,8 +77,8 @@ export default function RegisterPage() {
                className="relative w-[280px] h-[280px] sm:w-[350px] sm:h-[350px] lg:w-[500px] lg:h-[500px]"
             >
               <Image 
-                src="/Logo.png" 
-                alt="SofLIA - Engine Network" 
+                src={APP_CONFIG.logo.src}
+                alt={APP_CONFIG.name}
                 fill
                 className="object-contain drop-shadow-2xl"
                 priority

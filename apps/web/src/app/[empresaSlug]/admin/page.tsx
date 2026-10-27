@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import { notFound } from 'next/navigation';
 import { ClipboardCheck, Code, Rocket, Users } from 'lucide-react';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
@@ -50,7 +51,7 @@ export default async function TenantAdminPage({
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Visión General</h1>
-        <p className="text-gray-600 dark:text-[var(--engine-text-muted)]">Centro de control de SofLIA - Engine para esta empresa.</p>
+        <p className="text-gray-600 dark:text-[var(--engine-text-muted)]">Centro de control de {APP_CONFIG.name} para esta empresa.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

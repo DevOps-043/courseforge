@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_CONFIG } from "../../../../config/app";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -122,7 +123,7 @@ async function readJson(response: Response) {
 function roleLabel(role: string) {
   if (role === "USER") return "Tu";
   if (role === "TOOL") return "Sistema";
-  return "SofLIA";
+  return APP_CONFIG.assistant.displayName;
 }
 
 function statusLabel(status?: string | null) {
@@ -293,7 +294,7 @@ function BundleLivePreview({
   tokens: BundleDesignTokens;
 }) {
   const defaultProps = asRecord(spec?.defaultProps);
-  const title = normalizeLegacySofliaName(String(defaultProps?.title || spec?.title || "SofLIA Bundle"));
+  const title = normalizeLegacySofliaName(String(defaultProps?.title || spec?.title || `${APP_CONFIG.assistant.displayName} Bundle`));
   const subtitle = normalizeLegacySofliaName(String(defaultProps?.subtitle || "Plantilla visual para lecciones con soporte multimedia."));
   const currentFamily = templateFamily === "auto"
     ? String(spec?.templateFamily || "auto")
@@ -790,11 +791,11 @@ export function BundleAgentClient({
             Regresar a plantillas
           </Link>
           <p className="text-sm font-medium text-slate-500">Produccion visual</p>
-          <h1 className="text-2xl font-semibold text-slate-950">SofLIA Bundle Agent</h1>
+          <h1 className="text-2xl font-semibold text-slate-950">{APP_CONFIG.assistant.displayName} Bundle Agent</h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
             {isTemplateScoped
               ? "Edita este bundle manteniendo su conversacion, specs y versiones generadas dentro del mismo historial auditable."
-              : "Conversa con SofLIA para definir una plantilla de video. El agente genera una spec auditable y un paquete ZIP validado."}
+              : `Conversa con ${APP_CONFIG.assistant.displayName} para definir una plantilla de video. El agente genera una spec auditable y un paquete ZIP validado.`}
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm">
@@ -881,7 +882,7 @@ export function BundleAgentClient({
                 {busy ? (
                   <div className="flex items-center gap-3 text-sm text-slate-500">
                     <Loader2 className="animate-spin" size={18} />
-                    SofLIA esta trabajando...
+                    {APP_CONFIG.assistant.displayName} esta trabajando...
                   </div>
                 ) : null}
               </div>
@@ -913,7 +914,7 @@ export function BundleAgentClient({
                       className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition focus:border-[var(--engine-accent)]"
                       value={reference.note || ""}
                       onChange={(event) => updateReferenceNote(reference.id, event.target.value)}
-                      placeholder="Nota opcional: que debe observar SofLIA de esta referencia"
+                      placeholder={`Nota opcional: que debe observar ${APP_CONFIG.assistant.displayName} de esta referencia`}
                     />
                   </div>
                 ))}
@@ -1198,7 +1199,7 @@ export function BundleAgentClient({
                 </details>
               </div>
             ) : (
-              <p className="text-sm leading-6 text-slate-600">Aun no hay spec. Primero conversa con SofLIA y luego genera el contrato.</p>
+              <p className="text-sm leading-6 text-slate-600">Aun no hay spec. Primero conversa con {APP_CONFIG.assistant.displayName} y luego genera el contrato.</p>
             )}
           </section>
 

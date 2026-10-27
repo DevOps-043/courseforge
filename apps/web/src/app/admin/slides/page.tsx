@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -390,11 +391,11 @@ export default async function SofliaEngineSlidesPage({
             Producción visual
           </div>
           <h1 className="mt-3 text-3xl">
-            SofLIA - Engine Slides
+            {APP_CONFIG.name} Slides
           </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6">
             Consola del modulo hibrido para generar diapositivas de cursos con
-            plantillas HTML SofLIA, graficas SVG responsivas y QA automatico.
+            plantillas HTML {APP_CONFIG.shortName}, graficas SVG responsivas y QA automatico.
           </p>
         </div>
 
@@ -503,7 +504,7 @@ export default async function SofliaEngineSlidesPage({
               </h3>
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
                 Entra a un artefacto, abre un componente de produccion visual y
-                usa Generar SofLIA para crear el primer deck.
+                usa Generar {APP_CONFIG.shortName} para crear el primer deck.
               </p>
             </div>
           )}

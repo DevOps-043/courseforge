@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_CONFIG } from "../../../config/app";
 import { useEffect, useRef, useState } from "react";
 import JSZip from "jszip";
 import { toast } from "sonner";
@@ -731,7 +732,7 @@ export function useProductionAssetState({
                 forceRegenerate: true,
                 locale: "es",
                 metadata: {
-                  brandLabel: "SofLIA - Engine",
+                  brandLabel: APP_CONFIG.name,
                 },
                 regenerationRequestId: crypto.randomUUID(),
                 ...(slideTemplateRunId ? { slideTemplateRunId } : {}),
@@ -742,7 +743,7 @@ export function useProductionAssetState({
 
       let data = await readApiResponse(response);
       if (!response.ok || !data.success) {
-        throw new Error(data.error || "No se pudo generar el deck SofLIA - Engine");
+        throw new Error(data.error || `No se pudo generar el deck ${APP_CONFIG.name}`);
       }
       if (response.status === 202 && data.submissionStatus === "QUEUED") {
         toast.info("Deck en cola. La generacion continuara en segundo plano.");
@@ -776,15 +777,15 @@ export function useProductionAssetState({
         appearanceOnly
           ? `Apariencia ${appearance === "dark" ? "oscura" : "clara"} aplicada al deck`
           : data.reused
-          ? "Deck SofLIA - Engine recuperado"
-          : "Deck SofLIA - Engine regenerado",
+          ? `Deck ${APP_CONFIG.name} recuperado`
+          : `Deck ${APP_CONFIG.name} regenerado`,
       );
     } catch (err: unknown) {
       didFail = true;
-      const message = err instanceof Error ? err.message : "No se pudo generar el deck SofLIA - Engine.";
+      const message = err instanceof Error ? err.message : `No se pudo generar el deck ${APP_CONFIG.name}.`;
       setSofliaSlidesGenerationStatus("FAILED");
       setSofliaSlidesGenerationError(message);
-      toast.error(`Error al generar deck SofLIA - Engine: ${message}`);
+      toast.error(`Error al generar deck ${APP_CONFIG.name}: ${message}`);
     } finally {
       setIsGeneratingSofliaSlides(false);
       if (!didFail) setSofliaSlidesGenerationStatus(null);

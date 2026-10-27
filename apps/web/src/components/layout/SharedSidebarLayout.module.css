@@ -29,6 +29,7 @@
 .brand {
   display: flex;
   min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 0.72rem;
 }
@@ -48,6 +49,10 @@
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
 
+.brandText {
+  min-width: 0;
+}
+
 .brandName {
   margin: 0;
   color: var(--engine-text);
@@ -57,14 +62,8 @@
   letter-spacing: -0.02em;
   line-height: 1.05;
   white-space: nowrap;
-}
-
-.brandName span {
-  color: var(--engine-accent-strong);
-}
-
-:global(.dark) .brandName span {
-  color: var(--engine-accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .brandRole,

@@ -1,5 +1,6 @@
 'use client';
 
+import { APP_CONFIG } from '@/config/app';
 import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -167,11 +168,11 @@ export default function SharedSidebarLayout({
         <div className={styles.brandHeader}>
           <div className={styles.brand}>
             <span className={styles.brandMark}>
-              <Image src="/Logo.png" alt="SofLIA" fill sizes="42px" className="object-contain p-1.5" />
+              <Image src={APP_CONFIG.logo.src} alt={APP_CONFIG.name} fill sizes="42px" className="object-contain p-1.5" />
             </span>
             {isExpanded && (
-              <div>
-                <p className={styles.brandName}>SofLIA <span>Engine</span></p>
+              <div className={styles.brandText}>
+                <p className={styles.brandName} title={APP_CONFIG.name}>{APP_CONFIG.name}</p>
                 <p className={styles.brandRole}>{title}</p>
               </div>
             )}
@@ -266,7 +267,7 @@ export default function SharedSidebarLayout({
               <>
                 <span className={styles.accountText}>
                   <span className={styles.accountName}>{accountName}</span>
-                  <span className={styles.accountMeta}>{userEmail || 'Cuenta SofLIA'}</span>
+                  <span className={styles.accountMeta}>{userEmail || `Cuenta ${APP_CONFIG.shortName}`}</span>
                 </span>
                 <ChevronUp size={15} className={isUserMenuOpen ? 'rotate-180' : ''} aria-hidden="true" />
               </>

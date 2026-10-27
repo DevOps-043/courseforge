@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../config/app";
 import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
@@ -1628,7 +1629,7 @@ export class DesktopWorkerControlPlane {
       .from("render_workers")
       .insert({
         organization_id: linkCode.organization_id,
-        device_name: sanitizeText(input.deviceName, linkCode.device_name || "SofLIA Render Worker"),
+        device_name: sanitizeText(input.deviceName, linkCode.device_name || `${APP_CONFIG.shortName} Render Worker`),
         platform: sanitizeText(input.platform, linkCode.platform || ""),
         arch: sanitizeText(input.arch, linkCode.arch || ""),
         app_version: sanitizeText(input.appVersion, linkCode.app_version || "dev"),
@@ -2229,7 +2230,7 @@ export class DesktopWorkerControlPlane {
         },
         build_log: useServerBundler
           ? "Template build started with local server bundler."
-          : "Template build queued for SofLIA desktop worker.",
+          : `Compilación de plantilla en cola para el worker de escritorio de ${APP_CONFIG.shortName}.`,
       })
       .select("*")
       .single();
@@ -2255,7 +2256,7 @@ export class DesktopWorkerControlPlane {
       providerBuildId: build.provider_build_id || null,
       serveUrl: null,
       buildOutputStoragePath: null,
-      message: "Template build queued for SofLIA desktop worker.",
+      message: `Compilación de plantilla en cola para el worker de escritorio de ${APP_CONFIG.shortName}.`,
     };
   }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_CONFIG } from "../../config/app";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Home, LogIn, RefreshCw } from "lucide-react";
@@ -58,7 +59,7 @@ export function ErrorShell({
             <AlertTriangle size={22} />
           </div>
           <div>
-            <p className="text-sm font-semibold text-[var(--engine-accent-strong)] dark:text-[var(--engine-accent)]">SofLIA - Engine</p>
+            <p className="text-sm font-semibold text-[var(--engine-accent-strong)] dark:text-[var(--engine-accent)]">{APP_CONFIG.name}</p>
             <p className="text-xs text-gray-500 dark:text-[var(--engine-text-muted)]">Centro de operaciones</p>
           </div>
         </div>

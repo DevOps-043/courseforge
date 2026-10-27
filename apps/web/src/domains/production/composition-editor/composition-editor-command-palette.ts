@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 export type CompositionEditorCommandId =
   | "edit.copy"
   | "edit.delete"
@@ -67,7 +68,7 @@ export const COMPOSITION_EDITOR_COMMANDS: readonly CompositionEditorCommandDefin
   command("panel.library", "Paneles", "Abrir biblioteca", "Abre los assets disponibles para insertar.", ["media", "assets", "archivos"]),
   command("panel.inspector", "Paneles", "Alternar inspector", "Abre o cierra el inspector contextual.", ["propiedades", "selección", "seleccion"]),
   command("panel.presets", "Paneles", "Abrir presets", "Abre el catálogo de estilos versionados.", ["plantillas", "estilos"]),
-  command("panel.assistant", "Paneles", "Abrir SofLIA", "Abre el asistente de composición.", ["ia", "asistente", "agente"]),
+  command("panel.assistant", "Paneles", `Abrir ${APP_CONFIG.assistant.displayName}`, "Abre el asistente de composición.", ["ia", "asistente", "agente"]),
 ]);
 
 export function filterCompositionEditorCommands(

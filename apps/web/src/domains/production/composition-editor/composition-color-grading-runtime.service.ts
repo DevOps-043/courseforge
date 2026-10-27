@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import { createHash } from "node:crypto";
 
 export const COMPOSITION_COLOR_GRADING_RUNTIME_CONTRACT = {
@@ -43,7 +44,7 @@ export function validateCompositionColorGradingRuntimeArtifact(params: {
     contract?.name !== COMPOSITION_COLOR_GRADING_RUNTIME_CONTRACT.name ||
     contract.version !== COMPOSITION_COLOR_GRADING_RUNTIME_CONTRACT.version
   ) {
-    throw new Error("El contrato del runtime de color no es compatible con Courseforge.");
+    throw new Error(`El contrato del runtime de color no es compatible con ${APP_CONFIG.name}.`);
   }
   const artifacts = isRecord(colorGrading.artifacts) ? colorGrading.artifacts : null;
   if (artifacts?.iife !== COMPOSITION_COLOR_GRADING_RUNTIME_ARTIFACT) {

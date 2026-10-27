@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../../config/app";
 import { useRef, type ReactNode } from "react";
 import { useCompositionPanelFocus } from "./useCompositionPanelFocus";
 import { AlertTriangle, CheckCircle2, Clapperboard, History, Loader2, Send, Trash2, X } from "lucide-react";
@@ -74,7 +75,7 @@ export function CompositionDeliveryPanel({ canvas, diagnostics, recovery, import
     : renderStatus === "cancelled" ? "Proceso cancelado. Puedes iniciar otro intento."
     : renderStatus === "sending" ? "Registrando el render…"
     : renderStatus === "rendering" ? renderStageLabel(normalizedProviderStatus || "PENDING", importStatus)
-    : renderStatus === "completed" ? "Video completado e importado en SofLIA - Engine." : "";
+    : renderStatus === "completed" ? `Video completado e importado en ${APP_CONFIG.name}.` : "";
   const summary = renderStatus === "completed"
     ? "El video final ya está disponible."
     : assembly

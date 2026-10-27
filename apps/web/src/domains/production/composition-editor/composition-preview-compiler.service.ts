@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import { buildCompositionPreviewTimelineState } from "./composition-preview-timeline-state";
 import { renderCompositionTimelineInstaller } from "./composition-preview-timeline-runtime";
 import { prepareCompositionPreviewScenePatch } from "./composition-preview-scene-runtime";
@@ -270,7 +271,7 @@ function renderHyperframesCompositionVariables(
   const declarations = [...assetVariableNames.values()].map((name) => ({
     default: "",
     id: name,
-    label: "SofLIA - Engine remote asset",
+    label: `${APP_CONFIG.name} remote asset`,
     type: "string",
   }));
   return ` data-composition-variables='${escapeAttribute(JSON.stringify(declarations))}'`;
@@ -1334,7 +1335,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         if (!runtime) {
           postParentMessage({
             hfId,
-            message: "Vista previa aproximada de Courseforge; el render final conserva el ajuste canónico.",
+            message: "Vista previa aproximada; el render final conserva el ajuste canónico.",
             state: "fallback",
             type: "courseforge-composition-color-grading-status",
           });

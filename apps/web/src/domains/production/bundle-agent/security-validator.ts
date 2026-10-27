@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import JSZip from "jszip";
 import { validateRemotionBundle, type ValidationReport } from "../validation/bundle-validator";
 
@@ -114,13 +115,13 @@ export async function validateGeneratedRemotionBundle(
   const manifest = baseReport.info.manifest;
   if (manifest) {
     if ((manifest.defaultDurationFrames || 0) > 900) {
-      errors.push("defaultDurationFrames supera el maximo permitido para bundles generados por SofLIA.");
+      errors.push(`defaultDurationFrames supera el maximo permitido para bundles generados por ${APP_CONFIG.assistant.displayName}.`);
     }
     if ((manifest.fps || 0) > 60) {
-      errors.push("fps supera el maximo permitido para bundles generados por SofLIA.");
+      errors.push(`fps supera el maximo permitido para bundles generados por ${APP_CONFIG.assistant.displayName}.`);
     }
     if (JSON.stringify(manifest.defaultProps || {}).length > 16_384) {
-      errors.push("defaultProps supera el tamano maximo permitido para bundles generados por SofLIA.");
+      errors.push(`defaultProps supera el tamano maximo permitido para bundles generados por ${APP_CONFIG.assistant.displayName}.`);
     }
     if (manifest.propsSchema && manifest.propsSchema.type !== "object") {
       errors.push("propsSchema debe ser un JSON Schema simple de tipo object.");

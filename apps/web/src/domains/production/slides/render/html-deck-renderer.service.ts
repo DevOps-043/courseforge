@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../../config/app";
 import { renderCourseChartSvg } from "../charts/svg-chart-renderer.service";
 import { repairCommonUtf8Mojibake } from "../../text/mojibake.service";
 import type { CourseDeckSpec, CourseSlideSpec } from "../specs/course-deck.schema";
@@ -886,7 +887,7 @@ export function renderCourseDeckHtml(deck: CourseDeckSpec) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=${deck.width}, initial-scale=1">
-  <title>${escapeHtml(deck.sourceSnapshot.title || "SofLIA - Engine Deck")}</title>
+  <title>${escapeHtml(deck.sourceSnapshot.title || `${APP_CONFIG.name} Deck`)}</title>
   ${fontLink}
   ${fontStyle}
   <style>${rendered.css}</style>

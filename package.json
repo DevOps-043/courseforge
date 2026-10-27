@@ -6,6 +6,7 @@
     "apps/*"
   ],
   "scripts": {
+    "test:branding": "tsc -p apps/web/tsconfig.branding-test.json && node --test apps/web/.tmp/branding-tests/config/__tests__/branding.test.js",
     "test:composition-resize-format": "tsc -p apps/web/tsconfig.hyperframes-test.json && node --test apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-document-save-request.test.js apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-canvas-snap-geometry.test.js apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-canvas-visible-bounds.test.js",
     "qa:composition-resize-format": "tsc -p apps/web/tsconfig.hyperframes-test.json && node apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-resize-format-smoke.js",
     "test:composition-audio-editing": "tsc -p apps/web/tsconfig.audio-editor-test.json && node --test apps/web/.tmp/audio-editor-tests/domains/production/composition-editor/__tests__/composition-volume-envelope.test.js apps/web/.tmp/audio-editor-tests/domains/production/composition-editor/__tests__/composition-audio-mix.service.test.js apps/web/.tmp/audio-editor-tests/domains/production/composition-editor/__tests__/composition-playback-audio-envelope.test.js apps/web/.tmp/audio-editor-tests/domains/production/composition-editor/__tests__/editor-patch.service.test.js",
@@ -84,7 +85,7 @@
     "test:composition-worker-runtime": "npm run build:composition-worker && node --test scripts/composition-worker-runtime.test.mjs apps/web/tools/controlled-hyperframes/materialized-producer-collector.test.mjs apps/web/tools/controlled-hyperframes/materialized-producer-bridge-configuration.test.mjs",
     "start:composition-conformance-worker": "npm run build -w apps/api && npm run build:composition-worker && node scripts/run-composition-conformance-worker.mjs",
     "qa:composition-final-video-gate": "npm run build -w apps/api && npm run build:composition-worker && node scripts/run-composition-final-video-gate.mjs",
-    "verify": "npm run lint && npm run typecheck && npm run architecture:cycles && npm run db:migrations:check && npm run test:security-boundaries && npm run test:audio-processing && npm run test:coverage-gaps -w apps/web && npm run test:course-delivery",
+    "verify": "npm run lint && npm run typecheck && npm run architecture:cycles && npm run db:migrations:check && npm run test:branding && npm run test:security-boundaries && npm run test:audio-processing && npm run test:coverage-gaps -w apps/web && npm run test:course-delivery",
     "docs:audit": "powershell -ExecutionPolicy Bypass -File scripts/audit-documentation.ps1",
     "compliance:sbom": "powershell -ExecutionPolicy Bypass -File scripts/generate-sbom.ps1",
     "compliance:check": "node scripts/check-third-party-compliance.mjs",

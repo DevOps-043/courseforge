@@ -13,6 +13,7 @@ export const MATERIAL_ASSET_FOLDER_NAMES = [
 ] as const;
 
 export function buildArtifactRootFolderName(artifactName: string) {
+  // Prefijo histórico de almacenamiento: conservar su identidad durante cambios de marca.
   return `SofLIA - Engine - ${artifactName}`;
 }
 

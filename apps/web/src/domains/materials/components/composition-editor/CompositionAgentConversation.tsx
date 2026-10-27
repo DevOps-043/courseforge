@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../../config/app";
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Send } from "lucide-react";
 import type { CompositionAgentProposal } from "./composition-studio.types";
@@ -54,7 +55,7 @@ export function CompositionAgentConversation({ lastAppliedProposal, onApprove, o
   return <section className={styles.agentPanel}>
     <div className="flex items-center gap-2.5 border-b border-[var(--engine-accent)]/25 bg-gradient-to-r from-[var(--engine-accent)]/15 to-white px-3 py-3 dark:to-[var(--engine-surface-hover)]">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--engine-accent)] text-xs font-black text-[var(--engine-primary)] shadow-sm shadow-[var(--engine-accent)]/30 dark:shadow-none">S</span>
-      <div className="min-w-0"><p className="truncate text-xs font-bold text-slate-900 dark:text-white">SofLIA</p><p className="flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Asistente de edición</p></div>
+      <div className="min-w-0"><p className="truncate text-xs font-bold text-slate-900 dark:text-white">{APP_CONFIG.assistant.displayName}</p><p className="flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Asistente de edición</p></div>
     </div>
     <div className="min-h-40 flex-1 space-y-3 overflow-y-auto px-3 py-4">
       {messages.map((message) => <div key={message.id} className={`flex items-end gap-2 ${message.role === "user" ? "justify-end" : "justify-start"}`}>

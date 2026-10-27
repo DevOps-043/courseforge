@@ -6,6 +6,8 @@ SofLIA - Engine es una plataforma multi-tenant para crear, validar, producir y p
 
 ## Estado Real Del Sistema
 
+- **Identidad de producto centralizada**: `apps/web/src/config/app.ts` concentra nombre, nombre corto, logo, contacto e identidad del asistente para UI, metadata, prompts predeterminados y contenido nuevo. La marca actual sigue configurada; identificadores técnicos, integración SofLIA e historial persistido mantienen compatibilidad. Ver [branding](product-branding.md).
+
 - **Autoría sincrónica e híbrida bajo habilitación**: el dominio course-delivery integra agenda, sesiones, configuración de IA y documentos imprimibles en las ocho etapas. Está desactivado por defecto mediante SYNCHRONOUS_COURSES_ENABLED y admite lista de organizaciones. Requiere migración aditiva y piloto; no se aplicó SQL remoto ni se desplegó. Ver [operación](../operations/synchronous-hybrid-courses.md).
 
 - **Monorepo npm workspaces**: `apps/web` y `apps/api`.

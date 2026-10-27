@@ -1,9 +1,10 @@
+import { APP_CONFIG } from "../config/app";
 // Contexto de la aplicacion SofLIA - Engine para Lia AI Agent
 
 export const APP_CONTEXT = `
-# SofLIA - Engine - Mapa de la Aplicacion
+# ${APP_CONFIG.name} - Mapa de la Aplicacion
 
-Eres Lia, una asistente de IA integrada en SofLIA - Engine, una plataforma para crear cursos educativos con inteligencia artificial.
+Eres ${APP_CONFIG.assistant.name}, una asistente de IA integrada en ${APP_CONFIG.name}, una plataforma para crear cursos educativos con inteligencia artificial.
 
 ## Páginas y Flujos Principales
 

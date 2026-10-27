@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import {
   bundleAgentArtifactKindSchema,
   bundleAgentMessageMetadataSchema,
@@ -26,7 +27,7 @@ export class BundleAgentConversationService {
       });
     }
 
-    const title = input.title?.trim() || (artifactKind === "slide_template" ? "Plantilla HTML de slides" : "SofLIA video bundle");
+    const title = input.title?.trim() || (artifactKind === "slide_template" ? "Plantilla HTML de slides" : `${APP_CONFIG.assistant.displayName} video bundle`);
     await this.enforceConversationLimit(artifactKind);
 
     const { data, error } = await this.context.admin
@@ -64,7 +65,7 @@ export class BundleAgentConversationService {
     if (existingError) throw existingError;
     if (existing) return existing;
 
-    const title = input.title?.trim() || template.name || "SofLIA video bundle";
+    const title = input.title?.trim() || template.name || `${APP_CONFIG.assistant.displayName} video bundle`;
     await this.enforceConversationLimit(artifactKind);
 
     const { data, error } = await this.context.admin

@@ -1,5 +1,8 @@
-
 "use client";
+
+import { APP_CONFIG } from "../config/app";
+
+
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
@@ -33,7 +36,7 @@ export default function Home() {
           {/* Brand */}
           <div className="flex items-center gap-3">
             <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-              SofLIA - Engine
+              {APP_CONFIG.name}
             </span>
           </div>
 
@@ -93,7 +96,7 @@ export default function Home() {
 
               <p className="text-lg text-gray-600 dark:text-[var(--engine-text-muted)] max-w-xl mx-auto lg:mx-0 leading-relaxed">
                 Transforma tu conocimiento en experiencias educativas
-                estructuradas. SofLIA - Engine utiliza inteligencia artificial
+                estructuradas. {APP_CONFIG.name} utiliza inteligencia artificial
                 avanzada para diseñar, desarrollar y optimizar tus cursos en
                 minutos.
               </p>

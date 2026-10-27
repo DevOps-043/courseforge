@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_CONFIG } from "../../../config/app";
 import { useMemo, useState } from "react";
 import {
   BookOpen,
@@ -228,7 +229,7 @@ export function CurationDashboard({
 
       {isGenerating && (
         <div className="border border-[var(--engine-accent)]/20 bg-[var(--engine-accent)]/5 p-4 text-sm text-[#008f79] dark:text-[var(--engine-accent)]">
-          El sistema esta buscando candidatos. SofLIA - Engine valida cada
+          El sistema esta buscando candidatos. {APP_CONFIG.name} valida cada
           resultado antes de guardarlo.
         </div>
       )}

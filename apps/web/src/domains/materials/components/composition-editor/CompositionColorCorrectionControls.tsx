@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_CONFIG } from "../../../../config/app";
 import { CompositionAutosaveBoundary } from "./CompositionAutosaveBoundary";
 
 import { useEffect, useRef, useState } from "react";
@@ -156,7 +157,7 @@ function resolveStatusMessage(status: CompositionColorGradingRuntimeStatus | nul
   if (!status) return "Conectando los controles con el preview de color…";
   if (status.state === "active" || status.state === "inactive") return null;
   if (status.state === "fallback") {
-    return "Vista previa aproximada de Courseforge. El ajuste guardado se conserva para el render final.";
+    return `Vista previa aproximada de ${APP_CONFIG.name}. El ajuste guardado se conserva para el render final.`;
   }
   if (status.state === "unavailable") {
     return "La corrección en vivo no está disponible. Se muestra el medio original; el ajuste guardado seguirá disponible para render.";

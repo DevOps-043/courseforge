@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import Link from "next/link";
 import { ImportSlideTemplateDialog } from "@/domains/production/slides/import/components/ImportSlideTemplateDialog";
 import { ImportedSlidePreview } from "@/domains/production/slides/import/components/ImportedSlidePreview";
@@ -50,7 +51,7 @@ function TemplatePreview({ template }: { template: SlideTemplateLibraryItem }) {
     <div className="aspect-video overflow-hidden rounded-xl border border-black/10 p-4 shadow-inner dark:border-white/10" style={{ background: design.background, color: design.text }}>
       <div className="flex h-full flex-col justify-between">
         <div className="flex items-center justify-between text-[8px] font-black uppercase tracking-[0.12em]" style={{ color: design.muted }}>
-          <span>SofLIA slides</span><span>{template.runtime_canvas?.aspectRatio || "16:9"}</span>
+          <span>{APP_CONFIG.shortName} slides</span><span>{template.runtime_canvas?.aspectRatio || "16:9"}</span>
         </div>
         <div>
           <span className="mb-2 block h-1.5 w-12 rounded-full" style={{ background: design.accent }} />
@@ -84,7 +85,7 @@ export default async function SlideTemplatesLibraryPage({
         <div>
           <div className="engine-eyebrow flex items-center gap-2"><LayoutTemplate size={16} /> Producción visual</div>
           <h1 className="mt-3 text-3xl">Plantillas de diapositivas</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6">Importa bases de diseño y utilízalas en el estudio para crear nuevas plantillas con IA. Cada plantilla conserva sus composiciones, tipografías y configuración visual para los decks de SofLIA.</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6">Importa bases de diseño y utilízalas en el estudio para crear nuevas plantillas con IA. Cada plantilla conserva sus composiciones, tipografías y configuración visual para los decks de {APP_CONFIG.shortName}.</p>
         </div>
         <div className="flex flex-wrap gap-2"><ImportSlideTemplateDialog /><Link href={`${adminBasePath}/slides/templates`} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--engine-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#10395f]">
           <Plus size={17} /> Crear plantilla

@@ -1,9 +1,10 @@
+import { APP_CONFIG } from "../../config/app";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Politica de Privacidad | SofLIA - Engine",
+  title: `Politica de Privacidad | ${APP_CONFIG.name}`,
   description:
-    "Politica de privacidad para la curaduria automatica de fuentes en SofLIA - Engine.",
+    `Politica de privacidad para la curaduria automatica de fuentes en ${APP_CONFIG.name}.`,
 };
 
 export default function PrivacyPolicyPage() {
@@ -11,7 +12,7 @@ export default function PrivacyPolicyPage() {
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 dark:bg-gray-900">
       <div className="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-sm dark:bg-gray-800 dark:text-gray-200">
         <h1 className="text-3xl font-bold mb-8 text-gray-900 dark:text-white">
-          Politicas de privacidad de SofLIA - Engine
+          Politicas de privacidad de {APP_CONFIG.name}
         </h1>
 
         <div className="space-y-8 text-gray-700 dark:text-gray-300">
@@ -20,7 +21,7 @@ export default function PrivacyPolicyPage() {
               1. Introduccion
             </h2>
             <p>
-              SofLIA - Engine utiliza IA para apoyar la creacion de cursos,
+              {APP_CONFIG.name} utiliza IA para apoyar la creacion de cursos,
               incluyendo la busqueda de fuentes publicas relevantes para cada
               leccion. La curaduria de fuentes se ejecuta dentro de la
               plataforma y queda sujeta a revision humana antes de alimentar la
@@ -33,7 +34,7 @@ export default function PrivacyPolicyPage() {
               2. Uso de OpenAI
             </h2>
             <p>
-              Para la curaduria automatica de fuentes, SofLIA - Engine puede enviar
+              Para la curaduria automatica de fuentes, {APP_CONFIG.name} puede enviar
               contexto pedagogico del curso a la API de OpenAI: titulo,
               descripcion, audiencia, objetivos, modulos y lecciones. No se
               envia informacion sensible que no sea necesaria para encontrar
@@ -59,7 +60,7 @@ export default function PrivacyPolicyPage() {
               4. Fuentes y validacion
             </h2>
             <p>
-              Las URLs encontradas se guardan en SofLIA - Engine junto con titulo,
+              Las URLs encontradas se guardan en {APP_CONFIG.name} junto con titulo,
               justificacion, leccion relacionada y estado de validacion tecnica.
               El sistema valida disponibilidad, redirecciones, errores HTTP,
               posibles paginas vacias, paywalls basicos y longitud minima de
@@ -86,10 +87,10 @@ export default function PrivacyPolicyPage() {
             <p>
               Para cualquier consulta legal o de privacidad, contactenos en{" "}
               <a
-                href="mailto:support@soflia.ai"
+                href={`mailto:${APP_CONFIG.supportEmail}`}
                 className="text-blue-600 hover:underline dark:text-blue-400"
               >
-                support@soflia.ai
+                {APP_CONFIG.supportEmail}
               </a>
               .
             </p>

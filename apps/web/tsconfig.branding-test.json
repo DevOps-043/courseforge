@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "incremental": false,
+    "outDir": ".tmp/branding-tests",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": [
+    "src/config/**/*.ts",
+    "src/lib/lia-app-context.ts",
+    "src/lib/server/oauth-popup-response.ts",
+    "src/app/privacy/page.tsx",
+    "src/shared/config/prompts/pipeline.prompts.ts",
+    "src/domains/production/providers/production-provider-registry.ts",
+    "src/domains/production/slides/specs/course-deck.schema.ts"
+  ],
+  "exclude": ["node_modules"]
+}

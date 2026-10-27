@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import { z } from "zod";
 
 export const bundleAgentMessageRoleSchema = z.enum(["USER", "ASSISTANT", "SYSTEM", "TOOL"]);
@@ -166,7 +167,7 @@ export const DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF = {
   layoutSystem: "Asymmetric educational layout with explicit zones for media, narration and support visuals.",
   motionLanguage: "Purposeful fades, cuts and timed emphasis without generic card fade-ins.",
   colorTokens: {
-    paletteName: "SofLIA dark accent",
+    paletteName: `${APP_CONFIG.shortName} dark accent`,
     background: "#05070B",
     surface: "#111827",
     accent: "#00D4B3",
@@ -206,7 +207,7 @@ export const bundleAgentCreativeBriefSchema = z.object({
   layoutSystem: z.string().trim().min(1).max(500).default(DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF.layoutSystem),
   motionLanguage: z.string().trim().min(1).max(500).default(DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF.motionLanguage),
   colorTokens: z.object({
-    paletteName: z.string().trim().min(1).max(80).default("SofLIA dark accent"),
+    paletteName: z.string().trim().min(1).max(80).default(`${APP_CONFIG.shortName} dark accent`),
     background: z.string().trim().regex(/^#[0-9A-F]{6}$/i).default("#05070B"),
     surface: z.string().trim().regex(/^#[0-9A-F]{6}$/i).default("#111827"),
     accent: z.string().trim().regex(/^#[0-9A-F]{6}$/i).default("#00D4B3"),
@@ -283,8 +284,8 @@ export const bundleAgentSpecSchema = z.object({
         title: { type: "string", description: "Course or lesson title" },
       },
     }),
-  defaultProps: z.record(z.string(), z.unknown()).default({ title: "SofLIA - Engine" }),
-  changeSummary: z.string().trim().max(1000).default("Initial SofLIA generated bundle draft."),
+  defaultProps: z.record(z.string(), z.unknown()).default({ title: APP_CONFIG.name }),
+  changeSummary: z.string().trim().max(1000).default(`Initial ${APP_CONFIG.assistant.displayName} generated bundle draft.`),
 });
 
 export type BundleAgentMessageRole = z.infer<typeof bundleAgentMessageRoleSchema>;

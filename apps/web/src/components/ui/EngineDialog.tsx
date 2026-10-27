@@ -1,5 +1,6 @@
 'use client';
 
+import { APP_CONFIG } from "../../config/app";
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
@@ -34,7 +35,7 @@ export function EngineDialog({
   children,
   closeDisabled = false,
   description,
-  eyebrow = 'SofLIA Engine',
+  eyebrow = APP_CONFIG.name,
   footer,
   icon,
   isOpen,

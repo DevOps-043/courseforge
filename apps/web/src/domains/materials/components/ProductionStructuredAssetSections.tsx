@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Volume2,
@@ -752,7 +753,7 @@ export function SofliaHtmlSlidesSection({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Wand2 size={14} className="text-purple-500" />
-          <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Slides SofLIA - Engine</span>
+          <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Slides {APP_CONFIG.name}</span>
           {animatedDeck?.status === "READY_FOR_RENDER" || animatedDeck?.status === "READY_FOR_PREVIEW" ? (
             <span className="flex items-center gap-0.5 text-[10px] font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-1.5 py-0.5 rounded-full">
               <CheckCircle2 size={10} /> Deck HTML listo
@@ -907,8 +908,8 @@ export function SofliaHtmlSlidesSection({
               onValueChange={(value) => setSelectedAppearance(value as "light" | "dark")}
               disabled={isGeneratingSofliaSlides}
               options={[
-                { value: "light", label: "Claro · predeterminado SofLIA" },
-                { value: "dark", label: "Oscuro · superficies SofLIA" },
+                { value: "light", label: `Claro · predeterminado ${APP_CONFIG.shortName}` },
+                { value: "dark", label: `Oscuro · superficies ${APP_CONFIG.shortName}` },
               ]}
             />
             <p className="mt-1 text-[10px] leading-4 text-gray-500 dark:text-gray-400">
@@ -2313,7 +2314,7 @@ export function GoogleDriveImportModal({
                 Importar recurso desde cloud
               </h3>
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                Usa la cuenta vinculada para copiar assets hacia SofLIA - Engine
+                Usa la cuenta vinculada para copiar assets hacia {APP_CONFIG.name}
               </p>
             </div>
           </div>
@@ -2429,7 +2430,7 @@ function CloudStorageImportBody({
         <div>
           <p className="text-sm font-bold text-gray-900 dark:text-white">No hay cuentas cloud vinculadas</p>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Vincula Google Drive u OneDrive para importar assets directamente a SofLIA - Engine.
+            Vincula Google Drive u OneDrive para importar assets directamente a {APP_CONFIG.name}.
           </p>
         </div>
         <div className="flex flex-wrap justify-center gap-3">

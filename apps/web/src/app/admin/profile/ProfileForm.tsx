@@ -1,5 +1,6 @@
 'use client';
 
+import { APP_CONFIG } from "../../../config/app";
 import { useState, useRef } from 'react';
 import { User, Shield, Camera, Save, Loader2, Lock, Eye, EyeOff, Calendar, CheckCircle2, FileCode, Key, HardDrive } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -431,7 +432,7 @@ export default function ProfileForm({
                                  <div>
                                      <h4 className="text-gray-900 dark:text-white font-bold text-base">Google Drive</h4>
                                      <p className="text-xs text-gray-500 dark:text-slate-400 mt-1 max-w-md">
-                                         Permite a SofLIA - Engine crear carpetas organizadas y estructuradas para tus talleres y leer tus recursos de forma directa.
+                                         Permite a {APP_CONFIG.name} crear carpetas organizadas y estructuradas para tus talleres y leer tus recursos de forma directa.
                                      </p>
                                      {isGoogleConnected && (
                                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-500 mt-2 border border-emerald-500/25">
@@ -471,7 +472,7 @@ export default function ProfileForm({
                                  <div>
                                      <h4 className="text-gray-900 dark:text-white font-bold text-base">OneDrive</h4>
                                      <p className="text-xs text-gray-500 dark:text-slate-400 mt-1 max-w-md">
-                                         Permite crear carpetas de trabajo en OneDrive e importar assets hacia el almacenamiento principal de SofLIA - Engine.
+                                         Permite crear carpetas de trabajo en OneDrive e importar assets hacia el almacenamiento principal de {APP_CONFIG.name}.
                                      </p>
                                      {isOneDriveConnected && (
                                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-500 mt-2 border border-emerald-500/25">

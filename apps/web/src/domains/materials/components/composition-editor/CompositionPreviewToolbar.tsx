@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../../config/app";
 import { useRef, type ReactNode, type RefObject } from "react";
 import { useCompositionPanelFocus } from "./useCompositionPanelFocus";
 import { useCompositionAnchoredPopover } from "./useCompositionAnchoredPopover";
@@ -144,7 +145,7 @@ export function CompositionPreviewToolbar({ canvas, onCanvasFormatChange, agentP
       </div>
       <div className={styles.toolbarActionGroup}>
         <button type="button" disabled={agentProposalActive} onClick={onOpenPresets} className={`${styles.toolButton} ${styles.secondaryToolbarControl}`} title="Aplicar o crear un preset dinámico"><Clapperboard size={13} /><span>Presets</span></button>
-        <button type="button" onClick={onOpenAssistant} className={`${styles.toolButton} ${styles.assistantTool}`} title="Ajustar la composición con SofLIA"><Sparkles size={13} /><span>SofLIA</span></button>
+        <button type="button" onClick={onOpenAssistant} className={`${styles.toolButton} ${styles.assistantTool}`} title={`Ajustar la composición con ${APP_CONFIG.assistant.displayName}`}><Sparkles size={13} /><span>{APP_CONFIG.assistant.displayName}</span></button>
         {onContinueToPublication && <button type="button" onClick={onContinueToPublication} className={`${styles.toolButton} ${styles.publishTool}`} title="Continuar a publicación"><span>Publicar</span><ArrowRight size={13} /></button>}
       </div>
     </div>

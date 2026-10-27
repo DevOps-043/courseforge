@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../../../../../config/app";
 import { z } from "zod";
 import { HyperframesRenderDiagnosticsService } from "@/domains/production/hyperframes/hyperframes-render-diagnostics.service";
 import { resolveAuthorizedRenderContext } from "../../_render-route-support";
@@ -15,7 +16,7 @@ export async function POST(request: Request, context: { params: Promise<{ reques
     const status = await new HyperframesRenderDiagnosticsService(auth.admin).cancel(auth.organizationId, renderRequestId);
     if (!status) return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Render no encontrado.", requestId, status: 404 });
     if (status !== "CANCELLED") return apiErrorResponse({ code: API_ERROR_CODE.conflict, extensions: { status }, message: "El proceso ya terminó. Actualiza su estado.", requestId, status: 409 });
-    return apiSuccessResponse({ status, message: "Proceso cancelado en Courseforge. HeyGen puede continuar el cómputo ya aceptado." }, { requestId });
+    return apiSuccessResponse({ status, message: `Proceso cancelado en ${APP_CONFIG.name}. HeyGen puede continuar el cómputo ya aceptado.` }, { requestId });
   } catch (error) {
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador inválido.", requestId, status: 400 });
     logger.error("production.hyperframes.render.cancel_failed", error);

@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../config/app";
 import { createClient } from '@/utils/supabase/server'
 import { getAuthBridgeUser } from '@/utils/auth/session'
 import { redirect } from 'next/navigation'
@@ -43,7 +44,7 @@ export default async function DashboardPage() {
           {/* Logo area */}
           <div className="flex items-center gap-2">
             <div className="relative w-8 h-8">
-              <Image src="/Logo.png" alt="SofLIA - Engine" fill className="object-contain" />
+              <Image src={APP_CONFIG.logo.src} alt={APP_CONFIG.name} fill className="object-contain" />
             </div>
             <span className="font-bold text-lg tracking-tight">Course<span className="text-[var(--engine-accent)]">Forge</span></span>
           </div>

@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import { GoogleGenAI } from "@google/genai";
 import { getOptionalGeminiApiKey, getOptionalOpenAIApiKey } from "@/lib/server/env";
 import {
@@ -334,7 +335,7 @@ function buildPrompt(input: {
     .slice(0, 16_000);
   const visualReferences = buildVisualReferenceContext(input.messages).slice(0, 4_000);
 
-  return `Eres SofLIA Bundle Agent dentro de SofLIA - Engine. Convierte esta conversacion en una especificacion JSON segura para un bundle de video.
+  return `Eres ${APP_CONFIG.assistant.displayName} Bundle Agent dentro de ${APP_CONFIG.name}. Convierte esta conversacion en una especificacion JSON segura para un bundle de video.
 
 Reglas estrictas:
 - Responde solo JSON, sin markdown.
@@ -468,7 +469,7 @@ Contrato exacto:
   "changeSummary": "string"
 }
 
-Titulo sugerido: ${input.title || "SofLIA video bundle"}
+Titulo sugerido: ${input.title || `${APP_CONFIG.assistant.displayName} video bundle`}
 
 Ultimo mensaje/feedback del usuario:
 ${latestUserMessage.slice(0, 4_000)}

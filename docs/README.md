@@ -1,6 +1,7 @@
 # Documentación de Coursegen / SofLIA Engine
 
 - [Contexto operativo del sistema](architecture/system-context.md)
+- [Identidad global del producto](architecture/product-branding.md)
 - [Router de desarrollo](../AGENTS.md)
 - [Estándar maestro](standards/engineering-practices.md)
 - [Arquitectura del arnés](architecture/development-harness.md)

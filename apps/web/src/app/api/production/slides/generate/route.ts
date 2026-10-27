@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../../../config/app";
 import { createHash, randomUUID } from "node:crypto";
 import { normalizeImportedSlideDesign } from "@/domains/production/slides/import/imported-slide-design.service";
 import { detachedImportedDesign, hydrateImportedDesignForOrganization } from "@/domains/production/slides/import/imported-slide-bundle-assets.server";
@@ -690,7 +691,7 @@ export async function runSlideDeckGeneration(params: {
       html: structuralHtml,
     });
     if (failedQaReport.status === "FAIL") {
-      throw new Error(`Deck SofLIA - Engine no paso QA estructural: ${summarizeCourseDeckQaErrors(failedQaReport)}`);
+      throw new Error(`Deck ${APP_CONFIG.name} no paso QA estructural: ${summarizeCourseDeckQaErrors(failedQaReport)}`);
     }
     const plannedDeckSpec = planDeckVisualAssets({
       deckSpec: deckSpecWithTemplate,
@@ -720,7 +721,7 @@ export async function runSlideDeckGeneration(params: {
 
     if (qaReport.status === "FAIL") {
       failedQaReport = qaReport;
-      throw new Error(`Deck SofLIA - Engine no paso QA: ${summarizeCourseDeckQaErrors(qaReport)}`);
+      throw new Error(`Deck ${APP_CONFIG.name} no paso QA: ${summarizeCourseDeckQaErrors(qaReport)}`);
     }
 
     const basePath = deckBasePath(componentId);

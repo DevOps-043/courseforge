@@ -1,5 +1,6 @@
 "use client";
 
+import { APP_CONFIG } from "../config/app";
 import { useEffect } from "react";
 import { ErrorShell } from "./_components/ErrorShell";
 
@@ -19,7 +20,7 @@ export default function GlobalError({
       <body>
         <ErrorShell
           code="500"
-          title="SofLIA - Engine se detuvo"
+          title={`${APP_CONFIG.name} se detuvo`}
           description="Ocurrió un error crítico al renderizar la aplicación. Intenta recargar la vista o vuelve al menú principal."
           reset={reset}
         />

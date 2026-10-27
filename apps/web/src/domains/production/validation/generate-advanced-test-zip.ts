@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import JSZip from "jszip";
 import * as fs from "fs";
 import * as path from "path";
@@ -408,18 +409,18 @@ export const MyComposition = AdvancedAvatarSubtitles;
 
 const readmeContent = `# Remotion advanced example
 
-Bundle de ejemplo para validar plantillas externas de SofLIA - Engine.
+Bundle de ejemplo para validar plantillas externas de ${APP_CONFIG.name}.
 
 Incluye:
 
-- Manifest requerido por SofLIA - Engine.
+- Manifest requerido por ${APP_CONFIG.name}.
 - Composicion React/Remotion autocontenida.
 - Subtitulos temporizados.
 - Cambios de posicion de avatar por escena.
 - Placeholder visual para B-roll y progreso narrativo.
 
 Este ZIP esta pensado para validacion estatica y revision humana. En la V1 de
-bundles externos SofLIA - Engine no ejecuta codigo del ZIP.
+bundles externos ${APP_CONFIG.name} no ejecuta codigo del ZIP.
 `;
 
 async function generateZip() {

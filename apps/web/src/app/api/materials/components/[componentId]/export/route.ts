@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../../../../config/app";
 import { NextResponse } from "next/server";
 import JSZip from "jszip";
 import { z } from "zod";
@@ -56,7 +57,8 @@ export async function GET(request: Request, context: RouteContext) {
       const archive = new JSZip();
       archive.file("material.json", JSON.stringify(exportPayload, null, 2));
       archive.file("asset-manifest.json", JSON.stringify(manifest, null, 2));
-      archive.file("README.txt", "Este paquete contiene contenido editable y un manifiesto de binarios. Descarga cada binario desde Courseforge con su endpoint autorizado; las URLs firmadas no se incluyen por seguridad.\n");
+      archive.file("README.txt", `Este paquete contiene contenido editable y un manifiesto de binarios. Descarga cada binario desde ${APP_CONFIG.name} con su endpoint autorizado; las URLs firmadas no se incluyen por seguridad.
+`);
       const body = await archive.generateAsync({ compression: "DEFLATE", type: "uint8array" });
       await auditExport({ admin, actorId: user.userId, componentId: component.id, eventType: "EXPORT_ZIP", metadata: { assetCount: manifest.assets.length }, organizationId, requestId, logger });
       const fileName = `courseforge-material-${componentType.toLowerCase()}-${component.id}.zip`;

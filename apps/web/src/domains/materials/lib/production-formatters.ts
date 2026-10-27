@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import type {
   StoryboardItem,
   VideoGuideContent,
@@ -163,7 +164,7 @@ export function formatOpenDesignContent(content: ProductionContent): string {
   }
 
   return JSON.stringify({
-    course_title: content.title || "Curso SofLIA - Engine",
+    course_title: content.title || `Curso ${APP_CONFIG.name}`,
     slides: slidesData
   }, null, 2);
 }

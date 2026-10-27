@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../../config/app";
 import {
   COURSE_DECK_HEIGHT,
   COURSE_DECK_SCHEMA_VERSION,
@@ -617,7 +618,7 @@ export function buildCourseDeckSpecFromComponent(params: BuildCourseDeckSpecPara
     appearance: params.input.appearance,
     artifactId: params.artifactId,
     designSystem: {
-      brandLabel: params.input.metadata?.brandLabel || "SofLIA - Engine",
+      brandLabel: params.input.metadata?.brandLabel || APP_CONFIG.name,
     },
     format: "16:9",
     height: COURSE_DECK_HEIGHT,

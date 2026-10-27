@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../config/app";
 import { buildControlledBundleZip } from "./generation.service";
 import { sanitizeErrorMessage } from "./redaction.service";
 import { computeSpecHash, stableJsonHash } from "./spec.service";
@@ -206,13 +207,13 @@ export class BundleAgentWorkflowService {
         organization_id: this.context.organizationId,
         role: "TOOL",
         content_redacted: generated.source === "openai"
-          ? "Spec estructurada generada por SofLIA con OpenAI y validada por contrato."
+          ? `Spec estructurada generada por ${APP_CONFIG.assistant.displayName} con OpenAI y validada por contrato.`
           : generated.source === "gemini"
-            ? "Spec estructurada generada por SofLIA con Gemini y validada por contrato."
+            ? `Spec estructurada generada por ${APP_CONFIG.assistant.displayName} con Gemini y validada por contrato.`
             : importedStudio
               ? "Nueva revisión creada desde la base importada; el diseño de origen se conserva."
               : artifactKind === "slide_template"
-              ? "Spec de plantilla de slides generada con contrato SofLIA Deck."
+              ? `Spec de plantilla de slides generada con contrato ${APP_CONFIG.assistant.displayName} Deck.`
               : "Spec estructurada generada con fallback deterministico y validada por contrato.",
         metadata: {
           source: generated.source,
@@ -390,7 +391,7 @@ export class BundleAgentWorkflowService {
 
     if (error) throw error;
     if ((count || 0) >= ACTIVE_CONVERSATION_LIMIT) {
-      throw new Error("La organizacion alcanzo el limite de conversaciones activas de SofLIA Bundle Agent.");
+      throw new Error(`La organizacion alcanzo el limite de conversaciones activas de ${APP_CONFIG.assistant.displayName} Bundle Agent.`);
     }
   }
 
@@ -549,7 +550,7 @@ export class BundleAgentWorkflowService {
       .insert({
         organization_id: this.context.organizationId,
         name: spec.title,
-        description: `SofLIA Bundle Agent: ${spec.description || spec.visualStyle}`,
+        description: `${APP_CONFIG.assistant.displayName} Bundle Agent: ${spec.description || spec.visualStyle}`,
         entry_point: "src/index.tsx",
         composition_id: "full-slides",
         is_public: false,

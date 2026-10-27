@@ -408,6 +408,8 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-10-27: nombre de presentación y etiquetas predeterminadas de composiciones nuevas derivados de `apps/web/src/config/app.ts`, escapados al generar HTML. No cambian formatos, namespaces, documento editable, motion ni snapshots históricos. Contrato: [identidad global](product-branding.md).
+
 - 2026-10-21: incorporado el flujo de bases importadas y derivados en el estudio;
   sin cambios al documento nativo ni al contrato de motion.
 

@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../config/app";
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import { THEME_BOOTSTRAP_SCRIPT } from './theme-bootstrap';
@@ -7,8 +8,9 @@ import { Providers } from './providers';
 import { ibmPlexSans, interTight, newsreader } from './root-fonts';
 
 export const metadata: Metadata = {
-  title: 'SofLIA - Engine',
-  description: 'Plataforma educativa con IA',
+  title: APP_CONFIG.name,
+  description: APP_CONFIG.description,
+  icons: { icon: APP_CONFIG.iconSrc },
 };
 
 export default function RootLayout({

@@ -1,3 +1,5 @@
+import { APP_CONFIG } from "../../../config/app";
+import { escapeBrandingHtml } from "../../../config/branding-html";
 import JSZip from "jszip";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -199,7 +201,7 @@ function renderInternalComposition(params: {
   ${params.runtimeScript}
   <div id="root" data-composition-id="courseforge-internal" data-start="0" data-width="1920" data-height="1080" data-duration="${params.plan.durationSeconds}">
     ${params.animatedDeck ? visual : `<section class="clip" data-start="0" data-duration="${params.plan.durationSeconds}" data-track-index="0">${visual}<div class="shade"></div></section>`}
-    ${params.animatedDeck ? "" : `<section class="clip" data-start="0" data-duration="${params.plan.durationSeconds}" data-track-index="2"><div class="copy"><div class="copy-inner"><div class="eyebrow">SofLIA - Engine</div><h1 data-var-text="title">${escapeHtml(params.plan.title)}</h1><p data-var-text="subtitle">${escapeHtml(params.plan.subtitle)}</p></div></div></section>`}
+    ${params.animatedDeck ? "" : `<section class="clip" data-start="0" data-duration="${params.plan.durationSeconds}" data-track-index="2"><div class="copy"><div class="copy-inner"><div class="eyebrow">${escapeBrandingHtml(APP_CONFIG.name)}</div><h1 data-var-text="title">${escapeHtml(params.plan.title)}</h1><p data-var-text="subtitle">${escapeHtml(params.plan.subtitle)}</p></div></div></section>`}
     ${audio}
   </div>
   ${renderTimelineController(params.plan.durationSeconds)}

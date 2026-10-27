@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../../config/app";
 import { z } from "zod";
 import { importedSlideDesignSchema } from "../import/imported-slide-design.contract";
 import { courseSourceReferenceSchema } from "./course-source-reference.contract";
@@ -156,7 +157,7 @@ export const courseDeckDesignSystemSchema = z.object({
   accent: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#2d7d6e"),
   accent2: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#d88a3a"),
   background: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  brandLabel: z.string().min(1).max(80).default("SofLIA - Engine"),
+  brandLabel: z.string().min(1).max(80).default(APP_CONFIG.name),
   fontPairing: z.enum(["system_sans", "editorial_serif", "technical_mono"]).optional(),
   /** A font selected by the organization. `cssUrl` is a Google Fonts stylesheet
    * or an organization-owned uploaded font file. */

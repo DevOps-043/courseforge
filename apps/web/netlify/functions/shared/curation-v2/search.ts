@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../../../src/config/app";
 import type OpenAI from "openai";
 import { createCurationSearchResponseSchema } from "./structured-output.schemas";
 import type { CurationCandidate, CurationLesson } from "./types";
@@ -59,7 +60,7 @@ export async function searchLessonCandidates(params: {
         role: "system",
         content: `${
           systemPrompt ||
-          "Eres un investigador educativo. Busca candidatos reales y accesibles. No declares una fuente valida: Courseforge la validara. Evita redes sociales, foros, paywalls y URLs inventadas."
+          `Eres un investigador educativo. Busca candidatos reales y accesibles. No declares una fuente valida: ${APP_CONFIG.name} la validara. Evita redes sociales, foros, paywalls y URLs inventadas.`
         }\n\nRegla operativa obligatoria: la curaduria automatica solo puede usar paginas web HTML publicas. Nunca propongas enlaces directos a PDF ni otros archivos descargables.`,
       },
       {
