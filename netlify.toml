@@ -2,6 +2,11 @@
   command = "node scripts/capture-background-deployment.mjs && npm run build -w apps/web"
   publish = "apps/web/.next"
 
+[build.environment]
+  # El worker de TypeScript supera el heap automático de ~2 GiB en este monorepo.
+  # Este máximo es por proceso; no modifica la memoria de las Functions.
+  NODE_OPTIONS = "--max-old-space-size=4096"
+
 [dev]
   command = "npm run dev -w apps/web"
   framework = "next"
