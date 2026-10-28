@@ -1,5 +1,11 @@
 # Evidencia de identidad global
 
+## Cambio de nombre aprobado el 2026-10-28
+
+Sobre el commit `f48f163d` (branding global), se actualiza `APP_CONFIG.name` a `SofLIA Architect`. Nombre corto `SofLIA`, asistente, logos, icono y contacto conservados. README, contexto operativo y guía de branding sincronizados. No se reescribe el inventario histórico ni los identificadores de integración.
+
+Verificaciones del ajuste: `npm run test:branding` 5/5 aprobado; compilación focalizada y repetición de las cinco pruebas después de ajustar la excepción AST también aprobadas; `npm run typecheck`, `npm run docs:check` (144 documentos) y `git diff --check` aprobados. `npm run docs:audit` iniciado para regenerar la evidencia temporal. Sin build de producción ni despliegue. Los resultados siguientes corresponden a la implementación inicial.
+
 Fecha: 2026-10-27. Base: `2750311a` en staging; rama local `codex/global-branding`. Árbol limpio al comenzar. Implementación sin commit ni despliegue; el nuevo nombre aún no fue definido.
 
 ## Resultado funcional

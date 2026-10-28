@@ -1,4 +1,4 @@
-# SofLIA - Engine
+# SofLIA Architect
 
 > Plataforma multi-tenant de ingenieria instruccional con IA.
 
@@ -8,7 +8,7 @@ trabajo asistido por agentes. Lee [AGENTS.md](AGENTS.md), la
 [contexto canónico](docs/architecture/system-context.md). Las instrucciones por
 herramienta apuntan a esas fuentes; el estado de cambios vive en OpenSpec.
 
-SofLIA - Engine crea cursos completos a partir de una idea o de un paquete SCORM: investiga, estructura, planifica, cura fuentes, genera materiales, produce assets visuales, ensambla videos con Remotion y publica el resultado hacia SofLIA.
+SofLIA Architect crea cursos completos a partir de una idea o de un paquete SCORM: investiga, estructura, planifica, cura fuentes, genera materiales, produce assets visuales, ensambla videos con Remotion y publica el resultado hacia SofLIA.
 
 El producto es un flujo operativo con aprobaciones humanas, contratos de datos versionados, configuracion por organizacion, importacion de assets externos, monitoreo de consumo de IA y una capa de produccion audiovisual (editor de composicion, HeyGen, slides, efectos de sonido y procesamiento de audio).
 
@@ -16,7 +16,7 @@ El código incorpora autoría sincrónica e híbrida bajo habilitación explíci
 
 ## Tabla De Contenidos
 
-La identidad de presentación se configura en `apps/web/src/config/app.ts`, sin variables de entorno. El nombre nuevo aún está pendiente; la integración externa SofLIA y los identificadores técnicos mantienen compatibilidad. Ver [identidad global y procedimiento de cambio](docs/architecture/product-branding.md).
+La identidad de presentación se configura en `apps/web/src/config/app.ts`, sin variables de entorno. El nombre completo es SofLIA Architect; la integración externa SofLIA y los identificadores técnicos mantienen compatibilidad. Ver [identidad global y procedimiento de cambio](docs/architecture/product-branding.md).
 
 1. [Stack](#stack)
 2. [Estructura Del Repo](#estructura-del-repo)
@@ -126,7 +126,7 @@ npm run start:audio-worker --workspace=apps/api
 
 ## Arquitectura Actual
 
-SofLIA - Engine funciona desde `apps/web`:
+SofLIA Architect funciona desde `apps/web`:
 
 1. **`apps/web`**: interfaz, dashboards, API routes, Auth Bridge, pipeline educativo, importaciones, editor de composicion, integraciones HeyGen/HyperFrames, publicacion y consola de plataforma.
 2. **`apps/api`**: worker de procesamiento de audio (`start:audio-worker`) y un servidor Express legado que hoy solo expone `GET /health`. Los endpoints Express de render Remotion local/Lambda y builds cloud ya no existen en el codigo.
@@ -270,7 +270,7 @@ Estudio en `/admin/heygen` e integracion en `/admin/integrations`: avatares, voc
 
 ## Auth, Tenancy y Publicacion
 
-SofLIA - Engine usa un Auth Bridge:
+SofLIA Architect usa un Auth Bridge:
 
 1. El usuario inicia sesion con credenciales SofLIA, o llega con una sesion de PulseHub.
 2. El sistema valida contra SofLIA.
@@ -541,7 +541,7 @@ npm run verify:deepfilter-artifacts --workspace=apps/api
 
 ## Reglas De Mantenimiento
 
-- Mantener `SofLIA - Engine` como nombre principal del producto.
+- Mantener `SofLIA Architect` como nombre principal del producto.
 - No renombrar variables legacy que aun existen en codigo, como `COURSEFORGE_JWT_SECRET`.
 - No asumir que un template Remotion subido se ejecuta directamente: debe pasar por validacion, aprobacion y build cuando aplique.
 - Propagar `organization_id` en rutas, acciones, OAuth state, credenciales y jobs.

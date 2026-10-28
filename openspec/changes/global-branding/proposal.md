@@ -5,7 +5,7 @@ La marca aparece escrita directamente en UI, metadatos, prompts y exportaciones.
 
 ## What Changes
 - Configuración pública, versionada y sin variables de entorno para nombre, nombre corto, asistente, logo, icono de pestaña y contacto.
-- Consumidores de presentación y generación usan esa configuración; la marca actual sigue siendo el valor predeterminado hasta definir la nueva.
+- Consumidores de presentación y generación usan esa configuración; el nombre completo aprobado el 2026-10-28 es `SofLIA Architect`, con nombre corto `SofLIA`.
 - Preservar proveedores externos, credenciales, cookies, formatos, eventos e identificadores persistidos.
 - Pruebas de propagación y de compatibilidad; instrucciones para el futuro cambio de identidad.
 

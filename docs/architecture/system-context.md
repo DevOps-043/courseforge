@@ -1,12 +1,12 @@
 Estado: contexto operativo conservado del repositorio; adaptación del arnés revisada el 2026-10-15.
 
-# SofLIA - Engine
+# SofLIA Architect
 
-SofLIA - Engine es una plataforma multi-tenant para crear, validar, producir y publicar cursos con IA. Convierte una idea o un paquete SCORM en un artefacto educativo con syllabus, plan instruccional, fuentes curadas, materiales, assets visuales, ensamblado Remotion y publicacion hacia SofLIA.
+SofLIA Architect es una plataforma multi-tenant para crear, validar, producir y publicar cursos con IA. Convierte una idea o un paquete SCORM en un artefacto educativo con syllabus, plan instruccional, fuentes curadas, materiales, assets visuales, ensamblado Remotion y publicacion hacia SofLIA.
 
 ## Estado Real Del Sistema
 
-- **Identidad de producto centralizada**: `apps/web/src/config/app.ts` concentra nombre, nombre corto, logo, contacto e identidad del asistente para UI, metadata, prompts predeterminados y contenido nuevo. La marca actual sigue configurada; identificadores técnicos, integración SofLIA e historial persistido mantienen compatibilidad. Ver [branding](product-branding.md).
+- **Identidad de producto centralizada**: `apps/web/src/config/app.ts` concentra nombre, nombre corto, logo, contacto e identidad del asistente para UI, metadata, prompts predeterminados y contenido nuevo. El nombre completo configurado es SofLIA Architect; identificadores técnicos, integración SofLIA e historial persistido mantienen compatibilidad. Ver [branding](product-branding.md).
 
 - **Autoría sincrónica e híbrida bajo habilitación**: el dominio course-delivery integra agenda, sesiones, configuración de IA y documentos imprimibles en las ocho etapas. Está desactivado por defecto mediante SYNCHRONOUS_COURSES_ENABLED y admite lista de organizaciones. Requiere migración aditiva y piloto; no se aplicó SQL remoto ni se desplegó. Ver [operación](../operations/synchronous-hybrid-courses.md).
 
@@ -229,7 +229,7 @@ Flujo:
 2. Parsing de manifest, SCOs, recursos y HTML.
 3. Analisis de componentes, quizzes y gaps.
 4. Enriquecimiento con Gemini.
-5. Transformacion a estructura SofLIA - Engine.
+5. Transformacion a estructura SofLIA Architect.
 
 Rutas:
 

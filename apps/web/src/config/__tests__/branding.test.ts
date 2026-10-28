@@ -81,7 +81,7 @@ test("el escape HTML preserva texto y neutraliza caracteres de marcado", () => {
 test("las superficies activas no reintroducen nombres de producto literales", () => {
   const violations: string[] = [];
   const allowedLiterals = new Map([
-    ["apps/web/src/config/app.ts", new Set(["SofLIA - Engine"])],
+    ["apps/web/src/config/app.ts", new Set([APP_CONFIG.name])],
     // Prefijo de almacenamiento conservado por compatibilidad; no es presentación.
     ["apps/web/src/domains/production/cloud-storage/artifact-folders.ts", new Set(["`SofLIA - Engine - ${"])],
     ["apps/web/src/lib/server/video-metadata.service.ts", new Set(["Mozilla/5.0 Courseforge/1.0"])],

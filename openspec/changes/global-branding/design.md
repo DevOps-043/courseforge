@@ -1,6 +1,6 @@
 # Contexto y diseño
 
-- Actor: equipo de producto preparando un cambio de branding aún sin nombre definido.
+- Actor: equipo de producto preparando el branding global; nombre aprobado el 2026-10-28: SofLIA Architect. Nombre corto SofLIA; asistente y recursos gráficos actuales conservados.
 - Base: staging, commit 2750311a; checkout limpio al iniciar; rama codex/global-branding.
 - Alcance: identidad visible de la aplicación y valores predeterminados para contenido nuevo.
 - Fuente: apps/web/src/config/app.ts, módulo puro de datos públicos apto para cliente, servidor y jobs con imports relativos donde corresponda.

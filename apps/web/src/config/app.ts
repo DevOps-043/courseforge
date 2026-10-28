@@ -10,7 +10,7 @@ interface AppBranding {
 }
 
 export const APP_CONFIG: AppBranding = Object.freeze({
-  name: "SofLIA - Engine",
+  name: "SofLIA Architect",
   shortName: "SofLIA",
   description: "Plataforma educativa con IA",
   logo: Object.freeze({ src: "/Logo.png" }),

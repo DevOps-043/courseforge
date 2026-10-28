@@ -1,6 +1,6 @@
 # Identidad global del producto
 
-Estado: implementación local preparada el 2026-10-27; nombre nuevo pendiente de definición.
+Estado: identidad configurada como **SofLIA Architect** el 2026-10-28.
 
 ## Fuente de configuración
 
@@ -17,7 +17,7 @@ La identidad pública vive en [app.ts](../../apps/web/src/config/app.ts). Es un 
 | `assistant.name` | Identidad de Lia en el contexto predeterminado |
 | `assistant.displayName` | Identidad visible del asistente de edición y Bundle Agent |
 
-Se mantiene la identidad actual hasta que producto defina el reemplazo. Producto y asistente pueden cambiar de forma independiente. La plataforma externa SofLIA conserva sus textos de login, usuarios y publicación: es otra integración, no el nombre de esta aplicación.
+El nombre completo del producto es **SofLIA Architect** y el nombre corto sigue siendo **SofLIA**. Producto y asistente pueden cambiar de forma independiente. La plataforma externa SofLIA conserva sus textos de login, usuarios y publicación: es otra integración, no el nombre de esta aplicación. Logo, icono y contacto conservan sus recursos actuales hasta disponer de reemplazos aprobados.
 
 ## Procedimiento para cambiar la marca
 

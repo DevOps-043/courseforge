@@ -2,7 +2,7 @@
 
 Fecha: 2026-07-29
 
-Actualización 2026-10-27: el inventario siguiente conserva la fotografía histórica. La centralización se implementa en la rama `codex/global-branding`; el contrato vigente y el procedimiento para cambiar nombre, logo y contacto están en [identidad global](architecture/product-branding.md). El nuevo nombre aún no está definido. La evidencia local se registra en [global-branding](../openspec/changes/global-branding/proposal.md).
+Actualización 2026-10-28: el nombre aprobado es **SofLIA Architect**. El inventario siguiente conserva la fotografía histórica. La centralización se implementa en la rama `codex/global-branding`; el contrato vigente y el procedimiento para cambiar nombre, logo y contacto están en [identidad global](architecture/product-branding.md). La evidencia local se registra en [global-branding](../openspec/changes/global-branding/proposal.md).
 
 ## Proposito
 
