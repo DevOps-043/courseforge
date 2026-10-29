@@ -471,7 +471,8 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
       const mediaHasPlayableData = (media) => !media.error && media.readyState >= MEDIA_MINIMUM_READY_STATE;
       const pendingMediaAt = (time) => timedMedia().filter((media) => mediaIsActiveAt(media, time) && !mediaHasPlayableData(media));
       const seekPrimedMediaToEntryPoint = (media, time) => {
-        if (media.readyState < 1 || (playbackActive && mediaIsActiveAt(media, time))) return;
+        // El buffering pausa el reloj, pero no autoriza reposicionar el ciclo activo.
+        if (media.readyState < 1 || (playbackIntent && mediaIsActiveAt(media, time))) return;
         const start = mediaStart(media);
         const sourceOffset = Number(media.dataset.sourceOffset || 0);
         const timelineTarget = Math.max(time, start);
@@ -674,8 +675,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           bufferingStartedAt = null;
           bufferingMediaIds = [];
         }
-        seek(resumeTime, true);
-        startPlaybackClock();
+        // Conservar el ciclo decodificado; un seek forzado puede volver a bloquear su final.
+        seek(resumeTime);
+        startPlaybackClock(false);
       };
       const enterBuffering = (targetTime, pending = pendingMediaAt(targetTime)) => {
         if (!playbackIntent || pending.length === 0) return false;
@@ -766,7 +768,13 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
             // Reassigning the same currentTime is not a no-op in Chromium: it can
             // discard decoded data and abort the active Range request. During a
             // buffering recovery that created an endless seek/pause/resume loop.
-            if (Math.abs(media.currentTime - next) > seekTolerance) media.currentTime = next;
+            const directDrift = Math.abs(media.currentTime - next);
+            // El reloj y el decoder pueden cruzar el final del ciclo en frames
+            // distintos. Volver al final en ese instante impide completar el bucle.
+            const drift = media.loop && !forceSeek && !entered
+              ? Math.min(directDrift, Math.abs(media.duration - directDrift))
+              : directDrift;
+            if (drift > seekTolerance) media.currentTime = next;
           }
           if (media.playbackRate !== mediaRate(media)) media.playbackRate = mediaRate(media);
           if (playbackActive && !heldVideoTail) requestMediaPlayback(media);
@@ -844,13 +852,13 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         pause();
         seek(time, true);
       };
-      function startPlaybackClock() {
+      function startPlaybackClock(forceMediaSeek = true) {
         if (!admitHtmlLayout()) return;
         void audioMeters.resume();
         if (playbackTimer) window.cancelAnimationFrame(playbackTimer);
         playbackTimer = null;
         playbackActive = true;
-        syncMedia(currentTime, true);
+        syncMedia(currentTime, forceMediaSeek);
         let last = performance.now();
         const tick = (now) => {
           if (!playbackActive) return;

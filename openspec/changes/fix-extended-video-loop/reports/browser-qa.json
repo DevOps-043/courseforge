@@ -1,0 +1,70 @@
+{
+  "fecha": "2026-10-29",
+  "fuenteSegundos": 2,
+  "clipSegundos": 6,
+  "fotogramas": [
+    {
+      "time": 0.5,
+      "source": 0.5,
+      "pixel": [
+        254,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "time": 1.5,
+      "source": 1.5,
+      "pixel": [
+        0,
+        255,
+        0,
+        255
+      ]
+    },
+    {
+      "time": 2.5,
+      "source": 0.5,
+      "pixel": [
+        254,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "time": 3.5,
+      "source": 1.5,
+      "pixel": [
+        0,
+        255,
+        0,
+        255
+      ]
+    },
+    {
+      "time": 4.5,
+      "source": 0.5,
+      "pixel": [
+        254,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "time": 5.5,
+      "source": 1.5,
+      "pixel": [
+        0,
+        255,
+        0,
+        255
+      ]
+    }
+  ],
+  "muestrasReproduccion": 37,
+  "tiempoFinalSegundos": 5.528600000011931,
+  "ciclosObservados": 3
+}
