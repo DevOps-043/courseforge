@@ -74,7 +74,7 @@ export async function executeDeliveryRun(admin: SupabaseClient, runId: string, g
   let status = "COMPLETED";
   try {
     for (const unit of run.units) {
-      if (!deliveryEnabled(run.organization_id)) { status = "PAUSED"; break; }
+      if (!deliveryEnabled()) { status = "PAUSED"; break; }
       if (unit.ready) continue;
       if (Date.now() + DELIVERY_LIMITS.generationTimeoutMs * 2 > deadline) { status = "PAUSED"; break; }
       const context = await readDeliveryContext(admin, run.artifact_id, run.organization_id);

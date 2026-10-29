@@ -55,7 +55,7 @@ La ejecución fija texto, versión, origen, modelo, parámetros, hash y contexto
 1. Revisar y aplicar la migración en la base de desarrollo mediante el proceso autorizado. El guard de versiones no aplica SQL; no ejecutar SQL remoto automáticamente.
 2. Confirmar modelos de fases heredadas o configurar capacidades propias.
 3. Configurar SYNCHRONOUS_COURSES_ENABLED=true en el entorno autorizado.
-4. Para el piloto, configurar SYNCHRONOUS_COURSES_ORGANIZATIONS con IDs separados por coma. Sin lista y con habilitación true quedan habilitadas todas las organizaciones; los permisos de curso siguen siendo obligatorios.
+4. La habilitación es global para todas las organizaciones. SYNCHRONOUS_COURSES_ORGANIZATIONS ya no se utiliza y puede eliminarse del entorno; los permisos de curso siguen siendo obligatorios.
 5. Reiniciar/recompilar según el entorno y confirmar que API y jobs usan el mismo despliegue y configuración.
 6. Ejecutar un piloto autorizado de las tres modalidades y comprobar aprobación, entrega y consumo antes de ampliar.
 
@@ -71,7 +71,7 @@ No se modificaron .env, credenciales ni configuración remota. La ausencia de mi
 - Cancelar invalida el token de escritura anterior y conserva contenido ya guardado.
 - Conflictos de revisión requieren actualizar, no sobrescriben otra edición.
 
-Rollback: deshabilitar nuevas operaciones globalmente o por lista. Los workers se pausan entre unidades al observar la deshabilitación. Se conservan modalidad, historial y descargas autorizadas de paquetes vigentes; no se convierten cursos a Nexus ni se borran tablas.
+Rollback: deshabilitar nuevas operaciones globalmente. Los workers se pausan entre unidades al observar la deshabilitación. Se conservan modalidad, historial y descargas autorizadas de paquetes vigentes; no se convierten cursos a Nexus ni se borran tablas.
 
 ## Verificación reproducible
 

@@ -48,10 +48,11 @@ test("legacy conserva Nexus y sincrónico no exige ensamble", () => {
   assert.deepEqual(deliveryRequirements("SYNCHRONOUS"), { nexus: false, sessions: true, assembly: false });
   assert.equal(deliveryRequirements("HYBRID").nexus, true);
 });
-test("habilitación por organización no se deriva del payload ni se activa por defecto", () => {
-  assert.equal(deliveryEnabled("org", {}), false);
-  assert.equal(deliveryEnabled("org", { SYNCHRONOUS_COURSES_ENABLED: "true", SYNCHRONOUS_COURSES_ORGANIZATIONS: "otra" }), false);
-  assert.equal(deliveryEnabled("org", { SYNCHRONOUS_COURSES_ENABLED: "true", SYNCHRONOUS_COURSES_ORGANIZATIONS: "otra, org" }), true);
+test("habilitación global exige activación explícita e ignora la antigua lista de organizaciones", () => {
+  assert.equal(deliveryEnabled({}), false);
+  assert.equal(deliveryEnabled({ SYNCHRONOUS_COURSES_ENABLED: "false" }), false);
+  assert.equal(deliveryEnabled({ SYNCHRONOUS_COURSES_ENABLED: "true" }), true);
+  assert.equal(deliveryEnabled({ SYNCHRONOUS_COURSES_ENABLED: "true", SYNCHRONOUS_COURSES_ORGANIZATIONS: "otra" }), true);
 });
 test("coordinación híbrida reutiliza Nexus listo o en proceso y no inicia esa rama en sincrónico", () => {
   assert.equal(nexusGenerationRequired("SYNCHRONOUS", "PLAN"), false);

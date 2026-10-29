@@ -7,13 +7,12 @@ import { deliveryEnabled } from "../config/delivery-enabled";
 /** Adapta necesidades de sesión a lecciones reales, sin persistir un plan Nexus ficticio. */
 export async function mergeDeliveryCurationPlan(admin: SupabaseClient, artifactId: string, nexusPlans: unknown) {
   const legacy = Array.isArray(nexusPlans) ? nexusPlans : [];
-  if (process.env.SYNCHRONOUS_COURSES_ENABLED !== "true") return legacy;
+  if (!deliveryEnabled()) return legacy;
   const { data: row, error } = await admin.from("course_delivery_workspaces").select("organization_id,document").eq("artifact_id", artifactId).maybeSingle();
   if (error) throw new Error("No se pudo verificar la modalidad antes de curar.");
   if (!row) return legacy;
   const document = deliveryDocumentSchema.parse(row.document);
   if (document.config.mode === "NEXUS") return legacy;
-  if (!deliveryEnabled(row.organization_id)) throw new Error("La autoría sincrónica está temporalmente deshabilitada para esta organización.");
   const context = await readDeliveryContext(admin, artifactId, row.organization_id);
   if (!deliveryReadiness(document, context).planReady) throw new Error("Aprueba el plan completo y vigente antes de buscar fuentes.");
   const needs = context.lessons.filter(lesson => document.agenda.some(session => session.coverage.some(item => item.lessonId === lesson.id)))

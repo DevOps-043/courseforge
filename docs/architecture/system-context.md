@@ -8,7 +8,7 @@ SofLIA Architect es una plataforma multi-tenant para crear, validar, producir y 
 
 - **Identidad de producto centralizada**: `apps/web/src/config/app.ts` concentra nombre, nombre corto, logo, contacto e identidad del asistente para UI, metadata, prompts predeterminados y contenido nuevo. El nombre completo configurado es SofLIA Architect; identificadores técnicos, integración SofLIA e historial persistido mantienen compatibilidad. Ver [branding](product-branding.md).
 
-- **Autoría sincrónica e híbrida bajo habilitación**: el dominio course-delivery integra agenda, sesiones, configuración de IA y documentos imprimibles en las ocho etapas. Está desactivado por defecto mediante SYNCHRONOUS_COURSES_ENABLED y admite lista de organizaciones. Requiere migración aditiva y piloto; no se aplicó SQL remoto ni se desplegó. Ver [operación](../operations/synchronous-hybrid-courses.md).
+- **Autoría sincrónica e híbrida bajo habilitación**: el dominio course-delivery integra agenda, sesiones, configuración de IA y documentos imprimibles en las ocho etapas. Está desactivado por defecto mediante SYNCHRONOUS_COURSES_ENABLED y su habilitación aplica a todas las organizaciones, conservando los permisos de cada curso. Requiere migración aditiva y piloto; no se aplicó SQL remoto ni se desplegó. Ver [operación](../operations/synchronous-hybrid-courses.md).
 
 - **Monorepo npm workspaces**: `apps/web` y `apps/api`.
 - **Frontend**: Next.js 16, React 19, TypeScript, TailwindCSS 4, Zustand, Remotion Player.

@@ -24,7 +24,7 @@ export async function deliverySnapshot(artifactId: string, includeSettings = tru
   const workspace = await readDeliveryWorkspace(admin, artifactId, tenant.organizationId);
   const canReview = ["ADMIN", "ARQUITECTO", "SUPERADMIN"].includes(tenant.platformRole || "");
   if (workspace.document.config.mode === "NEXUS") return {
-    enabled: deliveryEnabled(tenant.organizationId), workspace,
+    enabled: deliveryEnabled(), workspace,
     readiness: { planReady: true, materialsReady: true, nexus: true, sessions: false, assembly: true },
     lessons: [] as Awaited<ReturnType<typeof readDeliveryContext>>["lessons"],
     syllabusApproved: false, nexusPlanState: null, nexusMaterialsState: null,
@@ -41,7 +41,7 @@ export async function deliverySnapshot(artifactId: string, includeSettings = tru
       catch { return { operation, model: "Configuración requerida", inherited: false, source: "organization", version: "" }; }
     }),
   ) : [];
-  return { enabled: deliveryEnabled(tenant.organizationId), workspace, readiness: deliveryReadiness(workspace.document, context), lessons: context.lessons,
+  return { enabled: deliveryEnabled(), workspace, readiness: deliveryReadiness(workspace.document, context), lessons: context.lessons,
     syllabusApproved: context.syllabusApproved, nexusPlanState: context.nexusState || null, nexusMaterialsState: context.materials?.state || null, sourceCount: context.sources.length, run, settings,
     canReview };
 }
@@ -63,7 +63,7 @@ async function coordinateNexus(admin: Parameters<typeof readDeliveryContext>[0],
 }
 export async function executeDeliveryCommand(artifactId: string, input: z.infer<typeof deliveryCommandSchema>) {
   const { tenant, admin } = await requireDeliveryAccess(artifactId, input.action === "APPROVE");
-  if (!deliveryEnabled(tenant.organizationId)) throw new Error("La autoría sincrónica no está habilitada para esta organización.");
+  if (!deliveryEnabled()) throw new Error("La autoría sincrónica no está habilitada.");
   const workspace = await readDeliveryWorkspace(admin, artifactId, tenant.organizationId);
   if (workspace.revision !== input.revision) throw new Error("Otra edición cambió el curso. Actualiza antes de continuar.");
   if (input.action === "SAVE") return { revision: await editDelivery(admin, workspace, input.kind, input.value, input.sessionId) };
