@@ -20,6 +20,59 @@ import type { CompositionPreviewAssetDiagnostics } from "../composition-preview-
 
 const COLOR_GRADING_RUNTIME_FIXTURE = "window.__hfColorGradingRuntimeInstalled=true;";
 
+test("el sincronizador deja completar el bucle sin regresar al último fotograma", async () => {
+  const assetId = "55555555-5555-4555-8555-555555555558";
+  const document = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "b".repeat(64), durationSeconds: 2, fileSizeBytes: 42, hasAudio: false, mimeType: "video/mp4", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "loop.mp4", timelineRole: "BROLL" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 6, subtitle: "", title: "Bucle" },
+  });
+  document.canvas.durationSeconds = 6;
+  document.clips[0]!.durationSeconds = 6;
+  const html = await compileCompositionPreview({ document, assetUrls: new Map([[assetId, "https://assets.test/loop.mp4"]]), colorGradingRuntimeOverride: COLOR_GRADING_RUNTIME_FIXTURE });
+  const syncSource = html.match(/const syncMedia = ([\s\S]*?);\s*const seek =/)?.[1];
+  assert.ok(syncSource, "El preview debe incluir el sincronizador real de medios.");
+  const media = { currentTime: 0.02, duration: 2, loop: true, tagName: "VIDEO", playbackRate: 1,
+    dataset: { start: "0", sourceOffset: "0" }, pause() {} };
+  const activeMedia = new Set([media]);
+  const sync = new Script(`(${syncSource})`).runInNewContext({
+    document: { querySelectorAll: () => [media] }, activeMedia, playbackActive: true,
+    primeMediaForTime() {}, mediaIsActiveAt: () => true, mediaRate: () => 1, requestMediaPlayback() {},
+    MEDIA_FORCED_SEEK_TOLERANCE_SECONDS: 0.05, MEDIA_SEEK_TOLERANCE_SECONDS: 0.35,
+  }) as (time: number, forceSeek?: boolean) => void;
+
+  sync(1.98);
+  assert.equal(media.currentTime, 0.02, "El decoder adelantado debe continuar desde el inicio.");
+  media.currentTime = 1.98;
+  sync(2.02);
+  assert.equal(media.currentTime, 1.98, "El decoder atrasado debe completar su ciclo sin otro seek.");
+  sync(3.1);
+  assert.ok(Math.abs(media.currentTime - 1.1) < 1e-9, "Un desfase real sí debe corregirse.");
+  media.currentTime = 0.02;
+  sync(1.98, true);
+  assert.equal(media.currentTime, 1.98, "El seek manual sigue siendo autoritativo.");
+  media.currentTime = 0.02;
+  activeMedia.clear();
+  sync(1.98);
+  assert.equal(media.currentTime, 1.98, "La entrada al clip conserva el punto fuente exacto.");
+  media.loop = false;
+  media.currentTime = 0.02;
+  sync(1.98);
+  assert.equal(media.currentTime, 1.98, "Los medios sin bucle conservan su comparación lineal.");
+
+  const primeSource = html.match(/const seekPrimedMediaToEntryPoint = ([\s\S]*?);\s*const postMediaState =/)?.[1];
+  assert.ok(primeSource);
+  const context = { playbackIntent: true, playbackActive: false, mediaIsActiveAt: () => true,
+    mediaStart: () => 0, mediaRate: () => 1, reportMediaError() {} };
+  const prime = new Script(`(${primeSource})`).runInNewContext(context) as (media: object, time: number) => void;
+  const bufferingMedia = { currentTime: 0.02, duration: 2, loop: true, readyState: 4, dataset: { sourceOffset: "0" } };
+  prime(bufferingMedia, 1.98);
+  assert.equal(bufferingMedia.currentTime, 0.02, "El precalentamiento no debe rebobinar durante buffering.");
+  context.playbackIntent = false;
+  prime(bufferingMedia, 1.98);
+  assert.equal(bufferingMedia.currentTime, 1.98, "El precalentamiento con transporte detenido conserva el seek.");
+});
+
 test("audio meters are opt-in, CORS-enabled in preview and absent from the render target", async () => {
   const assetId = "55555555-5555-4555-8555-555555555557";
   const document = createInitialCompositionDocument({
@@ -819,7 +872,7 @@ test("creates a separate synchronized audio element for an avatar video", async 
   assert.match(html, /El medio no entregó un frame reproducible dentro del tiempo permitido/);
   assert.match(html, /announceInitialReadyIfPossible\(\)/);
   assert.match(html, /const seekTolerance = forceSeek \|\| entered/);
-  assert.match(html, /Math\.abs\(media\.currentTime - next\) > seekTolerance/);
+  assert.match(html, /drift > seekTolerance/);
   assert.doesNotMatch(html, /forceSeek \|\| entered \|\| Math\.abs/);
   assert.match(html, /const scrubTo = \(time\) => \{[\s\S]*pause\(\);[\s\S]*seek\(time, true\)/);
   assert.match(html, /courseforge-composition-seek"\) scrubTo\(message\.seconds\)/);

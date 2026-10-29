@@ -171,6 +171,14 @@ service role, SQL manual o un bug del backend.
 
 ## 6. Contrato del preview
 
+- Al extender videos sin velocidad ni congelación explícitas, el preview repite
+  la fuente. La sincronización tolera el cruce del final al inicio con distancia
+  circular; el precalentamiento no reposiciona medios activos durante buffering
+  y su recuperación no fuerza otro seek al último fotograma. Los seeks manuales
+  y la entrada al clip conservan precisión. No cambia el HTML de render.
+  Regresión: `qa:composition-video-loop` del workspace web y
+  `openspec/changes/fix-extended-video-loop/`.
+
 - Los presets de animación Educativo, Lectura guiada y Social aplican settings de
   efectos a la capa sin modificar texto, tiempos o personalizaciones por frase.
   Los presets visuales permanecen independientes. Social usa karaoke `BACKGROUND`
@@ -407,6 +415,9 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-29: corrección del atasco del preview al repetir videos extendidos;
+  QA sintética de extensión en vivo, seek y tres ciclos continuos.
 
 - 2026-10-27: nombre de presentación y etiquetas predeterminadas de composiciones nuevas derivados de `apps/web/src/config/app.ts`, escapados al generar HTML. No cambian formatos, namespaces, documento editable, motion ni snapshots históricos. Contrato: [identidad global](product-branding.md).
 
