@@ -97,6 +97,14 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 4. Contrato del documento editable
 
+- Intros y outros (2026-10-30): los accesos Editar intro/outro de la timeline
+  abren el inspector compartido de capas, transformación y animaciones. Reaplicar
+  el mismo asset conserva la instancia, recortes, audio y motion. La reconciliación
+  corporativa recoloca únicamente su ventana al inicio/final; sustituir o retirar
+  el recurso elimina su motion anterior. Las intros nuevas proceden de Producción;
+  la biblioteca corporativa administra outros y conserva intros históricas.
+  Contrato y evidencia: `openspec/changes/branding-clip-controls/`.
+
 - Plantillas HTML importadas (2026-10-19): el generador de diapositivas admite
   `importedDesign` estático opcional. Antes de registrar un paquete se ejecuta
   el productor y compilador editorial existentes. Los campos se vinculan a
@@ -407,6 +415,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-30: acceso directo al inspector de intros/outros y conservación de
+  capas, recortes y animaciones al reaplicar el mismo recurso. Se reutilizan
+  patches y compilación existentes, sin migración ni cambio de proveedor.
 
 - 2026-10-27: nombre de presentación y etiquetas predeterminadas de composiciones nuevas derivados de `apps/web/src/config/app.ts`, escapados al generar HTML. No cambian formatos, namespaces, documento editable, motion ni snapshots históricos. Contrato: [identidad global](product-branding.md).
 

@@ -1,0 +1,6 @@
+- [x] Contrastar inserción corporativa e intro de Producción con el inspector.
+- [x] Aislar desde 13774405 en codex/branding-clip-controls sin copiar secretos.
+- [x] Añadir accesos directos y conservar ajustes al reaplicar.
+- [x] Cubrir capas, recortes, motion, sustitución, retiro y pista bloqueada.
+- [x] Ejecutar verificaciones y QA proporcional; registrar evidencia y límites.
+- [x] Revisar diff adversarialmente y cerrar documentación canónica.
