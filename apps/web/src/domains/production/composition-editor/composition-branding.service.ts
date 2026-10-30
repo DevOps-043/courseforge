@@ -87,17 +87,23 @@ export function reconcileAssemblyBrandingDocument(
   )));
   const content = document.clips.filter((clip) => !previousBrandingIds.has(clip.id));
   if (content.length === 0) throw new Error("La composición debe conservar contenido además del intro y outro.");
-  const introDuration = branding.intro ? branding.intro.durationMilliseconds / 1_000 : 0;
-  const outroDuration = branding.outro ? branding.outro.durationMilliseconds / 1_000 : 0;
+  const retainedIntro = findRetainedBrandingClip(document, branding.intro, "INTRO");
+  const retainedOutro = findRetainedBrandingClip(document, branding.outro, "OUTRO");
+  const introDuration = retainedIntro?.durationSeconds ?? (branding.intro ? branding.intro.durationMilliseconds / 1_000 : 0);
+  const outroDuration = retainedOutro?.durationSeconds ?? (branding.outro ? branding.outro.durationMilliseconds / 1_000 : 0);
   const currentContentStart = Math.min(...content.map((clip) => clip.startSeconds));
   const shift = roundSeconds(introDuration - currentContentStart);
   const shiftedContent = content.map((clip) => ({ ...clip, startSeconds: roundSeconds(clip.startSeconds + shift) }));
   const contentEnd = Math.max(...shiftedContent.map((clip) => clip.startSeconds + clip.durationSeconds));
   const track = resolveBrandingTrack(document);
   const occupiedIds = new Set(shiftedContent.flatMap((clip) => [clip.id, clip.hfId]));
+  for (const retained of [retainedIntro, retainedOutro]) {
+    if (retained) { occupiedIds.add(retained.id); occupiedIds.add(retained.hfId); }
+  }
   const clips: CompositionClip[] = [...shiftedContent];
-  if (branding.intro) clips.push(buildBrandingClip({ asset: branding.intro, document, id: uniqueEditorId("assembly-intro", occupiedIds), placement: "INTRO", startSeconds: 0, trackId: track.id }));
-  if (branding.outro) clips.push(buildBrandingClip({ asset: branding.outro, document, id: uniqueEditorId("assembly-outro", occupiedIds), placement: "OUTRO", startSeconds: roundSeconds(contentEnd), trackId: track.id }));
+  if (branding.intro) clips.push(retainedIntro ? { ...retainedIntro, startSeconds: 0 } : buildBrandingClip({ asset: branding.intro, document, id: uniqueEditorId("assembly-intro", occupiedIds), placement: "INTRO", startSeconds: 0, trackId: track.id }));
+  if (branding.outro) clips.push(retainedOutro ? { ...retainedOutro, startSeconds: roundSeconds(contentEnd) } : buildBrandingClip({ asset: branding.outro, document, id: uniqueEditorId("assembly-outro", occupiedIds), placement: "OUTRO", startSeconds: roundSeconds(contentEnd), trackId: track.id }));
+  const retainedIds = new Set([retainedIntro?.id, retainedOutro?.id]);
   const tracks = document.tracks.some((candidate) => candidate.id === track.id)
     ? document.tracks
     : [...document.tracks, track];
@@ -107,10 +113,15 @@ export function reconcileAssemblyBrandingDocument(
     clips,
     motion: {
       ...document.motion,
-      animations: document.motion.animations.filter((animation) => !previousBrandingIds.has(animation.target.clipId)),
+      animations: document.motion.animations.filter((animation) => !previousBrandingIds.has(animation.target.clipId) || retainedIds.has(animation.target.clipId)),
     },
     tracks,
   });
+}
+
+function findRetainedBrandingClip(document: CompositionEditorDocument, asset: AssemblyBrandingAsset | null, placement: "INTRO" | "OUTRO"): CompositionClip | undefined {
+  return asset ? document.clips.find((clip) => clip.source.type === "ASSEMBLY_BRAND_ASSET"
+    && clip.source.assemblyBrandAssetId === asset.id && clip.source.placement === placement) : undefined;
 }
 
 function buildBrandingClip(params: { asset: AssemblyBrandingAsset; document: CompositionEditorDocument; id: string; placement: "INTRO" | "OUTRO"; startSeconds: number; trackId: string }): CompositionClip {

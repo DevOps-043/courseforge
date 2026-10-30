@@ -67,3 +67,41 @@ test("materializa intro/outro como referencias remotas sin duplicarlos", () => {
 function brandingAsset(id: string, kind: "INTRO" | "OUTRO", durationMilliseconds: number): AssemblyBrandingAsset {
   return { checksum: "a".repeat(64), durationMilliseconds, hasAudio: true, id, kind, mimeType: "video/mp4", name: `${kind}.mp4`, sourceHeight: 1080, sourceWidth: 1920, storageBucket: "production-assets", storagePath: `assembly-branding/${id}.mp4` };
 }
+
+test("editar capas y animaciones de branding sobrevive a reaplicar y reemplazar sólo el otro recurso", () => {
+  const document = createInitialCompositionDocument({ animatedDeck: null, assets: [{ checksum: "1".repeat(64), durationSeconds: 60, fileSizeBytes: 1, mimeType: "video/mp4", productionAssetId: ids[0]!, publicUrl: null, storageBucket: "production-assets", storagePath: "content.mp4", timelineRole: "AVATAR" }], plan: { accentColor: "#38BDF8", durationSeconds: 60, subtitle: "Prueba", title: "Capas de branding" } });
+  const intro = brandingAsset(ids[1]!, "INTRO", 10_000);
+  const outro = brandingAsset(ids[2]!, "OUTRO", 8_000);
+  const branding = { intro, introSource: "ORG_DEFAULT" as const, outro };
+  let edited = reconcileAssemblyBrandingDocument(document, branding);
+  for (const clip of edited.clips.filter(clip => clip.source.type === "ASSEMBLY_BRAND_ASSET")) {
+    edited = applyCompositionEditorPatches(edited, [
+      { clipId: clip.id, type: "clip.layout", layout: { zIndex: 4, x: 18, opacity: 0.8 } },
+      { clipId: clip.id, type: "clip.trim", startSeconds: clip.startSeconds, durationSeconds: 4, sourceOffsetSeconds: 1 },
+      { clipId: clip.id, type: "animation.add-preset", animationId: `fade-${clip.id}`, presetId: "FADE_IN", durationSeconds: 0.5, offsetSeconds: 0 },
+    ]);
+  }
+  const reapplied = reconcileAssemblyBrandingDocument(edited, branding);
+  for (const clip of edited.clips.filter(clip => clip.source.type === "ASSEMBLY_BRAND_ASSET")) {
+    const retained = reapplied.clips.find(candidate => candidate.id === clip.id)!;
+    assert.deepEqual(retained.layout, clip.layout);
+    assert.equal(retained.durationSeconds, 4);
+    assert.equal(retained.sourceOffsetSeconds, 1);
+  }
+  assert.deepEqual(reapplied.motion, edited.motion);
+  assert.deepEqual(reconcileAssemblyBrandingDocument(reapplied, branding), reapplied);
+  const replacement = reconcileAssemblyBrandingDocument(reapplied, { ...branding, outro: brandingAsset(ids[0]!, "OUTRO", 6_000) });
+  assert.equal(replacement.motion.animations.length, 1);
+  assert.equal(replacement.motion.animations[0]?.target.clipId, "assembly-intro");
+  const removed = reconcileAssemblyBrandingDocument(replacement, { ...branding, intro: null, outro: null });
+  assert.equal(removed.motion.animations.length, 0);
+});
+
+test("pistas bloqueadas rechazan cambios de capa y animación del branding", () => {
+  const document = createInitialCompositionDocument({ animatedDeck: null, assets: [{ checksum: "1".repeat(64), durationSeconds: 60, fileSizeBytes: 1, mimeType: "video/mp4", productionAssetId: ids[0]!, publicUrl: null, storageBucket: "production-assets", storagePath: "content.mp4", timelineRole: "AVATAR" }], plan: { accentColor: "#38BDF8", durationSeconds: 60, subtitle: "Prueba", title: "Branding bloqueado" } });
+  const branded = reconcileAssemblyBrandingDocument(document, { intro: null, introSource: "ORG_DEFAULT", outro: brandingAsset(ids[1]!, "OUTRO", 8_000) });
+  const clip = branded.clips.find(clip => clip.source.type === "ASSEMBLY_BRAND_ASSET")!;
+  branded.tracks.find(track => track.id === clip.trackId)!.locked = true;
+  assert.throws(() => applyCompositionEditorPatches(branded, [{ clipId: clip.id, type: "clip.layout", layout: { zIndex: 4 } }]), /bloqueado/);
+  assert.throws(() => applyCompositionEditorPatches(branded, [{ clipId: clip.id, type: "animation.add-preset", animationId: "locked-fade", presetId: "FADE_IN", durationSeconds: 0.5, offsetSeconds: 0 }]), /bloqueado/);
+});
