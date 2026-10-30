@@ -3,7 +3,8 @@
 Estado: plan técnico con decisiones concretadas en [technical-closure.md](technical-closure.md).
 Ese cierre fija contrato, límites, SQL, clientes antiguos y habilitación y prevalece
 sobre las opciones iniciales de este diseño. No son capacidades disponibles.
-No se modifica el producto en esta entrega.
+La implementación local y sus verificaciones están descritas en
+[el informe de entrega](reports/implementation.md); la habilitación remota sigue pendiente.
 
 ## 1. Diagnóstico y evidencia
 

@@ -1,7 +1,8 @@
 # Cierres técnicos del plan
 
-Fecha: 2026-10-29. Estado: decisiones de diseño cerradas para implementación;
-verificación funcional y SQL pendientes de desarrollar. No hay cambios de runtime.
+Fecha del diseño: 2026-10-29. Actualización: 2026-10-30. Estado: decisiones
+implementadas localmente; verificación y límites en [el informe](reports/implementation.md).
+No se aplicaron migraciones remotas ni se habilitó la función en producción.
 Este documento concreta [design.md](design.md); prevalece ante sus opciones iniciales.
 
 ## 1. Contrato fijado
@@ -164,6 +165,11 @@ desagrupación, eliminación o edición compatible de árboles existentes. Rehac
 una acción que reintroduciría un anidamiento también se bloquea con explicación
 y conserva su checkpoint; no se avanza el cursor hasta ACK.
 
+La política compara relaciones de ancestros, no solo referencias directas:
+promover un subgrupo al disolver su contenedor mantiene una relación previa y
+está permitido con la creación desactivada. Recrear el contenedor mediante
+rehacer introduce nuevamente esa relación y permanece bloqueado.
+
 Precondición operativa: desplegar lectores compatibles y migración primero;
 verificar helper/versión SQL antes de habilitar. Sin confirmación de disponibilidad,
 capabilities.canCreateNestedGroups es false aunque la variable diga true.
@@ -181,7 +187,9 @@ un control específico antes del despliegue, sin inventar una tabla en esta fase
 Cerrados: forma del contrato, límites, reglas de edición, inventario estático,
 funciones SQL afectadas, estrategia de pruebas, capacidad de cliente, flag y rollback.
 
-Pendientes de implementación: fixtures ejecutables, helpers y migraciones,
-runner SQL, negociación de capacidades, pruebas de paridad, QA, rendimiento y
-verificación del entorno elegido para piloto. Son tareas funcionales de fases 1–4,
-no incertidumbres sobre el diseño ni resultados de prueba ya obtenidos.
+Implementados: fixtures, servicios y migraciones, runner SQL, negociación de
+capacidades, paridad, límites y smoke de interacción. La selección de unidades
+se deriva de hojas/contexto con una función pura, sin duplicar estado mutable.
+Pendientes de habilitación: integración Supabase descartable/RLS real, QA visual
+completa, CI/build, compuertas generales y piloto autorizado. No se confunden
+esas verificaciones con pruebas ya obtenidas.

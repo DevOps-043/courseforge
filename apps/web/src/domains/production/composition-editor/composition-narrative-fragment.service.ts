@@ -1,3 +1,4 @@
+import { compositionGroupsChildrenFirst, resolveCompositionGroupClipIds } from "./composition-group-hierarchy";
 import { z } from "zod";
 import { compositionEditorDocumentSchema, type CompositionEditorDocument, type CompositionClip } from "./composition-document.types";
 import { resolveAvatarAudioLink } from "./composition-avatar-audio-link.service";
@@ -37,8 +38,8 @@ export function buildNarrativeFragmentPlan(params: {
   const included = new Set(candidates.map(clip => clip.id));
   if (!included.has(range.clipId)) return { ok: false, reason: "MISSING_REQUIRED_CLIP" };
   if (!candidates.some(clip => ["VIDEO", "IMAGE", "DECK_SLIDE", "TEXT"].includes(clip.kind))) return { ok: false, reason: "NO_VISUAL_CONTENT" };
-  const copiedGroups = (document.groups ?? []).filter(group => group.clipIds.some(id => included.has(id)));
-  if (copiedGroups.some(group => group.clipIds.some(id => !included.has(id)))) return { ok: false, reason: "MISSING_REQUIRED_CLIP" };
+  const copiedGroups = (document.groups ?? []).filter(group => resolveCompositionGroupClipIds(document, group.id).some(id => included.has(id)));
+  if (copiedGroups.some(group => resolveCompositionGroupClipIds(document, group.id).some(id => !included.has(id)))) return { ok: false, reason: "MISSING_REQUIRED_CLIP" };
   for (const clip of candidates) {
     const link = resolveAvatarAudioLink(document, clip.id);
     if (link.status === "AMBIGUOUS") return { ok: false, reason: "DEPENDENCIES_UNSUPPORTED" };
@@ -102,9 +103,12 @@ export function buildNarrativeFragmentPlan(params: {
     operations.push({ type: "clip.add", clipId: copied.id, clip: copied });
   }
   const copyIds = new Map(copies.map(copy => [copy.sourceClipId, copy.newClipId]));
-  for (const [ordinal, group] of copiedGroups.entries()) {
+  const orderedGroups = [...copiedGroups].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+  const groupCopies = new Map(orderedGroups.map((group, ordinal) => [group.id, `fragment-group-${params.commandId}-${ordinal}`]));
+  for (const group of compositionGroupsChildrenFirst(orderedGroups)) {
     if (group.clipIds.some(id => !copyIds.has(id))) return { ok: false, reason: "MISSING_REQUIRED_CLIP" };
-    operations.push({ type: "group.create", clipIds: group.clipIds.map(id => copyIds.get(id)!), groupId: `fragment-group-${params.commandId}-${ordinal}`,
+    operations.push({ type: "group.create", clipIds: group.clipIds.map(id => copyIds.get(id)!), groupId: groupCopies.get(group.id)!,
+      ...(group.childGroupIds?.length ? { childGroupIds: group.childGroupIds.map(id => groupCopies.get(id)!) } : {}),
       label: group.label ? `${Array.from(group.label).slice(0, MAX_GROUP_LABEL_CODE_POINTS).join("")} · fragmento` : "Fragmento extraído" });
   }
   const patch = compositionEditorPatchRequestSchema.safeParse({ operations, source: "USER", summary: "Extraer fragmento audiovisual al final" });

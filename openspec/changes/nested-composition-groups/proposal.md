@@ -1,7 +1,8 @@
 # Agrupaciones anidadas en el editor de composición
 
-Estado: plan propuesto; sin implementación de producto ni migraciones aplicadas.
+Estado: implementación local; verificaciones y límites en [el informe de entrega](reports/implementation.md).
 Fecha: 2026-10-29.
+Actualización de implementación: 2026-10-30. Sin migraciones remotas aplicadas.
 
 ## Why
 
@@ -37,8 +38,8 @@ No objetivos: transformaciones espaciales heredadas, motion del padre, tiempos
 relativos, composición audiovisual encapsulada, grupos compartidos entre documentos,
 reparentado por arrastre o nuevas facultades del agente runtime.
 
-Este cambio solo registra el plan. No publica, despliega, renderiza ni accede a
-servicios externos. El despliegue y SQL remoto conservan su autorización propia.
+Este cambio implementa el plan y sus verificaciones locales. No publica,
+despliega ni ejecuta render cloud. El despliegue y SQL remoto conservan su autorización propia.
 
 ## Contexto
 

@@ -124,6 +124,10 @@ y conservar la salida audiovisual si la operación solo modifica organización e
 - **WHEN** se agrupan clips o grupos sin modificar sus propiedades audiovisuales
 - **THEN** preview y render conservan geometría, timing, audio y motion de esos clips
 
+#### Scenario: Promoción durante reversión operativa
+- **WHEN** desagrupar o eliminar un contenedor promueve descendientes a un ancestro mientras la creación está desactivada
+- **THEN** se admite la simplificación porque conserva una relación de ancestros ya existente, aunque cambien sus referencias directas
+
 #### Scenario: Reversión operativa
 - **WHEN** se deshabilitan nuevas creaciones después de persistir árboles
 - **THEN** se conserva soporte de lectura y operación segura de documentos existentes sin aplanarlos

@@ -69,7 +69,8 @@
     "qa:composition-preview-scene": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-preview-scene-smoke.js && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-editor-latency-smoke.js",
     "test:course-delivery": "tsc -p tsconfig.course-delivery-test.json && node --test .tmp/course-delivery-tests/src/domains/course-delivery/__tests__/*.test.js",
     "test:composition-clip-export": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-clip-export.test.js",
-    "qa:composition-clip-export": "tsc -p tsconfig.hyperframes-test.json && node tools/qa/composition-clip-export.smoke.mjs"
+    "qa:composition-clip-export": "tsc -p tsconfig.hyperframes-test.json && node tools/qa/composition-clip-export.smoke.mjs",
+    "qa:composition-nested-groups": "tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-nested-groups-smoke.js"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

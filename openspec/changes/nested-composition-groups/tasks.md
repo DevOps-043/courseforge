@@ -1,50 +1,55 @@
 # Tareas de implementación
 
-Todas las tareas de producto están pendientes. El plan no autoriza despliegues
-ni aplicación de SQL remoto. Dependencias: fase 1 después de 0; 2 después de 1;
-3 después de contratos estables de 2; habilitación después de todas las verificaciones.
+Estado: código implementado localmente. Evidencia, fallos generales previos y
+límites en [el informe de entrega](reports/implementation.md). No se aplicó SQL remoto.
 
-## 0. Preparación y cierre del contrato
-- [ ] Aislar implementación en rama/worktree y registrar base, preservando trabajo ajeno.
-- [x] Registrar inventario estático de consumidores semánticos y familias genéricas, incluidos RPCs, agentes y restauración, en technical-closure.md.
-- [x] Fijar esquema groupingVersion/childGroupIds, profundidad máxima de 8, normalización y orden.
-- [ ] Crear fixtures legacy, árboles mixtos, casos inválidos y referencias audiovisuales.
-- [x] Identificar guards/RPCs versionados de extracción y fijar estrategia SQL aislada con PGlite; ejecución pendiente en fase 1.
-- [x] Definir capacidad de cliente, marcador persistente, flag servidor y rollback compatible.
+## 0. Preparación y contrato
+- [x] Aislar el trabajo y conservar cambios anteriores; registrar base y rama de entrega.
+- [x] Inventariar lectores/escritores, RPCs, reconciliación, agente e historial.
+- [x] Fijar groupingVersion/childGroupIds, profundidad 8, normalización y orden.
+- [x] Crear fixtures legacy, mixtos, inválidos y referencias de compilación.
+- [x] Definir negociación de cliente, flag de servidor, guards y rollback.
 
 ## 1. Modelo compatible
-- [ ] Implementar schemas legacy/jerárquico sin reescritura al leer ni cambio de hashes históricos.
-- [ ] Crear servicio puro de índices, parentesco, hojas, bounds y validación acotada del grafo.
-- [ ] Probar ciclos, padres duplicados, referencias inválidas, profundidad y tamaños máximos.
-- [ ] Preparar migración aditiva de guards y verificadores SQL; conservar permisos restringidos.
-- [ ] Probar paridad de validación TS/SQL y compatibilidad con documentos planos.
-- [ ] Agregar habilitación de escrituras jerárquicas en servidor, inicialmente desactivada.
+- [x] Implementar schemas duales sin reescritura ni cambio de hash al leer.
+- [x] Implementar índices, padres, raíces, hojas, bounds y validación acotada.
+- [x] Probar ciclos, duplicados, referencias, profundidad, límites y entrada masiva inválida.
+- [x] Preparar migraciones aditivas con helpers privados y guard transversal de inserción.
+- [x] Ejecutar paridad TS/SQL, versión legacy y límites 250/500 en PGlite.
+- [x] Implementar capacidad SQL confirmada, timeout, caché y creación desactivada por defecto.
 
 ## 2. Operaciones y persistencia
-- [ ] Extender group.create para envolver hermanos sin perder IDs ni relaciones internas.
-- [ ] Adaptar move, ungroup, add/remove-clips y normalización en cascada.
-- [ ] Adaptar split/remove-range/remove y verificar padres de clips derivados.
-- [ ] Adaptar copia/duplicación/pegado con reconstrucción de hijos a padres y nuevos IDs.
-- [ ] Adaptar extracción narrativa y su delta SQL; impedir selección parcial y bypass de voz agrupada.
-- [ ] Verificar vínculos avatar–voz dentro/fuera del subárbol y movimientos atómicos.
-- [ ] Probar permisos tenant/rol, origen USER, restauración, hashes, ACK y conflictos concurrentes.
-- [ ] Implementar handshake X-Composition-Grouping-Version y bloqueo de escrituras incompatibles, incluido guard SQL de downgrade; probar sesiones antiguas.
+- [x] Implementar wrap de hermanos, grupos mixtos y membresía atómica.
+- [x] Compartir el reducer de agrupación con la proyección de duración.
+- [x] Adaptar movimiento, desagrupación, add/remove y promoción en cascada.
+- [x] Mantener padre directo de clips derivados y normalización al eliminar.
+- [x] Reconstruir copias jerárquicas con IDs nuevos y presupuesto de operaciones existente.
+- [x] Adaptar extracción y delta SQL; rechazar selección parcial y pérdida de jerarquía.
+- [x] Verificar vínculos avatar–voz, pistas bloqueadas, límites y ausencia de efectos parciales.
+- [x] Probar tenant/rol, origen USER/SYSTEM, hash, restauración y rechazo de versión obsoleta.
+- [x] Implementar handshake y guard de downgrade desde append, wrapper e inserción directa.
+- [x] Mantener snapshots/rebase y recuperación de conflictos; actualizar UI después de ACK.
 
 ## 3. Interfaz
-- [ ] Representar selección como unidades explícitas, con clips afectados derivados.
-- [ ] Sustituir supuestos clip→grupo único por padre directo y ruta de ancestros.
-- [ ] Implementar contexto de navegación, ruta, entrada/salida y selección de hermanos.
-- [ ] Adaptar contenedores del timeline, colores, expansión y selección entre pistas.
-- [ ] Centralizar elegibilidad de agrupar para panel, handlers y atajos.
-- [ ] Integrar autoguardado/historial por acción y recuperación de conflictos.
-- [ ] Ejecutar QA visual y teclado: Ctrl/Cmd, Shift, Escape, foco y mensajes accesibles.
+- [x] Resolver unidades por nivel desde hojas/contexto con una función pura compartida.
+- [x] Seleccionar grupos hermanos con selección aditiva y elegibilidad centralizada.
+- [x] Implementar ruta, entrada/salida y Escape por nivel; limpiar no abandona el grupo.
+- [x] Adaptar overlays, colores, arrastre de descendientes y controles internos.
+- [x] Verificar en Chromium selección Shift, capacidad, wrap, ruta, dos niveles, Escape y ungroup.
 
-## 4. Cierre y habilitación
-- [ ] Verificar equivalencia de preview/render/audio al agrupar sin mover.
-- [ ] Medir validación, selección y navegación con los límites máximos del documento.
-- [ ] Ejecutar suites proporcionales, pruebas SQL aisladas y gates de entrega; registrar resultados.
-- [ ] Realizar revisión adversarial de bypass, corrupción, compatibilidad y estados parciales.
-- [ ] Actualizar fuente canónica multimedia y contrato operativo sin sobrescribir cambios ajenos.
-- [ ] Documentar orden de despliegue, piloto, condiciones de habilitación y rollback compatible.
-- [ ] Habilitar piloto solo con autorización de despliegue/SQL y evidencia completa.
-- [ ] Archivar OpenSpec únicamente después de integrar en rama objetivo.
+## 4. Verificación y documentación local
+- [x] Verificar equivalencia exacta de HTML de preview/render al agrupar sin mover.
+- [x] Verificar la fixture máxima del grafo y registrar coste SQL, sin prometer un SLO.
+- [x] Ejecutar pruebas nuevas, regresiones, seguridad, arnés y guards SQL; registrar resultados.
+- [x] Ejecutar compuertas; conservar visibles bloqueos previos de OpenSpec, ciclos y otras suites.
+- [x] Realizar revisión adversarial propia, sin afirmar independencia.
+- [x] Actualizar contrato canónico multimedia, especificaciones, informe y reproducción.
+- [x] Añadir pruebas nuevas, SQL aislado y smoke de Chromium a CI.
+- [x] Documentar orden de despliegue y reversión compatible.
+
+## 5. Integración y habilitación externas
+- [ ] Resolver fallos generales previos antes de integrar; no debilitar gates.
+- [ ] Ejecutar CI/build y QA visual del editor completo, foco/gestos y fluidez con muchos clips.
+- [ ] Probar migraciones en Supabase descartable con esquema y RLS reales.
+- [ ] Aplicar SQL remoto y habilitar piloto únicamente con autorización y evidencia completa.
+- [ ] Archivar OpenSpec después de integrar en la rama objetivo.

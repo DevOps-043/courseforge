@@ -1,3 +1,4 @@
+import { buildCompositionGroupIndex, compositionGroupsChildrenFirst, resolveCompositionGroupClipIds } from "./composition-group-hierarchy";
 import type { CompositionEditorDocument } from "./composition-document.types";
 import { COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS } from "./composition-document.types.constants";
 import { resolveAvatarAudioLink } from "./composition-avatar-audio-link.service";
@@ -163,14 +164,12 @@ export function buildCompositionDuplicateSelectionPlan(params: {
     duplicateBySourceId.set(clip.id, { clipId: newClipId, hfId: newHfId });
   }
 
-  for (const group of params.document.groups || []) {
-    if (!group.clipIds.every((clipId) => selectedIdSet.has(clipId))) continue;
-    operations.push({
-      clipIds: group.clipIds.map((clipId) => duplicateBySourceId.get(clipId)!.clipId),
-      groupId: createUniqueId(createId("group", group.id), occupiedGroupIds),
-      ...(group.label ? { label: `${group.label} copia`.slice(0, 120) } : {}),
-      type: "group.create",
-    });
+  const copiedGroups = (params.document.groups ?? []).filter(group => resolveCompositionGroupClipIds(params.document, group.id).every(id => selectedIdSet.has(id)));
+  const groupCopies = new Map(copiedGroups.map(group => [group.id, createUniqueId(createId("group", group.id), occupiedGroupIds)]));
+  for (const group of compositionGroupsChildrenFirst(copiedGroups)) {
+    operations.push({ clipIds: group.clipIds.map(id => duplicateBySourceId.get(id)!.clipId),
+      ...(group.childGroupIds?.length ? { childGroupIds: group.childGroupIds.map(id => groupCopies.get(id)!) } : {}),
+      groupId: groupCopies.get(group.id)!, ...(group.label ? { label: `${group.label} copia`.slice(0, 120) } : {}), type: "group.create" });
   }
   assertOperationBudget(operations);
 
@@ -271,8 +270,9 @@ function assertCompleteLinkedSelection(document: CompositionEditorDocument, sele
 
 function assertCompleteGroupSelection(document: CompositionEditorDocument, selectedIds: ReadonlySet<string>) {
   for (const group of document.groups || []) {
-    const selectedMemberCount = group.clipIds.filter((clipId) => selectedIds.has(clipId)).length;
-    if (selectedMemberCount > 0 && selectedMemberCount !== group.clipIds.length) {
+    const leaves = resolveCompositionGroupClipIds(document, group.id);
+    const selectedMemberCount = leaves.filter((clipId) => selectedIds.has(clipId)).length;
+    if (selectedMemberCount > 0 && selectedMemberCount !== leaves.length) {
       throw new CompositionTimelineBatchError("Selecciona el grupo completo antes de duplicarlo.");
     }
   }
@@ -332,6 +332,13 @@ function appendMoveOperations(
   excludedIds: ReadonlySet<string>,
   operations: CompositionEditorPatchOperation[],
 ) {
+  const index = buildCompositionGroupIndex(document.groups);
+  for (const group of document.groups ?? []) {
+    if (index.parentByGroupId.has(group.id)) continue;
+    const leaves = index.leavesByGroupId.get(group.id)!.filter(id => !excludedIds.has(id));
+    const deltas = leaves.map(id => (targetStarts.get(id) ?? requireClip(document, id).startSeconds) - requireClip(document, id).startSeconds);
+    if (deltas.some(delta => Math.abs(delta - (deltas[0] ?? 0)) > TIMELINE_EPSILON_SECONDS)) throw new CompositionTimelineBatchError("La edición desplazaría parcialmente una agrupación. Selecciona el grupo completo o desagrúpalo.");
+  }
   const emittedMoveIds = new Set<string>();
   for (const clip of document.clips) {
     if (excludedIds.has(clip.id)) continue;

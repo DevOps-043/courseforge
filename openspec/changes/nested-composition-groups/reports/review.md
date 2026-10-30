@@ -1,5 +1,8 @@
 # Evidencia de planificación
 
+Antecedente histórico. Implementación y verificaciones finales del 2026-10-30:
+[informe de entrega](implementation.md).
+
 Fecha: 2026-10-29. Alcance: inspección estática del checkout local y diseño.
 
 ## Hechos comprobados

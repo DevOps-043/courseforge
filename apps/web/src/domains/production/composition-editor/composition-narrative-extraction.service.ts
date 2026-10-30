@@ -1,3 +1,4 @@
+import { resolveCompositionGroupClipIds } from "./composition-group-hierarchy";
 import { z } from "zod";
 import { PRODUCTION_ASSET_TYPES, PRODUCTION_QA_STATUSES } from "../types/production.types";
 import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "./composition-document.types";
@@ -68,7 +69,7 @@ export function buildNarrativeVoiceExtractionPlan(params: {
   const link = resolveAvatarAudioLink(document, clip.id);
   const hasDependencies = link.status === "AMBIGUOUS"
     || (link.status === "LINKED" && (!included.has(link.avatar.id) || !included.has(link.voice.id)))
-    || document.groups?.some((group) => group.clipIds.includes(clip.id) && group.clipIds.some(id => !included.has(id)))
+    || document.groups?.some((group) => resolveCompositionGroupClipIds(document, group.id).includes(clip.id) && resolveCompositionGroupClipIds(document, group.id).some(id => !included.has(id)))
     || document.motion.animations.some((animation) => animation.target.clipId === clip.id)
     || document.transitions?.items.some((transition) => transition.fromClipId === clip.id || transition.toClipId === clip.id)
     || (clip.fadeInSeconds ?? 0) > 0 || (clip.fadeOutSeconds ?? 0) > 0;

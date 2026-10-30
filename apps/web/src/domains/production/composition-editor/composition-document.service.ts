@@ -1,3 +1,6 @@
+import { getCompositionGroupingCapabilities } from "./composition-group-capabilities.server";
+import { buildCompositionGroupIndex } from "./composition-group-hierarchy";
+import { assertCompositionGroupingWrite } from "./composition-group-policy";
 import { readStandaloneHtmlLibrary, hasCanonicalHtmlSource } from "../standalone/standalone-timeline-library.service";
 import { isRelatedAudioProcessingReplacement, type AudioReplacementRecord } from "../audio-processing/audio-replacement-policy";
 import { preservesCompositionHtmlRevisionReferences } from "./composition-html-editing-reference-policy";
@@ -153,6 +156,7 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
   auditSource?: "SYSTEM";
   draftId: string;
   expectedDocumentHash: string;
+  groupingClientVersion?: string | null;
   organizationId: string;
   patch: CompositionEditorPatchRequest;
   signal?: AbortSignal;
@@ -203,6 +207,10 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
     ) throw new CompositionDocumentError(error.message);
     throw error;
   }
+  assertCompositionGroupingWrite({ before: current.document, after: nextDocument,
+    // SYSTEM procede del llamador interno; nunca se acepta desde el payload HTTP.
+    clientVersion: params.auditSource === "SYSTEM" ? "2" : params.groupingClientVersion,
+    canCreateNestedGroups: (await getCompositionGroupingCapabilities(params.supabase)).canCreateNestedGroups });
   const nextHash = hashCompositionDocument(nextDocument);
   // Generic timeline/history commands cannot publish or retarget HTML revision
   // references. Only the dedicated atomic HTML repository may do that.
@@ -210,6 +218,7 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
     throw new CompositionDocumentError("Las revisiones HTML deben cambiarse mediante su guardado versionado específico.", 422);
   }
   const documentBytes = Buffer.byteLength(JSON.stringify(nextDocument), "utf8");
+  const groupIndex = buildCompositionGroupIndex(nextDocument.groups);
   const rpcStartedAt = Date.now();
   let appendRequest = params.supabase.rpc("append_video_composition_draft_document_v2", {
     p_actor_id: params.userId,
@@ -220,6 +229,9 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
     p_format: nextDocument.format,
     p_metadata: {
       groupCount: nextDocument.groups?.length || 0,
+      groupingVersion: nextDocument.groupingVersion ?? 1,
+      groupedClipCount: groupIndex.parentByClipId.size,
+      maxGroupDepth: Math.max(0, ...groupIndex.depthByGroupId.values()),
       motionAnimationCount: nextDocument.motion.animations.length,
       motionKeyframeCount: nextDocument.motion.animations.reduce((total, animation) => total + animation.keyframes.length, 0),
       operations: params.patch.operations.map((operation) => operation.type),
