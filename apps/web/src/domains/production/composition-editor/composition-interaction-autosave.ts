@@ -1,41 +1,50 @@
 export const COMPOSITION_AUTOSAVE_DELAY_MS = 600;
 export type CompositionAutosaveCommit = () => Promise<boolean | void> | boolean | void;
 export type CompositionAutosaveState = "IDLE" | "PENDING" | "SAVING" | "INVALID" | "ERROR";
+type PendingInteraction = { signature: string; commit: CompositionAutosaveCommit; token: symbol };
 
 /** Conserva el callback del borrador, aunque una respuesta posterior vuelva a renderizar el control. */
 export class CompositionInteractionAutosave {
-  private pending: { signature: string; commit: CompositionAutosaveCommit } | null = null;
-  private active: Promise<boolean> | null = null;
+  private pending: PendingInteraction | null = null;
+  private readonly active = new Map<PendingInteraction, Promise<boolean>>();
   private confirmed: string;
   state: CompositionAutosaveState = "IDLE";
-  constructor(signature: string, private readonly notify: () => void = () => {}) { this.confirmed = signature; }
+  constructor(signature: string, private readonly notify: () => void = () => {}, private readonly options: { serialize?: boolean } = {}) { this.confirmed = signature; }
+  get serializesCommit() { return this.options.serialize === true; }
   get dirty() { return this.pending !== null; }
-  confirmPersisted() { if (this.pending) this.confirmed = this.pending.signature; this.pending = null; this.state = "IDLE"; this.notify(); }
-  discard() { if (this.active) return false; this.pending = null; this.state = "IDLE"; this.notify(); return true; }
-  observe(signature: string) { if (!this.dirty && !this.active) this.confirmed = signature; }
+  get pendingToken() { return this.pending?.token; }
+  confirmPersisted(token?: symbol) { if (token && this.pending?.token !== token) return; if (this.pending) this.confirmed = this.pending.signature; this.pending = null; this.state = "IDLE"; this.notify(); }
+  discard(token?: symbol) { if (this.active.size || token && this.pending?.token !== token) return false; this.pending = null; this.state = "IDLE"; this.notify(); return true; }
+  observe(signature: string) { if (!this.dirty && !this.active.size) this.confirmed = signature; }
   stage(signature: string, commit: CompositionAutosaveCommit) {
-    if (this.pending?.signature === signature) { if (!this.active) this.pending.commit = commit; return; }
-    if (!this.pending && !this.active && signature === this.confirmed) return;
+    if (this.pending?.signature === signature) { if (!this.active.has(this.pending)) this.pending.commit = commit; return; }
+    if (!this.pending && !this.active.size && signature === this.confirmed) return;
     const failed = this.state === "ERROR";
-    if (signature === this.confirmed && !this.active) { this.pending = null; this.state = "IDLE"; }
-    else { this.pending = { signature, commit }; this.state = failed ? "ERROR" : "PENDING"; }
+    if (signature === this.confirmed && !this.active.size) { this.pending = null; this.state = "IDLE"; }
+    else { this.pending = { signature, commit, token: Symbol() }; this.state = failed ? "ERROR" : "PENDING"; }
     this.notify();
   }
   flush(retry = false): Promise<boolean> {
-    if (this.active) return this.active;
+    if (this.serializesCommit && this.active.size) return this.active.values().next().value!;
     if (this.state === "ERROR" && !retry) return Promise.resolve(false);
     const pending = this.pending;
     if (!pending) return Promise.resolve(true);
+    const existing = this.active.get(pending);
+    if (existing) return existing;
     this.state = "SAVING"; this.notify();
-    this.active = Promise.resolve().then(() => pending.commit()).then((saved) => {
+    // El callback admite el comando sin esperar red. La cola del documento serializa I/O.
+    let result: ReturnType<CompositionAutosaveCommit>;
+    try { result = pending.commit(); } catch { result = false; }
+    const active = Promise.resolve(result).then((saved) => {
       if (saved === true) {
         this.confirmed = pending.signature;
-        if (this.pending?.signature === pending.signature) this.pending = null;
-        this.state = this.pending ? "PENDING" : "IDLE";
+        if (this.pending === pending) { this.pending = null; this.state = "IDLE"; }
+        else if (this.state !== "ERROR" && this.state !== "INVALID") this.state = this.pending ? "PENDING" : "IDLE";
       } else this.state = saved === false ? "ERROR" : "INVALID";
       return saved === true;
-    }, () => { this.state = "ERROR"; return false; }).finally(() => { this.active = null; this.notify(); });
-    return this.active;
+    }, () => { this.state = "ERROR"; return false; }).finally(() => { this.active.delete(pending); this.notify(); });
+    this.active.set(pending, active);
+    return active;
   }
 }
 
@@ -59,13 +68,20 @@ export class CompositionAutosaveCoordinator {
     return () => { if (session.dirty) this.detached.add(session); else this.sessions.delete(session); this.changed(); };
   }
   commit(session: CompositionInteractionAutosave, retry = false): Promise<boolean> {
-    const task = this.serial.then(async () => {
-      this.committing += 1; if (retry) this.retrying += 1; this.activeSession = session;
-      try { return await session.flush(retry); }
-      finally { this.committing -= 1; if (retry) this.retrying -= 1; this.activeSession = null; this.changed(); }
-    });
+    if (!session.serializesCommit) return this.performCommit(session, retry);
+    // Los campos HTML mantienen la coordinación exclusiva anterior a esta optimización.
+    const task = this.serial.then(() => this.performCommit(session, retry));
     this.serial = task.catch(() => false);
     return task;
+  }
+  private performCommit(session: CompositionInteractionAutosave, retry: boolean): Promise<boolean> {
+    this.committing += 1; if (retry) this.retrying += 1;
+    const previous = this.activeSession;
+    this.activeSession = session;
+    let task: Promise<boolean>;
+    try { task = session.flush(retry); }
+    finally { this.activeSession = previous; }
+    return task.finally(() => { this.committing -= 1; if (retry) this.retrying -= 1; this.changed(); });
   }
   async flush(retry = false) {
     if (this.isCommitting) return true;

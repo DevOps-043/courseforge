@@ -1,5 +1,7 @@
 "use client";
 
+import { buildCompositionInspectorPatches } from "@/domains/production/composition-editor/composition-inspector-patches";
+
 import { CompositionAutosaveBoundary, useCompositionAutosavePending } from "./CompositionAutosaveBoundary";
 
 import { useEffect, useState } from "react";
@@ -146,13 +148,14 @@ export function CompositionTextControls({
   };
 
   const save = async () => {
-    if (!compositionTextLayerStyleSchema.safeParse({ ...style, fontAssetId }).success) {
+    const validatedStyle = compositionTextLayerStyleSchema.safeParse({ ...style, fontAssetId: fontAssetId ?? undefined });
+    if (!validatedStyle.success) {
       setError("Revisa los valores de tipografía y estilo antes de continuar.");
       return;
     }
     const operations: CompositionEditorPatchOperation[] = [{
       clipId: clip.id,
-      style: { ...style, fontAssetId },
+      style: { ...validatedStyle.data, fontAssetId },
       type: "clip.text-style",
     }];
     if (source.type === "NATIVE_TEXT") {
@@ -178,7 +181,8 @@ export function CompositionTextControls({
       if (areCaptionEffectsEnabled()) operations.push({ clipId: clip.id, effects: captionEffects || null, type: "clip.caption-effects" });
     }
     setError(null);
-    return onPatch(operations, `Actualizó contenido y estilo de ${clip.label}.`);
+    const changed = buildCompositionInspectorPatches(clip, operations);
+    return changed.length ? onPatch(changed, `Actualizó contenido y estilo de ${clip.label}.`) : true;
   };
 
   return <CompositionAutosaveBoundary key={clip.id} value={{text, style, fontAssetId, cues, captionOrigin, captionEffects}} onCommit={save} disabled={disabled} signal={captionImportSummary}><section className="border-t border-slate-200 pt-3 dark:border-white/10">

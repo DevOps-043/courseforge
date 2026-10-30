@@ -80,7 +80,7 @@ function EditableScalarField({ element, view, busy, onChange }: {
           : element.kind === "ATTRIBUTE" ? { ...common, operation: "SET_ATTRIBUTE", attributeName: element.attributeName, value: attributeValue }
             : { ...common, operation: "SET_VISIBILITY", visible });
   }
-  return <CompositionAutosaveBoundary value={{text, localeKey, assetId, fit, choiceId, attributeValue, visible}} onCommit={submit} disabled={busy} className="space-y-1 rounded border p-2">
+  return <CompositionAutosaveBoundary serialize value={{text, localeKey, assetId, fit, choiceId, attributeValue, visible}} onCommit={submit} disabled={busy} className="space-y-1 rounded border p-2">
     <fieldset disabled={busy} className="space-y-1">
       <legend>{element.label}</legend>
       {element.kind === "TEXT" && <label className="block">Texto

@@ -36,6 +36,19 @@ test("un error conserva el borrador y exige recuperación explícita", async () 
   assert.equal(await session.flush(true), true); assert.equal(attempts, 2);
 });
 
+test("una confirmación anterior no borra el error de admisión del último borrador", async () => {
+  let finish!: (saved: boolean) => void;
+  const session = new CompositionInteractionAutosave("original");
+  session.stage("primero", () => new Promise<boolean>(resolve => { finish = resolve; }));
+  const first = session.flush();
+  session.stage("último", () => false);
+  assert.equal(await session.flush(), false);
+  finish(true); await first;
+  assert.equal(session.dirty, true);
+  assert.equal(session.state, "ERROR");
+  assert.equal(await session.flush(), false, "La confirmación vieja no habilita un reintento implícito.");
+});
+
 test("un campo inválido conserva su edición y no bloquea una corrección posterior", async () => {
   const session = new CompositionInteractionAutosave("1");
   session.stage("-", () => undefined);
@@ -59,6 +72,17 @@ test("cerrar un panel no descarta su borrador fallido", async () => {
   assert.equal(owner.pending, true);
   session.stage("corregido", () => true);
   assert.equal(await owner.flush(true), true); assert.equal(owner.pending, false);
+});
+
+test("los campos editoriales exclusivos conservan commits seriales entre sesiones", async () => {
+  const owner = new CompositionAutosaveCoordinator();
+  const first = new CompositionInteractionAutosave("a", undefined, { serialize: true });
+  const second = new CompositionInteractionAutosave("b", undefined, { serialize: true });
+  let active = 0, maximum = 0;
+  const save = async () => { active++; maximum = Math.max(maximum, active); await new Promise(resolve => setImmediate(resolve)); active--; return true; };
+  first.stage("a2", save); second.stage("b2", save);
+  assert.deepEqual(await Promise.all([owner.commit(first), owner.commit(second)]), [true, true]);
+  assert.equal(maximum, 1);
 });
 
 const draftId = "10000000-0000-4000-8000-000000000001";
@@ -98,12 +122,13 @@ test("confirmar una edición nueva no rebasa pendientes de otra base o sesión",
   assert.equal(readCompositionPendingEdits(local, draftId)[0]?.baseHash, old.baseHash);
 });
 
-test("una confirmación remota conocida limpia sólo su borrador y los commits se serializan", async () => {
+test("se admiten controles concurrentes y la única cola serializa su persistencia", async () => {
   const owner = new CompositionAutosaveCoordinator(), first = new CompositionInteractionAutosave("a"), second = new CompositionInteractionAutosave("b");
   owner.register(first); owner.register(second);
   let active = 0, maximum = 0;
   const commit = async () => { active++; maximum = Math.max(maximum, active); await new Promise(resolve => setImmediate(resolve)); active--; return true; };
-  first.stage("a2", commit); second.stage("b2", commit);
+  const queue = new CompositionSaveQueue<() => Promise<boolean>>(command => command());
+  first.stage("a2", () => queue.enqueue(commit)); second.stage("b2", () => queue.enqueue(commit));
   await Promise.all([owner.commit(first), owner.commit(second)]);
   assert.equal(maximum, 1);
   first.stage("a3", () => false); await owner.commit(first);

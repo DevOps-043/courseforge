@@ -1,0 +1,133 @@
+{
+  "fechaAnalisis": "2026-10-30",
+  "head": "13774405f90d5d3dd1d87989673c6b4976269f54",
+  "entorno": {
+    "runtime": "v26.7.0",
+    "motor": "Node VM + TypeScript transpileModule; sin navegador ni red",
+    "flags": "defaults del código; no se inspeccionó configuración local"
+  },
+  "casos": [
+    {
+      "caso": "Movimiento mínimo por DOM, sin referencias HTML",
+      "operaciones": [
+        "clip.layout"
+      ],
+      "estrategiaDeclarada": "LIVE_DOM",
+      "patchDom": true,
+      "patchEscena": false,
+      "requiereFallbackConRuntimeListo": false
+    },
+    {
+      "caso": "Sólo posición con opacity incluida en el layout",
+      "operaciones": [
+        "clip.layout"
+      ],
+      "estrategiaDeclarada": "LIVE_DOM",
+      "patchDom": false,
+      "patchEscena": true,
+      "requiereFallbackConRuntimeListo": false
+    },
+    {
+      "caso": "Lote real del inspector, sin HTML controlado",
+      "operaciones": [
+        "clip.duration",
+        "clip.move",
+        "clip.layout"
+      ],
+      "estrategiaDeclarada": "LIVE_TIMELINE",
+      "patchDom": false,
+      "patchEscena": true,
+      "requiereFallbackConRuntimeListo": false
+    },
+    {
+      "caso": "Lote del inspector con deck estático sin referencias",
+      "operaciones": [
+        "clip.duration",
+        "clip.move",
+        "clip.layout"
+      ],
+      "estrategiaDeclarada": "LIVE_TIMELINE",
+      "patchDom": false,
+      "patchEscena": true,
+      "requiereFallbackConRuntimeListo": false
+    },
+    {
+      "caso": "Mismo lote sobre video, con otro clip HTML controlado",
+      "operaciones": [
+        "clip.duration",
+        "clip.move",
+        "clip.layout"
+      ],
+      "estrategiaDeclarada": "LIVE_TIMELINE",
+      "patchDom": false,
+      "patchEscena": false,
+      "requiereFallbackConRuntimeListo": true
+    },
+    {
+      "caso": "Texto nativo en composición con otro clip HTML controlado",
+      "operaciones": [
+        "clip.text-content"
+      ],
+      "estrategiaDeclarada": "LIVE_TIMELINE",
+      "patchDom": false,
+      "patchEscena": false,
+      "requiereFallbackConRuntimeListo": true
+    }
+  ],
+  "colaDuranteAckVisual": {
+    "ackVisualSimulado": true,
+    "estadoCola": "RUNNING",
+    "savingGlobal": true,
+    "persistenciaTerminada": false
+  },
+  "timeoutSinAck": {
+    "codigo": "TIMEOUT",
+    "duracionObservadaMs": 762.53
+  },
+  "limiteTelemetria": {
+    "intentados": 110,
+    "aceptados": 100
+  },
+  "costeProyeccionSintetica": [
+    {
+      "clips": 1,
+      "nodosEnPatch": 1,
+      "bytesPatch": 1395,
+      "medianaConstruccionNodeMs": 0.112
+    },
+    {
+      "clips": 50,
+      "nodosEnPatch": 50,
+      "bytesPatch": 57762,
+      "medianaConstruccionNodeMs": 0.778
+    },
+    {
+      "clips": 200,
+      "nodosEnPatch": 200,
+      "bytesPatch": 231462,
+      "medianaConstruccionNodeMs": 2.094
+    },
+    {
+      "clips": 500,
+      "nodosEnPatch": 500,
+      "bytesPatch": 579762,
+      "medianaConstruccionNodeMs": 4.866
+    }
+  ],
+  "fuentesSha256": {
+    "domains/production/composition-editor/composition-preview-scene-patch.ts": "3d55331b2a59987e549535800d99a07eba9b3503a8bc0212e4ae6118084a23aa",
+    "domains/production/composition-editor/composition-preview-visual-patch.ts": "3f327f2be1098284125b4111d8e20766a687fc3ab3aee096e9e40d8f773e8cf0",
+    "domains/production/composition-editor/composition-save-queue.ts": "34707917fa0232132e71fa09d7d20a5c9e9c2bdb8f4e00e5ae833e9048fb713c",
+    "domains/production/composition-editor/composition-preview-sync.config.ts": "fcfa4cabf2f832c9e0c961e65a45d3cc9036b275e19889e4e10df76ffdadc782",
+    "domains/production/composition-editor/composition-preview-telemetry.client.ts": "18a46c760b6f4e8c651529807f2eaeba636591f153babc8a0b474131a4fc1e00",
+    "domains/materials/components/composition-editor/NativeCompositionPreview.tsx": "7b28b44369e07a5c940af5c432c7cef7e40c88ac1e4e112d7a69e57a3ab1dda6",
+    "domains/materials/components/composition-editor/CompositionInspector.tsx": "1c64190c24724c127a4671b8cc62b05754854a3504b018aa7cdea5c544cb41b9",
+    "domains/materials/components/composition-editor/CompositionAutosaveBoundary.tsx": "3246780165a805df347dbb988b6ae47873e5034f95d1a7c3fc536adc8f4d0726"
+  },
+  "limites": [
+    "Referencias HTML sintéticas validadas sólo como datos; no acreditan autorización ni revisión real.",
+    "ACK visual simulado para observar la cola; no es un flujo completo del componente.",
+    "Tiempos de construcción Node locales: no son latencia del usuario, p95 ni medición de React/DOM.",
+    "El timeout omite el ACK deliberadamente; no prueba que ocurra en producción."
+  ]
+}

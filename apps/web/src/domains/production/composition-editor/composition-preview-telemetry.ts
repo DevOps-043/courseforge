@@ -3,7 +3,8 @@ import { z } from "zod";
 export const COMPOSITION_PREVIEW_TELEMETRY_CONFIG = {
   batchSize: 25,
   flushIntervalMs: 10_000,
-  maxEventsPerSession: 100,
+  maxEventsPerWindow: 100,
+  eventBudgetWindowMs: 60_000,
   maxRequestBytes: 32 * 1024,
 } as const;
 
@@ -11,12 +12,14 @@ export const COMPOSITION_PREVIEW_TELEMETRY_CONFIG = {
 export const COMPOSITION_PREVIEW_LATENCY_BUCKETS_MS = [50, 100, 250, 500, 1_000, 3_000, 5_000, 10_000] as const;
 
 export const compositionPreviewMetricNameSchema = z.enum([
+  "admission_to_visual_update_ms",
   "buffering_duration_ms",
   "edit_to_visual_update_ms",
   "iframe_reload_ms",
   "media_warmup_ms",
   "play_start_latency_ms",
   "preview_initial_ready_ms",
+  "preview_fallback",
   "preview_sync_event",
   "runtime_visual_patch_ms",
   "save_roundtrip_ms",
@@ -24,18 +27,21 @@ export const compositionPreviewMetricNameSchema = z.enum([
 export type CompositionPreviewMetricName = z.infer<typeof compositionPreviewMetricNameSchema>;
 
 export const COMPOSITION_PREVIEW_SLOW_THRESHOLD_MS: Record<CompositionPreviewMetricName, number> = {
+  admission_to_visual_update_ms: 1_000,
   buffering_duration_ms: 500,
   edit_to_visual_update_ms: 3_000,
   iframe_reload_ms: 3_000,
   media_warmup_ms: 5_000,
   play_start_latency_ms: 1_000,
   preview_initial_ready_ms: 3_000,
+  preview_fallback: Number.POSITIVE_INFINITY,
   preview_sync_event: Number.POSITIVE_INFINITY,
   runtime_visual_patch_ms: 50,
   save_roundtrip_ms: 800,
 };
 
 export const compositionPreviewMetricContextSchema = z.object({
+  fallbackReason: z.enum(["CONTROLLED_HTML", "DEPENDENCY_REQUIRES_COMPILE", "OPERATION_REQUIRES_COMPILE", "RUNTIME_NOT_READY", "BASE_MISMATCH", "INCREMENTAL_DISABLED", "RUNTIME_PATCH_FAILED"]).optional(),
   operationCount: z.number().int().min(1).max(100).optional(),
   operationNames: z.array(z.string().regex(/^[a-z0-9.-]+$/).max(80)).max(12).optional(),
   outcome: z.enum(["CONFLICT", "ERROR", "SUCCESS"]).optional(),
@@ -54,6 +60,9 @@ export const compositionPreviewMetricSchema = z.object({
   mediaIds: z.array(z.string().trim().min(1).max(160)).max(6).default([]),
   name: compositionPreviewMetricNameSchema,
 }).strict().superRefine((metric, validation) => {
+  if (metric.name === "preview_fallback" && (metric.durationMs !== 0 || !metric.context?.fallbackReason)) {
+    validation.addIssue({ code: "custom", message: "Una recuperación de preview requiere motivo acotado y duración cero." });
+  }
   if (metric.name === "preview_sync_event" && (metric.durationMs !== 0 || !metric.context?.syncOutcome)) {
     validation.addIssue({ code: "custom", message: "A sync event requires a bounded outcome and zero duration." });
   }
@@ -112,6 +121,7 @@ export function summarizeCompositionPreviewMetricContexts(metrics: CompositionPr
   const outcomes = new Set<string>();
   const outcomeCounts = { CONFLICT: 0, ERROR: 0, SUCCESS: 0 };
   const reloadReasons = new Set<string>();
+  const fallbackReasons = new Set<string>();
   const updateStrategies = new Set<string>();
   const runtimeOutcomes = new Set<string>();
   const runtimeOutcomeCounts = { APPLIED: 0, DISPOSED: 0, INVALID_PATCH: 0, RUNTIME_ERROR: 0, SEND_REJECTED: 0, TARGET_NOT_FOUND: 0, TIMEOUT: 0, VERSION_MISMATCH: 0 };
@@ -126,6 +136,7 @@ export function summarizeCompositionPreviewMetricContexts(metrics: CompositionPr
       outcomeCounts[context.outcome] += 1;
     }
     if (context.reloadReason) reloadReasons.add(context.reloadReason);
+    if (context.fallbackReason) fallbackReasons.add(context.fallbackReason);
     if (context.updateStrategy) updateStrategies.add(context.updateStrategy);
     if (context.runtimeOutcome) {
       runtimeOutcomes.add(context.runtimeOutcome);
@@ -140,6 +151,7 @@ export function summarizeCompositionPreviewMetricContexts(metrics: CompositionPr
     outcomeCounts,
     outcomes: [...outcomes].sort(),
     reloadReasons: [...reloadReasons].sort(),
+    fallbackReasons: [...fallbackReasons].sort(),
     requestBytes,
     runtimeOutcomes: [...runtimeOutcomes].sort(),
     runtimeOutcomeCounts,

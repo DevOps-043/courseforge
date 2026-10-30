@@ -113,6 +113,18 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
   cambio de herramienta, entrega y cambio de lección. No se guardan valores
   numéricos vacíos como cero. Los efectos de sincronización de los inspectores
   conservan el borrador mientras hay una interacción pendiente.
+- Continuidad nativa (2026-10-30): `CompositionLocalEdits` proyecta los comandos
+  admitidos sobre el último documento confirmado. Inspector y timeline siguen
+  editables durante el PUT nativo; la única cola existente persiste en orden con
+  If-Match. Cada respuesta confirma sólo su comando y recompone los posteriores;
+  historial y journal usan el anterior confirmado, no el borrador futuro. Un
+  fallo cancela el envío de la cola restante y conserva sus copias recuperables.
+- El inspector valida el grupo de campos y emite sólo propiedades modificadas.
+  Cambiar X no reenvía timing ni opacidad. El contenido de texto nativo se aplica
+  como texto literal sobre su propia capa, sin reconstruir escena ni tocar
+  raíces HTML controladas; tipografías nuevas, captions/timing que necesiten
+  escena en composiciones HTML y revisiones editoriales conservan compilación.
+  No se elimina la barrera de autoridad/manifiesto para evitar una recarga.
 - La cola conserva sus límites y falla cerrada, pero los comandos admitidos se
   registran primero con `composition-pending-edits.ts`: máximo 50, 2 MiB y 24 h.
   Los comandos no enviados sobreviven a la cancelación de la cola. Su recuperación
@@ -130,6 +142,16 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 - Regresión: `test:composition-autosave` y el fixture de navegador
   `apps/web/tools/qa/composition-autosave.smoke.mjs`. El fixture usa persistencia
   simulada; no acredita una sesión autenticada, SQL real ni render del proveedor.
+- `qa:composition-preview-scene` añade tres intenciones con el primer PUT
+  retenido, respuestas tardías, 500/409 y protección de texto frente a raíces
+  HTML. Las pruebas de navegador usan persistencia simulada y el runtime real.
+- Observabilidad: `admission_to_visual_update_ms` mide desde admisión local hasta
+  ACK, incluyendo copia local, proyección y cola visual; excluye la pausa de
+  escritura de 600 ms. `save_roundtrip_ms` termina al leer la respuesta HTTP,
+  antes del ACK/historial. `preview_fallback` distingue HTML, dependencias,
+  operación, runtime no listo, base incompatible, flag desactivado y fallo de
+  patch. La cuota es de 100 eventos/minuto por instancia y batches de 25;
+  no se vacía la cuota al enviar ni se registran contenido o URLs.
 
 - Formato canonico: `courseforge-composition-v2`.
 - Concurrencia: hash SHA-256 estable, enviado como ETag fuerte en `If-Match`.

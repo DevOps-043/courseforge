@@ -145,6 +145,7 @@ test("accepts bounded edit diagnostics without URLs or free-form labels", () => 
     reloadReasons: [],
     requestBytes: 640,
     runtimeOutcomes: [],
+    fallbackReasons: [],
     runtimeOutcomeCounts: { APPLIED: 0, DISPOSED: 0, INVALID_PATCH: 0, RUNTIME_ERROR: 0, SEND_REJECTED: 0, TARGET_NOT_FOUND: 0, TIMEOUT: 0, VERSION_MISMATCH: 0 },
     updateStrategies: ["LIVE_DOM"],
   });
@@ -170,6 +171,21 @@ test("batches preview telemetry through the authenticated draft endpoint", async
     metrics: [validMetric],
     sessionId: "00000000-0000-4000-8000-000000000099",
   });
+});
+
+test("la cuota limita cada minuto y permite observar sesiones largas sin crecer el buffer", async () => {
+  let now = 0;
+  const telemetry = new CompositionPreviewTelemetryBuffer({
+    draftId: "00000000-0000-4000-8000-000000000041", now: () => now,
+    fetchImpl: (async () => new Response(null, { status: 202 })) as typeof fetch,
+  });
+  for (let i = 0; i < 100; i++) assert.equal(telemetry.record(validMetric), true);
+  assert.equal(telemetry.record(validMetric), false);
+  await telemetry.flush();
+  assert.equal(telemetry.record(validMetric), false, "Vaciar un batch no evade la cuota.");
+  now = 60_000;
+  assert.equal(telemetry.record({ ...validMetric, name: "admission_to_visual_update_ms" }), true);
+  await telemetry.dispose();
 });
 
 test("formats stable server timings and rejects unsafe correlation ids", () => {

@@ -1391,6 +1391,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           if (!change || typeof change.hfId !== "string") { finish(false, "INVALID_PATCH"); return; }
           const target = document.querySelector('[data-hf-id="' + CSS.escape(change.hfId) + '"]');
           if (!(target instanceof HTMLElement)) { finish(false, "TARGET_NOT_FOUND"); return; }
+          if (change.textContent !== undefined && (typeof change.textContent !== "string" || !change.textContent.length || change.textContent.length > 4000
+            || !target.querySelector(".composition-native-text") || target.closest("[data-courseforge-html-scope]")
+            || target.querySelector("[data-courseforge-html-scope]"))) { finish(false, "INVALID_PATCH"); return; }
           resolvedChanges.push({ change, target });
         }
         try {
@@ -1424,6 +1427,8 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
             else clearTarget("PARENT");
           }
           for (const { change, target } of resolvedChanges) {
+            // Texto literal de una capa nativa: no se importa HTML ni se toca el árbol editorial.
+            if (change.textContent !== undefined) target.querySelector(".composition-native-text").textContent = change.textContent;
             if (change.layout) {
               Object.assign(target.style, {
                 height: change.layout.height + "px",

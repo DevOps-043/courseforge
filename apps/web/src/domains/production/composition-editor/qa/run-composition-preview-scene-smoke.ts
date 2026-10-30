@@ -123,7 +123,25 @@ async function main() {
 
     // Consecutive local edits keep the same sandbox and loaded media.
     await apply([{ type: "clip.text-content", clipId: "live-text", text: "Restaurado" }]);
-    const report = { browserPath: browser.browserPath, changes: sequence, iframeNavigationsAfterEdits: 0, preservesVideoElement: true, unchangedVideoRequests: 0, patchDurationMs: durations };
+    async function patchText(textContent: string) {
+      sequence++;
+      return evaluate<{ code: string }>(browser.client, `new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("ACK_TIMEOUT")), 2000);
+        const listener = event => { if (event.data?.type !== "courseforge-composition-visual-patch-result" || event.data.sequence !== ${sequence}) return;
+          removeEventListener("message", listener); clearTimeout(timeout); resolve(event.data); };
+        addEventListener("message", listener);
+        postMessage(${JSON.stringify({ type: "courseforge-composition-visual-patch", baseDocumentHash: hash, sequence, protocolVersion: 1, patch: { changes: [{ hfId: text.clip.hfId, textContent }] } }).replace(/</g, "\\u003c")}, "*");
+      })`);
+    }
+    const literal = '<img src=x onerror="throw new Error()">';
+    assert.equal((await patchText(literal)).code, "APPLIED");
+    assert.equal(await evaluate(browser.client, "document.querySelector('#live-text-motion').textContent"), literal);
+    assert.equal(await evaluate(browser.client, "document.querySelector('#live-text-motion img') === null"), true);
+    // Simula la barrera DOM del runtime; no constituye una revisión HTML autorizada.
+    await evaluate(browser.client, `document.querySelector('#live-text-motion').setAttribute('data-courseforge-html-scope', 'qa'); true`);
+    assert.equal((await patchText("No debe tocar el árbol protegido")).code, "INVALID_PATCH");
+    assert.equal(await evaluate(browser.client, "document.querySelector('#live-text-motion').textContent"), literal);
+    const report = { nativeTextLiteralPatch: "passed", controlledHtmlTreeProtected: "passed", browserPath: browser.browserPath, changes: sequence, iframeNavigationsAfterEdits: 0, preservesVideoElement: true, unchangedVideoRequests: 0, patchDurationMs: durations };
     await writeFile(resolve(output, "report.json"), JSON.stringify(report, null, 2));
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } finally {
