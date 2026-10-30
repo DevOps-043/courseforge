@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { CompositionGroupingPolicyError } from "./composition-group-policy";
 import { z } from "zod";
 import { narrativeFragmentApplyRequestSchema, narrativeFragmentReceiptSchema,
   type NarrativeFragmentApplyRequest, type NarrativeFragmentReceipt } from "./composition-narrative-fragment-command-contract";
@@ -62,6 +63,8 @@ export async function applyNarrativeFragment(params: Parameters) {
     committed = await params.commands.commit({ ...scope, requestFingerprint: fingerprint, plan: planned.plan });
     params.signal.throwIfAborted();
   } catch (error) {
+    // Esta denegación ocurre antes de invocar el commit, por lo que no es incierta.
+    if (error instanceof CompositionGroupingPolicyError) throw error;
     // Includes cancellation after dispatch: neither failure nor timeout proves rollback.
     throw new NarrativeExtractionCommitUnconfirmedError(request.commandId, error);
   }

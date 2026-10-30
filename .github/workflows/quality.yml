@@ -35,6 +35,19 @@ jobs:
         run: npm run verify:harness
       - run: npm run compliance:check
       - run: npm run verify
+      - name: Verificar agrupaciones anidadas
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npm run test:composition-nested-groups
+      - name: Verificar guards y copia narrativa en PostgreSQL aislado
+        run: |
+          npm install --prefix .tmp/sql-verification --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.3.14
+          npm run test:composition-nested-groups:sql
+      - name: Verificar flujo de agrupaciones en Chromium
+        working-directory: apps/web
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: node .tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-nested-groups-smoke.js
       - name: Verify composition preview/render conformance
         env:
           CHROME_PATH: /usr/bin/google-chrome

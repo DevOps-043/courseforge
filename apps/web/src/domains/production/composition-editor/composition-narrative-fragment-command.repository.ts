@@ -1,3 +1,6 @@
+import { assertCompositionGroupingWrite } from "./composition-group-policy";
+import { CompositionGroupingPolicyError } from "./composition-group-policy";
+import { getCompositionGroupingCapabilities } from "./composition-group-capabilities.server";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NarrativeFragmentCommandRepository } from "./composition-narrative-fragment-apply.server";
@@ -16,7 +19,16 @@ export interface NarrativeFragmentRpcTransport {
     parameters: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }>;
 }
 export function createSupabaseNarrativeFragmentRpcTransport(supabase: SupabaseClient, signal: AbortSignal): NarrativeFragmentRpcTransport {
-  return { invoke: (name, parameters) => supabase.rpc(name, parameters).retry(false).abortSignal(signal) };
+  return { invoke: async (name, parameters) => {
+    if (name === "commit_narrative_fragment") {
+      const plan = parameters.p_plan as { operations?: Array<{ type: string; childGroupIds?: string[] }> };
+      if (plan?.operations?.some(operation => operation.type === "group.create" && operation.childGroupIds?.length)
+        && !(await getCompositionGroupingCapabilities(supabase)).canCreateNestedGroups) {
+        throw new CompositionGroupingPolicyError("COMPOSITION_NESTED_GROUPS_DISABLED");
+      }
+    }
+    return supabase.rpc(name, parameters).retry(false).abortSignal(signal);
+  } };
 }
 
 /** Requires audiovisual RPCs. Never falls back to voice RPC, generic append or sequential clip writes. */
@@ -48,6 +60,8 @@ export function createNarrativeFragmentCommandRepository(reads: Pick<NarrativeFr
       throw new Error("NARRATIVE_FRAGMENT_APPEND_BATCH_INVALID");
     }
     const next = applyCompositionEditorPatches(current.document, operations, "USER");
+    assertCompositionGroupingWrite({ before: current.document, after: next, clientVersion: "2",
+      canCreateNestedGroups: process.env.COMPOSITION_NESTED_GROUPS_ENABLED === "true" });
     if (!preservesCompositionHtmlRevisionReferences(current.document, next)) throw new Error("Fragment cannot retarget HTML references");
     const response = await transport.invoke("commit_narrative_fragment", {
       p_draft_id: scope.draftId, p_organization_id: scope.organizationId, p_actor_id: scope.userId, p_command_id: scope.commandId,

@@ -1,3 +1,5 @@
+import { getCompositionGroupingCapabilities } from "@/domains/production/composition-editor/composition-group-capabilities.server";
+import { COMPOSITION_GROUPING_CLIENT_HEADER, CompositionGroupingPolicyError } from "@/domains/production/composition-editor/composition-group-policy";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext, TenantContextLookupError } from "@/lib/server/tenant-context";
@@ -78,8 +80,9 @@ export async function GET(request: Request, context: RouteContext) {
       organizationId: authorization.organizationId,
       supabase: authorization.admin,
     });
-    return apiSuccessResponse({ data }, { headers: { ETag: formatCompositionDocumentEtag(data.documentHash), "Cache-Control": "private, no-store" }, requestId });
+    return apiSuccessResponse({ data: { ...data, capabilities: await getCompositionGroupingCapabilities(authorization.admin) } }, { headers: { ETag: formatCompositionDocumentEtag(data.documentHash), "Cache-Control": "private, no-store" }, requestId });
   } catch (error) {
+    if (error instanceof CompositionGroupingPolicyError) return apiErrorResponse({ code: API_ERROR_CODE.conflict, details: { reason: error.code }, message: error.message, requestId, status: error.status });
     if (error instanceof TenantContextLookupError) return tenantUnavailableResponse(error, requestId);
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de borrador inválido.", requestId, status: 400 });
     if (error instanceof CompositionDocumentPersistenceError) return compositionErrorResponse(error, requestId);
@@ -151,12 +154,14 @@ export async function PUT(request: Request, context: RouteContext) {
       expectedDocumentHash: precondition.documentHash,
       organizationId: authorization.organizationId,
       patch: body,
+      groupingClientVersion: request.headers.get(COMPOSITION_GROUPING_CLIENT_HEADER),
       signal: persistenceSignal,
       supabase: authorization.admin,
       userId: authorization.userId,
     });
-    return apiSuccessResponse({ data }, { headers: { ETag: formatCompositionDocumentEtag(data.documentHash), "Cache-Control": "private, no-store" }, requestId });
+    return apiSuccessResponse({ data: { ...data, capabilities: await getCompositionGroupingCapabilities(authorization.admin) } }, { headers: { ETag: formatCompositionDocumentEtag(data.documentHash), "Cache-Control": "private, no-store" }, requestId });
   } catch (error) {
+    if (error instanceof CompositionGroupingPolicyError) return apiErrorResponse({ code: API_ERROR_CODE.conflict, details: { reason: error.code }, message: error.message, requestId, status: error.status });
     if (error instanceof TenantContextLookupError) return tenantUnavailableResponse(error, requestId);
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, details: { reason: "COMPOSITION_PATCH_INVALID" }, message: error.issues[0]?.message || "La edición solicitada no es válida.", requestId, status: 400 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CompositionGroupingPolicyError } from "../composition-group-policy";
 import { API_ERROR_CODE, createApiErrorBody, type ApiErrorCode } from "../../../../lib/server/api-contract";
 import { createOperationalLogger, resolveCorrelationId } from "../../../../lib/server/operational-logger";
 import { NARRATIVE_EXTRACTION_QUERY_TIMEOUT_MS } from "../composition-narrative-extraction-contract";
@@ -86,6 +87,10 @@ export function createNarrativeCommandHttpHandler<C extends { commandId: string 
       }
       return succeed(result.data);
     } catch (error) {
+      if (error instanceof CompositionGroupingPolicyError) {
+        mayHaveCommitted = false;
+        return fail(409, API_ERROR_CODE.conflict, error.message, error.code);
+      }
       if (dependencies.logFailure) dependencies.logFailure(requestId, error, command?.commandId);
       else createOperationalLogger(dependencies.logNamespace ?? "production.narrative_extraction.command", { correlationId: requestId })
         .error("production.narrative_command.command_failed", error, { commandId: command?.commandId, mode });

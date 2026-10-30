@@ -1,3 +1,4 @@
+import { resolveCompositionGroupClipIds } from "./composition-group-hierarchy";
 import type { CompositionClip, CompositionEditorDocument } from "./composition-document.types";
 import type { CompositionEditorPatchOperation } from "./editor-patch.types";
 
@@ -122,7 +123,7 @@ function resolveEditableVisualClips(document: CompositionEditorDocument, selecte
 function assertCompleteVisualGroups(document: CompositionEditorDocument, selectedIds: ReadonlySet<string>) {
   const visualTrackIds = new Set(document.tracks.filter((track) => track.kind !== "AUDIO").map((track) => track.id));
   for (const group of document.groups || []) {
-    const visualIds = group.clipIds.filter((clipId) => {
+    const visualIds = resolveCompositionGroupClipIds(document, group.id).filter((clipId) => {
       const clip = document.clips.find((candidate) => candidate.id === clipId);
       return clip && visualTrackIds.has(clip.trackId);
     });

@@ -11,6 +11,7 @@ export type CompositionAgentProposal = CompositionAgentProposalEnvelope & {
 };
 
 export interface CompositionDocumentPayload {
+  capabilities?: { groupingVersion: 2; canCreateNestedGroups: boolean };
   document: CompositionEditorDocument;
   documentHash: string;
   version: number;

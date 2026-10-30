@@ -1,4 +1,5 @@
 import type { CompositionEditorDocument } from "./composition-document.types";
+import { buildCompositionGroupIndex } from "./composition-group-hierarchy";
 import { resolveCompositionGroupBounds } from "./composition-group.service";
 
 /**
@@ -83,9 +84,10 @@ type ResolvedGroup = {
 export function resolveCompositionGroupColors(
   document: Pick<CompositionEditorDocument, "clips" | "groups">,
 ): ReadonlyMap<string, CompositionGroupColor> {
+  const groupIndex = buildCompositionGroupIndex(document.groups);
   const groupsWithBounds = (document.groups || [])
     .flatMap((group) => {
-      const bounds = resolveCompositionGroupBounds(document, group.id);
+      const bounds = resolveCompositionGroupBounds(document, group.id, groupIndex);
       return bounds ? [{ ...bounds, groupId: group.id, order: group.order }] : [];
     })
     .sort((left, right) => (

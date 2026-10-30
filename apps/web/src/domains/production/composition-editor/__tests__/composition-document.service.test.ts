@@ -448,6 +448,7 @@ test("allows trusted system reconciliation to add a clip without weakening the a
     assets: [],
     plan: { accentColor: "#38BDF8", durationSeconds: 8, subtitle: "Prueba", title: "Sistema" },
   });
+  document.groupingVersion = 2;
   const addedClip = {
     ...document.clips[0]!,
     hfId: "deck-slide-system",
@@ -486,6 +487,7 @@ test("allows trusted system reconciliation to add a clip without weakening the a
   });
 
   assert.equal(saved.document.clips.some((clip) => clip.id === addedClip.id), true);
+  assert.equal(saved.document.groupingVersion, 2);
   assert.equal(saved.version, 2);
 });
 

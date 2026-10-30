@@ -1,0 +1,10 @@
+[
+  { "name": "legacy", "valid": true, "document": { "clips": [{"id":"clip-a"},{"id":"clip-b"}], "groups": [{"id":"group-a","order":0,"clipIds":["clip-a","clip-b"]}] } },
+  { "name": "mixto", "valid": true, "document": { "groupingVersion": 2, "clips": [{"id":"clip-a"},{"id":"clip-b"},{"id":"clip-c"}], "groups": [{"id":"group-a","order":0,"clipIds":["clip-a","clip-b"]},{"id":"group-parent","order":1,"clipIds":["clip-c"],"childGroupIds":["group-a"]}] } },
+  { "name": "ciclo", "valid": false, "document": { "groupingVersion": 2, "clips": [{"id":"clip-a"},{"id":"clip-b"}], "groups": [{"id":"group-a","order":0,"clipIds":["clip-a"],"childGroupIds":["group-b"]},{"id":"group-b","order":1,"clipIds":["clip-b"],"childGroupIds":["group-a"]}] } },
+  { "name": "padre duplicado", "valid": false, "document": { "groupingVersion": 2, "clips": [{"id":"clip-a"},{"id":"clip-b"},{"id":"clip-c"},{"id":"clip-d"}], "groups": [{"id":"group-a","order":0,"clipIds":["clip-a","clip-b"]},{"id":"group-p","order":1,"clipIds":["clip-c"],"childGroupIds":["group-a"]},{"id":"group-q","order":2,"clipIds":["clip-d"],"childGroupIds":["group-a"]}] } },
+  { "name": "referencia inexistente", "valid": false, "document": { "groupingVersion": 2, "clips": [{"id":"clip-a"}], "groups": [{"id":"group-a","order":0,"clipIds":["clip-a"],"childGroupIds":["missing"]}] } },
+  { "name": "hijos sin marcador", "valid": false, "document": { "clips": [{"id":"clip-a"},{"id":"clip-b"},{"id":"clip-c"}], "groups": [{"id":"group-a","order":0,"clipIds":["clip-a","clip-b"]},{"id":"group-p","order":1,"clipIds":["clip-c"],"childGroupIds":["group-a"]}] } },
+  { "name": "version desconocida", "valid": false, "document": { "groupingVersion": 3, "clips": [{"id":"clip-a"},{"id":"clip-b"}], "groups": [{"id":"group-a","order":0,"clipIds":["clip-a","clip-b"]}] } },
+  { "name": "clip duplicado", "valid": false, "document": { "clips": [{"id":"clip-a"}], "groups": [{"id":"group-a","order":0,"clipIds":["clip-a","clip-a"]}] } }
+]

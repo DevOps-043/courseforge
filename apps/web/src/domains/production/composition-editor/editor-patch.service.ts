@@ -1,3 +1,5 @@
+import { resolveCompositionGroupClipIds, validateCompositionGroupGraph } from "./composition-group-hierarchy";
+import { ungroupCompositionGroup, wrapCompositionGroup } from "./composition-group.service";
 import { HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT } from "./html-editing/html-editing-reference.contract";
 import { retainCompositionNativeFragment } from "./composition-native-fragment.service";
 import { areCaptionEffectsEnabled } from "./composition-caption-effects.types";
@@ -62,6 +64,11 @@ export class CompositionEditorPatchError extends Error {
   }
 }
 
+function wrapCompositionGroupOrThrow(document: Parameters<typeof wrapCompositionGroup>[0], operation: Parameters<typeof wrapCompositionGroup>[1]) {
+  try { wrapCompositionGroup(document, operation); }
+  catch (error) { throw new CompositionEditorPatchError(error instanceof Error ? error.message : "No se pudo agrupar la selección."); }
+}
+
 const CLIP_BOUNDARY_EPSILON_SECONDS = 0.001;
 
 function resolveLinkedAvatarAudioClipForMove(
@@ -91,8 +98,9 @@ function resolveGroupMoveClipIdsOrThrow(
   groupId: string,
 ) {
   const group = findCompositionGroupOrThrow(document, groupId);
-  const affectedClipIds = new Set(group.clipIds);
-  for (const clipId of group.clipIds) {
+  const leaves = resolveCompositionGroupClipIds(document, group.id);
+  const affectedClipIds = new Set(leaves);
+  for (const clipId of leaves) {
     const resolution = resolveAvatarAudioLink(document, clipId);
     if (resolution.status === "AMBIGUOUS") {
       throw new CompositionEditorPatchError(
@@ -104,7 +112,7 @@ function resolveGroupMoveClipIdsOrThrow(
       ? resolution.voice.id
       : resolution.avatar.id;
     const counterpartGroup = findCompositionGroupForClip(document, counterpartId);
-    if (counterpartGroup && counterpartGroup.id !== group.id) {
+    if (counterpartGroup && !affectedClipIds.has(counterpartId)) {
       throw new CompositionEditorPatchError(
         "El vínculo avatar-voz atraviesa dos grupos distintos. Agrupa ambos clips juntos o retira uno de su grupo.",
       );
@@ -238,17 +246,16 @@ export function ensureCanvasDurationForClipPatches(
     startSeconds: clip.startSeconds,
   }]));
   let groups = structuredClone(document.groups || []);
+  let groupingVersion = document.groupingVersion;
 
   for (const operation of operations) {
     if (operation.type === "group.create") {
-      groups.push({
-        clipIds: [...operation.clipIds],
-        id: operation.groupId,
-        ...(operation.label ? { label: operation.label } : {}),
-        order: groups.reduce((maximum, group) => Math.max(maximum, group.order), -1) + 1,
-      });
+      const projection = { clips: [...timings.keys()].map(id => ({ id })), groups, groupingVersion };
+      wrapCompositionGroupOrThrow(projection, operation);
+      groups = projection.groups ?? [];
+      groupingVersion = projection.groupingVersion;
     } else if (operation.type === "group.ungroup") {
-      groups = groups.filter((group) => group.id !== operation.groupId);
+      groups = normalizeCompositionGroups(ungroupCompositionGroup(groups, operation.groupId), [...timings.keys()].map(id => ({ id }))) ?? [];
     } else if (operation.type === "group.add-clips") {
       const group = groups.find((candidate) => candidate.id === operation.groupId);
       if (group) group.clipIds.push(...operation.clipIds);
@@ -257,11 +264,10 @@ export function ensureCanvasDurationForClipPatches(
       if (group) {
         const removedIds = new Set(operation.clipIds);
         group.clipIds = group.clipIds.filter((clipId) => !removedIds.has(clipId));
-        if (group.clipIds.length < 2) groups = groups.filter((candidate) => candidate.id !== group.id);
+        groups = normalizeCompositionGroups(groups, [...timings.keys()].map(id => ({ id }))) ?? [];
       }
     } else if (operation.type === "group.move") {
-      const group = groups.find((candidate) => candidate.id === operation.groupId);
-      const memberTimings = group?.clipIds.flatMap((clipId) => {
+      const memberTimings = resolveCompositionGroupClipIds({ groups }, operation.groupId).flatMap((clipId) => {
         const timing = timings.get(clipId);
         return timing ? [{ clipId, timing }] : [];
       }) || [];
@@ -300,10 +306,7 @@ export function ensureCanvasDurationForClipPatches(
       }
     } else if (operation.type === "clip.remove") {
       timings.delete(operation.clipId);
-      groups = groups.flatMap((group) => {
-        const clipIds = group.clipIds.filter((clipId) => clipId !== operation.clipId);
-        return clipIds.length >= 2 ? [{ ...group, clipIds }] : [];
-      });
+      groups = normalizeCompositionGroups(groups, [...timings.keys()].map(id => ({ id }))) ?? [];
     } else if (operation.type === "clip.move") {
       const timing = timings.get(operation.clipId);
       const previousStartSeconds = timing?.startSeconds;
@@ -349,6 +352,8 @@ export function applyCompositionEditorPatches(
   operations: CompositionEditorPatchOperation[],
   source: "AGENT" | "SYSTEM" | "USER" = "USER",
 ) {
+  const groupIssues = validateCompositionGroupGraph(document.groups ?? [], new Set(document.clips.map(clip => clip.id)), document.groupingVersion);
+  if (groupIssues.length) throw new CompositionEditorPatchError(groupIssues[0]);
   let next = structuredClone(document);
   const originalSceneIds = new Set(document.clips.flatMap((clip) => clip.sceneId ? [clip.sceneId] : []));
   next.format = COMPOSITION_DOCUMENT_FORMAT;
@@ -360,6 +365,7 @@ export function applyCompositionEditorPatches(
         throw new CompositionEditorPatchError("La reconciliación completa del documento es una operación exclusiva del sistema.");
       }
       next = structuredClone(operation.document);
+      if (document.groupingVersion === 2) next.groupingVersion = 2;
       next.format = COMPOSITION_DOCUMENT_FORMAT;
       continue;
     }
@@ -368,6 +374,7 @@ export function applyCompositionEditorPatches(
         throw new CompositionEditorPatchError("Solo una acción explícita del usuario puede restaurar una versión anterior.");
       }
       next = structuredClone(operation.document);
+      if (document.groupingVersion === 2) next.groupingVersion = 2;
       if (document.sourceInsertionMode) next.sourceInsertionMode = document.sourceInsertionMode;
       else delete next.sourceInsertionMode;
       next.format = COMPOSITION_DOCUMENT_FORMAT;
@@ -590,29 +597,13 @@ export function applyCompositionEditorPatches(
       throw new CompositionEditorPatchError("La edición de grupos requiere una acción explícita del usuario.");
     }
     if (operation.type === "group.create") {
-      next.groups ||= [];
-      if (next.groups.some((group) => group.id === operation.groupId)) {
-        throw new CompositionEditorPatchError("El identificador del grupo ya existe.");
-      }
-      const selectedClipIds = new Set(operation.clipIds);
-      if (selectedClipIds.size < 2 || operation.clipIds.some((clipId) => !next.clips.some((clip) => clip.id === clipId))) {
-        throw new CompositionEditorPatchError("Un grupo requiere al menos dos clips existentes.");
-      }
-      const alreadyGrouped = operation.clipIds.find((clipId) => findCompositionGroupForClip(next, clipId));
-      if (alreadyGrouped) {
-        throw new CompositionEditorPatchError("Cada clip solo puede pertenecer a un grupo.");
-      }
-      next.groups.push({
-        clipIds: [...operation.clipIds],
-        id: operation.groupId,
-        ...(operation.label ? { label: operation.label } : {}),
-        order: next.groups.reduce((maximum, group) => Math.max(maximum, group.order), -1) + 1,
-      });
+      wrapCompositionGroupOrThrow(next, operation);
       continue;
     }
     if (operation.type === "group.ungroup") {
       findCompositionGroupOrThrow(next, operation.groupId);
-      next.groups = next.groups!.filter((group) => group.id !== operation.groupId);
+      next.groups = ungroupCompositionGroup(next.groups!, operation.groupId);
+      normalizeDocumentGroups(next);
       continue;
     }
     if (operation.type === "group.add-clips") {
@@ -638,9 +629,7 @@ export function applyCompositionEditorPatches(
       }
       const removedClipIds = new Set(operation.clipIds);
       group.clipIds = group.clipIds.filter((clipId) => !removedClipIds.has(clipId));
-      if (group.clipIds.length < 2) {
-        next.groups = next.groups!.filter((candidate) => candidate.id !== group.id);
-      }
+      normalizeDocumentGroups(next);
       continue;
     }
     if (operation.type === "group.move") {
