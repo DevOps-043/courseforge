@@ -160,6 +160,7 @@ import {
   type SoundEffectCatalogItem,
 } from "./CompositionStudioLibrary";
 import { CompositionLayerManager } from "./CompositionLayerManager";
+import { COMPOSITION_STUDIO_PANES } from "@/domains/production/composition-editor/composition-preview-view.config";
 import { useCompositionReferenceGuides } from "./useCompositionReferenceGuides";
 import { CompositionReferenceGuidesPanel } from "./CompositionReferenceGuidesPanel";
 import { CompositionInspector } from "./CompositionInspector";
@@ -330,6 +331,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const initialEditorPreferences = editorPreferencesRef.current;
   const {
     changePreviewZoom,
+    monitorExpanded,
+    toggleMonitorExpanded,
     directEditingEnabled,
     finishStudioResize,
     gridVisible,
@@ -3804,7 +3807,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           "--studio-preview-row": `${studioTopPanePercent}fr`,
           "--studio-timeline-row": `${100 - studioTopPanePercent}fr`,
         } as CSSProperties}
-        className={`${styles.editorGrid} ${!libraryOpen ? styles.editorGridWithoutLibrary : ""} ${inspectorOpen ? styles.editorGridWithInspector : ""}`}
+        className={`${styles.editorGrid} ${monitorExpanded ? styles.editorGridMonitorExpanded : ""} ${!libraryOpen ? styles.editorGridWithoutLibrary : ""} ${inspectorOpen ? styles.editorGridWithInspector : ""}`}
       >
         <CompositionStudioLibrary
           assets={assets}
@@ -3842,6 +3845,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           {payload.document.sourceInsertionMode === "MANUAL" && payload.document.clips.length === 0 &&
             <p role="status" className="px-4 py-2 text-sm text-slate-500">Tu timeline está vacío. Elige un archivo de la biblioteca y pulsa «Añadir a timeline».</p>}
           <CompositionPreviewToolbar
+            monitorExpanded={monitorExpanded}
+            onToggleMonitorExpanded={toggleMonitorExpanded}
             onOpenReferenceGuides={() => setReferenceGuidesOpen(true)}
             canvas={payload.document.canvas}
             canRedo={commandHistoryState.canRedo}
@@ -3854,13 +3859,13 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
             duration={duration}
             gridVisible={gridVisible}
             history={history}
-            inspectorOpen={inspectorOpen}
-            libraryOpen={libraryOpen}
+            inspectorOpen={inspectorOpen && !monitorExpanded}
+            libraryOpen={libraryOpen && !monitorExpanded}
             onCloseHistory={() => setHistory(null)}
             onContinueToPublication={onContinueToPublication ? () => { void autosaveCoordinatorRef.current.flush().then(async (saved) => { if (saved) { await saveQueueRef.current?.whenIdle(); onContinueToPublication(); } }); } : undefined}
             onHistoryOpen={() => void loadHistory()}
-            onInspectorToggle={() => setManualInspectorOpen((current) => !current)}
-            onOpenLibrary={openCompositionLibrary}
+            onInspectorToggle={() => { if (monitorExpanded) { toggleMonitorExpanded(); setManualInspectorOpen(true); } else setManualInspectorOpen((current) => !current); }}
+            onOpenLibrary={() => { if (monitorExpanded) toggleMonitorExpanded(); openCompositionLibrary(); }}
             onIntervalAction={() => {
               if (removalRangeStart === null) markSelectedIntervalStart();
               else void removeSelectedInterval();
@@ -3973,19 +3978,19 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           role="separator"
           aria-label="Redimensionar preview y timeline"
           aria-orientation="horizontal"
-          aria-valuemin={30}
-          aria-valuemax={75}
+          aria-valuemin={COMPOSITION_STUDIO_PANES.minimum}
+          aria-valuemax={COMPOSITION_STUDIO_PANES.maximum}
           aria-valuenow={Math.round(studioTopPanePercent)}
           tabIndex={0}
-          onDoubleClick={() => setStudioTopPanePercent(68)}
+          onDoubleClick={() => setStudioTopPanePercent(COMPOSITION_STUDIO_PANES.initial)}
           onKeyDown={(event) => {
             if (event.key === "ArrowUp") {
               event.preventDefault();
-              setStudioTopPanePercent((current) => Math.max(30, current - 5));
+              setStudioTopPanePercent((current) => Math.max(COMPOSITION_STUDIO_PANES.minimum, current - COMPOSITION_STUDIO_PANES.keyboardStep));
             }
             if (event.key === "ArrowDown") {
               event.preventDefault();
-              setStudioTopPanePercent((current) => Math.min(75, current + 5));
+              setStudioTopPanePercent((current) => Math.min(COMPOSITION_STUDIO_PANES.maximum, current + COMPOSITION_STUDIO_PANES.keyboardStep));
             }
           }}
           onPointerDown={(event) => {

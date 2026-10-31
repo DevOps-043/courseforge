@@ -316,8 +316,8 @@
   display: grid;
   min-height: 0;
   flex: 1;
-  grid-template-columns: 18.5rem minmax(26rem, 1fr);
-  grid-template-rows: minmax(15rem, var(--studio-preview-row)) 0.65rem minmax(12rem, var(--studio-timeline-row));
+  grid-template-columns: 16rem minmax(20rem, 1fr);
+  grid-template-rows: minmax(15rem, var(--studio-preview-row)) 0.45rem minmax(9rem, var(--studio-timeline-row));
   gap: 0.5rem;
   padding: 0.5rem;
   background:
@@ -328,15 +328,15 @@
 }
 
 .editorGridWithInspector {
-  grid-template-columns: 18.5rem minmax(26rem, 1fr) 20rem;
+  grid-template-columns: 16rem minmax(20rem, 1fr) 18rem;
 }
 
 .editorGridWithoutLibrary {
-  grid-template-columns: minmax(26rem, 1fr);
+  grid-template-columns: minmax(20rem, 1fr);
 }
 
 .editorGridWithoutLibrary.editorGridWithInspector {
-  grid-template-columns: minmax(26rem, 1fr) 20rem;
+  grid-template-columns: minmax(20rem, 1fr) 18rem;
 }
 
 .editorGridWithoutLibrary .previewPanel {
@@ -1031,7 +1031,7 @@
   flex: 1;
   place-items: center;
   overflow: hidden;
-  padding: 0.9rem;
+  padding: 0.35rem;
   background:
     radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--engine-accent) 5%, transparent), transparent 22rem),
     linear-gradient(145deg, var(--studio-canvas-deep), var(--studio-canvas));
@@ -1115,7 +1115,8 @@
 
 .previewFrame {
   position: relative;
-  width: min(100%, 58rem, calc(100cqh * var(--composition-aspect-ratio, 1.7777778)));
+  width: 100%;
+  height: 100%;
   max-height: 100%;
   aspect-ratio: var(--composition-aspect-ratio, 1.7777778);
   overflow: hidden;
@@ -1130,6 +1131,7 @@
   inset: 0;
   width: 100%;
   height: 100%;
+  border: 0;
 }
 
 .safeAreaOverlay {
@@ -2303,11 +2305,11 @@
 @media (max-width: 80rem) {
   .editorGrid,
   .editorGridWithInspector {
-    grid-template-columns: 16.5rem minmax(24rem, 1fr);
+    grid-template-columns: 14.5rem minmax(20rem, 1fr);
   }
 
   .editorGridWithInspector {
-    grid-template-columns: 16.5rem minmax(24rem, 1fr) 18rem;
+    grid-template-columns: 16.5rem minmax(20rem, 1fr) 16rem;
   }
 
   .editorGridWithoutLibrary {
@@ -2315,7 +2317,7 @@
   }
 
   .editorGridWithoutLibrary.editorGridWithInspector {
-    grid-template-columns: minmax(24rem, 1fr) 18rem;
+    grid-template-columns: minmax(20rem, 1fr) 16rem;
   }
 
   .studioMeta .metaOptional,
@@ -2488,4 +2490,108 @@
 .keyboardPanel a:focus-visible {
   outline: 2px solid var(--engine-accent, #06b6d4);
   outline-offset: 2px;
+}
+
+/* Vista amplia dentro de la página; conserva montados los paneles y sus borradores. */
+.editorGrid.editorGridMonitorExpanded {
+  grid-template-columns: minmax(0, 1fr);
+}
+.editorGridMonitorExpanded .library,
+.editorGridMonitorExpanded .inspector {
+  display: none;
+}
+.editorGridMonitorExpanded .previewPanel {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+.editorGrid.editorGridMonitorExpanded .timelinePanel,
+.editorGrid.editorGridMonitorExpanded .resizer {
+  grid-column: 1 / -1;
+}
+
+.zoomControls {
+  position: relative;
+  flex: 0 0 auto;
+}
+.compactHistoryMenu {
+  display: none;
+}
+@container (max-width: 26rem) {
+  .previewToolbar [aria-label="Edición principal"] {
+    display: none;
+  }
+  .compactHistoryMenu {
+    display: grid;
+  }
+}
+.zoomControls > button {
+  min-width: 3.2rem;
+  font-variant-numeric: tabular-nums;
+}
+.zoomPanel {
+  width: min(17rem, calc(100vw - 1rem));
+  padding: 0.8rem;
+  border: 1px solid var(--studio-border);
+  border-radius: 0.75rem;
+  color: var(--studio-text);
+  background: var(--studio-panel);
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 0.3);
+  font-size: 0.75rem;
+}
+.zoomPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.7rem;
+}
+.zoomPanelHeader button {
+  padding: 0.1rem 0.4rem;
+}
+.zoomPanel label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.zoomPanel input[type="number"] {
+  width: 5rem;
+  border: 1px solid var(--studio-border);
+  border-radius: 0.35rem;
+  padding: 0.25rem;
+}
+.zoomPanel input[type="range"] {
+  width: 100%;
+  margin: 0.75rem 0;
+}
+.zoomPresets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.zoomPresets button,
+.zoomFit {
+  border: 1px solid var(--studio-border);
+  border-radius: 0.35rem;
+  padding: 0.3rem 0.4rem;
+}
+.zoomPresets button[aria-pressed="true"] {
+  color: var(--engine-accent);
+  border-color: var(--engine-accent);
+}
+.zoomFit {
+  width: 100%;
+  margin-top: 0.6rem;
+}
+.zoomPanel p {
+  margin: 0.6rem 0 0;
+  color: var(--studio-muted);
+  font-size: 0.65rem;
+}
+@media (max-width: 64rem) {
+  .editorGrid.editorGridMonitorExpanded {
+  grid-template-rows: minmax(24rem, 65svh) minmax(14rem, auto);
+}
+  .editorGrid.editorGridMonitorExpanded .timelinePanel {
+  grid-row: 2;
+}
 }

@@ -1,8 +1,10 @@
+import { COMPOSITION_PREVIEW_ZOOM } from "@/domains/production/composition-editor/composition-preview-view.config";
+import { CompositionPreviewZoomControls } from "./CompositionPreviewZoomControls";
 import { APP_CONFIG } from "../../../../config/app";
 import { useRef, type ReactNode, type RefObject } from "react";
 import { useCompositionPanelFocus } from "./useCompositionPanelFocus";
 import { useCompositionAnchoredPopover } from "./useCompositionAnchoredPopover";
-import { ArrowRight, ChevronDown, Clapperboard, Columns2, Command, Crop, Grid3X3, History, Magnet, Maximize2, Minimize2, Minus, MousePointer2, PanelLeftOpen, PanelRight, Plus, Redo2, RefreshCw, Scan, Scissors, SlidersHorizontal, Sparkles, SquareDashed, Trash2, Undo2, X } from "lucide-react";
+import { ArrowRight, ChevronDown, Expand, Shrink, Clapperboard, Columns2, Command, Crop, Grid3X3, History, Magnet, Maximize2, Minimize2, Minus, MousePointer2, PanelLeftOpen, PanelRight, Plus, Redo2, RefreshCw, Scan, Scissors, SlidersHorizontal, Sparkles, SquareDashed, Trash2, Undo2, X } from "lucide-react";
 import type { CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionUiTimecode } from "@/domains/production/composition-editor/composition-ui-presentation";
 import styles from "./CompositionStudio.module.css";
@@ -15,6 +17,8 @@ export type CompositionDocumentHistoryEntry = {
 };
 
 interface CompositionPreviewToolbarProps {
+  monitorExpanded: boolean;
+  onToggleMonitorExpanded: () => void;
   onOpenReferenceGuides: () => void;
   canvas: { width: number; height: number };
   onCanvasFormatChange: (format: "16:9" | "9:16" | "1:1") => void;
@@ -70,7 +74,7 @@ interface CompositionPreviewToolbarProps {
   undoLabel: string | null;
 }
 
-export function CompositionPreviewToolbar({ onOpenReferenceGuides, canvas, onCanvasFormatChange, agentProposalActive, canRedo, canUndo, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, libraryOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenCommandPalette, onOpenLibrary, onOpenPresets, onRedo, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSafeAreas, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onUndo, onZoom, previewFullscreen, previewStatusLabel, previewZoom, redoLabel, removalRangeStartSeconds, safeAreasVisible, saveError, saving, pendingEdits, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, undoLabel, visualCropEnabled }: CompositionPreviewToolbarProps) {
+export function CompositionPreviewToolbar({ monitorExpanded, onToggleMonitorExpanded, onOpenReferenceGuides, canvas, onCanvasFormatChange, agentProposalActive, canRedo, canUndo, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, libraryOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenCommandPalette, onOpenLibrary, onOpenPresets, onRedo, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSafeAreas, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onUndo, onZoom, previewFullscreen, previewStatusLabel, previewZoom, redoLabel, removalRangeStartSeconds, safeAreasVisible, saveError, saving, pendingEdits, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, undoLabel, visualCropEnabled }: CompositionPreviewToolbarProps) {
   const toolsPanelRef = useRef<HTMLDivElement>(null);
   const historyPanelRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -113,9 +117,13 @@ export function CompositionPreviewToolbar({ onOpenReferenceGuides, canvas, onCan
             <button type="button" role="menuitemcheckbox" aria-checked={snapEnabled} onClick={onToggleSnap} className={styles.toolMenuItem}><Magnet size={14} /><span><strong>Snap</strong></span><i data-active={snapEnabled} /></button>
             <button type="button" role="menuitem" onClick={onSplit} className={styles.toolMenuItem}><Scissors size={14} /><span><strong>Dividir clip</strong></span></button>
           </div>
+          <div className={styles.compactHistoryMenu}>
+            <button type="button" role="menuitem" disabled={saving || !canUndo} onClick={onUndo} className={styles.toolMenuItem}><Undo2 size={14} /><span><strong>Deshacer último cambio</strong></span></button>
+            <button type="button" role="menuitem" disabled={saving || !canRedo} onClick={onRedo} className={styles.toolMenuItem}><Redo2 size={14} /><span><strong>Rehacer último cambio</strong></span></button>
+          </div>
           <div className={styles.compactViewMenu}>
-            <button type="button" role="menuitem" disabled={previewZoom <= 0.75} onClick={() => onZoom(-0.1)} className={styles.toolMenuItem}><Minus size={14} /><span><strong>Alejar preview</strong></span></button>
-            <button type="button" role="menuitem" disabled={previewZoom >= 1.75} onClick={() => onZoom(0.1)} className={styles.toolMenuItem}><Plus size={14} /><span><strong>Acercar preview · {Math.round(previewZoom * 100)}%</strong></span></button>
+            <button type="button" role="menuitem" disabled={previewZoom <= COMPOSITION_PREVIEW_ZOOM.minimum} onClick={() => onZoom(-COMPOSITION_PREVIEW_ZOOM.step)} className={styles.toolMenuItem}><Minus size={14} /><span><strong>Alejar preview</strong></span></button>
+            <button type="button" role="menuitem" disabled={previewZoom >= COMPOSITION_PREVIEW_ZOOM.maximum} onClick={() => onZoom(COMPOSITION_PREVIEW_ZOOM.step)} className={styles.toolMenuItem}><Plus size={14} /><span><strong>Acercar preview · {Math.round(previewZoom * 100)}%</strong></span></button>
             <button type="button" role="menuitem" onClick={onToggleFullscreen} className={styles.toolMenuItem}><Maximize2 size={14} /><span><strong>{previewFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}</strong></span></button>
           </div>
           <div className={styles.compactDocumentMenu}>
@@ -126,10 +134,12 @@ export function CompositionPreviewToolbar({ onOpenReferenceGuides, canvas, onCan
           </div>
         </div>}
       </div>
+      <CompositionPreviewZoomControls value={previewZoom} onZoom={onZoom} />
+      <button type="button" aria-pressed={monitorExpanded} aria-label={monitorExpanded ? "Restaurar distribución del editor" : "Ampliar monitor"} title={monitorExpanded ? "Restaurar distribución del editor" : "Ampliar monitor sin pantalla completa"} onClick={onToggleMonitorExpanded} className={`${styles.toolIconButton} ${monitorExpanded ? styles.toolIconButtonActive : ""}`}>{monitorExpanded ? <Shrink size={14} /> : <Expand size={14} />}</button>
       <div className={`${styles.toolbarGroup} ${styles.monitorControls}`} aria-label="Vista del monitor">
-        <button type="button" disabled={previewZoom <= 0.75} onClick={() => onZoom(-0.1)} title="Alejar preview" aria-label="Alejar preview" className={styles.toolIconButton}><Minus size={13} /></button>
-        <span className={styles.toolValue}>{Math.round(previewZoom * 100)}%</span>
-        <button type="button" disabled={previewZoom >= 1.75} onClick={() => onZoom(0.1)} title="Acercar preview" aria-label="Acercar preview" className={styles.toolIconButton}><Plus size={13} /></button>
+        <button type="button" disabled={previewZoom <= COMPOSITION_PREVIEW_ZOOM.minimum} onClick={() => onZoom(-COMPOSITION_PREVIEW_ZOOM.step)} title="Alejar preview" aria-label="Alejar preview" className={styles.toolIconButton}><Minus size={13} /></button>
+
+        <button type="button" disabled={previewZoom >= COMPOSITION_PREVIEW_ZOOM.maximum} onClick={() => onZoom(COMPOSITION_PREVIEW_ZOOM.step)} title="Acercar preview" aria-label="Acercar preview" className={styles.toolIconButton}><Plus size={13} /></button>
         <button type="button" onClick={onToggleFullscreen} title={previewFullscreen ? "Salir de pantalla completa" : "Abrir preview en pantalla completa"} aria-label={previewFullscreen ? "Salir de pantalla completa" : "Abrir preview en pantalla completa"} className={styles.toolIconButton}>{previewFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button>
       </div>
       </div>

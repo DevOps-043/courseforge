@@ -1,0 +1,93 @@
+PASS: área antes/después, ampliar/restaurar, fullscreen real, 25/100/137/400%, áreas seguras, entradas inválidas, formas y toolbar/popover responsive.
+[
+  {
+    "viewport": {
+      "width": 1365,
+      "height": 768
+    },
+    "before": {
+      "width": 567.111083984375,
+      "height": 319,
+      "panelWidth": 715,
+      "panelHeight": 451.25,
+      "zoom": 1,
+      "top": 68
+    },
+    "after": {
+      "width": 680.888916015625,
+      "height": 383,
+      "panelWidth": 787,
+      "panelHeight": 493.4375,
+      "zoom": 1,
+      "top": 74
+    },
+    "expanded": {
+      "width": 732.4443359375,
+      "height": 412,
+      "panelWidth": 1347,
+      "panelHeight": 522.8125,
+      "zoom": 1,
+      "top": 82
+    }
+  },
+  {
+    "viewport": {
+      "width": 1365,
+      "height": 900
+    },
+    "before": {
+      "width": 673.77783203125,
+      "height": 379,
+      "panelWidth": 715,
+      "panelHeight": 541,
+      "zoom": 1,
+      "top": 68
+    },
+    "after": {
+      "width": 772,
+      "height": 434.25,
+      "panelWidth": 787,
+      "panelHeight": 591.109375,
+      "zoom": 1,
+      "top": 74
+    },
+    "expanded": {
+      "width": 967.111083984375,
+      "height": 544,
+      "panelWidth": 1347,
+      "panelHeight": 654.8125,
+      "zoom": 1,
+      "top": 82
+    }
+  },
+  {
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "before": {
+      "width": 917.333251953125,
+      "height": 516,
+      "panelWidth": 1270,
+      "panelHeight": 663.40625,
+      "zoom": 1,
+      "top": 68
+    },
+    "after": {
+      "width": 1089.77783203125,
+      "height": 613,
+      "panelWidth": 1342,
+      "panelHeight": 724.3125,
+      "zoom": 1,
+      "top": 74
+    },
+    "expanded": {
+      "width": 1230.22216796875,
+      "height": 692,
+      "panelWidth": 1902,
+      "panelHeight": 802.625,
+      "zoom": 1,
+      "top": 82
+    }
+  }
+]

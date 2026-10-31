@@ -461,6 +461,13 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-10-31: zoom de monitor 25–400% con ajuste a lienzo completo, porcentajes,
+  slider y presets. La geometría del iframe y áreas seguras conserva el mismo
+  centrado. Vista ampliada dentro de la página oculta laterales sin desmontarlos
+  y restaura la distribución anterior; Fullscreen API sigue independiente. Sin
+  modificar clips ni render final. Diseño/evidencia:
+  [espacio y zoom del monitor](../../openspec/changes/monitor-space-zoom/proposal.md).
+
 - 2026-10-31: guías de referencia configurables exclusivamente en el editor.
   Posición proporcional, orientación, color y visibilidad se conservan localmente
   por draft; las líneas visibles alimentan el snap existente. El iframe permite

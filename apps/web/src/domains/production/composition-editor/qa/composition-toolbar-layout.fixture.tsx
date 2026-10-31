@@ -11,6 +11,7 @@ function Fixture() {
   const previewRef = useRef<HTMLElement>(null);
   const noop = () => {};
   const props: ComponentProps<typeof CompositionPreviewToolbar> = {
+    monitorExpanded: controls.monitorExpanded, onToggleMonitorExpanded: controls.toggleMonitorExpanded,
     canvas: { width: 1920, height: 1080 }, currentVersion: 2, duration: 249,
     agentProposalActive: false, comparisonActive: false, directEditingEnabled: true,
     gridVisible: false, history: historyOpen ? [] : null, inspectorOpen, libraryOpen: true,

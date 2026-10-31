@@ -1,3 +1,4 @@
+import { COMPOSITION_PREVIEW_ZOOM } from "./composition-preview-view.config";
 import { createCompositionMaskPreviewRuntime } from "./composition-mask-preview-runtime";
 import { createCompositionReferenceGuidesRuntime } from "./composition-reference-guides-runtime";
 import { COMPOSITION_REFERENCE_GUIDE_LIMIT } from "./composition-reference-guides";
@@ -1540,7 +1541,8 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           if (selectedTarget) selectTarget(selectedTarget, "PARENT", [...selectedHfIds]);
         }
         if (message.type === "courseforge-composition-preview-zoom") {
-          previewUserScale = Math.max(.5, Math.min(2, Number(message.scale) || 1));
+          if (!Number.isFinite(message.scale) || message.scale < ${COMPOSITION_PREVIEW_ZOOM.minimum} || message.scale > ${COMPOSITION_PREVIEW_ZOOM.maximum}) return;
+          previewUserScale = message.scale;
           fitCompositionToViewport();
         }
         if (message.type === "courseforge-composition-preview-position" && typeof message.hfId === "string") {

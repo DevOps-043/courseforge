@@ -1,0 +1,25 @@
+✔ normalizes legacy iframe messages to the current protocol version (3.7706ms)
+✔ focus restoration accepts only bounded target identity and rejects arbitrary selectors (2.554ms)
+✔ accepts a versioned ready event and rejects malformed document hashes (1.1322ms)
+✔ accepts only fixed, versioned load failures from the active iframe (4.7519ms)
+✔ builds a nonce-restricted error bridge without server messages (1.3802ms)
+✔ maps load failures to safe recovery actions (0.3186ms)
+✔ rejects unknown fields, unsafe bounds and unsupported protocol versions (2.6129ms)
+✔ adds a version to valid parent commands and rejects invalid ranges (1.1786ms)
+✔ identifies whether a preview selection came from the canvas or a parent command (2.6517ms)
+✔ validates visual patches and their correlated acknowledgements (3.1155ms)
+✔ valida preview efímero y estados del runtime de color (2.5041ms)
+✔ controles, protocolo y geometría comparten el rango de zoom (5.8456ms)
+✔ safe areas follow the same centered canvas at every supported zoom (1.9994ms)
+✔ fit uses letterboxing for portrait, square and mismatched monitor sizes (1.4865ms)
+✔ tiny monitors preserve the runtime minimum scale and offscreen canvas bounds (0.2655ms)
+✔ hidden monitor and malformed geometry never expose a misleading overlay (0.3725ms)
+✔ the same fit function runs inside the sandbox without module dependencies (3.7395ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 902.9246

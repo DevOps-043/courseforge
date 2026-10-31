@@ -1,0 +1,416 @@
+
+> web@1.0.0 test:hyperframes
+> tsc -p tsconfig.hyperframes-test.json && node --test .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-position-preview-runtime.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-visual-mask.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-reference-guides.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-view.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-viewport-geometry.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-preflight.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-cloud.client.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-polling.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-final-video.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-render-recovery.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-video-import.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-generation-settings.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-source-asset.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-plan.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-project-builder.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-draft.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-request-validation.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-document.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-document-version.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-document.factory.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-audio-mix.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-timeline-snap.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-snapshot.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-prompt.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-proposal.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-proposal-store.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-model-output.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-recovery.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-read-tools.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-compiler.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-telemetry.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/editor-patch.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/standalone-media-composition.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-clip-export.test.js
+
+✔ el preview parcial conserva el otro eje, tamaño, opacidad y rotación (6.9658ms)
+✔ una confirmación anterior actualiza la base y conserva el borrador posterior (0.5628ms)
+✔ confirmar la posición temporal elimina la superposición sin revertir al limpiar (0.3002ms)
+✔ una escena nueva conserva el borrador sobre el nodo nuevo y tolera eliminación (0.5616ms)
+✔ protocolo y receptor rechazan valores inválidos sin tocar el último preview válido (5.7236ms)
+✔ controles, protocolo y geometría comparten el rango de zoom (6.4482ms)
+✔ safe areas follow the same centered canvas at every supported zoom (2.3648ms)
+✔ fit uses letterboxing for portrait, square and mismatched monitor sizes (4.0925ms)
+✔ tiny monitors preserve the runtime minimum scale and offscreen canvas bounds (0.7516ms)
+✔ hidden monitor and malformed geometry never expose a misleading overlay (0.7602ms)
+✔ the same fit function runs inside the sandbox without module dependencies (3.2255ms)
+✔ guías locales separan drafts y conservan posición, color y visibilidad (5.6579ms)
+✔ contrato rechaza límites, duplicados, CSS y entradas no finitas (7.434ms)
+✔ mover una guía valida ID, ratio y generación del iframe (1.8521ms)
+✔ las guías son exclusivas del preview interactivo y no aparecen en render (39.3425ms)
+✔ formas cerradas y límites no admiten CSS, URLs ni parámetros desconocidos (7.289ms)
+✔ máscara persiste y se quita sin modificar crop, layout, motion ni fuente (40.4755ms)
+✔ pista bloqueada y texto rechazan máscaras en servicio y documento (11.5727ms)
+✔ renderer compartido intersecta máscara con crop en video y diapositiva; legacy no agrega wrapper (40.3802ms)
+✔ reiniciar un asset elimina máscara y recorte; audio rechaza la operación (4.377ms)
+✔ el preview conserva la máscara posterior y limpiar restaura el último canónico (1.4331ms)
+✔ las máscaras de imagen se renderizan y los presets las conservan (20.1399ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2538.6424
+▶ HyperFrames render preflight
+  ✔ resolves stable content-versioned variables from trusted Storage identity (3.7772ms)
+  ✔ rejects untrusted buckets before provider submission (1.0549ms)
+  ✔ signs private render sources just in time (0.6984ms)
+  ✔ counts a repeated checksum once against the cloud limit (4.8378ms)
+  ✔ blocks unique assets larger than 200 MiB (0.8367ms)
+  ✔ blocks an oversized archive even when the asset manifest is valid (0.4447ms)
+  ✔ blocks an individual video larger than the 100 MiB provider limit (0.5632ms)
+  ✔ allows large aggregate media when the thin project uses remote variables (2.1004ms)
+  ✔ blocks MOV inputs before consuming a provider render attempt (0.8236ms)
+  ✔ rejects unsafe asset paths before a render can be submitted (1.5022ms)
+  ✔ warns when a long standard render should be segmented (0.8288ms)
+  ✔ blocks a predicted output larger than the durable 2 GiB limit (0.5492ms)
+✔ HyperFrames render preflight (21.52ms)
+ℹ tests 12
+ℹ suites 1
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 35.271
+▶ HyperFrames Cloud client
+  ✔ uploads directly, finalizes and submits without a webhook (51.2461ms)
+  ✔ fails before network use when the idempotency key is unsafe (1.1287ms)
+  ✔ includes the durable callback correlation when configured (2.0991ms)
+  ✔ rejects oversized provider JSON before parsing it (1.3613ms)
+✔ HyperFrames Cloud client (58.2591ms)
+ℹ tests 4
+ℹ suites 1
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 71.0404
+▶ HyperFrames polling decisions
+  ✔ keeps queued and rendering jobs in the polling flow (3.3619ms)
+  ✔ expires an upload that never receives a HeyGen render id (0.3718ms)
+  ✔ waits for a signed URL without inventing a failure and accepts completion with one (0.3398ms)
+✔ HyperFrames polling decisions (6.3137ms)
+ℹ tests 3
+ℹ suites 1
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17.9503
+▶ HyperFrames durable final videos
+  ✔ rehydrates missing projection fields from the durable asset (2.7119ms)
+  ✔ does not replace a user-provided final video (0.3801ms)
+  ✔ clears only the HyperFrames final-video projection before deletion (4.5274ms)
+  ✔ does not clear a manual final-video projection (0.3409ms)
+  ✔ resolves only the managed object path for the requested lesson component (0.382ms)
+  ✔ rejects a final-video path belonging to another lesson component (0.9138ms)
+✔ HyperFrames durable final videos (11.9578ms)
+ℹ tests 6
+ℹ suites 1
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22.6644
+▶ HyperFrames render recovery
+  ✔ returns one request only when both id and organization match (2.944ms)
+  ✔ returns the active request and scopes every ledger lookup to the organization (4.2794ms)
+  ✔ keeps a completed asset available when the latest revision failed (0.8813ms)
+  ✔ does not expose data when the composition has no scoped component (0.4432ms)
+✔ HyperFrames render recovery (10.9034ms)
+ℹ tests 4
+ℹ suites 1
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21.2459
+▶ HyperFrames final-video import
+  ✔ only accepts HTTPS video URLs served by HeyGen (3.0553ms)
+✔ HyperFrames final-video import (5.223ms)
+▶ HyperFrames completed-render assets
+  ✔ replaces the final video and clears stale markers from the prior render (3.4721ms)
+✔ HyperFrames completed-render assets (3.7439ms)
+ℹ tests 2
+ℹ suites 2
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21.6363
+▶ HyperFrames generation settings
+  ✔ uses safe defaults for internal automatic and agent-assisted generation (1.8155ms)
+  ✔ rejects unsafe model configuration values (4.49ms)
+  ✔ allows supported Gemini and GPT models but rejects arbitrary provider names (1.4067ms)
+  ✔ returns the model persisted for the requested organization without replacing it with the default (1.9235ms)
+✔ HyperFrames generation settings (12.6857ms)
+ℹ tests 4
+ℹ suites 1
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22.881
+▶ HyperFrames source assets
+  ✔ only exposes renderable media from the internal asset registry (2.9541ms)
+  ✔ recovers manual cloud voices persisted before multi-audio references existed (0.3396ms)
+  ✔ keeps recovered avatar and voice history visible without reviving archived media (0.3661ms)
+  ✔ keeps a ready animated deck as HTML rather than slide images (4.6284ms)
+  ✔ inherits appearance and repairs CSS from ready legacy decks (0.809ms)
+  ✔ marks rasterized slides as deck dependencies when the HTML deck is ready (1.8881ms)
+  ✔ identifies images embedded by the deck separately from uploaded production media (2.9117ms)
+  ✔ inherits only internally stored media from the Production step (0.529ms)
+  ✔ keeps an authored avatar duration so the assembly template can use it (0.4075ms)
+  ✔ keeps uploaded b-roll dimensions for deterministic source-aspect layout (0.4346ms)
+  ✔ fails closed for historical B-roll audio and preserves avatar narration (0.4366ms)
+  ✔ preserves scene identity for interleaved avatar and voice assets (0.6675ms)
+  ✔ compares synchronized durations at the persisted millisecond precision (0.2886ms)
+  ✔ detects stale scene identity when an active source becomes standalone (0.5326ms)
+  ✔ registers editor-detached audio as an editable narration source (0.3202ms)
+  ✔ exposes every manually uploaded voice as an independent timeline asset (0.4313ms)
+  ✔ accepts a video above the embedded limit when Storage delivers it remotely (2.2682ms)
+  ✔ keeps a video above the remote Storage limit visible with a warning (1.6718ms)
+  ✔ blocks source media above the maximum supported resolution (0.535ms)
+✔ HyperFrames source assets (27.0501ms)
+ℹ tests 19
+ℹ suites 1
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 62.3428
+▶ HyperFrames internal plan
+  ✔ constrains automatic output to a typed plan rather than HTML (1.4147ms)
+✔ HyperFrames internal plan (3.8874ms)
+ℹ tests 1
+ℹ suites 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17.1764
+▶ HyperFrames internal project builder
+  ✔ packages selected media and emits deterministic self-contained HTML (84.3298ms)
+  ✔ preserves animated deck HTML and exposes its preview timeline (27.7501ms)
+  ✔ creates editable source without downloading assets or creating an archive (3.1677ms)
+✔ HyperFrames internal project builder (119.3821ms)
+ℹ tests 3
+ℹ suites 1
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 127.5725
+✔ creates a Studio-safe descriptor without exposing a storage path (3.0034ms)
+✔ rejects traversal paths and versions file contents (1.2668ms)
+✔ reconciles an existing draft with the active Production avatar only (30.0596ms)
+✔ recovers the composition that wins a concurrent initialization (2.2038ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 51.9861
+✔ accepts UUID composition identifiers and rejects route placeholders (6.1493ms)
+✔ summarizes nested validation failures without copying rejected input (5.3982ms)
+✔ keeps the render profile bound to the immutable snapshot (0.4631ms)
+✔ exposes only avatar-safe user profiles and keeps high quality selectable (0.5285ms)
+✔ removes manifest-only metadata before resolving a provider request (0.2746ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 24.1439
+✔ links verified processed voice and restores the original while protecting paired scenes (43.1435ms)
+✔ reemplazo rechaza medios sin identidad y límites de entrega verificables (3.0373ms)
+✔ reemplazo exige vínculo al borrador y normaliza metadatos desde el registro (20.966ms)
+✔ normalizes legacy layer depths into the 0 to 10 contract (0.4014ms)
+✔ uses the stored document hash as the concurrency token (2.0747ms)
+✔ selects the latest saved occurrence when a document hash repeats (2.2543ms)
+✔ appends the complete accumulated document when saving a new version (3.0919ms)
+✔ persiste y recarga grupos como parte del documento versionado (9.7818ms)
+✔ allows trusted system reconciliation to add a clip without weakening the agent policy (4.2094ms)
+✔ appends a linked READY sound effect without relying on an embedded PostgREST relation (3.9695ms)
+✔ classifies statement cancellation as a retryable save timeout (1.2882ms)
+✔ classifies an upstream gateway timeout as temporary storage unavailability (0.4953ms)
+✔ keeps an unknown persistence failure generic while preserving correlation (0.283ms)
+✔ authorizes only draft-linked READY sound effects without embedded-relation cardinality assumptions (0.6955ms)
+✔ fails closed when a linked sound effect is not READY (0.366ms)
+✔ propagates a sound-effect lookup failure instead of authorizing an unknown asset (0.3559ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 114.1368
+✔ uses a strong quoted ETag for the document concurrency token (2.0607ms)
+✔ parses only a strong quoted ETag when an HTTP client needs one (0.535ms)
+✔ uses the persisted document hash regardless of CDN-managed response ETag (0.3741ms)
+✔ rejects a missing or malformed persisted document hash (0.5801ms)
+✔ prefers a valid If-Match and verifies the redundant version (1.6665ms)
+✔ accepts the redundant version when the platform removes If-Match (1.5321ms)
+✔ rejects absent, malformed, and contradictory preconditions (0.428ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19.9274
+✔ preserves deck HTML as editable clips and labels missing timings as estimated (19.2354ms)
+✔ formats and parses editor timecodes without decimal ambiguity (0.5865ms)
+✔ steps the playhead by an exact frame or one coarse second (0.3336ms)
+✔ keeps production media as references instead of copying files (2.9299ms)
+✔ centers a vertical b-roll at source aspect without hiding its frame (2.4891ms)
+✔ separates voice and music into semantic layers the agent can identify (3.3976ms)
+✔ preserves persisted layer controls while normalizing the track topology (2.7351ms)
+✔ preserves the production asset name so an avatar clip is identifiable in the timeline (1.1765ms)
+✔ uses source durations for the base template and distributes b-roll clips (1.8822ms)
+✔ hashes one document deterministically regardless of object key order (1.6591ms)
+✔ resolves duration with the strict voice, avatar, b-roll and slides priority (0.4709ms)
+✔ rejects a composition without an eligible duration source (0.8606ms)
+✔ places multiple avatar clips consecutively and records their source duration (1.2104ms)
+✔ keeps avatar and voice-only scenes interleaved on one shared scene clock (2.9374ms)
+✔ keeps distinct scene identities sequential when legacy scene orders collide (6.1447ms)
+✔ quantizes scaled scene timings without crossing the canvas boundary (0.6351ms)
+✔ expands an automatic canvas and appends newly completed scene voices without overlap (1.9053ms)
+✔ appends a second manual voice after a user-edited canvas and extends its duration (1.7298ms)
+✔ uses the expanded automatic canvas when distributing newly available media (2.7928ms)
+✔ refreshes regenerated audio bounds without producing an invalid clip (1.271ms)
+✔ reconciles newly available avatar media into an existing draft document (1.5472ms)
+✔ reconciliation prefers one full avatar over its generated fragments (2.1737ms)
+✔ reconciles an unframed legacy B-roll to full-source fit without overriding authored crop (4.2653ms)
+✔ reconciles legacy FPS and explicit source-audio metadata (1.8425ms)
+✔ adds a prepared deck to a draft created before its slides and preserves subsequent manual timing (3.9913ms)
+✔ reconciles legacy production filenames to the canonical asset label (1.51ms)
+✔ removes only deck-owned raster assets from an existing timeline (10.1878ms)
+✔ preserves retained clip bounds and removes orphan animations when production assets change (7.5374ms)
+✔ keeps a removed slide excluded when Production sources reconcile (3.6331ms)
+✔ preassembles selected slides on measured narrative scene durations (7.3322ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 117.333
+✔ builds one deterministic music envelope from voice timing (17.4081ms)
+✔ keeps music ducked across nearby voice and avatar intervals (1.8289ms)
+✔ does not duck for hidden or muted narration (1.8349ms)
+✔ supports disabling ducking without changing static track volume (1.6367ms)
+✔ builds non-destructive fade envelopes even when ducking is disabled (1.5717ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 49.8373
+✔ composition API responses preserve valid JSON contracts (53.4171ms)
+✔ composition API responses classify missing deployments (2.2317ms)
+✔ composition API responses reject malformed JSON predictably (0.7789ms)
+✔ ignora el cero inicial del iframe mientras espera restaurar el playhead (1.4638ms)
+✔ mantiene pendiente la restauración hasta que el iframe confirma el seek (0.4271ms)
+✔ conserva el comportamiento normal para reproducción y seeks manuales (0.2985ms)
+✔ ajusta la posición restaurada a la nueva duración del canvas (0.2587ms)
+✔ solicita una sola actualización cuando el documento guardado supera al preview (0.2458ms)
+✔ construye candidatos de inicio y final y excluye el clip activo y los ocultos (0.4834ms)
+✔ alinea el inicio de un clip con el inicio de otro track (0.7303ms)
+✔ alinea el inicio inmediatamente después del final de otro clip (0.3686ms)
+✔ compara ambos bordes al mover y elige el ajuste más cercano (0.36ms)
+✔ conserva la preferencia por el playhead cuando hay empate (0.2374ms)
+✔ ignora candidatos fuera de tolerancia o que rompen los límites (0.3446ms)
+✔ no hace snap cuando la tolerancia está desactivada (0.2193ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 95.4088
+✔ HTML snapshots cannot bypass frozen-source integration by reusing a saved native hash (79.8269ms)
+✔ rejects legacy documents before creating a paid render snapshot (1.4863ms)
+✔ incluye la correcciÃ³n por clip en el hash persistido por snapshots (1.7354ms)
+✔ lists persisted snapshots and identifies the active revision (8.9383ms)
+✔ restores a snapshot into the editable timeline and revokes approval (4.7291ms)
+✔ rejects snapshot restoration when the editable timeline changed concurrently (1.5449ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 110.1361
+✔ exposes semantic layers, audio mix and visual depth without source internals (23.551ms)
+✔ documents the allow-listed depth and ducking operations for the agent (1.9949ms)
+✔ rejects agent audio-mix properties outside the allow-list (15.8208ms)
+✔ constrains agent visual depth to the persisted layout range (4.0204ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 76.5144
+✔ builds a versioned proposal with a safe diff and exact inverse operations (42.4083ms)
+✔ rejects destructive manual operations even though the general patch schema accepts them (2.1657ms)
+✔ rejects a newly introduced overlap on the same track (3.9262ms)
+✔ allows an explicit unlock followed by an edit and reverses both changes (12.5466ms)
+✔ marks content-hiding proposals as high risk with reinforced confirmation (3.2337ms)
+✔ rejects no-op proposals instead of asking the user to approve an empty change (2.4492ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 103.7618
+✔ prepares one persisted proposal and restores its exact base document (49.5027ms)
+✔ fails closed when a persisted inverse no longer returns to the base hash (12.2959ms)
+✔ persists bounded recovery metadata with the final model only (12.2735ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 85.931
+node:internal/modules/cjs/loader:1520
+  throw err;
+  ^
+
+Error: Cannot find module '@/lib/server/outbound-http'
+Require stack:
+- D:\Pulse Hub\courseforge\apps\web\.tmp\hyperframes-tests\domains\production\composition-editor\composition-agent-provider.service.js
+- D:\Pulse Hub\courseforge\apps\web\.tmp\hyperframes-tests\domains\production\composition-editor\__tests__\composition-agent-model-output.test.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1517:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1071:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1095:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1122:12)
+    at Module._load (node:internal/modules/cjs/loader:1294:5)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.require (node:internal/modules/cjs/loader:1617:12)
+    at require (node:internal/modules/helpers:153:16)
+    at Object.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\hyperframes-tests\domains\production\composition-editor\composition-agent-provider.service.js:8:25)
+    at Module._compile (node:internal/modules/cjs/loader:1872:14) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'D:\\Pulse Hub\\courseforge\\apps\\web\\.tmp\\hyperframes-tests\\domains\\production\\composition-editor\\composition-agent-provider.service.js',
+    'D:\\Pulse Hub\\courseforge\\apps\\web\\.tmp\\hyperframes-tests\\domains\\production\\composition-editor\\__tests__\\composition-agent-model-output.test.js'
+  ]
+}
+
+Node.js v24.19.0
+npm error Lifecycle script `test:hyperframes` failed with error:
+npm error code 1
+npm error path D:\Pulse Hub\courseforge\apps\web
+npm error workspace web@1.0.0
+npm error location D:\Pulse Hub\courseforge\apps\web
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c tsc -p tsconfig.hyperframes-test.json && node --test .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-position-preview-runtime.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-visual-mask.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-reference-guides.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-view.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-viewport-geometry.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-preflight.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-cloud.client.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-polling.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-final-video.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-render-recovery.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-video-import.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-generation-settings.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-source-asset.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-plan.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-project-builder.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-draft.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-request-validation.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-document.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-document-version.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-document.factory.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-audio-mix.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-timeline-snap.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-snapshot.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-prompt.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-proposal.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-proposal-store.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-model-output.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-recovery.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-read-tools.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-compiler.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-telemetry.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/editor-patch.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/standalone-media-composition.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-clip-export.test.js

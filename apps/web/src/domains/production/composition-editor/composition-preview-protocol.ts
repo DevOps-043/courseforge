@@ -1,3 +1,4 @@
+import { COMPOSITION_PREVIEW_ZOOM } from "./composition-preview-view.config";
 import { compositionVisualMaskSchema } from "./composition-visual-mask";
 import { z } from "zod";
 import { compositionReferenceGuideSchema, compositionReferenceGuidesSchema } from "./composition-reference-guides";
@@ -95,7 +96,7 @@ export const compositionPreviewParentCommandSchema = z.discriminatedUnion("type"
     cropEnabled: z.boolean(), editingEnabled: z.boolean(), gridVisible: z.boolean(), protocolVersion: protocolVersionSchema,
     snapEnabled: z.boolean(), type: z.literal("courseforge-composition-editor-settings"),
   }).strict(),
-  z.object({ protocolVersion: protocolVersionSchema, scale: z.number().finite().min(0.5).max(2), type: z.literal("courseforge-composition-preview-zoom") }).strict(),
+  z.object({ protocolVersion: protocolVersionSchema, scale: z.number().finite().min(COMPOSITION_PREVIEW_ZOOM.minimum).max(COMPOSITION_PREVIEW_ZOOM.maximum), type: z.literal("courseforge-composition-preview-zoom") }).strict(),
   z.object({ reset: z.boolean().optional(), mask: compositionVisualMaskSchema.nullable(), hfId: hfIdSchema, protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-preview-mask") }).strict(),
   z.object({ crop: compositionVisualCropSchema, hfId: hfIdSchema, protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-preview-crop") }).strict(),
   z.object({

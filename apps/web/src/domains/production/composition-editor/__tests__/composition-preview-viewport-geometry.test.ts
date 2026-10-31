@@ -6,7 +6,7 @@ import { resolveCompositionPreviewCanvasBounds } from "../composition-preview-vi
 const base = { canvasWidth: 1920, canvasHeight: 1080, viewportWidth: 960, viewportHeight: 540, zoom: 1 };
 
 test("safe areas follow the same centered canvas at every supported zoom", () => {
-  for (const zoom of [0.5, 0.75, 1, 1.25, 1.5, 2]) {
+  for (const zoom of [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]) {
     const bounds = resolveCompositionPreviewCanvasBounds({ ...base, zoom });
     assert.ok(bounds);
     assert.equal(bounds.width, 960 * zoom);
@@ -30,7 +30,7 @@ test("tiny monitors preserve the runtime minimum scale and offscreen canvas boun
 });
 
 test("hidden monitor and malformed geometry never expose a misleading overlay", () => {
-  for (const override of [{ viewportWidth: 0 }, { viewportHeight: 0 }, { canvasWidth: -1 }, { canvasHeight: Infinity }, { zoom: NaN }, { zoom: 0.49 }, { zoom: 2.01 }]) {
+  for (const override of [{ viewportWidth: 0 }, { viewportHeight: 0 }, { canvasWidth: -1 }, { canvasHeight: Infinity }, { zoom: NaN }, { zoom: 0.24 }, { zoom: 4.01 }]) {
     assert.equal(resolveCompositionPreviewCanvasBounds({ ...base, ...override }), null);
   }
 });
