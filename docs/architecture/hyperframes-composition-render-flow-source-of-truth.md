@@ -216,6 +216,12 @@ service role, SQL manual o un bug del backend.
 
 ## 6. Contrato del preview
 
+- Motion puede desbordar el rectángulo estático de cada asset: `.clip-content`
+  permite overflow visible y el recorte final pertenece a `#composition-root`.
+  Crop y máscaras siguen viajando con el sujeto animado; no se cambian layout,
+  recorridos ni keyframes persistidos. Aplica al HTML de preview y render.
+  Contrato y QA: [motion en el canvas del video](../../openspec/changes/video-canvas-motion/design.md).
+
 - La automatización de producción admite `nativeCaptions` explícito en el perfil
   general y por componente (ausente: desactivado). En una ejecución aprobada,
   el refresco prepara el borrador cuando están listos los assets y las voces por
@@ -478,6 +484,11 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-31: motion ya no queda recortado por la caja estática del asset. El canvas
+  del video mantiene el recorte final; crop y máscara viajan con el sujeto.
+  QA local de 19 presets en ambos targets, píxeles, control negativo y seek:
+  [evidencia](../../openspec/changes/video-canvas-motion/reports/validation.md).
 
 - 2026-10-31: los subtítulos existentes pueden sobrescribirse tras preguntar al
   revisor. Confirmación por capa/versión, preservación al cancelar y rechazo de
