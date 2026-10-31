@@ -64,6 +64,8 @@ interface CompositionTimelineWorkspaceProps {
 
 export function CompositionTimelineWorkspace({ assetLabels, assets, brandingAvailability, componentId, currentTime, document, durationSourceLabel, editingGroupId, estimatedClipCount, onAnimationSelect, onAnimationTimingChange, onAudioMixUpdate, onClearSelection, onDurationChange, onEditingGroupChange, onInspectSelection, onMove, onMoveGroup, onOrganize, onOutroChange, onRecalculateDuration, onRecoverHistoricalAssets, onRefreshProductionAssets, onRoll, onSeek, onSelect, onSelectedClipIdsChange, onSelectedGroupChange, onSlide, onTrackUpdate, onTransitionSelect, onTrim, recoveringHistoricalAssets, refreshingProductionAssets, saving, editingDisabled = saving, selectedAnimationId, selectedClipIds, selectedGroupId, selectedHfId, selectedTransitionId, snapEnabled, trimToolEnabled }: CompositionTimelineWorkspaceProps) {
   const duration = document.canvas.durationSeconds;
+  const brandingClips = document.clips.filter((clip) => clip.source.type === "ASSEMBLY_BRAND_ASSET"
+    || (clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO"));
   const { notices, waveforms, retry } = useCompositionWaveforms(componentId, assets, document);
   return <section className={styles.timelinePanel}>
     <div className={styles.timelineScroll}>
@@ -75,6 +77,15 @@ export function CompositionTimelineWorkspace({ assetLabels, assets, brandingAvai
           {componentId !== null && <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={onRefreshProductionAssets} className={styles.durationAction}>{refreshingProductionAssets ? "Actualizando…" : "Actualizar assets"}</button>}
           {componentId !== null && <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={onRecoverHistoricalAssets} className={styles.durationAction}>{recoveringHistoricalAssets ? "Recuperando…" : "Recuperar históricos"}</button>}
           {brandingAvailability && <select value={brandingAvailability.selectedOutroAssetId || ""} disabled={saving} onChange={(event) => onOutroChange(event.target.value || null)} className={styles.durationAction} aria-label="Outro de este video"><option value="">Sin outro</option>{brandingAvailability.outros.map((outro) => <option key={outro.id} value={outro.id}>{outro.name} · {(outro.duration_milliseconds / 1000).toFixed(1)} s</option>)}</select>}
+          {brandingClips.map((clip) => <button key={clip.id} type="button" disabled={saving}
+            className={styles.durationAction} title={`Editar capas, animaciones y transformación de ${clip.label}`}
+            onClick={() => {
+              onSelectedClipIdsChange(new Set([clip.id]));
+              onSelectedGroupChange(null);
+              onEditingGroupChange(null);
+              onSelect(clip.hfId);
+              onSeek(clip.startSeconds);
+            }}>Editar {clip.source.type === "ASSEMBLY_BRAND_ASSET" && clip.source.placement === "OUTRO" ? "outro" : "intro"}</button>)}
         </div>
       </div>
       <AudioMixControls audioMix={document.audioMix} disabled={editingDisabled} onUpdate={onAudioMixUpdate} />

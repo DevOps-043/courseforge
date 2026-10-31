@@ -37,6 +37,9 @@ export function reconcileProductionIntroDocument(
   if (intro && (!Number.isFinite(introDuration) || introDuration <= 0)) {
     throw new Error("La intro debe tener una duración válida.");
   }
+  // Volver a elegir el mismo recurso conserva recortes, capas y motion editados.
+  if (intro && document.clips.some((clip) => clip.source.type === "PRODUCTION_ASSET"
+    && clip.source.placement === "INTRO" && clip.source.productionAssetId === intro.id)) return document;
   const contentStart = Math.min(...content.map((clip) => clip.startSeconds));
   const shift = roundSeconds(introDuration - contentStart);
   const shiftedContent = content.map((clip) => ({

@@ -1372,6 +1372,29 @@ test("compiles assembly branding with the same remote variable contract", async 
   assert.doesNotMatch(html, /src="https:\/\//);
 });
 
+test("intro y outro compilan sus capas y animaciones en preview y render", async () => {
+  for (const placement of ["INTRO", "OUTRO"] as const) {
+    const document = createInitialCompositionDocument({
+      animatedDeck: null,
+      assets: [{ checksum: "a".repeat(64), durationSeconds: 12, fileSizeBytes: 1, mimeType: "video/mp4", productionAssetId: "00000000-0000-4000-8000-000000000081", publicUrl: null, storageBucket: "production-assets", storagePath: "content.mp4", timelineRole: "AVATAR" }],
+      plan: { accentColor: "#38BDF8", durationSeconds: 12, subtitle: "Prueba", title: "Capas y motion" },
+    });
+    const clip = document.clips[0]!;
+    clip.source = { assemblyBrandAssetId: "00000000-0000-4000-8000-000000000082", hasAudio: true, placement, type: "ASSEMBLY_BRAND_ASSET" };
+    const edited = applyCompositionEditorPatches(document, [
+      { clipId: clip.id, type: "clip.layout", layout: { zIndex: 4 } },
+      { clipId: clip.id, type: "animation.add-preset", animationId: "branding-fade", presetId: "FADE_IN", durationSeconds: 0.5, offsetSeconds: 0 },
+    ]);
+    for (const target of [COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW, COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER]) {
+      const html = await compileCompositionPreview({ assetUrls: new Map([["00000000-0000-4000-8000-000000000082", "https://media.example.test/branding.mp4"]]), assetVariableNames: new Map([["00000000-0000-4000-8000-000000000082", "cf_asset_branding"]]), document: edited, target });
+      assert.match(html, /z-index:4;/);
+      assert.match(html, /branding-fade/);
+      if (target === COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER) assert.match(html, /data-var-src="cf_asset_branding"/);
+      else assert.match(html, /src="https:\/\/media.example.test\/branding.mp4"/);
+    }
+  }
+});
+
 test("resolves a linked READY sound effect into a private preview URL", async () => {
   const soundEffectId = "00000000-0000-4000-8000-000000000083";
   const document = createInitialCompositionDocument({
