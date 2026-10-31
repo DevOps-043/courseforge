@@ -219,6 +219,12 @@ Convierte componentes de video en assets, slides, clips de avatar y composicione
 
 ### Editor De Composicion y HyperFrames
 
+El audio se puede dividir y recortar como clip. Para un corte visual, selecciona
+un audio, usa **Ampliar audio**, haz doble clic sobre su onda para ubicar el cursor
+y pulsa **Dividir audio**. Entre dos audios adyacentes puedes añadir un crossfade
+desde Transiciones cuando las fuentes tengan material suficiente alrededor del
+corte. [Contrato de edición de audio](openspec/changes/audio-clip-editing/design.md).
+
 El **Volumen maestro** de la línea del tiempo ajusta toda la composición de 0 a
 100%, conservando los niveles de pistas y clips. Incluye voz, música, efectos y
 audio de video, con el mismo ajuste guardado para preview y render. Contrato:

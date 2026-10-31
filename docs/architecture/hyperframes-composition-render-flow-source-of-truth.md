@@ -216,6 +216,13 @@ service role, SQL manual o un bug del backend.
 
 ## 6. Contrato del preview
 
+- Dos clips AUDIO adyacentes pueden usar CROSS_DISSOLVE con audioMode CROSSFADE:
+  el efecto es exclusivamente sonoro, con handles y duración original verificados.
+  Runtime extiende ventanas y offsets de audio; no aplica opacidad a los medios.
+  Quitar la transición recupera el corte original. El timeline permite ampliar
+  el audio seleccionado y doble clic para situar el cursor antes de dividir.
+  [Contrato de edición de audio](../../openspec/changes/audio-clip-editing/design.md).
+
 - `audioMix.masterVolume` opcional controla el nivel de toda la línea del tiempo
   entre 0 y 1, con ausencia equivalente a 1 sin alterar el JSON leído. La ganancia
   se aplica una sola vez sobre el volumen final de clips/pistas, fades, ducking,
@@ -491,6 +498,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-31: crossfades entre clips de audio con handles verificados, ventanas y
+  offsets extendidos, sin animación visual. Zoom focal de onda y doble clic para
+  situar el cursor antes de dividir audio. [Evidencia](../../openspec/changes/audio-clip-editing/reports/validation.md).
 
 - 2026-10-31: maestro de volumen persistente para toda la línea del tiempo,
   compartido por nivel estático, envolventes, preview/render y referencia PCM.

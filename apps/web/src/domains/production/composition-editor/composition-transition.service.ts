@@ -60,25 +60,27 @@ export interface CompositionTransitionEditPoint {
   toClip: CompositionClip;
 }
 
-/** Canonical adjacent visual cuts exposed by the editor. */
+/** Cortes adyacentes visuales o de audio expuestos por el editor. */
 export function listCompositionTransitionEditPoints(
   document: CompositionEditorDocument,
 ): CompositionTransitionEditPoint[] {
   const frameSeconds = 1 / document.canvas.fps;
-  const visualClips = document.clips
-    .filter((clip) => clip.kind !== "AUDIO" && !clip.hidden)
+  const timelineClips = document.clips
+    .filter((clip) => !clip.hidden)
     .slice()
     .sort((left, right) => (
       left.trackId.localeCompare(right.trackId)
-      || left.layout.zIndex - right.layout.zIndex
+      || Number(left.kind !== "AUDIO") - Number(right.kind !== "AUDIO")
+      || (left.kind === "AUDIO" && right.kind === "AUDIO" ? 0 : left.layout.zIndex - right.layout.zIndex)
       || left.startSeconds - right.startSeconds
       || left.id.localeCompare(right.id)
     ));
   const points: CompositionTransitionEditPoint[] = [];
-  for (let index = 0; index < visualClips.length - 1; index += 1) {
-    const fromClip = visualClips[index]!;
-    const toClip = visualClips[index + 1]!;
-    if (fromClip.trackId !== toClip.trackId || fromClip.layout.zIndex !== toClip.layout.zIndex) continue;
+  for (let index = 0; index < timelineClips.length - 1; index += 1) {
+    const fromClip = timelineClips[index]!;
+    const toClip = timelineClips[index + 1]!;
+    if (fromClip.trackId !== toClip.trackId || (fromClip.kind === "AUDIO") !== (toClip.kind === "AUDIO")
+      || (fromClip.kind !== "AUDIO" && fromClip.layout.zIndex !== toClip.layout.zIndex)) continue;
     const fromEndSeconds = fromClip.startSeconds + fromClip.durationSeconds;
     if (Math.abs(fromEndSeconds - toClip.startSeconds) > frameSeconds + TRANSITION_EPSILON_SECONDS) continue;
     points.push({
@@ -106,8 +108,10 @@ export function resolveCompositionTransitionEligibility(params: {
     issues.push(issue("CLIP_NOT_FOUND", "La transición apunta a un clip que ya no existe."));
     return { available: false, issues, maximumDurationSeconds: 0, window: null };
   }
-  if (fromClip.kind === "AUDIO" || toClip.kind === "AUDIO") {
-    issues.push(issue("VISUAL_CLIP_REQUIRED", "Las transiciones V1 solo pueden unir dos clips visuales."));
+  const audioOnly = fromClip.kind === "AUDIO" && toClip.kind === "AUDIO";
+  if ((fromClip.kind === "AUDIO" || toClip.kind === "AUDIO")
+    && (!audioOnly || transition.type !== "CROSS_DISSOLVE" || transition.audioMode !== "CROSSFADE")) {
+    issues.push(issue("VISUAL_CLIP_REQUIRED", "Entre audios usa Crossfade; no se admiten efectos visuales ni mezclar audio con un clip visual."));
   }
   if (fromClip.hidden || toClip.hidden) {
     issues.push(issue("CLIP_HIDDEN", "Muestra ambos clips antes de crear la transición."));
@@ -116,7 +120,7 @@ export function resolveCompositionTransitionEligibility(params: {
   const fromTrack = document.tracks.find((track) => track.id === fromClip.trackId);
   const toTrack = document.tracks.find((track) => track.id === toClip.trackId);
   if (!fromTrack || !toTrack || fromClip.trackId !== toClip.trackId) {
-    issues.push(issue("TRACK_MISMATCH", "Los dos clips deben pertenecer a la misma pista visual."));
+    issues.push(issue("TRACK_MISMATCH", "Los dos clips deben pertenecer a la misma pista."));
   }
   if (fromTrack?.hidden || toTrack?.hidden) {
     issues.push(issue("TRACK_HIDDEN", "Muestra la pista antes de crear la transición."));
@@ -124,7 +128,7 @@ export function resolveCompositionTransitionEligibility(params: {
   if (fromTrack?.locked || toTrack?.locked) {
     issues.push(issue("TRACK_LOCKED", "Desbloquea la pista antes de editar la transición."));
   }
-  if (fromClip.layout.zIndex !== toClip.layout.zIndex) {
+  if (!audioOnly && fromClip.layout.zIndex !== toClip.layout.zIndex) {
     issues.push(issue("LAYOUT_DEPTH_MISMATCH", "Los clips deben compartir la misma profundidad visual."));
   }
   if (
@@ -136,7 +140,7 @@ export function resolveCompositionTransitionEligibility(params: {
   ) {
     issues.push(issue(
       "AUDIO_CROSSFADE_UNAVAILABLE",
-      "El crossfade de audio requiere que ambos videos tengan audio confirmado.",
+      "El crossfade requiere dos fuentes de audio confirmadas.",
     ));
   }
 
@@ -151,7 +155,7 @@ export function resolveCompositionTransitionEligibility(params: {
   const fromHandles = resolveClipMediaHandles(fromClip);
   const toHandles = resolveClipMediaHandles(toClip);
   if (fromHandles.requiresSourceDuration || toHandles.requiresSourceDuration) {
-    issues.push(issue("SOURCE_DURATION_REQUIRED", "Verifica la duración original de ambos videos antes de crear la transición."));
+    issues.push(issue("SOURCE_DURATION_REQUIRED", "Verifica la duración original de ambos medios antes de crear la transición."));
   }
 
   const handleLimit = resolveHandleDurationLimit(
@@ -280,7 +284,7 @@ export function transferOutgoingTransitionsToDerivedClip(
 }
 
 function resolveClipMediaHandles(clip: CompositionClip) {
-  if (clip.kind !== "VIDEO") {
+  if (clip.kind !== "VIDEO" && clip.kind !== "AUDIO") {
     return { headSeconds: Number.POSITIVE_INFINITY, requiresSourceDuration: false, tailSeconds: Number.POSITIVE_INFINITY };
   }
   if (!clip.sourceDurationSeconds) {
@@ -323,10 +327,10 @@ function hasThirdClipConflict(
   return document.clips.some((clip) => (
     clip.id !== transition.fromClipId
     && clip.id !== transition.toClipId
-    && clip.kind !== "AUDIO"
+    && (clip.kind === "AUDIO") === (fromClip.kind === "AUDIO")
     && !clip.hidden
     && clip.trackId === fromClip.trackId
-    && clip.layout.zIndex === fromClip.layout.zIndex
+    && (fromClip.kind === "AUDIO" || clip.layout.zIndex === fromClip.layout.zIndex)
     && clip.startSeconds < window.endSeconds - TRANSITION_EPSILON_SECONDS
     && clip.startSeconds + clip.durationSeconds > window.startSeconds + TRANSITION_EPSILON_SECONDS
   ));

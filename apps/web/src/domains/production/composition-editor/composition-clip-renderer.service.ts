@@ -48,9 +48,7 @@ export function renderCompositionClip(
     startSeconds: clip.startSeconds,
   };
   const visualTiming = `data-start="${visualWindow.startSeconds}" data-duration="${visualWindow.durationSeconds}" data-track-index="${runtimeTrackIndex}"`;
-  const canonicalTiming = `data-start="${clip.startSeconds}" data-duration="${clip.durationSeconds}" data-end="${clip.startSeconds + clip.durationSeconds}"`;
   const visualMediaOffset = `data-source-offset="${visualWindow.sourceOffsetSeconds}"${isHyperframesRender ? ` data-media-start="${visualWindow.sourceOffsetSeconds}"` : ""}`;
-  const canonicalMediaOffset = `data-source-offset="${clip.sourceOffsetSeconds || 0}"${isHyperframesRender ? ` data-media-start="${clip.sourceOffsetSeconds || 0}"` : ""}`;
   const audioWindow = audioRuntimeWindow || {
     durationSeconds: clip.durationSeconds,
     endSeconds: clip.startSeconds + clip.durationSeconds,
@@ -88,7 +86,7 @@ export function renderCompositionClip(
   const videoRate = clip.playbackRate === undefined ? "" : ` data-playback-rate="${clip.playbackRate}"`;
   const videoLoop = clip.playbackRate === undefined && clip.freezeTailSeconds === undefined ? " loop" : "";
   if (clip.kind === "AUDIO") {
-    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${audioCrossOrigin}${hidden}${volumeAutomation} ${canonicalMediaOffset} data-volume="${volume}" ${mediaSource} preload="metadata" ${canonicalTiming} data-track-index="${runtimeTrackIndex}"></audio>`;
+    return `<audio id="${escapeAttribute(clip.id)}" class="composition-audio${isHyperframesRender ? " clip" : ""}" data-hf-id="${escapeAttribute(clip.hfId)}"${audioCrossOrigin}${hidden}${volumeAutomation} ${audioMediaOffset} data-volume="${volume}" ${mediaSource} preload="metadata" ${audioTiming} data-track-index="${runtimeTrackIndex}"></audio>`;
   }
   if (clip.kind === "VIDEO" && isHyperframesRender) {
     const video = `<video id="${escapeAttribute(clip.id)}-media" class="composition-media clip" crossorigin="anonymous" ${mediaSource}${colorGrading} muted playsinline${videoLoop}${videoRate} preload="metadata" ${visualMediaOffset}${hidden} ${visualTiming}></video>`;

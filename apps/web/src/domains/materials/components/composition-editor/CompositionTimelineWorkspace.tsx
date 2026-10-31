@@ -42,6 +42,7 @@ interface CompositionTimelineWorkspaceProps {
   onRecoverHistoricalAssets: () => void;
   onRefreshProductionAssets: () => void;
   onSeek: (seconds: number) => void;
+  onSplitAudio?: () => void;
   onSelect: (hfId: string) => void;
   onSlide: (deltaFrames: number, anchorClipId?: string) => void;
   onSelectedClipIdsChange: (clipIds: Set<string>) => void;
@@ -62,7 +63,7 @@ interface CompositionTimelineWorkspaceProps {
   trimToolEnabled: boolean;
 }
 
-export function CompositionTimelineWorkspace({ assetLabels, assets, brandingAvailability, componentId, currentTime, document, durationSourceLabel, editingGroupId, estimatedClipCount, onAnimationSelect, onAnimationTimingChange, onAudioMixUpdate, onClearSelection, onDurationChange, onEditingGroupChange, onInspectSelection, onMove, onMoveGroup, onOrganize, onOutroChange, onRecalculateDuration, onRecoverHistoricalAssets, onRefreshProductionAssets, onRoll, onSeek, onSelect, onSelectedClipIdsChange, onSelectedGroupChange, onSlide, onTrackUpdate, onTransitionSelect, onTrim, recoveringHistoricalAssets, refreshingProductionAssets, saving, editingDisabled = saving, selectedAnimationId, selectedClipIds, selectedGroupId, selectedHfId, selectedTransitionId, snapEnabled, trimToolEnabled }: CompositionTimelineWorkspaceProps) {
+export function CompositionTimelineWorkspace({ assetLabels, assets, brandingAvailability, componentId, currentTime, document, durationSourceLabel, editingGroupId, estimatedClipCount, onAnimationSelect, onAnimationTimingChange, onAudioMixUpdate, onClearSelection, onDurationChange, onEditingGroupChange, onInspectSelection, onMove, onMoveGroup, onOrganize, onOutroChange, onRecalculateDuration, onRecoverHistoricalAssets, onRefreshProductionAssets, onRoll, onSeek, onSplitAudio, onSelect, onSelectedClipIdsChange, onSelectedGroupChange, onSlide, onTrackUpdate, onTransitionSelect, onTrim, recoveringHistoricalAssets, refreshingProductionAssets, saving, editingDisabled = saving, selectedAnimationId, selectedClipIds, selectedGroupId, selectedHfId, selectedTransitionId, snapEnabled, trimToolEnabled }: CompositionTimelineWorkspaceProps) {
   const duration = document.canvas.durationSeconds;
   const brandingClips = document.clips.filter((clip) => clip.source.type === "ASSEMBLY_BRAND_ASSET"
     || (clip.source.type === "PRODUCTION_ASSET" && clip.source.placement === "INTRO"));
@@ -94,7 +95,7 @@ export function CompositionTimelineWorkspace({ assetLabels, assets, brandingAvai
         {notice.message} ({notice.count} recurso(s)).
         {notice.action && <button type="button" onClick={() => retry(notice.status === "ANALYSIS_FAILED" || notice.status === "CANCELLED")}>{notice.action}</button>}
       </p>)}
-      <CompositionTimeline componentId={componentId} assetLabels={assetLabels} waveforms={waveforms} document={document} currentTime={currentTime} editingGroupId={editingGroupId} saving={editingDisabled} selectedAnimationId={selectedAnimationId} selectedClipIds={selectedClipIds} selectedGroupId={selectedGroupId} selectedHfId={selectedHfId} selectedTransitionId={selectedTransitionId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={onAnimationSelect} onAnimationTimingChange={onAnimationTimingChange} onClearSelection={onClearSelection} onDurationChange={onDurationChange} onEditingGroupChange={onEditingGroupChange} onInspectSelection={onInspectSelection} onMove={onMove} onMoveGroup={onMoveGroup} onRoll={onRoll} onSeek={onSeek} onSelect={onSelect} onSelectedClipIdsChange={onSelectedClipIdsChange} onSelectedGroupChange={onSelectedGroupChange} onSlide={onSlide} onTrackUpdate={onTrackUpdate} onTransitionSelect={onTransitionSelect} onTrim={onTrim} />
+      <CompositionTimeline componentId={componentId} assetLabels={assetLabels} waveforms={waveforms} document={document} currentTime={currentTime} editingGroupId={editingGroupId} saving={editingDisabled} selectedAnimationId={selectedAnimationId} selectedClipIds={selectedClipIds} selectedGroupId={selectedGroupId} selectedHfId={selectedHfId} selectedTransitionId={selectedTransitionId} snapEnabled={snapEnabled} trimMode={trimToolEnabled} onAnimationSelect={onAnimationSelect} onAnimationTimingChange={onAnimationTimingChange} onClearSelection={onClearSelection} onDurationChange={onDurationChange} onEditingGroupChange={onEditingGroupChange} onInspectSelection={onInspectSelection} onMove={onMove} onMoveGroup={onMoveGroup} onRoll={onRoll} onSeek={onSeek} onSplitAudio={onSplitAudio} onSelect={onSelect} onSelectedClipIdsChange={onSelectedClipIdsChange} onSelectedGroupChange={onSelectedGroupChange} onSlide={onSlide} onTrackUpdate={onTrackUpdate} onTransitionSelect={onTransitionSelect} onTrim={onTrim} />
       {estimatedClipCount > 0 && <p className={styles.estimatedWarning}><AlertTriangle className="mt-0.5 shrink-0" size={14} /> {estimatedClipCount} segmentos tienen duración estimada. Arrastra su borde derecho para ajustarlos.</p>}
     </div>
   </section>;

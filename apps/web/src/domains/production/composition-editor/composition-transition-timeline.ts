@@ -16,6 +16,7 @@ export function scheduleCompositionTransitions<Target>(timeline: TransitionTimel
   };
   const wipeInsets = {DOWN: "inset(100% 0 0 0)", LEFT: "inset(0 0 0 100%)", RIGHT: "inset(0 100% 0 0)", UP: "inset(0 0 100% 0)"};
   for (const transition of transitions) {
+    if (transition.audioOnly) continue;
     const from = resolveTarget(transition.fromClipId), to = resolveTarget(transition.toClipId);
     if (!from || !to) continue;
     const common = {duration: transition.durationSeconds, ease: transition.easing, immediateRender: false};

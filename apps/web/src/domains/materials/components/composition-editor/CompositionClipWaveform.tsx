@@ -117,7 +117,7 @@ export function CompositionClipWaveform({
     <span
       ref={containerRef}
       aria-hidden="true"
-      className="pointer-events-none absolute inset-x-2 bottom-1 top-3 overflow-hidden opacity-60"
+      className="pointer-events-none absolute inset-x-0 bottom-1 top-3 overflow-hidden opacity-60"
     >
       {paths.some(Boolean) && (
         <svg

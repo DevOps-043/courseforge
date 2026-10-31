@@ -14,6 +14,7 @@ export interface CompositionTransitionRuntimeClipWindow {
 }
 
 export interface CompositionTransitionRuntimeItem {
+  audioOnly?: boolean;
   audioMode: CompositionTransition["audioMode"];
   direction?: "DOWN" | "LEFT" | "RIGHT" | "UP";
   durationSeconds: number;
@@ -89,6 +90,7 @@ export function buildCompositionTransitionRuntime(
     }
 
     return {
+      ...(fromClip.kind === "AUDIO" ? { audioOnly: true } : {}),
       ...(transition.parameters?.blurPixels !== undefined
         ? { blurPixels: transition.parameters.blurPixels }
         : {}),
@@ -102,7 +104,7 @@ export function buildCompositionTransitionRuntime(
       fromClipId: transition.fromClipId,
       fromOpacity: fromClip.layout.opacity,
       ...(transition.audioMode === "CROSSFADE" ? {
-        fromAudioTargetId: `${transition.fromClipId}-audio`,
+        fromAudioTargetId: fromClip.kind === "AUDIO" ? fromClip.id : `${transition.fromClipId}-audio`,
         fromAudioVolume: resolveCompositionClipAudioVolume(fromClip, tracksById.get(fromClip.trackId), document.audioMix.masterVolume ?? 1),
       } : {}),
       id: transition.id,
@@ -116,7 +118,7 @@ export function buildCompositionTransitionRuntime(
       toClipId: transition.toClipId,
       toOpacity: toClip.layout.opacity,
       ...(transition.audioMode === "CROSSFADE" ? {
-        toAudioTargetId: `${transition.toClipId}-audio`,
+        toAudioTargetId: toClip.kind === "AUDIO" ? toClip.id : `${transition.toClipId}-audio`,
         toAudioVolume: resolveCompositionClipAudioVolume(toClip, tracksById.get(toClip.trackId), document.audioMix.masterVolume ?? 1),
       } : {}),
       type: transition.type,
@@ -136,7 +138,7 @@ function canonicalWindow(clip: CompositionClip): CompositionTransitionRuntimeCli
 }
 
 function resolveRuntimeSourceOffset(clip: CompositionClip, runtimeStartSeconds: number) {
-  if (clip.kind !== "VIDEO") return clip.sourceOffsetSeconds || 0;
+  if (clip.kind !== "VIDEO" && clip.kind !== "AUDIO") return clip.sourceOffsetSeconds || 0;
   return roundSeconds(Math.max(
     0,
     (clip.sourceOffsetSeconds || 0) - (clip.startSeconds - runtimeStartSeconds),

@@ -195,6 +195,13 @@ Incluye:
 
 ## Remotion y Produccion
 
+Las transiciones admiten dos clips AUDIO con CROSS_DISSOLVE + CROSSFADE. El
+runtime `audioOnly` evita efectos visuales y proyecta ventanas y offsets de audio
+extendidos sobre handles verificados. Lanes separadas evitan solapar medios en
+un mismo track del proveedor. El timeline ofrece zoom focal hasta 128x, doble
+clic sobre la onda y división del audio; el corte continúa alineado a frames,
+sin modificar el archivo original. [Contrato](../../openspec/changes/audio-clip-editing/design.md).
+
 La mezcla admite `audioMix.masterVolume` opcional (0..1, ausencia = 1 sin cambiar
 hashes anteriores). Se guarda mediante `audio-mix.update`, separado del ducking,
 y multiplica una vez el volumen final y sus envolventes. Preview, render y la

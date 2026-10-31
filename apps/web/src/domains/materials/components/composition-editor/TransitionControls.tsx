@@ -53,6 +53,7 @@ export function TransitionControls({ document, onAdd, onRemove, onSelect, onUpda
   const selectedPoint = selected
     ? editPoints.find((point) => point.existingTransitionId === selected.id) || null
     : null;
+  const selectedAudio = selectedPoint?.fromClip.kind === "AUDIO";
   const selectedCandidate = emptyPoints.find((point) => cutKey(point) === selectedCutKey) || emptyPoints[0] || null;
   const candidateDefault = selectedCandidate ? buildDefaultTransition(document, selectedCandidate, "candidate-transition") : null;
   const candidateBlocker = selectedCandidate && !candidateDefault
@@ -122,23 +123,23 @@ export function TransitionControls({ document, onAdd, onRemove, onSelect, onUpda
       <option value="">Selecciona una transición…</option>
       {document.transitions?.items.map((transition) => {
         const point = editPoints.find((candidate) => candidate.existingTransitionId === transition.id);
-        return <option key={transition.id} value={transition.id}>{TYPE_LABELS[transition.type]}{point ? ` · ${formatClock(point.cutSeconds)}` : ""}</option>;
+        return <option key={transition.id} value={transition.id}>{point?.fromClip.kind === "AUDIO" ? "Crossfade de audio" : TYPE_LABELS[transition.type]}{point ? ` · ${formatClock(point.cutSeconds)}` : ""}</option>;
       })}
     </select></Field>}
     {candidateBlocker && <p role="status" className="text-[9px] text-amber-700 dark:text-amber-200">{candidateBlocker}</p>}
 
     {selected && selectedPoint && <div className="grid gap-3 rounded-lg border border-cyan-200/80 bg-white/80 p-3 dark:border-white/10 dark:bg-black/10">
-      <Field label="Efecto"><select value={selected.type} disabled={saving} onChange={(event) => updateType(event.target.value as CompositionTransition["type"])} className={inputClass}>{COMPOSITION_TRANSITION_TYPES.map((type) => <option key={type} value={type}>{TYPE_LABELS[type]}</option>)}</select></Field>
+      <Field label="Efecto"><select value={selected.type} disabled={saving} onChange={(event) => updateType(event.target.value as CompositionTransition["type"])} className={inputClass}>{(selectedAudio ? ["CROSS_DISSOLVE"] as const : COMPOSITION_TRANSITION_TYPES).map((type) => <option key={type} value={type}>{selectedAudio ? "Crossfade de audio" : TYPE_LABELS[type]}</option>)}</select></Field>
       <Field label="Alineación"><select value={selected.alignment} disabled={saving} onChange={(event) => updateAlignment(event.target.value as CompositionTransition["alignment"])} className={inputClass}>{COMPOSITION_TRANSITION_ALIGNMENTS.map((alignment) => <option key={alignment} value={alignment}>{ALIGNMENT_LABELS[alignment]}</option>)}</select></Field>
       <Field label={`Duración · máx. ${currentEligibility?.maximumDurationSeconds.toFixed(2) || "0.00"} s`}><input type="number" min={1 / document.canvas.fps} max={currentEligibility?.maximumDurationSeconds || selected.durationSeconds} step={1 / document.canvas.fps} value={selected.durationSeconds} disabled={saving} onChange={(event) => onUpdate(selected.id, { durationSeconds: quantizeDuration(Math.min(Number(event.target.value), currentEligibility?.maximumDurationSeconds || selected.durationSeconds), document.canvas.fps) })} className={inputClass} /></Field>
-      <Field label="Curva"><select value={selected.easing} disabled={saving} onChange={(event) => onUpdate(selected.id, { easing: event.target.value as CompositionTransition["easing"] })} className={inputClass}>{COMPOSITION_TRANSITION_EASES.map((easing) => <option key={easing} value={easing}>{easing}</option>)}</select></Field>
-      <Field label="Audio"><select value={selected.audioMode} disabled={saving} onChange={(event) => onUpdate(selected.id, { audioMode: event.target.value as CompositionTransition["audioMode"] })} className={inputClass}><option value="CUT">Corte</option><option value="CROSSFADE" disabled={!crossfadeAvailable}>Crossfade</option></select></Field>
+      {!selectedAudio && <Field label="Curva"><select value={selected.easing} disabled={saving} onChange={(event) => onUpdate(selected.id, { easing: event.target.value as CompositionTransition["easing"] })} className={inputClass}>{COMPOSITION_TRANSITION_EASES.map((easing) => <option key={easing} value={easing}>{easing}</option>)}</select></Field>}
+      {!selectedAudio && <Field label="Audio"><select value={selected.audioMode} disabled={saving} onChange={(event) => onUpdate(selected.id, { audioMode: event.target.value as CompositionTransition["audioMode"] })} className={inputClass}><option value="CUT">Corte</option><option value="CROSSFADE" disabled={!crossfadeAvailable}>Crossfade</option></select></Field>}
       <div className="flex items-end"><button type="button" disabled={saving} onClick={() => { onSelect(null); onRemove(selected.id); }} className="inline-flex w-full items-center justify-center gap-1 rounded border border-red-200 bg-red-50 px-2 py-1.5 font-bold text-red-700 disabled:opacity-40 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200"><Trash2 size={12} /> Quitar</button></div>
       {selected.type === "DIP_TO_COLOR" && <Field label="Color"><input type="color" value={selected.parameters?.color || "#000000"} disabled={saving} onChange={(event) => onUpdate(selected.id, { parameters: { color: event.target.value } })} className={inputClass} /></Field>}
       {(selected.type === "PUSH" || selected.type === "SOFT_WIPE") && <Field label="Dirección"><select value={selected.parameters?.direction || "LEFT"} disabled={saving} onChange={(event) => onUpdate(selected.id, { parameters: { direction: event.target.value as NonNullable<CompositionTransition["parameters"]>["direction"] } })} className={inputClass}>{COMPOSITION_TRANSITION_DIRECTIONS.map((direction) => <option key={direction} value={direction}>{direction}</option>)}</select></Field>}
       {selected.type === "BLUR_DISSOLVE" && <Field label="Desenfoque"><input type="number" min={0} max={40} step={1} value={selected.parameters?.blurPixels ?? 12} disabled={saving} onChange={(event) => onUpdate(selected.id, { parameters: { blurPixels: Number(event.target.value) } })} className={inputClass} /></Field>}
-      <p className="self-end text-[9px] leading-4 text-slate-500 dark:text-cyan-100/70">{formatEditPoint(selectedPoint)} · el efecto ocupa ambos clips; no es una animación de entrada o salida.</p>
-      {!crossfadeAvailable && <p className="self-end text-[9px] leading-4 text-amber-700 dark:text-amber-200">Crossfade disponible solo cuando ambos videos confirman una pista de audio.</p>}
+      <p className="self-end text-[9px] leading-4 text-slate-500 dark:text-cyan-100/70">{formatEditPoint(selectedPoint)} · {selectedAudio ? "crossfade lineal; quitarlo recupera el corte de audio original." : "el efecto ocupa ambos clips; no es una animación de entrada o salida."}</p>
+      {!crossfadeAvailable && <p className="self-end text-[9px] leading-4 text-amber-700 dark:text-amber-200">Crossfade disponible cuando ambos medios tienen audio confirmado.</p>}
     </div>}
     {!selected && (document.transitions?.items.length || 0) > 0 && <p className="rounded-lg border border-dashed border-slate-300 p-3 text-center text-[10px] leading-4 text-slate-500 dark:border-white/15 dark:text-gray-400">Selecciona una transición aquí o desde el marcador ↔ del timeline para editarla.</p>}
   </div>;
@@ -169,7 +170,7 @@ function buildTransitionProbe(
 ): CompositionTransition {
   return {
     alignment,
-    audioMode: "CUT",
+    audioMode: point.fromClip.kind === "AUDIO" ? "CROSSFADE" : "CUT",
     durationSeconds: 1 / document.canvas.fps,
     easing: "sine.inOut",
     fromClipId: point.fromClip.id,

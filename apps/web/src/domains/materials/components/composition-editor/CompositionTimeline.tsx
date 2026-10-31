@@ -1,4 +1,6 @@
 "use client";
+import { AUDIO_TIMELINE_ZOOM, audioTimelinePointerSeconds, resolveAudioTimelineZoom, buildAudioTimelineRuler } from "@/domains/production/composition-editor/composition-audio-timeline-view";
+import { formatCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import { buildCompositionGroupIndex, resolveCompositionGroupAtLevel } from "@/domains/production/composition-editor/composition-group-hierarchy";
 
 
@@ -57,9 +59,9 @@ type TimelineGesture = {
 };
 
 const PLAYHEAD_SNAP_DISTANCE_PX = 10;
-const MIN_TIMELINE_ZOOM = 1;
-const MAX_TIMELINE_ZOOM = 8;
-const TIMELINE_ZOOM_STEP = 0.5;
+const MIN_TIMELINE_ZOOM = AUDIO_TIMELINE_ZOOM.minimum;
+const MAX_TIMELINE_ZOOM = AUDIO_TIMELINE_ZOOM.maximum;
+const TIMELINE_ZOOM_STEP = AUDIO_TIMELINE_ZOOM.step;
 
 interface CompositionTimelineProps {
   componentId?: string | null;
@@ -78,6 +80,7 @@ interface CompositionTimelineProps {
   onMoveGroup: (groupId: string, startSeconds: number) => void;
   onRoll: (edge: "LEFT" | "RIGHT", deltaFrames: number, anchorClipId?: string) => void;
   onSeek: (seconds: number) => void;
+  onSplitAudio?: () => void;
   onSelect: (hfId: string) => void;
   onSlide: (deltaFrames: number, anchorClipId?: string) => void;
   onSelectedClipIdsChange: (clipIds: Set<string>) => void;
@@ -95,12 +98,12 @@ interface CompositionTimelineProps {
   trimMode?: boolean;
 }
 
-export function CompositionTimeline({ componentId, assetLabels, waveforms, currentTime, document, editingGroupId, onAnimationSelect, onAnimationTimingChange, onClearSelection, onDurationChange, onEditingGroupChange, onInspectSelection, onMove, onMoveGroup, onRoll, onSeek, onSelect, onSelectedClipIdsChange, onSelectedGroupChange, onSlide, onTrackUpdate, onTransitionSelect, onTrim, saving, selectedAnimationId, selectedClipIds, selectedGroupId, selectedHfId, selectedTransitionId, snapEnabled = true, trimMode = false }: CompositionTimelineProps) {
+export function CompositionTimeline({ componentId, assetLabels, waveforms, currentTime, document, editingGroupId, onAnimationSelect, onAnimationTimingChange, onClearSelection, onDurationChange, onEditingGroupChange, onInspectSelection, onMove, onMoveGroup, onRoll, onSeek, onSplitAudio, onSelect, onSelectedClipIdsChange, onSelectedGroupChange, onSlide, onTrackUpdate, onTransitionSelect, onTrim, saving, selectedAnimationId, selectedClipIds, selectedGroupId, selectedHfId, selectedTransitionId, snapEnabled = true, trimMode = false }: CompositionTimelineProps) {
   const [gesture, setGesture] = useState<TimelineGesture | null>(null);
   const [motionEditError, setMotionEditError] = useState<string | null>(null);
   const [multiSelectEnabled, setMultiSelectEnabled] = useState(false);
   const [scrubbing, setScrubbing] = useState(false);
-  const [timelineZoom, setTimelineZoom] = useState(MIN_TIMELINE_ZOOM);
+  const [timelineZoom, setTimelineZoom] = useState<number>(MIN_TIMELINE_ZOOM);
   const [timelineScroll, setTimelineScroll] = useState(0);
   const [timelineScrollMax, setTimelineScrollMax] = useState(0);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
@@ -123,7 +126,7 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
   const editingGroup = logicalGroups.find((group) => group.id === editingGroupId) || null;
   const maxDuration = document.canvas.durationSeconds;
   const fps = document.canvas.fps;
-  const ruler = useMemo(() => buildTimelineRuler(maxDuration, timelineZoom), [maxDuration, timelineZoom]);
+  const ruler = useMemo(() => buildAudioTimelineRuler(maxDuration, timelineZoom), [maxDuration, timelineZoom]);
   const snappedToPlayhead = gesture?.snapMatch?.source === "PLAYHEAD";
   const clipSnapMatch = gesture?.snapMatch?.source === "CLIP_START" || gesture?.snapMatch?.source === "CLIP_END"
     ? gesture.snapMatch
@@ -481,6 +484,17 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
   const changeTimelineZoom = (nextZoom: number) => {
     setTimelineZoom(Math.max(MIN_TIMELINE_ZOOM, Math.min(MAX_TIMELINE_ZOOM, nextZoom)));
   };
+  const selectedAudio = document.clips.find(clip => clip.hfId === selectedHfId && clip.kind === "AUDIO");
+  const focusAudio = () => {
+    const viewport = timelineViewportRef.current;
+    if (!viewport || !selectedAudio) return;
+    changeTimelineZoom(resolveAudioTimelineZoom(maxDuration, viewport.clientWidth, fps));
+    const focus = Math.max(selectedAudio.startSeconds, Math.min(currentTime, selectedAudio.startSeconds + selectedAudio.durationSeconds));
+    window.requestAnimationFrame(() => {
+      viewport.scrollLeft = Math.max(0, focus / maxDuration * viewport.scrollWidth - viewport.clientWidth / 2);
+      syncTimelineScroll();
+    });
+  };
   const syncTimelineScroll = () => {
     const viewport = timelineViewportRef.current;
     if (!viewport) return;
@@ -552,6 +566,9 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
       <div className="flex flex-wrap items-center justify-end gap-2">
         <span>{formatSeconds(currentTime)} · {document.clips.length} clips · mueve el bloque o recorta sus bordes</span>
         <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-white p-0.5 normal-case tracking-normal dark:border-white/10 dark:bg-white/5">
+          <button type="button" disabled={!selectedAudio} onClick={focusAudio} className="rounded border border-cyan-400 px-2 py-1 text-xs disabled:opacity-40">Ampliar audio</button>
+          <button type="button" disabled={!onSplitAudio || !selectedAudio || saving || Boolean(document.tracks.find(track => track.id === selectedAudio.trackId)?.locked) || currentTime <= selectedAudio.startSeconds || currentTime >= selectedAudio.startSeconds + selectedAudio.durationSeconds} onClick={onSplitAudio} className="rounded border border-cyan-400 px-2 py-1 text-xs disabled:opacity-40">Dividir audio</button>
+          {selectedAudio && <span className="text-xs" role="status">Cursor: {formatCompositionTimecode(currentTime)} · Doble clic en la onda para ubicar el corte; usa Dividir.</span>}
           <button type="button" aria-label="Alejar timeline" title="Alejar timeline" disabled={timelineZoom <= MIN_TIMELINE_ZOOM} onClick={() => changeTimelineZoom(timelineZoom - TIMELINE_ZOOM_STEP)} className="rounded p-1 text-slate-600 hover:bg-slate-100 disabled:opacity-30 dark:text-gray-300 dark:hover:bg-white/10"><ZoomOut size={13} /></button>
           <input aria-label="Zoom del timeline" aria-valuetext={`${Math.round(timelineZoom * 100)}%`} type="range" min={MIN_TIMELINE_ZOOM} max={MAX_TIMELINE_ZOOM} step={TIMELINE_ZOOM_STEP} value={timelineZoom} onChange={(event) => changeTimelineZoom(Number(event.target.value))} className="w-20 accent-[var(--engine-accent)]" />
           <span className="w-10 text-center font-mono text-[10px] tabular-nums">{Math.round(timelineZoom * 100)}%</span>
@@ -573,7 +590,7 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
     {(motionEditError || coordinatedGesturePreview.error) && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200">{motionEditError || coordinatedGesturePreview.error}</div>}
     <div ref={timelineViewportRef} data-composition-timeline-viewport onScroll={syncTimelineScroll} className="overflow-x-auto pb-4">
       <div className="space-y-2" style={{ minWidth: `${timelineZoom * 100}%` }}>
-    <div className="grid grid-cols-[160px_minmax(0,1fr)] items-end gap-2"><span className="sticky left-0 z-40 bg-white pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:bg-[#101720] dark:text-gray-400">Tiempo</span><div role="slider" aria-label="Cursor de la composición" aria-valuemax={maxDuration} aria-valuemin={0} aria-valuenow={currentTime} tabIndex={0} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); onSeek(stepCompositionFrame(currentTime, -1, fps, maxDuration, event.shiftKey)); } if (event.key === "ArrowRight") { event.preventDefault(); onSeek(stepCompositionFrame(currentTime, 1, fps, maxDuration, event.shiftKey)); } }} onPointerDown={beginScrub} onPointerMove={continueScrub} onPointerUp={endScrub} onPointerCancel={endScrub} className="relative h-8 cursor-ew-resize select-none overflow-hidden rounded-t-md border border-b-0 border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">{ruler.minor.map((time) => <span key={`minor-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute bottom-0 h-2 w-px bg-slate-300 dark:bg-white/20" />)}{ruler.major.map((time) => <span key={`major-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute inset-y-0 w-px bg-slate-300 dark:bg-white/20"><span className="absolute left-1 top-1 whitespace-nowrap font-mono text-[9px] text-slate-500 dark:text-gray-400">{formatSeconds(time)}</span></span>)}{clipSnapMatch && <span aria-hidden="true" style={{ left: `${(clipSnapMatch.timeSeconds / maxDuration) * 100}%` }} className="absolute inset-y-0 z-30 w-0.5 bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.9)]"><span className="absolute left-1 top-0.5 whitespace-nowrap rounded bg-amber-100 px-1 py-0.5 text-[8px] font-bold normal-case tracking-normal text-amber-900 shadow-sm">{formatSnapLabel(clipSnapMatch)}</span></span>}<span aria-hidden="true" style={{ left: `${(currentTime / maxDuration) * 100}%` }} className={`absolute inset-y-0 z-30 w-0.5 ${snappedToPlayhead ? "bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.9)]" : "bg-cyan-600 shadow-[0_0_7px_rgba(8,145,178,0.75)] dark:bg-cyan-300"} ${scrubbing ? "opacity-100" : "opacity-90"}`}><span className={`absolute -left-1.5 top-0 h-3 w-3 rotate-45 border ${snappedToPlayhead ? "border-amber-600 bg-amber-100" : "border-cyan-700 bg-cyan-100 dark:border-cyan-100 dark:bg-cyan-400"}`} /></span></div></div>
+    <div className="grid grid-cols-[160px_minmax(0,1fr)] items-end gap-2"><span className="sticky left-0 z-40 bg-white pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:bg-[#101720] dark:text-gray-400">Tiempo</span><div role="slider" aria-label="Cursor de la composición" aria-valuemax={maxDuration} aria-valuemin={0} aria-valuenow={currentTime} tabIndex={0} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); onSeek(stepCompositionFrame(currentTime, -1, fps, maxDuration, event.shiftKey)); } if (event.key === "ArrowRight") { event.preventDefault(); onSeek(stepCompositionFrame(currentTime, 1, fps, maxDuration, event.shiftKey)); } }} onPointerDown={beginScrub} onPointerMove={continueScrub} onPointerUp={endScrub} onPointerCancel={endScrub} className="relative h-8 cursor-ew-resize select-none overflow-hidden rounded-t-md border border-b-0 border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">{ruler.minor.map((time) => <span key={`minor-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute bottom-0 h-2 w-px bg-slate-300 dark:bg-white/20" />)}{ruler.major.map((time) => <span key={`major-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute inset-y-0 w-px bg-slate-300 dark:bg-white/20"><span className="absolute left-1 top-1 whitespace-nowrap font-mono text-[9px] text-slate-500 dark:text-gray-400">{formatCompositionTimecode(time)}</span></span>)}{clipSnapMatch && <span aria-hidden="true" style={{ left: `${(clipSnapMatch.timeSeconds / maxDuration) * 100}%` }} className="absolute inset-y-0 z-30 w-0.5 bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.9)]"><span className="absolute left-1 top-0.5 whitespace-nowrap rounded bg-amber-100 px-1 py-0.5 text-[8px] font-bold normal-case tracking-normal text-amber-900 shadow-sm">{formatSnapLabel(clipSnapMatch)}</span></span>}<span aria-hidden="true" style={{ left: `${(currentTime / maxDuration) * 100}%` }} className={`absolute inset-y-0 z-30 w-0.5 ${snappedToPlayhead ? "bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.9)]" : "bg-cyan-600 shadow-[0_0_7px_rgba(8,145,178,0.75)] dark:bg-cyan-300"} ${scrubbing ? "opacity-100" : "opacity-90"}`}><span className={`absolute -left-1.5 top-0 h-3 w-3 rotate-45 border ${snappedToPlayhead ? "border-amber-600 bg-amber-100" : "border-cyan-700 bg-cyan-100 dark:border-cyan-100 dark:bg-cyan-400"}`} /></span></div></div>
     {groups.map((group) => {
       const { track } = group;
       const expanded = expandedGroupIds.has(group.id);
@@ -668,7 +685,14 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
                     if (didDragRef.current) { didDragRef.current = false; return; }
                     selectTimelineClip(clip, event);
                   }}
-                  onDoubleClick={() => { if (logicalGroup && editingGroupId !== logicalGroup.id) enterSelectedGroup(logicalGroup, clip); }}
+                  onDoubleClick={(event) => {
+                    if (logicalGroup && editingGroupId !== logicalGroup.id) { enterSelectedGroup(logicalGroup, clip); return; }
+                    if (clip.kind === "AUDIO") {
+                      const box = event.currentTarget.getBoundingClientRect();
+                      onSeek(audioTimelinePointerSeconds({ clientX: event.clientX, left: box.left, width: box.width,
+                        startSeconds: clipStart, durationSeconds: clipDuration, fps }));
+                    }
+                  }}
                   onKeyDown={(event) => {
                     if (event.nativeEvent.isComposing) return;
                     if (event.key === "Enter" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && logicalGroup && editingGroupId !== logicalGroup.id) {
@@ -783,23 +807,6 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
       </div>
     </div>
   </div>;
-}
-
-function buildTimelineRuler(durationSeconds: number, zoom = 1) {
-  const safeDuration = Math.max(durationSeconds, 0.05);
-  const visibleDuration = safeDuration / Math.max(zoom, 1);
-  const majorCandidates = [0.5, 1, 2, 5, 10, 15, 30, 60];
-  const majorInterval = majorCandidates.find((candidate) => visibleDuration / candidate <= 8) || 60;
-  const minorInterval = majorInterval >= 2 ? majorInterval / 2 : majorInterval / 5;
-  const major: number[] = [];
-  const minor: number[] = [];
-  for (let time = 0; time <= safeDuration + 0.001; time += minorInterval) {
-    const rounded = Math.round(time * 100) / 100;
-    if (Math.abs((rounded / majorInterval) - Math.round(rounded / majorInterval)) < 0.001) major.push(rounded);
-    else minor.push(rounded);
-  }
-  if (major[major.length - 1] !== safeDuration) major.push(safeDuration);
-  return { major, minor };
 }
 
 function quantizeTimelineSeconds(value: number, snapEnabled: boolean, fps: number) {

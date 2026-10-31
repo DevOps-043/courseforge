@@ -46,6 +46,7 @@ export const compositionPreviewTimelineStateSchema = z.object({
     ease: z.enum(["none", "power2.out", "power2.in"]),
   }).strict()).max(CAPTION_EFFECT_LIMITS.maxRuntimeTargets * 5).default([]),
   transitionEffects: z.array(z.object({
+    audioOnly: z.boolean().optional(),
     audioMode: z.enum(["CUT", "CROSSFADE"]),
     blurPixels: z.number().finite().min(0).max(40).optional(),
     direction: z.enum(COMPOSITION_TRANSITION_DIRECTIONS).optional(),

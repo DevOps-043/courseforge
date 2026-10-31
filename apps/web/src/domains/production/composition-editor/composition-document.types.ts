@@ -500,8 +500,9 @@ export const compositionEditorDocumentSchema = z.object({
       context.addIssue({ code: "custom", message: `La transición ${transition.id} apunta a un clip inexistente.` });
       continue;
     }
-    if (fromClip.kind === "AUDIO" || toClip.kind === "AUDIO") {
-      context.addIssue({ code: "custom", message: `La transición ${transition.id} requiere dos clips visuales.` });
+    if ((fromClip.kind === "AUDIO" || toClip.kind === "AUDIO") && !(fromClip.kind === "AUDIO" && toClip.kind === "AUDIO"
+      && transition.type === "CROSS_DISSOLVE" && transition.audioMode === "CROSSFADE")) {
+      context.addIssue({ code: "custom", message: `La transición ${transition.id} requiere dos clips visuales o un crossfade entre dos audios.` });
     }
     const editPointKey = `${transition.fromClipId}:${transition.toClipId}`;
     if (transitionEditPoints.has(editPointKey)) {

@@ -42,7 +42,8 @@ export function buildCompositionTimelineLayout(
   for (const track of document.tracks.slice().sort(compareTracks)) {
     const clips = clipsByTrack.get(track.id) ?? [];
     if (track.kind === "AUDIO") {
-      if (clips.length > 0) audioGroups.push(buildGroup(track, clips, "AUDIO"));
+      if (clips.length > 0) audioGroups.push(buildGroup(track, clips, "AUDIO", undefined,
+        clip => transitionRuntime.audioWindowsByClipId.get(clip.id)));
       continue;
     }
 

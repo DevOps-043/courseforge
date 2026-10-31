@@ -4025,6 +4025,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           estimatedClipCount={estimatedClipCount}
           onAnimationSelect={selectAnimation}
           onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)}
+          onSplitAudio={() => void splitSelectedClipAtPlayhead()}
           onAudioMixUpdate={(settings, summary) => savePatch([{ settings, type: "audio-mix.update" }], summary)}
           onClearSelection={clearTimelineSelection}
           onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)}

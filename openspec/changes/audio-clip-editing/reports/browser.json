@@ -1,0 +1,53 @@
+[
+  {
+    "target": "INTERACTIVE_PREVIEW",
+    "middleVolumes": [
+      0.4,
+      0.3
+    ],
+    "windows": [
+      {
+        "start": "0",
+        "offset": "1",
+        "track": "0",
+        "opacity": ""
+      },
+      {
+        "start": "3.8",
+        "offset": "0.8",
+        "track": "1",
+        "opacity": ""
+      }
+    ],
+    "reverseSeek": "PASS"
+  },
+  {
+    "target": "HYPERFRAMES_RENDER",
+    "middleVolumes": [
+      0.4,
+      0.3
+    ],
+    "windows": [
+      {
+        "start": "0",
+        "offset": "1",
+        "track": "0",
+        "opacity": ""
+      },
+      {
+        "start": "3.8",
+        "offset": "0.8",
+        "track": "1",
+        "opacity": ""
+      }
+    ],
+    "reverseSeek": "PASS"
+  },
+  {
+    "controls": "PASS",
+    "addAndRemoveCrossfade": "PASS",
+    "waveformZoom": "PASS",
+    "pointerAndSplit": "PASS",
+    "splitAtSeconds": 1.6
+  }
+]
