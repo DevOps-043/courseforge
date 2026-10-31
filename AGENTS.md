@@ -18,7 +18,8 @@ viven en docs/ y ai-specs/; los cambios durables, en openspec/.
 ## Invariantes
 
 - Mantener español en instrucciones, documentación, UI y logs nuevos.
-- Preservar trabajo ajeno y aislar cambios materiales con rama/worktree recuperable.
+- Preservar trabajo ajeno y trabajar en el checkout principal con commits recuperables.
+- No crear ni reabrir worktrees salvo solicitud explícita del usuario; esta regla prevalece sobre las skills de aislamiento.
 - No inventar tablas, contratos, capacidades, credenciales ni resultados de pruebas.
 - Mantener UI, rutas HTTP, servicios de dominio y acceso a datos separados.
 - Validar identidad, rol y organización en servidor; el payload no concede autoridad.

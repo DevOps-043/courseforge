@@ -4,7 +4,8 @@ Estado: vigente. Actualizado: 2026-10-15.
 
 - Una unidad pequeña y verificable a la vez; especificar antes de cambiar contratos.
 - Leer AGENTS.md, contexto, dominio y cambio activo antes de editar.
-- Conservar trabajo ajeno y usar ramas/worktrees recuperables para cambios materiales.
+- Conservar trabajo ajeno y usar commits recuperables en el checkout principal.
+- No crear ni reabrir worktrees salvo solicitud explícita del usuario.
 - No confundir instrucciones del modelo con autorización ejecutable.
 - Mantener identidad, organización, validación y permisos en servidor.
 - Nunca copiar credenciales, .env, configuraciones personales ni datos de producción.
