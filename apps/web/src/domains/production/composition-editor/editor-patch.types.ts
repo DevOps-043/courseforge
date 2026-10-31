@@ -292,6 +292,7 @@ const groupMoveOperationSchema = z.object({
 
 const audioMixUpdateOperationSchema = z.object({
   settings: z.object({
+    masterVolume: z.number().finite().min(0).max(1).optional(),
     attackSeconds: z.number().finite().min(0).max(5).optional(),
     duckedVolumeRatio: z.number().finite().min(0).max(1).optional(),
     enabled: z.boolean().optional(),

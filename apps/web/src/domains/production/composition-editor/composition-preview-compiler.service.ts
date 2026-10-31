@@ -193,6 +193,7 @@ export async function compileCompositionPreview(params: {
       clip.source.type === "DECK_SLIDE"
         ? htmlEditingFragments.get(clip.id) ?? replaceCompositionAssetUrls(resolveCompositionDeckImageAliases(clip.source.html, params.assetUrls), params.deckAssetUrls)
         : undefined,
+      document.audioMix.masterVolume ?? 1,
     ))
     .join("\n");
   if (htmlEditingFragments.size) {

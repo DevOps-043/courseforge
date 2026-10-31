@@ -19,6 +19,7 @@ export function resolveCompositionPreviewAspectAnchor(
 export function resolveCompositionPreviewClipVolume(
   clip: CompositionClip,
   track: CompositionTrack | undefined,
+  masterVolume = 1,
 ) {
-  return resolveCompositionClipAudioVolume(clip, track);
+  return resolveCompositionClipAudioVolume(clip, track, masterVolume);
 }

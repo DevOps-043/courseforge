@@ -216,6 +216,13 @@ service role, SQL manual o un bug del backend.
 
 ## 6. Contrato del preview
 
+- `audioMix.masterVolume` opcional controla el nivel de toda la línea del tiempo
+  entre 0 y 1, con ausencia equivalente a 1 sin alterar el JSON leído. La ganancia
+  se aplica una sola vez sobre el volumen final de clips/pistas, fades, ducking,
+  curvas y crossfades, tanto en preview como en render y referencia de audio.
+  El ajuste neutro elimina el campo; la mezcla individual se conserva.
+  [Contrato del maestro](../../openspec/changes/timeline-master-volume/design.md).
+
 - Motion puede desbordar el rectángulo estático de cada asset: `.clip-content`
   permite overflow visible y el recorte final pertenece a `#composition-root`.
   Crop y máscaras siguen viajando con el sujeto animado; no se cambian layout,
@@ -484,6 +491,11 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-31: maestro de volumen persistente para toda la línea del tiempo,
+  compartido por nivel estático, envolventes, preview/render y referencia PCM.
+  Incluye reconocimiento de SFX como audio configurable. Pruebas y QA local:
+  [evidencia](../../openspec/changes/timeline-master-volume/reports/validation.md).
 
 - 2026-10-31: motion ya no queda recortado por la caja estática del asset. El canvas
   del video mantiene el recorte final; crop y máscara viajan con el sujeto.

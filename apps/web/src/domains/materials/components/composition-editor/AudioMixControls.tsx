@@ -4,16 +4,17 @@ import { useEffect, useState } from "react";
 import { AudioLines, CircleGauge } from "lucide-react";
 import type { CompositionAudioMix } from "@/domains/production/composition-editor/composition-document.types";
 import styles from "./CompositionStudio.module.css";
+import { MasterVolumeControls } from "./MasterVolumeControls";
 
-export type CompositionDuckingUpdate = Partial<Pick<
+export type CompositionAudioMixUpdate = Partial<Pick<
   CompositionAudioMix["ducking"],
   "attackSeconds" | "duckedVolumeRatio" | "enabled" | "releaseSeconds"
->>;
+>> & { masterVolume?: number };
 
 interface AudioMixControlsProps {
   audioMix: CompositionAudioMix;
   disabled: boolean;
-  onUpdate: (settings: CompositionDuckingUpdate, summary: string) => void;
+  onUpdate: (settings: CompositionAudioMixUpdate, summary: string) => Promise<boolean | void> | void;
 }
 
 export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixControlsProps) {
@@ -31,6 +32,10 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
   };
 
   return (
+    <>
+    <MasterVolumeControls value={audioMix.masterVolume ?? 1} disabled={disabled} onCommit={masterVolume => onUpdate(
+      { masterVolume }, `Ajustó el volumen maestro a ${Math.round(masterVolume * 100)}%.`,
+    )} />
     <div className={styles.audioMix}>
       <div className={styles.audioIdentity}>
         <span className={styles.audioIcon}><AudioLines size={15} aria-hidden="true" /></span>
@@ -74,5 +79,6 @@ export function AudioMixControls({ audioMix, disabled, onUpdate }: AudioMixContr
         </label>
       </div>
     </div>
+    </>
   );
 }

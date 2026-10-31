@@ -72,6 +72,7 @@ export function buildCompositionAgentDiff(
     }
   }
 
+  addChange(changes, "AUDIO_MIX", "master", "/audioMix/masterVolume", before.audioMix.masterVolume ?? 1, after.audioMix.masterVolume ?? 1);
   for (const field of AUDIO_MIX_FIELDS) {
     addChange(
       changes,

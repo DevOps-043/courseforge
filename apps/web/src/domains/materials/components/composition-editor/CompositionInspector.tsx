@@ -181,7 +181,7 @@ export function CompositionInspector({ canvasWidth, canvasHeight, extraLayerDept
           <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Audio del clip</p>
           <VolumeSlider accentClassName="accent-cyan-500" ariaLabel={`Volumen de ${clip.label}`} disabled={audioDisabled} label="Volumen individual" onChange={setVolume} value={volume} />
           <AudioFadeControls disabled={audioDisabled} fadeInSeconds={fadeInSeconds} fadeOutSeconds={fadeOutSeconds} onFadeInChange={setFadeInSeconds} onFadeOutChange={setFadeOutSeconds} />
-          <p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Los fades son no destructivos y se aplican en preview y render. El volumen de la pista continúa funcionando como control maestro.</p>
+          <p className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-gray-400">Los fades son no destructivos y se aplican en preview y render. El volumen de la pista y el volumen maestro se aplican sobre este nivel.</p>
         </section>
         {componentId !== null && voiceSourceAssetId !== null && <AudioProcessingControls key={`${clip.id}:${voiceSourceAssetId}`} componentId={componentId} disabled={audioDisabled} sourceAssetId={voiceSourceAssetId} sourcePreviewUrl={sourcePreviewUrl}
           onReplaceAudio={(assetId, sourceDurationSeconds) => onPatch([{ type: "clip.replace-source", clipId: clip.id,

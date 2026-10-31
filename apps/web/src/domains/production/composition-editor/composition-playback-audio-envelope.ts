@@ -16,7 +16,7 @@ export function buildCompositionPlaybackVolumeAutomations(
 ): CompositionClipVolumeAutomation[] {
   const base = applyAuthoredVolumeEnvelopes(document, buildCompositionVolumeAutomations(document), runtime.audioWindowsByClipId);
   const crossfades = runtime.items.filter((transition) => transition.audioMode === "CROSSFADE");
-  if (!crossfades.length) return base;
+  if (!crossfades.length) return applyMasterVolume(base, document.audioMix.masterVolume ?? 1);
   const automations = new Map(base.map((automation) => [automation.targetClipId, automation]));
   const clips = new Map(document.clips.map((clip) => [clip.id, clip]));
   const tracks = new Map(document.tracks.map((track) => [track.id, track]));
@@ -44,5 +44,14 @@ export function buildCompositionPlaybackVolumeAutomations(
     });
     automations.set(clipId, { targetClipId: clipId, baselineVolume, points });
   }
-  return document.clips.flatMap((clip) => automations.has(clip.id) ? [automations.get(clip.id)!] : []);
+  return applyMasterVolume(document.clips.flatMap((clip) => automations.has(clip.id) ? [automations.get(clip.id)!] : []), document.audioMix.masterVolume ?? 1);
+}
+
+/** Atenúa el resultado final; no vuelve a multiplicar niveles locales ni tiempos. */
+function applyMasterVolume(automations: CompositionClipVolumeAutomation[], masterVolume: number) {
+  if (masterVolume === 1) return automations;
+  return automations.map(automation => ({ ...automation,
+    baselineVolume: automation.baselineVolume * masterVolume,
+    points: automation.points.map(point => ({ ...point, volume: point.volume * masterVolume })),
+  }));
 }

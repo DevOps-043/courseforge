@@ -104,7 +104,7 @@ export function buildCompositionPreviewVisualPatch(params: {
       current.hidden = clip.hidden || Boolean(track?.hidden);
     } else if (operation.type === "clip.volume") {
       if (automatedVolumeClipIds?.has(clip.id)) return null;
-      current.volume = resolveCompositionPreviewClipVolume(clip, track);
+      current.volume = resolveCompositionPreviewClipVolume(clip, track, params.document.audioMix.masterVolume ?? 1);
     } else {
       return null;
     }

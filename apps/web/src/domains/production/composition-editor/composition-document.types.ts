@@ -144,6 +144,7 @@ export const compositionVisualCropSchema = z.union([
 ]);
 
 export const compositionAudioMixSchema = z.object({
+  masterVolume: finiteNumberSchema.min(0).max(1).optional(),
   ducking: z.object({
     attackSeconds: finiteNumberSchema.min(0).max(5).default(DEFAULT_COMPOSITION_DUCKING_SETTINGS.attackSeconds),
     duckedVolumeRatio: finiteNumberSchema.min(0).max(1).default(DEFAULT_COMPOSITION_DUCKING_SETTINGS.duckedVolumeRatio),

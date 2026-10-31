@@ -40,7 +40,8 @@ export function classifyCompositionAgentRisk(
         }
         break;
       case "audio-mix.update":
-        raise("MEDIUM", "Modifica la mezcla automática de audio.");
+        if (operation.settings.masterVolume === 0) raise("HIGH", "Silencia toda la composición.");
+        else raise("MEDIUM", operation.settings.masterVolume !== undefined ? "Modifica el volumen maestro de toda la composición." : "Modifica la mezcla automática de audio.");
         break;
       case "clip.layout":
         reasons.add("Modifica únicamente el layout de un clip.");

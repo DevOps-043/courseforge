@@ -9,6 +9,7 @@ export function compositionClipHasConfigurableAudio(
   clip: CompositionClip,
   track?: CompositionTrack,
 ): boolean {
+  if (clip.source.type === "SOUND_EFFECT_ASSET") return clip.kind === "AUDIO";
   if (clip.source.type !== "PRODUCTION_ASSET" && clip.source.type !== "ASSEMBLY_BRAND_ASSET") return false;
   if (clip.kind === "AUDIO") return true;
   if (clip.kind !== "VIDEO") return false;
@@ -31,16 +32,17 @@ export function resolveCompositionClipDefaultVolume(
   return isBrollVideo ? 0 : 1;
 }
 
-/** Track volume remains the master gain; clip volume is the local multiplier. */
+/** Combina niveles locales y, cuando se solicita, el maestro final de la composición. */
 export function resolveCompositionClipAudioVolume(
   clip: CompositionClip,
   track: CompositionTrack | undefined,
+  masterVolume = 1,
 ): number {
   if (track?.muted) return 0;
   const trackVolume = track?.volume ?? 1;
   const clipVolume = clip.volume
     ?? resolveCompositionClipDefaultVolume(clip, track);
-  return clampVolume(trackVolume * clipVolume);
+  return clampVolume(trackVolume * clipVolume * masterVolume);
 }
 
 /** Shared preview/snapshot rule: only active sources with effective gain need a rendered audio track. */
@@ -50,7 +52,7 @@ export function compositionDocumentHasAudibleMedia(document: CompositionEditorDo
     const track = tracksById.get(clip.trackId);
     return !clip.hidden && !track?.hidden && !track?.muted
       && compositionClipHasConfigurableAudio(clip, track)
-      && resolveCompositionClipAudioVolume(clip, track) > 0;
+      && resolveCompositionClipAudioVolume(clip, track, document.audioMix.masterVolume ?? 1) > 0;
   });
 }
 

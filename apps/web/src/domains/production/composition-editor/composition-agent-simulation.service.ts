@@ -82,7 +82,7 @@ function buildInverseOperation(
       const settings = Object.fromEntries(
         Object.keys(operation.settings).map((field) => {
           const key = field as keyof typeof operation.settings;
-          return [field, document.audioMix.ducking[key]];
+          return [field, key === "masterVolume" ? document.audioMix.masterVolume ?? 1 : document.audioMix.ducking[key]];
         }),
       ) as typeof operation.settings;
       return { settings, type: "audio-mix.update" };

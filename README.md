@@ -219,6 +219,11 @@ Convierte componentes de video en assets, slides, clips de avatar y composicione
 
 ### Editor De Composicion y HyperFrames
 
+El **Volumen maestro** de la línea del tiempo ajusta toda la composición de 0 a
+100%, conservando los niveles de pistas y clips. Incluye voz, música, efectos y
+audio de video, con el mismo ajuste guardado para preview y render. Contrato:
+[maestro de volumen](openspec/changes/timeline-master-volume/design.md).
+
 La automatización de producción permite activar **Crear subtítulos transparentes
 editables automáticamente** en el perfil general o por componente. Cuando las
 voces por escena y sus tiempos están disponibles, el refresco prepara una capa

@@ -195,6 +195,13 @@ Incluye:
 
 ## Remotion y Produccion
 
+La mezcla admite `audioMix.masterVolume` opcional (0..1, ausencia = 1 sin cambiar
+hashes anteriores). Se guarda mediante `audio-mix.update`, separado del ducking,
+y multiplica una vez el volumen final y sus envolventes. Preview, render y la
+referencia de audio usan la misma ganancia. Los SFX de biblioteca se reconocen
+como fuentes de audio configurables. El control está en la línea del tiempo;
+contrato en el [flujo HyperFrames](hyperframes-composition-render-flow-source-of-truth.md).
+
 La automatización admite `nativeCaptions` optativo en defaults y overrides por
 componente. El refresco de runs aprobados prepara captions transparentes desde
 voces por escena con timestamps, con append optimista y auditoría SYSTEM.

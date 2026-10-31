@@ -582,7 +582,10 @@ export function applyCompositionEditorPatches(
       continue;
     }
     if (operation.type === "audio-mix.update") {
-      Object.assign(next.audioMix.ducking, operation.settings);
+      const { masterVolume, ...ducking } = operation.settings;
+      if (masterVolume === 1) delete next.audioMix.masterVolume;
+      else if (masterVolume !== undefined) next.audioMix.masterVolume = masterVolume;
+      Object.assign(next.audioMix.ducking, ducking);
       continue;
     }
     if (operation.type === "track.update") {

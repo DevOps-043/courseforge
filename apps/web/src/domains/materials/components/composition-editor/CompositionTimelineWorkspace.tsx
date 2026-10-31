@@ -2,7 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import type { CompositionClip, CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionAnimation } from "@/domains/production/composition-editor/composition-motion.types";
 import { formatCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
-import { AudioMixControls, type CompositionDuckingUpdate } from "./AudioMixControls";
+import { AudioMixControls, type CompositionAudioMixUpdate } from "./AudioMixControls";
 import { CompositionTimeline } from "./CompositionTimeline";
 import type { CompositionTrackUpdateHandler } from "./composition-studio.types";
 import type { CompositionStudioAsset } from "./composition-studio.types";
@@ -28,7 +28,7 @@ interface CompositionTimelineWorkspaceProps {
   estimatedClipCount: number;
   onAnimationSelect: (animationId: string, clipHfId: string) => void;
   onAnimationTimingChange: (animation: CompositionAnimation, timing: CompositionAnimation["timing"]) => void;
-  onAudioMixUpdate: (settings: CompositionDuckingUpdate, summary: string) => void;
+  onAudioMixUpdate: (settings: CompositionAudioMixUpdate, summary: string) => Promise<boolean | void> | void;
   onClearSelection: () => void;
   onDurationChange: (clip: CompositionClip, durationSeconds: number) => void;
   onEditingGroupChange: (groupId: string | null) => void;

@@ -1,0 +1,69 @@
+[
+  {
+    "target": "INTERACTIVE_PREVIEW",
+    "masterVolume": 0.5,
+    "mediaVolumes": [
+      0.1,
+      0.1,
+      0.1
+    ],
+    "liveSceneAndReverseSeek": "PASS"
+  },
+  {
+    "target": "INTERACTIVE_PREVIEW",
+    "masterVolume": 0,
+    "mediaVolumes": [
+      0,
+      0,
+      0
+    ],
+    "liveSceneAndReverseSeek": "PASS"
+  },
+  {
+    "target": "INTERACTIVE_PREVIEW",
+    "masterVolume": 1,
+    "mediaVolumes": [
+      0.2,
+      0.2,
+      0.2
+    ],
+    "liveSceneAndReverseSeek": "PASS"
+  },
+  {
+    "target": "HYPERFRAMES_RENDER",
+    "masterVolume": 0.5,
+    "mediaVolumes": [
+      0.1,
+      0.1,
+      0.1
+    ],
+    "liveSceneAndReverseSeek": "PASS"
+  },
+  {
+    "target": "HYPERFRAMES_RENDER",
+    "masterVolume": 0,
+    "mediaVolumes": [
+      0,
+      0,
+      0
+    ],
+    "liveSceneAndReverseSeek": "PASS"
+  },
+  {
+    "target": "HYPERFRAMES_RENDER",
+    "masterVolume": 1,
+    "mediaVolumes": [
+      0.2,
+      0.2,
+      0.2
+    ],
+    "liveSceneAndReverseSeek": "PASS"
+  },
+  {
+    "controls": "PASS",
+    "autosave": "PASS",
+    "failureRetainsDraft": "PASS",
+    "reset": "PASS",
+    "disabled": "PASS"
+  }
+]

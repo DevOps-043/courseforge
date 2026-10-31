@@ -26,6 +26,7 @@ export function renderCompositionClip(
   serializeColorGrading: HfColorGradingSerializer | null,
   audioMetersEnabled: boolean,
   compiledDeckHtml?: string,
+  masterVolume = 1,
 ) {
   const isHyperframesRender = target === COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER;
   const audioCrossOrigin = audioMetersEnabled ? ' crossorigin="anonymous"' : "";
@@ -60,7 +61,7 @@ export function renderCompositionClip(
   const audioMediaOffset = `data-source-offset="${audioWindow.sourceOffsetSeconds}"${isHyperframesRender ? ` data-media-start="${audioWindow.sourceOffsetSeconds}"` : ""}`;
   const hidden = clip.hidden || track?.hidden ? (isHyperframesRender ? ' data-hidden="true"' : ' data-clip-hidden="true"') : "";
   const volumeAutomation = hasVolumeAutomation ? ' data-volume-automated="true"' : "";
-  const volume = resolveCompositionPreviewClipVolume(clip, track);
+  const volume = resolveCompositionPreviewClipVolume(clip, track, masterVolume);
   const colorGrading = renderColorGradingAttribute(clip, serializeColorGrading);
   const hasSynchronizedVideoAudio = clip.kind === "VIDEO"
     && compositionClipHasConfigurableAudio(clip, track);

@@ -82,6 +82,7 @@ export function buildCompositionPreviewScenePatch(params: {
           layout.trackIndexByClipId.get(clip.id)!, layout.audioTrackIndexByClipId.get(clip.id),
           automatedIds.has(clip.id), runtime.clipWindowsById.get(clip.id), runtime.audioWindowsByClipId.get(clip.id),
           JSON.stringify, params.audioMetersEnabled,
+          undefined, document.audioMix.masterVolume ?? 1,
         ),
       });
     }

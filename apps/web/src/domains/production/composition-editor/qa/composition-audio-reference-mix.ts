@@ -61,7 +61,7 @@ export function buildAudioReferenceMixPlan(input: unknown) {
       )
     )
       continue;
-    const volume = resolveCompositionClipAudioVolume(clip, track);
+    const volume = resolveCompositionClipAudioVolume(clip, track, document.audioMix.masterVolume ?? 1);
     if (volume <= 0) continue;
     const assetId = getCompositionClipMediaAssetId(clip);
     if (!assetId) throw new Error("AUDIO_REFERENCE_ASSET_MISSING");

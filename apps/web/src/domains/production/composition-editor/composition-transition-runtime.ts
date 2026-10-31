@@ -103,7 +103,7 @@ export function buildCompositionTransitionRuntime(
       fromOpacity: fromClip.layout.opacity,
       ...(transition.audioMode === "CROSSFADE" ? {
         fromAudioTargetId: `${transition.fromClipId}-audio`,
-        fromAudioVolume: resolveCompositionClipAudioVolume(fromClip, tracksById.get(fromClip.trackId)),
+        fromAudioVolume: resolveCompositionClipAudioVolume(fromClip, tracksById.get(fromClip.trackId), document.audioMix.masterVolume ?? 1),
       } : {}),
       id: transition.id,
       ...(transition.type === "DIP_TO_COLOR"
@@ -117,7 +117,7 @@ export function buildCompositionTransitionRuntime(
       toOpacity: toClip.layout.opacity,
       ...(transition.audioMode === "CROSSFADE" ? {
         toAudioTargetId: `${transition.toClipId}-audio`,
-        toAudioVolume: resolveCompositionClipAudioVolume(toClip, tracksById.get(toClip.trackId)),
+        toAudioVolume: resolveCompositionClipAudioVolume(toClip, tracksById.get(toClip.trackId), document.audioMix.masterVolume ?? 1),
       } : {}),
       type: transition.type,
     };
