@@ -1,7 +1,7 @@
 # Fuente de verdad: documento, medios y render de composiciones HyperFrames
 
 Estado: **vigente; correccion P0 implementada, migracion de integridad pendiente de despliegue**  
-Ultima revision tecnica: 2026-10-21
+Ultima revision tecnica: 2026-10-31
 Responsables: Production Engineering, Platform y QA  
 Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega de medios y HyperFrames Cloud.
 
@@ -96,6 +96,21 @@ Ninguna URL firmada forma parte del snapshot inmutable. Se genera justo antes
 del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 4. Contrato del documento editable
+
+- Descarga individual (2026-10-29): el inspector permite eliminar un intervalo
+  en segundos relativos al clip y descargar su ventana fuente vigente como
+  MP4 o WAV. Un corte central produce dos clips; se descarga solo el seleccionado.
+  Esta salida local aplica recortes temporales, no efectos visuales ni mezcla
+  del ensamble. Usa el acceso ya autorizado al medio, sin snapshot ni render
+  cloud; rechaza velocidad, congelación y bucles no representables. Fuente y
+  salida limitadas a 256 MiB y tramo a diez minutos, con cancelación explícita.
+  Alcance y evidencia: `openspec/changes/fix-clip-range-export/`.
+
+  Con edición local inmediata, la descarga vacía el autoguardado, espera la cola
+  y comprueba de nuevo la proyección local y los registros de recuperación antes
+  de capturar el clip confirmado. Una cola vacía después de un error no habilita
+  exportar ediciones pendientes. Los controles respetan `localEditingBlocked` y
+  las pistas bloqueadas sin retirar los accesos de grupos anidados.
 
 - Intros y outros (2026-10-30): los accesos Editar intro/outro de la timeline
   abren el inspector compartido de capas, transformación y animaciones. Reaplicar
@@ -446,9 +461,22 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-10-31: integración de descarga individual con edición local inmediata y
+  agrupaciones. La fuente se captura después de confirmar la cola y comprobar
+  recuperación pendiente. Evidencia:
+  `openspec/changes/fix-clip-range-export/reports/merge-staging-latency-2026-10-31.md`.
+
+- 2026-10-29: controles explícitos de intervalo y descarga local del clip
+  multimedia seleccionado con sus offsets vigentes. Selección posterior resuelta
+  contra el documento guardado. QA con MP4/WAV sintéticos, cancelación y errores
+  de codificador: `openspec/changes/fix-clip-range-export/reports/verification.md`.
+
 - 2026-10-30: acceso directo al inspector de intros/outros y conservación de
   capas, recortes y animaciones al reaplicar el mismo recurso. Se reutilizan
   patches y compilación existentes, sin migración ni cambio de proveedor.
+
+- 2026-10-29: corrección del atasco del preview al repetir videos extendidos;
+  QA sintética de extensión en vivo, seek y tres ciclos continuos.
 
 - 2026-10-27: nombre de presentación y etiquetas predeterminadas de composiciones nuevas derivados de `apps/web/src/config/app.ts`, escapados al generar HTML. No cambian formatos, namespaces, documento editable, motion ni snapshots históricos. Contrato: [identidad global](product-branding.md).
 
