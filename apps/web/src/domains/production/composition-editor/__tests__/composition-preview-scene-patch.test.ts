@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import { applyCompositionEditorPatches } from "../editor-patch.service";
+import type { CompositionEditorPatchOperation } from "../editor-patch.types";
 import { createCompositionNativeOverlay } from "../composition-native-overlay.factory";
 import { buildCompositionPreviewScenePatch, compositionPreviewScenePatchSchema } from "../composition-preview-scene-patch";
 import { buildCompositionPreviewTimelineState } from "../composition-preview-timeline-state";
@@ -120,4 +121,10 @@ test("keeps controlled HTML revisions on the authenticated compilation path", ()
   const fixture = createHtmlEditingRevisionFixture();
   const native = bindHtmlEditingRevisionToComposition({ ...fixture.authority, document: fixture.document, revision: fixture.next.revision, revisionSha256: fixture.next.sha256 });
   assert.equal(buildCompositionPreviewScenePatch({ beforeDocument: native.document, document: native.document, assetUrls: new Map(), audioMetersEnabled: false }), null);
+  const text = createCompositionNativeOverlay({ document: native.document, id: "native-text-with-html", kind: "TEXT", playheadSeconds: 0 });
+  const withText = applyCompositionEditorPatches(native.document, [{ type: "clip.add", clipId: text.clip.id, clip: text.clip, track: text.track }]);
+  const operations: CompositionEditorPatchOperation[] = [{ type: "clip.text-content", clipId: text.clip.id, text: "Texto literal <script>inofensivo</script>" }];
+  const edited = applyCompositionEditorPatches(withText, operations);
+  assert.deepEqual(buildCompositionPreviewVisualPatch({ document: edited, operations }), { changes: [{ hfId: text.clip.hfId, textContent: "Texto literal <script>inofensivo</script>" }] });
+  assert.deepEqual(edited.htmlEditing, native.document.htmlEditing, "La ruta de texto no modifica referencias editoriales.");
 });

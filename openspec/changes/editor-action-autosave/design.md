@@ -1,5 +1,10 @@
 # Auditoría y propuesta de autoguardado del editor
 
+Actualización de 2026-10-30: la corrección posterior y su contrato están en
+[contexto](reports/contexto-correccion-latencia.md) e
+[implementación de latencia](reports/correccion-latencia-2026-10-30.md).
+El análisis inicial que sigue se conserva como evidencia histórica.
+
 Fecha: 2026-10-17. Base: 64606f73. Rama: codex/fix-heygen-preset-handoff.
 Estado: auditoría inicial conservada como contexto. La implementación local y
 su validación posterior se documentan en reports/implementation.md; las tablas

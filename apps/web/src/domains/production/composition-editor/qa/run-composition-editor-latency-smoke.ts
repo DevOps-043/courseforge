@@ -51,12 +51,14 @@ async function main() {
   let documentHash = "a".repeat(64);
   let version = 1;
   let previewRequests = 0;
+  let documentRequests = 0;
   const pendingSaves: Array<(status: number) => void> = [];
   const server = createServer(async (request, response) => {
     const url = new URL(request.url || "/", "http://localhost");
     const json = (body: unknown, status = 200) => { response.writeHead(status, { "Content-Type": "application/json" }); response.end(JSON.stringify(body)); };
     try {
       if (url.pathname.endsWith("/document")) {
+        documentRequests++;
         if (request.method === "PUT") {
           const chunks: Buffer[] = [];
           for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -65,7 +67,7 @@ async function main() {
           pendingSaves.push((status) => {
             if (status === 200) {
               persisted = applyCompositionEditorPatches(persisted, body.operations);
-              documentHash = "b".repeat(64); version += 1;
+              version += 1; documentHash = version.toString(16).padStart(64, "0");
               json({ data: { document: persisted, documentHash, version } });
             } else if (status === 409) {
               documentHash = "c".repeat(64);
@@ -77,7 +79,7 @@ async function main() {
         previewRequests += 1;
         const html = await compileCompositionPreview({ document: persisted, documentHash, previewGeneration: Number(url.searchParams.get("r") || "0"), assetUrls: new Map() });
         const reporter = `<script>(() => {
-          const report = () => parent.postMessage({ type: "qa-scene-state", layers: document.querySelectorAll('[data-hf-id]').length, boot: performance.timeOrigin }, '*');
+          const report = () => parent.postMessage({ type: "qa-scene-state", layers: document.querySelectorAll('[data-hf-id]').length, texts: [...document.querySelectorAll('.composition-native-text')].map(node => node.textContent), boot: performance.timeOrigin }, '*');
           addEventListener('message', (event) => { if (event.data?.type === 'courseforge-composition-visual-patch') setTimeout(report, 0); });
           setTimeout(report, 100);
         })();</script>`;
@@ -96,7 +98,7 @@ async function main() {
   browser.client.onEvent?.("Runtime.exceptionThrown", (event) => { if (exceptions.length < 5) exceptions.push(event.exceptionDetails); });
   try {
     await browser.client.send("Page.navigate", { url: `http://127.0.0.1:${(server.address() as { port: number }).port}` });
-    const state = () => evaluate<{ layers: number; boot: number }>(browser.client, "JSON.parse(document.querySelector('#scene-state').textContent || '{}')");
+    const state = () => evaluate<{ layers: number; boot: number; texts: string[] }>(browser.client, "JSON.parse(document.querySelector('#scene-state').textContent || '{}')");
     await waitFor(async () => (await state()).layers === 0, "initial preview");
     await evaluate(browser.client, `Array.from(document.querySelectorAll('[role=tab]')).find((button) => button.textContent.trim() === 'Texto').click(); true`);
     await waitFor(() => evaluate(browser.client, `Array.from(document.querySelectorAll('button')).some((button) => button.textContent.includes('Capa de texto'))`), "text library tab");
@@ -109,6 +111,28 @@ async function main() {
     assert.equal((await state()).boot, initialBoot);
     assert.equal(previewRequests, initialRequests);
     assert.equal(await evaluate(browser.client, 'document.querySelector(\'[aria-label="Posición del preview"]\').disabled'), false, "El guardado no debe bloquear el scrub local.");
+    await evaluate(browser.client, "document.querySelector('[data-clip-id]').click(); true");
+    await waitFor(() => evaluate(browser.client, "Boolean(document.querySelector('[aria-label=\"Contenido de la capa de texto\"]'))"), "inspector disponible durante PUT");
+    assert.equal(await evaluate(browser.client, "document.querySelector('[aria-label=\"Contenido de la capa de texto\"]').disabled"), false);
+    await evaluate(browser.client, `(() => { const field = document.querySelector('[aria-label="Contenido de la capa de texto"]'); field.focus(); field.select(); return true; })()`);
+    await browser.client.send("Input.insertText", { text: "Segundo cambio durante guardado" });
+    await evaluate(browser.client, `document.querySelector('[aria-label="Contenido de la capa de texto"]').blur(); true`);
+    await waitFor(async () => (await state()).texts.includes("Segundo cambio durante guardado"), "segundo cambio visible antes de confirmar el primero");
+    assert.equal(pendingSaves.length, 1, "La segunda edición no inicia otro PUT concurrente.");
+    assert.equal(persisted.clips.length, 0);
+    assert.equal(previewRequests, initialRequests);
+    await evaluate(browser.client, `(() => { const field = document.querySelector('[aria-label="Contenido de la capa de texto"]'); field.focus(); field.select(); return true; })()`);
+    await browser.client.send("Input.insertText", { text: "Tercer cambio de la misma herramienta" });
+    await evaluate(browser.client, `document.querySelector('[aria-label="Contenido de la capa de texto"]').blur(); true`);
+    await waitFor(async () => (await state()).texts.includes("Tercer cambio de la misma herramienta"), "tercera intención del control en vuelo");
+    assert.equal(pendingSaves.length, 1);
+    pendingSaves.shift()!(200);
+    await waitFor(async () => pendingSaves.length === 1, "PUT del segundo comando tras confirmar el primero");
+    assert.ok((await state()).texts.includes("Tercer cambio de la misma herramienta"), "La respuesta anterior no borra el nuevo borrador.");
+    pendingSaves.shift()!(200);
+    await waitFor(async () => pendingSaves.length === 1, "tercer PUT serial");
+    assert.equal(persisted.clips[0]!.source.type === "NATIVE_TEXT" && persisted.clips[0]!.source.text, "Segundo cambio durante guardado");
+    assert.ok((await state()).texts.includes("Tercer cambio de la misma herramienta"));
     pendingSaves.shift()!(200);
     await waitFor(async () => await evaluate(browser.client, "!document.body.textContent.includes('Guardando')"), "save acknowledgement");
     assert.equal(previewRequests, initialRequests, "El ACK del guardado no debe navegar el iframe.");
@@ -120,16 +144,19 @@ async function main() {
     assert.equal(await evaluate(browser.client, "document.body.textContent.includes('Fallo simulado QA')"), true);
     assert.equal(pendingSaves.length, 0, "El journal no debe reintentar un error de esta sesión.");
     await addText();
-    await waitFor(async () => pendingSaves.length === 1 && (await state()).layers === 2, "optimistic edit before conflict");
+    await compositionQaDelay(100);
+    assert.equal(pendingSaves.length, 0, "No se admiten nuevas escrituras con recuperación pendiente.");
+    await evaluate(browser.client, `Array.from(document.querySelectorAll('[role="alert"] button')).find(button => button.textContent.trim() === "Reintentar").click(); true`);
+    await waitFor(async () => pendingSaves.length === 1, "recuperación explícita tras recargar");
     const beforeConflict = previewRequests;
     pendingSaves.shift()!(409);
     await waitFor(async () => (await state()).layers === 1 && previewRequests > beforeConflict, "conflict recovery");
     assert.equal(await evaluate(browser.client, "document.body.textContent.includes('Conflicto simulado QA')"), true);
-    const report = { slowSavePreviewBeforePersistence: "passed", reloadAfterSuccess: false, saveFailureRollback: "passed", conflictRecovery: "passed" };
+    const report = { concurrentEditingBeforePersistence: "passed", repeatedControlWhileSaving: "passed", lateResponsePreservesDraft: "passed", serialWrites: "passed", slowSavePreviewBeforePersistence: "passed", reloadAfterSuccess: false, saveFailureRollback: "passed", conflictRecovery: "passed" };
     await writeFile(resolve(output, "report.json"), JSON.stringify(report, null, 2));
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } catch (error) {
-    process.stderr.write(`${JSON.stringify({ previewRequests, exceptions, body: await evaluate(browser.client, "document.body.innerText.slice(0, 1200)") }, null, 2)}\n`);
+    process.stderr.write(`${JSON.stringify({ previewRequests, exceptions, documentRequests, pendingSaves: pendingSaves.length }, null, 2)}\n`);
     throw error;
   } finally {
     pendingSaves.splice(0).forEach((finish) => finish(500));

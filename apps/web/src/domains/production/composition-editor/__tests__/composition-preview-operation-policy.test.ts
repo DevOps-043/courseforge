@@ -8,6 +8,7 @@ import {
 
 test("classifies visual, timeline and structural operations explicitly", () => {
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.layout" }), "LIVE_DOM");
+  assert.equal(classifyCompositionPreviewOperation({ type: "clip.text-content" }), "LIVE_DOM");
   assert.equal(classifyCompositionPreviewOperation({ type: "clip.trim" }), "LIVE_TIMELINE");
   assert.equal(classifyCompositionPreviewOperation({ type: "animation.insert-path-point" }), "LIVE_TIMELINE");
   assert.equal(classifyCompositionPreviewOperation({ type: "animation.remove-path-point" }), "LIVE_TIMELINE");

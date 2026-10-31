@@ -223,6 +223,10 @@ El editor nativo (`production/composition-editor`) gestiona assets, pistas, time
 
 Capacidades agregadas recientemente:
 
+- Edición nativa durante el guardado: los comandos locales se componen en orden
+  sin esperar el PUT y las respuestas anteriores conservan el último borrador.
+  Los cambios de revisión HTML mantienen su host y compilación autorizados.
+
 - **Transiciones reales entre clips** con runtime compartido preview/render y crossfade de audio. ADR: [composition-transitions-v1](docs/architecture/composition-transitions-v1.md).
 - **Correccion de color basica por clip** detras de `NEXT_PUBLIC_COMPOSITION_COLOR_GRADING_ENABLED`. ADR: [basic-color-correction-v1](docs/architecture/basic-color-correction-v1.md); el gate externo pendiente es publicar una version de `@hyperframes/core` que incluya los artefactos.
 - **Texto y captions nativos** (`courseforge-composition-v3`, clips `TEXT`/`CAPTION`), importacion de captions y tipografias privadas por organizacion. Ver [native-text-captions-and-fonts](docs/architecture/native-text-captions-and-fonts.md).

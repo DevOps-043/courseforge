@@ -38,7 +38,7 @@ const OPERATION_STRATEGIES: Record<CompositionEditorPatchOperation["type"], Comp
   "clip.reset-asset": "LIVE_TIMELINE",
   "clip.split": "LIVE_TIMELINE",
   "clip.template": "LIVE_TIMELINE",
-  "clip.text-content": "LIVE_TIMELINE",
+  "clip.text-content": "LIVE_DOM",
   "clip.text-style": "LIVE_TIMELINE",
   "clip.trim": "LIVE_TIMELINE",
   "clip.visibility": "LIVE_DOM",

@@ -8,6 +8,7 @@ interface TelemetryBufferOptions {
   draftId: string;
   fetchImpl?: typeof fetch;
   sessionId?: string;
+  now?: () => number;
 }
 
 /** Batches bounded, non-sensitive preview metrics without blocking playback. */
@@ -16,6 +17,8 @@ export class CompositionPreviewTelemetryBuffer {
   private readonly fetchImpl: typeof fetch;
   private readonly sessionId: string;
   private acceptedEvents = 0;
+  private readonly now: () => number;
+  private windowStartedAt: number;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private metrics: CompositionPreviewMetric[] = [];
 
@@ -23,10 +26,17 @@ export class CompositionPreviewTelemetryBuffer {
     this.endpoint = `/api/production/hyperframes/drafts/${encodeURIComponent(options.draftId)}/preview-metrics`;
     this.fetchImpl = options.fetchImpl || fetch;
     this.sessionId = options.sessionId || crypto.randomUUID();
+    this.now = options.now || (() => performance.now());
+    this.windowStartedAt = this.now();
   }
 
   record(candidate: unknown) {
-    if (this.acceptedEvents >= COMPOSITION_PREVIEW_TELEMETRY_CONFIG.maxEventsPerSession) return false;
+    const now = this.now();
+    if (now - this.windowStartedAt >= COMPOSITION_PREVIEW_TELEMETRY_CONFIG.eventBudgetWindowMs) {
+      this.windowStartedAt = now;
+      this.acceptedEvents = 0;
+    }
+    if (this.acceptedEvents >= COMPOSITION_PREVIEW_TELEMETRY_CONFIG.maxEventsPerWindow) return false;
     const parsed = compositionPreviewMetricSchema.safeParse(candidate);
     if (!parsed.success) return false;
     this.acceptedEvents += 1;

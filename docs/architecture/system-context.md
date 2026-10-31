@@ -21,6 +21,13 @@ SofLIA Architect es una plataforma multi-tenant para crear, validar, producir y 
 - **HyperFrames**: el dominio `production/hyperframes` cubre borradores, composiciones, preflight, revisiones, preview, render y sincronizacion de assets; sus rutas viven bajo `/api/production/hyperframes`.
 - **Fuente de verdad HyperFrames**: antes de cambiar documento, SFX, preview, snapshot ZIP, variables, upload o render, leer y actualizar `docs/architecture/hyperframes-composition-render-flow-source-of-truth.md` en el mismo cambio.
 
+El editor nativo compone comandos locales mientras una única cola confirma
+versiones con If-Match; las respuestas anteriores no sustituyen el borrador
+posterior. La actualización de contenido de texto literal conserva el iframe,
+incluso junto a HTML controlado, sin mutar sus raíces editoriales. Las revisiones
+HTML mantienen host, manifiesto y compilación autorizados. Contrato y límites:
+[flujo HyperFrames](hyperframes-composition-render-flow-source-of-truth.md).
+
 ## Protocolo De Sincronizacion Documental
 
 Antes de actualizar este contexto o `README.md`, aplicar [docs/PROTOCOLO_DE_INVESTIGACION_Y_SINCRONIZACION.md](../PROTOCOLO_DE_INVESTIGACION_Y_SINCRONIZACION.md): ejecutar `npm run docs:audit`, contrastar con evidencia primaria y actualizar ambos documentos solo con hechos verificables. La auditoria generada en `docs/documentation-audit.md` es evidencia temporal, no una tercera fuente de verdad.

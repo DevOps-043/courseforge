@@ -36,6 +36,7 @@ export const compositionPreviewVisualChangeSchema = z.object({
   hidden: z.boolean().optional(),
   layout: runtimeLayoutSchema.optional(),
   mediaFit: z.enum(["CONTAIN", "COVER"]).optional(),
+  textContent: z.string().min(1).max(4_000).optional(),
   volume: z.number().finite().min(0).max(1).optional(),
 }).strict().refine((change) => Object.keys(change).some((key) => key !== "hfId"), "El patch visual está vacío.");
 
@@ -80,6 +81,9 @@ export function buildCompositionPreviewVisualPatch(params: {
         zIndex: clip.layout.zIndex,
       };
       current.cropInsets = resolveCompositionCropInsets(clip.crop, clip.layout);
+    } else if (operation.type === "clip.text-content") {
+      if (clip.kind !== "TEXT" || clip.source.type !== "NATIVE_TEXT") return null;
+      current.textContent = clip.source.text;
     } else if (operation.type === "clip.crop") {
       if (clip.kind === "AUDIO") return null;
       current.cropInsets = resolveCompositionCropInsets(clip.crop, clip.layout);

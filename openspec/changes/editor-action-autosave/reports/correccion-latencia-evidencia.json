@@ -1,0 +1,61 @@
+{
+  "fecha": "2026-10-30",
+  "base": "13774405f90d5d3dd1d87989673c6b4976269f54",
+  "rama": "codex/editor-latency-investigation-20261030",
+  "entorno": "Worktree local, Edge headless; persistencia HTTP simulada. Sin sesión autenticada ni render cloud.",
+  "navegadorEscena": {
+    "nativeTextLiteralPatch": "passed",
+    "controlledHtmlTreeProtected": "passed",
+    "browserPath": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "changes": 8,
+    "iframeNavigationsAfterEdits": 0,
+    "preservesVideoElement": true,
+    "unchangedVideoRequests": 0,
+    "patchDurationMs": [
+      19.09999990463257,
+      3.799999952316284,
+      2.200000047683716,
+      1.7999999523162842,
+      3.200000047683716,
+      1.8999998569488525
+    ]
+  },
+  "navegadorEditor": {
+    "concurrentEditingBeforePersistence": "passed",
+    "repeatedControlWhileSaving": "passed",
+    "lateResponsePreservesDraft": "passed",
+    "serialWrites": "passed",
+    "slowSavePreviewBeforePersistence": "passed",
+    "reloadAfterSuccess": false,
+    "saveFailureRollback": "passed",
+    "conflictRecovery": "passed"
+  },
+  "aclaracionEscena": "El campo changes del fixture cuenta intentos; uno de los ocho se rechaza deliberadamente al apuntar a una raíz protegida.",
+  "fuentesSha256": {
+    "apps/web/src/domains/materials/components/composition-editor/CompositionAutosaveBoundary.tsx": "064497b978e34c0690a7e4088b14655054e52fc8ad7d99f464b60a8876fff0ba",
+    "apps/web/src/domains/materials/components/composition-editor/CompositionHtmlEditableFields.tsx": "b36b27c2bfc21b933f189798cb3943b158152b010c378aa0d1f8779396afa50a",
+    "apps/web/src/domains/materials/components/composition-editor/CompositionInspector.tsx": "993e16502c1e621c84a2eb3d5e37dd06aead09609fe63246f2ff440a71926ea9",
+    "apps/web/src/domains/materials/components/composition-editor/CompositionTextControls.tsx": "c9471673b5b722c244dc93cae5a1bc557031e2ceee4dbf3768b37dcee0fefd7e",
+    "apps/web/src/domains/materials/components/composition-editor/CompositionTimelineWorkspace.tsx": "2e3b659285fe05e0df460e2973dd77ef7d389b886e30c5399f4b4e76a5def98d",
+    "apps/web/src/domains/materials/components/composition-editor/NativeCompositionPreview.tsx": "3989491bc7a38f4472c1ebebe696d3b40a5aea4a0de7f011b86de69315f2eda0",
+    "apps/web/src/domains/production/composition-editor/__tests__/composition-interaction-autosave.test.ts": "5805db63bdfcade65c569ed0d9f96049d2703c8c882fac92c8419f01d8c94e5f",
+    "apps/web/src/domains/production/composition-editor/__tests__/composition-local-edits.test.ts": "1b652b51463cad2806e77dc46480837b4fc1f783a2154dbe20683fd257b52413",
+    "apps/web/src/domains/production/composition-editor/__tests__/composition-preview-operation-policy.test.ts": "e09c2c9c86fd14684640af1f3023960a657983812ba94348f98c8dfc8b181247",
+    "apps/web/src/domains/production/composition-editor/__tests__/composition-preview-scene-patch.test.ts": "c542a1a1d01bd69307e59799ebeb842732798eb01488a2a5184261c0558e31d4",
+    "apps/web/src/domains/production/composition-editor/__tests__/composition-preview-telemetry.test.ts": "e165a2cd2eedb30b77328fa5a82183b9fd88a46ebdf3aac6e032c1d1b5105b2e",
+    "apps/web/src/domains/production/composition-editor/composition-inspector-patches.ts": "21298103cf9841620986a7a7afa9ad4274febbd7fac5a93caee86c45ba81733b",
+    "apps/web/src/domains/production/composition-editor/composition-interaction-autosave.ts": "d0542c8b78e76e9d766c83690b396c4d81b95be15be14c27b1a0af0f6ed1b8ef",
+    "apps/web/src/domains/production/composition-editor/composition-local-edits.ts": "c37ca4c9779e0f46a35ec551b794e0eb758e285983269890493f73437f0e546c",
+    "apps/web/src/domains/production/composition-editor/composition-preview-compiler.service.ts": "b6097f0cca69befbb08a77c67ec27db87f073503125eb63e292b6563c47b7a79",
+    "apps/web/src/domains/production/composition-editor/composition-preview-operation-policy.ts": "af3a4d82bda84287ac1c1bd78354217ce8a0e2206090f333a114215591686614",
+    "apps/web/src/domains/production/composition-editor/composition-preview-telemetry.client.ts": "805eb7b97128e70c33bdfea523bccdd66fc736452de8dcd59055dfda85d862c5",
+    "apps/web/src/domains/production/composition-editor/composition-preview-telemetry.ts": "59be0fdb030aefa796f528a816d9e7e79adc56437385886d3057cae66ec856aa",
+    "apps/web/src/domains/production/composition-editor/composition-preview-visual-patch.ts": "a00cc68cfbd00e5d0748c8fb126c0dfe0ae1ae277c21e3bfaf69991f1e818843",
+    "apps/web/src/domains/production/composition-editor/qa/run-composition-editor-latency-smoke.ts": "b4b83c1b538a786a93c4ee770619c0c0cc035848a482b5e6c1eff5c0d02a7c93",
+    "apps/web/src/domains/production/composition-editor/qa/run-composition-preview-scene-smoke.ts": "12cf88e138b5222290739fe52cd8e58c8680006465ba6d8212e7a2b46dc020cf"
+  },
+  "autoguardado": {
+    "pruebas": 31,
+    "fallos": 0
+  }
+}

@@ -10,14 +10,14 @@ export function useCompositionAutosavePending() {
 }
 
 /** Preview local durante la interacción; persistencia sólo del último snapshot editado. */
-export function CompositionAutosaveBoundary({ children, value, onCommit, disabled = false, className, signal }: {
-  children: ReactNode; value: unknown; onCommit: CompositionAutosaveCommit; disabled?: boolean; className?: string; signal?: unknown;
+export function CompositionAutosaveBoundary({ children, value, onCommit, disabled = false, className, signal, serialize = false }: {
+  children: ReactNode; value: unknown; onCommit: CompositionAutosaveCommit; disabled?: boolean; className?: string; signal?: unknown; serialize?: boolean;
 }) {
   const coordinator = useContext(CompositionAutosaveContext);
   const [, redraw] = useState(0);
   const mounted = useRef(true);
   const session = useRef<CompositionInteractionAutosave | null>(null);
-  if (!session.current) session.current = new CompositionInteractionAutosave(JSON.stringify(value), () => { if (mounted.current) redraw((version) => version + 1); coordinator?.changed(); });
+  if (!session.current) session.current = new CompositionInteractionAutosave(JSON.stringify(value), () => { if (mounted.current) redraw((version) => version + 1); coordinator?.changed(); }, { serialize });
   const current = session.current;
   const snapshot = useRef({ value, onCommit, disabled });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

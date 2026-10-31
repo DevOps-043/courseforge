@@ -34,3 +34,17 @@ de la cola pendiente y coordinación de historiales antes de generalizarla.
   su barrera de escritura hasta disponer de un reemplazo verificable.
 
 Inventario, evidencia, excepciones y fases en [design.md](design.md).
+
+## Investigación posterior de latencia
+
+El reporte recurrente del usuario se analiza, sin cambios de producto, en el
+[informe del 30 de octubre de 2026](reports/informe-latencia-editor-2026-10-30.md).
+Sus causas confirmadas, experimentos, límites y recomendaciones no sustituyen
+el contrato de persistencia ni afirman haber medido el despliegue real.
+
+## Corrección autorizada del informe
+
+La continuidad durante persistencia, granularidad del inspector, ruta literal de
+texto y métricas se implementan en este mismo cambio. Arquitectura, regresiones,
+verificación y límites en [corrección de latencia](reports/correccion-latencia-2026-10-30.md).
+No se despliega ni se reemplaza el protocolo de revisiones HTML.
