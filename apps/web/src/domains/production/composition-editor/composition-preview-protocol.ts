@@ -1,3 +1,4 @@
+import { compositionVisualMaskSchema } from "./composition-visual-mask";
 import { z } from "zod";
 import { compositionLayoutSchema, compositionVisualCropSchema } from "./composition-document.types";
 import { compositionColorGradingSchema } from "./composition-color-grading.types";
@@ -90,6 +91,7 @@ export const compositionPreviewParentCommandSchema = z.discriminatedUnion("type"
     snapEnabled: z.boolean(), type: z.literal("courseforge-composition-editor-settings"),
   }).strict(),
   z.object({ protocolVersion: protocolVersionSchema, scale: z.number().finite().min(0.5).max(2), type: z.literal("courseforge-composition-preview-zoom") }).strict(),
+  z.object({ reset: z.boolean().optional(), mask: compositionVisualMaskSchema.nullable(), hfId: hfIdSchema, protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-preview-mask") }).strict(),
   z.object({ crop: compositionVisualCropSchema, hfId: hfIdSchema, protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-preview-crop") }).strict(),
   z.object({
     hfId: hfIdSchema, protocolVersion: protocolVersionSchema,

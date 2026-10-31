@@ -1,3 +1,4 @@
+import { compositionVisualMaskSchema } from "./composition-visual-mask";
 import { COMPOSITION_MAX_GROUPS, COMPOSITION_MAX_CLIPS, COMPOSITION_GROUP_MAX_DIRECT_MEMBERS, validateCompositionGroupGraph } from "./composition-group-hierarchy";
 import { z } from "zod";
 import { buildCaptionEffectPlan } from "./composition-caption-effects-plan";
@@ -207,6 +208,7 @@ export const compositionClipSchema = z.object({
   colorGrading: compositionColorGradingSchema.optional(),
   sceneId: z.string().min(1).max(160).optional(),
   crop: compositionVisualCropSchema.optional(),
+  mask: compositionVisualMaskSchema.optional(),
   durationSeconds: boundedSecondsSchema.positive(),
   /** Non-destructive, linear gain ramps applied at the clip boundaries. */
   fadeInSeconds: boundedSecondsSchema.optional(),
@@ -239,6 +241,9 @@ export const compositionClipSchema = z.object({
   /** Per-clip source audio multiplier; track volume remains the master gain. */
   volume: finiteNumberSchema.min(0).max(1).optional(),
 }).strict().superRefine((clip, context) => {
+  if (clip.mask && clip.kind !== "VIDEO" && clip.kind !== "IMAGE" && clip.kind !== "DECK_SLIDE") {
+    context.addIssue({ code: "custom", message: "Las máscaras sólo están disponibles para videos, imágenes y diapositivas." });
+  }
   if ((clip.fadeInSeconds || 0) + (clip.fadeOutSeconds || 0) > clip.durationSeconds + COMPOSITION_TIMELINE_BOUNDARY_EPSILON_SECONDS) {
     context.addIssue({
       code: "custom",

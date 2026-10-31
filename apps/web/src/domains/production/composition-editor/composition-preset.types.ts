@@ -1,3 +1,4 @@
+import { compositionVisualMaskSchema } from "./composition-visual-mask";
 import { z } from "zod";
 import {
   COMPOSITION_MEDIA_FIT_MODES,
@@ -21,6 +22,7 @@ export const compositionPresetMotionSchema = z.object({
 }).strict();
 
 export const compositionPresetVariantSchema = z.object({
+  mask: compositionVisualMaskSchema.optional(),
   animations: z.array(compositionPresetMotionSchema).max(8).default([]),
   crop: z.object({
     bottomRatio: normalizedRatioSchema,

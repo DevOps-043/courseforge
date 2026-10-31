@@ -25,6 +25,7 @@ const OPERATION_STRATEGIES: Record<CompositionEditorPatchOperation["type"], Comp
   "clip.volume-envelope": "LIVE_TIMELINE",
   "clip.caption-effects": "LIVE_TIMELINE",
   "clip.crop": "LIVE_DOM",
+  "clip.mask": "LIVE_DOM",
   "clip.color-grading": "LIVE_DOM",
   "clip.duration": "LIVE_TIMELINE",
   "clip.playback-rate": "LIVE_TIMELINE",

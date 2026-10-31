@@ -1,3 +1,5 @@
+import { createCompositionMaskPreviewRuntime } from "./composition-mask-preview-runtime";
+import { compositionVisualMaskClipPath } from "./composition-visual-mask";
 import { APP_CONFIG } from "../../../config/app";
 import { createCompositionPositionPreviewRuntime } from "./composition-position-preview-runtime";
 import { compositionLayoutSchema } from "./composition-document.types";
@@ -360,6 +362,26 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         const bottom = Math.max(0, Math.min(layout.height - top - 1, Number(crop.bottom) || 0));
         return { bottom, left, right, top };
       };
+      const applyVisualMask = (target, mask) => {
+        let clipPath;
+        try { clipPath = (${compositionVisualMaskClipPath.toString()})(mask); } catch { return; }
+        const subject = target.querySelector('.motion-subject');
+        if (!(subject instanceof HTMLElement)) return;
+        let layer = subject.querySelector(':scope > .composition-visual-mask');
+        if (!layer) {
+          if (mask === null) return;
+          layer = document.createElement('div');
+          layer.className = 'composition-visual-mask';
+          Object.assign(layer.style, { width: '100%', height: '100%' });
+          while (subject.firstChild) layer.appendChild(subject.firstChild);
+          subject.appendChild(layer);
+        }
+        layer.style.clipPath = clipPath;
+      };
+      const maskPreview = (${createCompositionMaskPreviewRuntime.toString()})(
+        hfId => document.querySelector('[data-hf-id="' + CSS.escape(hfId) + '"]'),
+        applyVisualMask, (${compositionVisualMaskClipPath.toString()})
+      );
       const applyCrop = (target, requestedCrop, lift = target.dataset.cropMode === "true") => {
         const subject = target.querySelector('.motion-subject');
         if (!subject || !(subject instanceof HTMLElement)) return;
@@ -1455,6 +1477,10 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
               });
             }
             if (change.cropInsets) applyCrop(target, change.cropInsets);
+            if (Object.prototype.hasOwnProperty.call(change, "mask")) {
+              target.dataset.visualMask = JSON.stringify(change.mask);
+              applyVisualMask(target, change.mask);
+            }
             if (Object.prototype.hasOwnProperty.call(change, "colorGrading") && !applyColorGrading(target, change.colorGrading)) {
               throw new Error("COLOR_GRADING_RUNTIME_UNAVAILABLE");
             }
@@ -1478,10 +1504,12 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           }
           if (message.patch.motion !== undefined) window.__courseforgeReplaceMotion(message.patch.motion);
           inspectorPositionPreview.rebase();
+          maskPreview.reapply();
           seek(currentTime);
           finish(true, "APPLIED");
         } catch {
           inspectorPositionPreview.rebase();
+          maskPreview.reapply();
           finish(false, "RUNTIME_ERROR");
         }
       };
@@ -1513,6 +1541,10 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           if (message.position === null || (editingEnabled && message.position && typeof message.position === "object")) {
             inspectorPositionPreview.preview(message.hfId, message.position);
           }
+        }
+        if (message.type === "courseforge-composition-preview-mask" && typeof message.hfId === "string") {
+          const target = document.querySelector('[data-hf-id="' + CSS.escape(message.hfId) + '"]');
+          if (target instanceof HTMLElement && (editingEnabled || message.reset === true)) maskPreview.preview(message.hfId, message.mask, message.reset === true);
         }
         if (message.type === "courseforge-composition-preview-crop" && typeof message.hfId === "string") {
           const target = document.querySelector('[data-hf-id="' + CSS.escape(message.hfId) + '"]');

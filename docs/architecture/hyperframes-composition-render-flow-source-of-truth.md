@@ -461,6 +461,14 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-10-31: máscaras geométricas opcionales en `clip.mask` para imagen, video
+  y diapositiva. `clip.mask` aplica/quita formas validadas; el renderer compartido
+  anida la máscara dentro del sujeto recortado para intersectarla con los bordes.
+  El preview temporal no cambia el archivo original. Documento legacy omite el
+  campo; lectores estrictos antiguos requieren despliegue compatible antes de
+  editar documentos enmascarados. Diseño y evidencia:
+  [máscaras visuales](../../openspec/changes/visual-clip-masks/proposal.md).
+
 - 2026-10-31: posición X/Y temporal desde el inspector con el comando
   `courseforge-composition-preview-position`. El monitor recibe cambios válidos
   durante el gesto; el guardado sigue agrupado al terminar. Los patches canónicos

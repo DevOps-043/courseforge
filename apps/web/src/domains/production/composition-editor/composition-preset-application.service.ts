@@ -276,6 +276,10 @@ function applyVariant(
   } else if (clip.kind !== "AUDIO") {
     delete clip.crop;
   }
+  if (clip.kind === "VIDEO" || clip.kind === "IMAGE" || clip.kind === "DECK_SLIDE") {
+    if (variant.mask) clip.mask = variant.mask;
+    else delete clip.mask;
+  }
   if (variant.mediaFit && (clip.kind === "IMAGE" || clip.kind === "VIDEO")) clip.mediaFit = variant.mediaFit;
   if (variant.volume !== undefined) clip.volume = variant.volume;
   return timingWouldExceedAudioSource;

@@ -211,7 +211,8 @@ export function reconcileCompositionDocument(params: {
     const isUnframedLegacyBroll = (clip.kind === "VIDEO" || clip.kind === "IMAGE")
       && (track.semanticRole === "BROLL" || track.id === "broll")
       && clip.mediaFit === undefined
-      && clip.crop === undefined;
+      && clip.crop === undefined
+      && clip.mask === undefined;
     const usesGeneratedCanvasLayout = clip.layout.x === 0
       && clip.layout.y === 0
       && clip.layout.width === params.document.canvas.width

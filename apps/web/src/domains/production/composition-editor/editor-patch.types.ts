@@ -1,3 +1,4 @@
+import { compositionVisualMaskSchema } from "./composition-visual-mask";
 import { COMPOSITION_LAYER_MAX, COMPOSITION_LAYER_DEPTH_LIMIT } from "./composition-layer-depth";
 import { COMPOSITION_MAX_CLIPS } from "./composition-group-hierarchy";
 import { z } from "zod";
@@ -98,6 +99,8 @@ const clipLayoutOperationSchema = z.object({
   ),
   type: z.literal("clip.layout"),
 }).strict();
+
+const clipMaskOperationSchema = z.object({ mask: compositionVisualMaskSchema.nullable(), type: z.literal("clip.mask") }).strict();
 
 const clipCropOperationSchema = z.object({
   crop: compositionVisualCropSchema.nullable(),
@@ -396,6 +399,7 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipDuplicateOperationSchema,
   canvasDurationOperationSchema,
   clipCropOperationSchema,
+  clipMaskOperationSchema,
   clipMoveOperationSchema,
   clipDurationOperationSchema,
   clipPlaybackRateOperationSchema,

@@ -1,3 +1,4 @@
+import { compositionVisualMaskClipPath } from "./composition-visual-mask";
 import { COMPOSITION_COMPILATION_TARGETS, CompositionPreviewCompilerError, type CompositionCompilationTarget } from "./composition-compilation.types";
 import { getCompositionClipMediaAssetId, type CompositionClip, type CompositionEditorDocument, type CompositionTrack } from "./composition-document.types";
 import { renderCompositionNativeOverlay } from "./composition-native-overlay-renderer.service";
@@ -34,7 +35,10 @@ export function renderCompositionClip(
   const crop = resolveCompositionCropInsets(clip.crop, clip.layout);
   const cropData = ` data-crop-top="${crop.top}" data-crop-right="${crop.right}" data-crop-bottom="${crop.bottom}" data-crop-left="${crop.left}"`;
   const cropStyle = renderVisualCropStyle(crop);
-  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}"${isHyperframesRender ? "" : ` data-editor-label="${escapeAttribute(clip.label)}"`} data-croppable="true" data-layout-opacity="${clip.layout.opacity}" data-media-fit="${mediaFit}"${cropData}${aspectAnchor ? ` data-preserve-aspect="${aspectAnchor}"` : ""} style="${layout}"`;
+  const maskContent = (content: string) => clip.mask
+    ? `<div class="composition-visual-mask" style="width:100%;height:100%;clip-path:${compositionVisualMaskClipPath(clip.mask)};">${content}</div>`
+    : content;
+  const common = `id="${escapeAttribute(clip.id)}" data-hf-id="${escapeAttribute(clip.hfId)}"${isHyperframesRender ? "" : ` data-editor-label="${escapeAttribute(clip.label)}"`} data-croppable="true"${clip.mask ? ` data-visual-mask="${escapeAttribute(JSON.stringify(clip.mask))}"` : ""} data-layout-opacity="${clip.layout.opacity}" data-media-fit="${mediaFit}"${cropData}${aspectAnchor ? ` data-preserve-aspect="${aspectAnchor}"` : ""} style="${layout}"`;
   const motionId = `${escapeAttribute(clip.id)}-motion`;
   const visualWindow = runtimeWindow || {
     durationSeconds: clip.durationSeconds,
@@ -70,7 +74,7 @@ export function renderCompositionClip(
   }
   if (clip.source.type === "DECK_SLIDE") {
     const deckContainStyle = renderDeckContainStyle(clip, canvas);
-    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}"><div class="deck-scope"${clip.source.htmlAssetId ? ` data-html-asset="${escapeAttribute(clip.source.htmlAssetId)}"` : ""} data-appearance="${clip.source.appearance || deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${compiledDeckHtml ?? replaceCompositionAssetUrls(clip.source.html, deckAssetUrls)}</section></main></div></div></div></div></section>`;
+    return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject deck-content" style="${cropStyle}">${maskContent(`<div class="deck-scope"${clip.source.htmlAssetId ? ` data-html-asset="${escapeAttribute(clip.source.htmlAssetId)}"` : ""} data-appearance="${clip.source.appearance || deckAppearance}" style="${deckContainStyle}"><div class="deck-shell"><main class="deck-stage"><section class="${escapeAttribute(clip.source.classes)}">${compiledDeckHtml ?? replaceCompositionAssetUrls(clip.source.html, deckAssetUrls)}</section></main></div></div>` )}</div></div></section>`;
   }
   const mediaAssetId = getCompositionClipMediaAssetId(clip);
   if (!mediaAssetId) throw new CompositionPreviewCompilerError(`El clip ${clip.id} no tiene un asset multimedia válido.`);
@@ -90,12 +94,12 @@ export function renderCompositionClip(
     const audio = hasSynchronizedVideoAudio
       ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio clip" ${mediaSource} loop preload="metadata" ${audioMediaOffset}${hidden}${volumeAutomation} data-volume="${volume}" ${audioTiming} data-track-index="${requireRuntimeAudioTrackIndex(runtimeAudioTrackIndex, clip.id)}"></audio>`
       : "";
-    return `<div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${video}</div></div>${audio}`;
+    return `<div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${maskContent(video)}</div></div>${audio}`;
   }
   const media = clip.kind === "VIDEO"
     ? `<video id="${escapeAttribute(clip.id)}-media" class="composition-media" crossorigin="anonymous" ${mediaSource}${colorGrading} muted playsinline${videoLoop}${videoRate} preload="metadata" ${visualTiming} ${visualMediaOffset}${hidden}></video>${hasSynchronizedVideoAudio ? `<audio id="${escapeAttribute(clip.id)}-audio" class="composition-audio"${audioCrossOrigin}${hidden}${volumeAutomation} ${mediaSource} loop preload="metadata" ${audioTiming} ${audioMediaOffset} data-volume="${volume}"></audio>` : ""}`
     : `<img id="${escapeAttribute(clip.id)}-media" class="composition-media" crossorigin="anonymous" ${mediaSource}${colorGrading} alt="" />`;
-  return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${media}</div></div></section>`;
+  return `<section id="${escapeAttribute(clip.id)}-timeline" class="clip" ${visualTiming}><div ${common} class="clip-content"><div id="${motionId}" class="motion-subject" style="${cropStyle}">${maskContent(media)}</div></div></section>`;
 }
 
 export function renderCompositionTransitionOverlays(transitions: CompositionTransitionRuntimeItem[]) {

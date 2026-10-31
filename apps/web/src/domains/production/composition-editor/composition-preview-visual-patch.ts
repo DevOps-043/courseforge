@@ -1,3 +1,4 @@
+import { compositionVisualMaskSchema } from "./composition-visual-mask";
 import { z } from "zod";
 import { COMPOSITION_LAYER_DEPTH_LIMIT, COMPOSITION_LAYER_MIN } from "./composition-layer-depth";
 import type { CompositionEditorDocument } from "./composition-document.types";
@@ -33,6 +34,7 @@ export const compositionPreviewVisualChangeSchema = z.object({
   aspectAnchor: z.enum(["BOTTOM_RIGHT", "CENTER"]).nullable().optional(),
   colorGrading: compositionColorGradingSchema.nullable().optional(),
   cropInsets: cropInsetsSchema.optional(),
+  mask: compositionVisualMaskSchema.nullable().optional(),
   hfId: hfIdSchema,
   hidden: z.boolean().optional(),
   layout: runtimeLayoutSchema.optional(),
@@ -85,6 +87,9 @@ export function buildCompositionPreviewVisualPatch(params: {
     } else if (operation.type === "clip.text-content") {
       if (clip.kind !== "TEXT" || clip.source.type !== "NATIVE_TEXT") return null;
       current.textContent = clip.source.text;
+    } else if (operation.type === "clip.mask") {
+      if (clip.kind === "AUDIO") return null;
+      current.mask = clip.mask ?? null;
     } else if (operation.type === "clip.crop") {
       if (clip.kind === "AUDIO") return null;
       current.cropInsets = resolveCompositionCropInsets(clip.crop, clip.layout);

@@ -139,6 +139,7 @@ function buildVariant(
         topRatio: clampRatio(crop.top / clip.layout.height),
       },
     } : {}),
+    ...(clip.mask ? { mask: clip.mask } : {}),
     durationWeight: clip.durationSeconds,
     hidden: clip.hidden,
     ...(clip.kind !== "AUDIO" ? {

@@ -869,6 +869,7 @@ export function applyCompositionEditorPatches(
       });
       clip.mediaFit = resolveDefaultCompositionMediaFit({ clipKind: clip.kind, track: currentTrack });
       delete clip.crop;
+      delete clip.mask;
       delete clip.colorGrading;
       delete clip.playbackRate;
       delete clip.freezeTailSeconds;
@@ -1195,6 +1196,15 @@ export function applyCompositionEditorPatches(
         clip.crop = scaleCompositionCropInsets(clip.crop, previousLayout, nextLayout);
       }
       clip.layout = nextLayout;
+    }
+
+    if (operation.type === "clip.mask") {
+      if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes aplicar máscaras en una pista bloqueada.");
+      if (clip.kind !== "VIDEO" && clip.kind !== "IMAGE" && clip.kind !== "DECK_SLIDE") {
+        throw new CompositionEditorPatchError("Las máscaras sólo están disponibles para videos, imágenes y diapositivas.");
+      }
+      if (operation.mask) clip.mask = operation.mask;
+      else delete clip.mask;
     }
 
     if (operation.type === "clip.crop") {
