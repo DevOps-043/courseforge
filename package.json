@@ -98,7 +98,10 @@
     "test:harness": "node --test scripts/quality/harness.test.mjs scripts/capture-background-deployment.test.mjs",
     "verify:harness": "node scripts/quality/run-gate.mjs --harness-only",
     "verify:pr": "node scripts/quality/run-gate.mjs",
-    "test:course-delivery": "npm run test:course-delivery --workspace=apps/web"
+    "test:course-delivery": "npm run test:course-delivery --workspace=apps/web",
+    "test:composition-nested-groups": "tsc -p apps/web/tsconfig.hyperframes-test.json && node --test apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-nested-groups.test.js",
+    "test:composition-nested-groups:sql": "node scripts/test-nested-composition-groups-sql.mjs",
+    "qa:composition-nested-groups": "npm run qa:composition-nested-groups --workspace=apps/web"
   },
   "devDependencies": {
     "@fission-ai/openspec": "1.8.0",

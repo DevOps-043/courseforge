@@ -1,0 +1,126 @@
+{
+  "base": "13774405f90d5d3dd1d87989673c6b4976269f54",
+  "verification": "Cada arista reportada por madge fue resuelta contra los imports estáticos del commit base; no es una ejecución de madge sobre un checkout distinto.",
+  "cycles": [
+    {
+      "cycle": [
+        "src/domains/production/composition-editor/composition-caption-effects.service.ts",
+        "src/domains/production/composition-editor/composition-text-layer.types.ts"
+      ],
+      "preexisting": true
+    },
+    {
+      "cycle": [
+        "src/domains/production/composition-editor/composition-document.types.ts",
+        "src/domains/production/composition-editor/composition-caption-effects-plan.ts"
+      ],
+      "preexisting": true
+    },
+    {
+      "cycle": [
+        "src/domains/production/composition-editor/composition-document.types.ts",
+        "src/domains/production/composition-editor/composition-font-references.ts"
+      ],
+      "preexisting": true
+    },
+    {
+      "cycle": [
+        "src/domains/production/composition-editor/qa/composition-controlled-execution-fence.ts",
+        "src/domains/production/composition-editor/qa/composition-materialized-supervisor-renderer.ts"
+      ],
+      "preexisting": true
+    },
+    {
+      "cycle": [
+        "src/domains/production/composition-editor/qa/composition-materialized-supervisor-renderer.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-materialization.ts",
+        "src/domains/production/composition-editor/qa/composition-render-supervisor.service.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-reference-selection.ts"
+      ],
+      "preexisting": true
+    },
+    {
+      "cycle": [
+        "src/domains/production/composition-editor/qa/composition-controlled-execution-fence.ts",
+        "src/domains/production/composition-editor/qa/composition-materialized-supervisor-renderer.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-materialization.ts",
+        "src/domains/production/composition-editor/qa/composition-render-supervisor.service.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-upload.service.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-finalization.service.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-worker-contract.ts"
+      ],
+      "preexisting": true
+    },
+    {
+      "cycle": [
+        "src/domains/production/composition-editor/qa/composition-controlled-execution-fence.ts",
+        "src/domains/production/composition-editor/qa/composition-materialized-supervisor-renderer.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-materialization.ts",
+        "src/domains/production/composition-editor/qa/composition-render-supervisor.service.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-upload.service.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-finalization.service.ts",
+        "src/domains/production/composition-editor/qa/composition-render-authority.service.ts",
+        "src/domains/production/composition-editor/qa/composition-render-supervisor-binding.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-comparison-artifacts.ts",
+        "src/domains/production/composition-editor/qa/composition-exported-video-conformance.ts"
+      ],
+      "preexisting": true
+    },
+    {
+      "cycle": [
+        "src/domains/production/composition-editor/qa/composition-controlled-execution-fence.ts",
+        "src/domains/production/composition-editor/qa/composition-materialized-supervisor-renderer.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-materialization.ts",
+        "src/domains/production/composition-editor/qa/composition-render-supervisor.service.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-upload.service.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-finalization.service.ts",
+        "src/domains/production/composition-editor/qa/composition-render-authority.service.ts",
+        "src/domains/production/composition-editor/qa/composition-render-supervisor-binding.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-comparison-artifacts.ts",
+        "src/domains/production/composition-editor/qa/composition-exported-video-conformance.ts",
+        "src/domains/production/composition-editor/qa/composition-exported-audio-loudness.ts"
+      ],
+      "preexisting": true
+    },
+    {
+      "cycle": [
+        "src/domains/production/composition-editor/qa/composition-exported-audio-timing.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-execution-fence.ts",
+        "src/domains/production/composition-editor/qa/composition-materialized-supervisor-renderer.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-materialization.ts",
+        "src/domains/production/composition-editor/qa/composition-render-supervisor.service.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-upload.service.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-finalization.service.ts",
+        "src/domains/production/composition-editor/qa/composition-render-authority.service.ts",
+        "src/domains/production/composition-editor/qa/composition-render-supervisor-binding.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-comparison-artifacts.ts",
+        "src/domains/production/composition-editor/qa/composition-exported-video-conformance.ts"
+      ],
+      "preexisting": true
+    },
+    {
+      "cycle": [
+        "src/domains/production/composition-editor/qa/composition-exported-audio-timing.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-execution-fence.ts",
+        "src/domains/production/composition-editor/qa/composition-materialized-supervisor-renderer.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-materialization.ts",
+        "src/domains/production/composition-editor/qa/composition-render-supervisor.service.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-upload.service.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-render-finalization.service.ts",
+        "src/domains/production/composition-editor/qa/composition-render-authority.service.ts",
+        "src/domains/production/composition-editor/qa/composition-render-supervisor-binding.ts",
+        "src/domains/production/composition-editor/qa/composition-controlled-comparison-artifacts.ts",
+        "src/domains/production/composition-editor/qa/composition-exported-video-conformance.ts",
+        "src/domains/production/composition-editor/qa/composition-exported-conformance-gate.ts"
+      ],
+      "preexisting": true
+    },
+    {
+      "cycle": [
+        "src/domains/production/composition-editor/http/composition-narrative-extraction-handler.server.ts",
+        "src/domains/production/composition-editor/http/composition-narrative-command-handler.server.ts"
+      ],
+      "preexisting": true
+    }
+  ]
+}

@@ -1,4 +1,6 @@
 "use client";
+import { buildCompositionGroupIndex, resolveCompositionGroupAtLevel, resolveCompositionGroupClipIds, resolveCompositionGroupSelection } from "@/domains/production/composition-editor/composition-group-hierarchy";
+
 
 import { CompositionLocalEdits } from "@/domains/production/composition-editor/composition-local-edits";
 
@@ -1663,20 +1665,22 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     postPreviewMessage({ type: "courseforge-composition-play" });
     return true;
   };
-  const clearSelection = () => {
+  const clearEditorSelection = (preserveGroupContext: boolean) => {
     if (autosaveCoordinatorRef.current.pending && !autosaveCoordinatorRef.current.isCommitting) {
-      void autosaveCoordinatorRef.current.flush().then((saved) => { if (saved) clearSelection(); });
+      void autosaveCoordinatorRef.current.flush().then((saved) => { if (saved) clearEditorSelection(preserveGroupContext); });
       return;
     }
     setSelectedHfId(null);
     setSelectedAnimationId(null);
     setSelectedTimelineClipIds(new Set());
     setSelectedTimelineGroupId(null);
-    setEditingTimelineGroupId(null);
+    if (!preserveGroupContext) setEditingTimelineGroupId(null);
     setSelectedTransitionId(null);
     setManualInspectorOpen(false);
     postPreviewMessage({ type: "courseforge-composition-select", hfId: null });
   };
+  const clearSelection = () => clearEditorSelection(false);
+  const clearTimelineSelection = () => clearEditorSelection(true);
   const openCompositionLibrary = () => {
     setLibraryOpen(true);
     comparisonBaselineReadyRef.current = false;
@@ -1697,42 +1701,51 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const createTimelineGroup = () => {
     const currentDocument = payloadRef.current?.document;
     if (!currentDocument) return;
-    const clipIds = [...selectedTimelineClipIds];
-    const groupedClipIds = new Set((currentDocument.groups || []).flatMap((group) => group.clipIds));
-    if (clipIds.length < 2 || clipIds.some((clipId) => groupedClipIds.has(clipId))) return;
-    void savePatch([{ clipIds, groupId: `group-${crypto.randomUUID()}`, type: "group.create" }], `Agrupó ${clipIds.length} clips del timeline.`);
+    const selection = resolveCompositionGroupSelection(currentDocument, selectedTimelineClipIds, editingTimelineGroupId);
+    if (!selection) return;
+    const nested = selection.childGroupIds.length > 0 || editingTimelineGroupId !== null;
+    if (nested && !payloadRef.current?.capabilities?.canCreateNestedGroups) return;
+    void savePatch([{ ...selection, groupId: `group-${crypto.randomUUID()}`, type: "group.create" }], "Agrupó los elementos seleccionados.");
   };
   const enterTimelineGroup = () => {
     const currentDocument = payloadRef.current?.document;
     const group = currentDocument?.groups?.find((candidate) => candidate.id === selectedTimelineGroupId);
     if (!currentDocument || !group) return;
-    const firstClip = currentDocument.clips.find((clip) => group.clipIds.includes(clip.id));
+    const firstClip = currentDocument.clips.find((clip) => resolveCompositionGroupClipIds(currentDocument, group.id).includes(clip.id));
     setEditingTimelineGroupId(group.id);
     setSelectedTimelineGroupId(null);
     if (!firstClip) return;
-    setSelectedTimelineClipIds(new Set([firstClip.id]));
+    const child = resolveCompositionGroupAtLevel(buildCompositionGroupIndex(currentDocument.groups), firstClip.id, group.id);
+    setSelectedTimelineGroupId(child?.id ?? null);
+    setSelectedTimelineClipIds(new Set(child ? resolveCompositionGroupClipIds(currentDocument, child.id) : [firstClip.id]));
     selectClip(firstClip.hfId, true);
   };
   const exitTimelineGroup = () => {
     const currentDocument = payloadRef.current?.document;
     const group = currentDocument?.groups?.find((candidate) => candidate.id === editingTimelineGroupId);
     if (!currentDocument || !group) return;
-    const firstClip = currentDocument.clips.find((clip) => group.clipIds.includes(clip.id));
-    setEditingTimelineGroupId(null);
+    const firstClip = currentDocument.clips.find((clip) => resolveCompositionGroupClipIds(currentDocument, group.id).includes(clip.id));
+    setEditingTimelineGroupId(buildCompositionGroupIndex(currentDocument.groups).parentByGroupId.get(group.id) ?? null);
     setSelectedTimelineGroupId(group.id);
-    setSelectedTimelineClipIds(new Set(group.clipIds));
+    setSelectedTimelineClipIds(new Set(resolveCompositionGroupClipIds(currentDocument, group.id)));
     if (firstClip) selectClip(firstClip.hfId, true);
     inspectTimelineSelection();
   };
-  const ungroupTimelineSelection = () => {
+  const ungroupTimelineSelection = async () => {
     const currentDocument = payloadRef.current?.document;
     const group = currentDocument?.groups?.find((candidate) => candidate.id === selectedTimelineGroupId);
     if (!currentDocument || !group) return;
-    const firstClip = currentDocument.clips.find((clip) => group.clipIds.includes(clip.id));
-    void savePatch([{ groupId: group.id, type: "group.ungroup" }], "Desagrupó los clips seleccionados.");
-    setSelectedTimelineGroupId(null);
-    setEditingTimelineGroupId(null);
-    setSelectedTimelineClipIds(firstClip ? new Set([firstClip.id]) : new Set());
+    const firstClip = currentDocument.clips.find((clip) => resolveCompositionGroupClipIds(currentDocument, group.id).includes(clip.id));
+    const parentId = buildCompositionGroupIndex(currentDocument.groups).parentByGroupId.get(group.id) ?? null;
+    if (!await savePatch([{ groupId: group.id, type: "group.ungroup" }], "Desagrupó el contenedor seleccionado.")) return;
+    const saved = payloadRef.current?.document;
+    if (!saved) return;
+    const index = buildCompositionGroupIndex(saved.groups);
+    const contextId = parentId && index.groupsById.has(parentId) ? parentId : null;
+    const unit = firstClip ? resolveCompositionGroupAtLevel(index, firstClip.id, contextId) : null;
+    setEditingTimelineGroupId(contextId);
+    setSelectedTimelineGroupId(unit?.id ?? null);
+    setSelectedTimelineClipIds(new Set(unit ? index.leavesByGroupId.get(unit.id)! : firstClip ? [firstClip.id] : []));
     if (firstClip) selectClip(firstClip.hfId, true);
   };
   const pausePreviewForMutation = () => {
@@ -3966,7 +3979,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           onAnimationSelect={selectAnimation}
           onAnimationTimingChange={(animation, timing) => void savePatch([{ animationId: animation.id, timing, type: "animation.update-timing" }], `Ajustó ${animation.preset?.id || animation.propertyGroup} desde la timeline.`)}
           onAudioMixUpdate={(settings, summary) => void savePatch([{ settings, type: "audio-mix.update" }], summary)}
-          onClearSelection={clearSelection}
+          onClearSelection={clearTimelineSelection}
           onDurationChange={(clip, durationSeconds) => void savePatch([{ clipId: clip.id, durationSeconds, type: "clip.duration" }], `Ajustó la duración de ${clip.label} desde la timeline.`)}
           onEditingGroupChange={setEditingTimelineGroupId}
           onInspectSelection={inspectTimelineSelection}
@@ -4018,7 +4031,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
               track={payload.document.tracks.find((track) => track.id === selectedClip?.trackId)}
             />}
             {inspectorTab === "properties" && <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} colorGradingStatus={selectedHfId ? colorGradingStatuses[selectedHfId] || null : null} componentId={componentId} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} editingDisabled={localEditingBlocked} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} sourcePreviewUrl={selectedSourcePreviewUrl} selectedAnimationId={selectedAnimationId} onAnimationSelect={(id) => { if (id && selectedClip) selectAnimation(id, selectedClip.hfId); else setSelectedAnimationId(null); }} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewColorGrading={(hfId, colorGrading) => postPreviewMessage({ type: "courseforge-composition-preview-color-grading", hfId, colorGrading })} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} />}
-            {inspectorTab === "selection" && <CompositionSelectionPanel canPaste={canPasteTimelineClipboard} document={payload.document} editingGroupId={editingTimelineGroupId} frameStep={timelineFrameStep} keyboardEditMode={timelineKeyboardEditMode} onAlign={(alignment, target) => void alignTimelineSelection(alignment, target)} onClear={clearSelection} onCopy={copyTimelineSelection} onCreateGroup={createTimelineGroup} onDelete={() => void deleteTimelineSelection(false)} onDistribute={(axis) => void distributeTimelineSelection(axis)} onDuplicate={() => void duplicateTimelineSelection()} onEnterGroup={enterTimelineGroup} onExitGroup={exitTimelineGroup} onFrameStepChange={changeTimelineFrameStep} onInspectClip={(hfId) => selectClip(hfId, true)} onKeyboardEditModeChange={changeTimelineKeyboardEditMode} onPaste={() => void pasteTimelineClipboard()} onRippleDelete={() => void deleteTimelineSelection(true)} onRoll={(edge, deltaFrames) => void rollTimelineSelection(edge, deltaFrames)} onSlide={(deltaFrames) => void slideTimelineSelection(deltaFrames)} onUngroup={ungroupTimelineSelection} saving={localEditingBlocked} selectedClipIds={selectedTimelineClipIds} selectedGroupId={selectedTimelineGroupId} />}
+            {inspectorTab === "selection" && <CompositionSelectionPanel canCreateNestedGroups={payload.capabilities?.canCreateNestedGroups ?? false} canPaste={canPasteTimelineClipboard} document={payload.document} editingGroupId={editingTimelineGroupId} frameStep={timelineFrameStep} keyboardEditMode={timelineKeyboardEditMode} onAlign={(alignment, target) => void alignTimelineSelection(alignment, target)} onClear={clearTimelineSelection} onCopy={copyTimelineSelection} onCreateGroup={createTimelineGroup} onDelete={() => void deleteTimelineSelection(false)} onDistribute={(axis) => void distributeTimelineSelection(axis)} onDuplicate={() => void duplicateTimelineSelection()} onEnterGroup={enterTimelineGroup} onExitGroup={exitTimelineGroup} onFrameStepChange={changeTimelineFrameStep} onInspectClip={(hfId) => selectClip(hfId, true)} onKeyboardEditModeChange={changeTimelineKeyboardEditMode} onPaste={() => void pasteTimelineClipboard()} onRippleDelete={() => void deleteTimelineSelection(true)} onRoll={(edge, deltaFrames) => void rollTimelineSelection(edge, deltaFrames)} onSlide={(deltaFrames) => void slideTimelineSelection(deltaFrames)} onUngroup={ungroupTimelineSelection} saving={localEditingBlocked} selectedClipIds={selectedTimelineClipIds} selectedGroupId={selectedTimelineGroupId} />}
             {inspectorTab === "transitions" && <TransitionControls document={payload.document} onAdd={(transition) => void savePatch([{ transition, type: "transition.add" }], `Añadió ${transition.type} entre dos clips.`)} onRemove={(transitionId) => void savePatch([{ transitionId, type: "transition.remove" }], "Quitó una transición entre clips.")} onSelect={selectTransition} onUpdate={(transitionId, settings) => void savePatch([{ settings, transitionId, type: "transition.update" }], "Ajustó una transición entre clips.")} saving={localEditingBlocked} selectedTransitionId={activeSelectedTransitionId} />}
             {inspectorTab === "assistant" && <CompositionAgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={async (instruction) => { if (await autosaveCoordinatorRef.current.flush()) await requestAgentProposal(instruction, Boolean(presetPreview)); }} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}
           </div>

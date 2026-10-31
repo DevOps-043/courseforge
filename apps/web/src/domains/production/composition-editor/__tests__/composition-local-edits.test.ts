@@ -44,6 +44,38 @@ test("una normalización confirmada por el servidor se conserva al recomponer el
   assert.equal(projected.document.clips[0]!.layout.y, 200);
 });
 
+test("confirmar un grupo anidado conserva su movimiento local pendiente y permite recuperarlo", () => {
+  const initial = fixture();
+  const seed = initial.document.clips[0]!;
+  initial.document.clips = Array.from({ length: 4 }, (_, index) => ({
+    ...structuredClone(seed), id: `clip-${index}`, hfId: `hf-${index}`,
+    startSeconds: index * 2, durationSeconds: 1,
+  }));
+  initial.document.canvas.durationSeconds = 7;
+  initial.document.groups = [
+    { id: "group-a", label: "Grupo A", order: 0, clipIds: ["clip-0", "clip-1"] },
+    { id: "group-b", label: "Grupo B", order: 1, clipIds: ["clip-2", "clip-3"] },
+  ];
+  const edits = new CompositionLocalEdits<typeof initial>();
+  const grouped = edits.admit(initial, { id: "create", source: "USER", operations: [
+    { type: "group.create", groupId: "parent", clipIds: [], childGroupIds: ["group-a", "group-b"] },
+  ] })!;
+  const prepared = edits.prepare("create");
+  const moved = edits.admit(grouped.payload, { id: "move", source: "USER", operations: [
+    { type: "group.move", groupId: "parent", startSeconds: 20 },
+  ] })!;
+  assert.deepEqual(moved.payload.document.clips.map(clip => clip.startSeconds), [20, 22, 24, 26]);
+  assert.equal(moved.payload.document.canvas.durationSeconds, 27);
+  const projected = edits.confirm("create", {
+    documentHash: "b".repeat(64), document: prepared.document,
+  }, prepared.document);
+  assert.deepEqual(projected.document, moved.payload.document);
+  assert.equal(edits.prepare("move").before.documentHash, "b".repeat(64));
+  const recovered = edits.cancel()!;
+  assert.deepEqual(recovered.document.clips.map(clip => clip.startSeconds), [0, 2, 4, 6]);
+  assert.deepEqual(recovered.document.groups?.find(group => group.id === "parent")?.childGroupIds, ["group-a", "group-b"]);
+});
+
 test("cancelar tras un error vuelve al confirmado y rechaza respuestas fuera de orden", () => {
   const initial = fixture(), edits = new CompositionLocalEdits<typeof initial>(), clip = initial.document.clips[0]!;
   const first = edits.admit(initial, { id: "1", source: "USER", operations: [{ type: "clip.layout", clipId: clip.id, layout: { x: 100 } }] })!;

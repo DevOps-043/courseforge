@@ -238,11 +238,16 @@ const clipColorGradingOperationSchema = z.object({
 }).strict();
 
 const groupCreateOperationSchema = z.object({
-  clipIds: z.array(editorIdSchema).min(2).max(500),
+  clipIds: z.array(editorIdSchema).max(500),
+  childGroupIds: z.array(editorIdSchema).max(250).optional(),
   groupId: editorIdSchema,
   label: z.string().trim().min(1).max(120).optional(),
   type: z.literal("group.create"),
 }).strict().superRefine((operation, context) => {
+  if (operation.clipIds.length + (operation.childGroupIds?.length ?? 0) < 2
+    || new Set(operation.childGroupIds).size !== (operation.childGroupIds?.length ?? 0)) {
+    context.addIssue({ code: "custom", message: "Selecciona al menos dos miembros distintos." });
+  }
   if (new Set(operation.clipIds).size !== operation.clipIds.length) {
     context.addIssue({ code: "custom", message: "No puedes agrupar el mismo clip más de una vez." });
   }

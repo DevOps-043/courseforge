@@ -1,4 +1,6 @@
 "use client";
+import { buildCompositionGroupIndex, resolveCompositionGroupAtLevel } from "@/domains/production/composition-editor/composition-group-hierarchy";
+
 
 import { stepCompositionFrame } from "@/domains/production/composition-editor/composition-timecode";
 import { formatCompositionUiTimecode } from "@/domains/production/composition-editor/composition-ui-presentation";
@@ -106,11 +108,18 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
   const timelineViewportRef = useRef<HTMLDivElement>(null);
   const timelineLayout = useMemo(() => buildCompositionTimelineLayout(document), [document]);
   const groups = timelineLayout.groups;
-  const logicalGroups = useMemo(() => document.groups || [], [document.groups]);
+  const groupIndex = useMemo(() => buildCompositionGroupIndex(document.groups), [document.groups]);
+  const logicalGroups = useMemo(() => (document.groups ?? []).map(group => ({ ...group, clipIds: groupIndex.leavesByGroupId.get(group.id)! })), [document.groups, groupIndex]);
+  const groupBoundsById = useMemo(() => new Map(logicalGroups.map(group => [group.id, resolveCompositionGroupBounds(document, group.id, groupIndex)] as const)), [document, groupIndex, logicalGroups]);
+  const editingPath: string[] = [];
+  let pathGroupId = editingGroupId;
+  while (pathGroupId) { editingPath.unshift(pathGroupId); pathGroupId = groupIndex.parentByGroupId.get(pathGroupId) ?? null; }
   const groupColorsById = useMemo(() => resolveCompositionGroupColors(document), [document]);
-  const logicalGroupsByClipId = useMemo(() => new Map(logicalGroups.flatMap((group) => (
-    group.clipIds.map((clipId) => [clipId, group] as const)
-  ))), [logicalGroups]);
+  const logicalGroupsByClipId = useMemo(() => new Map(document.clips.flatMap(clip => {
+    const group = resolveCompositionGroupAtLevel(groupIndex, clip.id, editingGroupId);
+    const projected = group && logicalGroups.find(candidate => candidate.id === group.id);
+    return projected ? [[clip.id, projected] as const] : [];
+  })), [document.clips, editingGroupId, groupIndex, logicalGroups]);
   const editingGroup = logicalGroups.find((group) => group.id === editingGroupId) || null;
   const maxDuration = document.canvas.durationSeconds;
   const fps = document.canvas.fps;
@@ -171,13 +180,14 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
   }, [document.clips, editingGroupId, logicalGroups, onEditingGroupChange, onSelectedClipIdsChange, onSelectedGroupChange, selectedClipIds, selectedGroupId]);
 
   useEffect(() => {
-    if (editingGroupId || selectedGroupId || selectedClipIds.size < 2) return;
+    if (selectedGroupId || selectedClipIds.size < 2) return;
     const exactGroup = logicalGroups.find((group) => (
-      group.clipIds.length === selectedClipIds.size
+      (groupIndex.parentByGroupId.get(group.id) ?? null) === editingGroupId
+      && group.clipIds.length === selectedClipIds.size
       && group.clipIds.every((clipId) => selectedClipIds.has(clipId))
     ));
     if (exactGroup) onSelectedGroupChange(exactGroup.id);
-  }, [editingGroupId, logicalGroups, onSelectedGroupChange, selectedClipIds, selectedGroupId]);
+  }, [editingGroupId, groupIndex, logicalGroups, onSelectedGroupChange, selectedClipIds, selectedGroupId]);
 
   useEffect(() => {
     const decision = resolveCompositionTimelineSelectionSync({
@@ -190,21 +200,25 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
     if (decision.shouldClearGroup) onSelectedGroupChange(null);
   }, [document.clips, onSelectedClipIdsChange, onSelectedGroupChange, selectedClipIds, selectedGroupId, selectedHfId]);
 
-  const selectLogicalGroup = (group: CompositionGroup, preferredHfId?: string) => {
-    onSelectedGroupChange(group.id);
-    onSelectedClipIdsChange(new Set(group.clipIds));
+  const selectLogicalGroup = (group: CompositionGroup, preferredHfId?: string, additive = false) => {
+    const next = additive ? new Set(selectedClipIds) : new Set<string>();
+    const remove = additive && group.clipIds.every(id => next.has(id));
+    for (const id of group.clipIds) { if (remove) next.delete(id); else next.add(id); }
+    onSelectedGroupChange(next.size === group.clipIds.length && !remove ? group.id : null);
+    onSelectedClipIdsChange(next);
     const preferredClip = preferredHfId
       ? document.clips.find((clip) => clip.hfId === preferredHfId)
       : null;
-    const representative = preferredClip || document.clips.find((clip) => group.clipIds.includes(clip.id));
+    const representative = preferredClip && next.has(preferredClip.id) ? preferredClip : document.clips.find((clip) => next.has(clip.id));
     if (representative) onSelect(representative.hfId);
+    else onClearSelection();
     onInspectSelection();
   };
 
   const selectTimelineClip = (clip: CompositionClip, event?: Pick<MouseEvent<HTMLElement>, "ctrlKey" | "metaKey" | "shiftKey">) => {
     const group = logicalGroupsByClipId.get(clip.id);
     if (group && editingGroupId !== group.id) {
-      selectLogicalGroup(group, clip.hfId);
+      selectLogicalGroup(group, clip.hfId, multiSelectEnabled || Boolean(event?.ctrlKey || event?.metaKey || event?.shiftKey));
       return;
     }
     onSelectedGroupChange(null);
@@ -235,7 +249,9 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
     onSelectedGroupChange(null);
     const clip = preferredClip || document.clips.find((candidate) => group.clipIds.includes(candidate.id));
     if (!clip) return;
-    onSelectedClipIdsChange(new Set([clip.id]));
+    const child = resolveCompositionGroupAtLevel(groupIndex, clip.id, group.id);
+    onSelectedGroupChange(child?.id ?? null);
+    onSelectedClipIdsChange(new Set(child ? groupIndex.leavesByGroupId.get(child.id)! : [clip.id]));
     onSelect(clip.hfId);
   };
 
@@ -257,7 +273,7 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
     const logicalGroup = logicalGroupsByClipId.get(clip.id);
     const movesLogicalGroup = effectiveKind === "move" && logicalGroup && editingGroupId !== logicalGroup.id;
     const groupBounds = movesLogicalGroup
-      ? resolveCompositionGroupBounds(document, logicalGroup.id)
+      ? groupBoundsById.get(logicalGroup.id) ?? null
       : null;
     if (movesLogicalGroup) selectLogicalGroup(logicalGroup, clip.hfId);
     else if (!event.ctrlKey && !event.metaKey && !event.shiftKey) selectTimelineClip(clip);
@@ -296,7 +312,7 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
 
     if (gesture.kind === "move" || gesture.kind === "slide") {
       if (gesture.groupId && gesture.originalGroupStartSeconds !== null) {
-        const groupBounds = resolveCompositionGroupBounds(document, gesture.groupId);
+        const groupBounds = groupBoundsById.get(gesture.groupId) ?? null;
         if (!groupBounds) return;
         const unclampedGroupStartSeconds = Math.max(
           0,
@@ -507,6 +523,11 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
   };
 
   return <div data-composition-timeline className={`space-y-2 pb-2 ${styles.keyboardTimeline}`} onKeyDownCapture={(event) => {
+    if (event.key === "Escape" && editingGroupId && !gesture) {
+      event.preventDefault(); event.stopPropagation();
+      onEditingGroupChange(groupIndex.parentByGroupId.get(editingGroupId) ?? null);
+      clearTimelineSelection(); return;
+    }
     if (!(event.target instanceof HTMLElement) || !event.target.closest('[role="slider"]:not([data-animation-id])')) return;
     const action = resolveCompositionTimelineCursorKey({ key: event.key, altKey: event.altKey, ctrlKey: event.ctrlKey,
       metaKey: event.metaKey, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing });
@@ -522,6 +543,10 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
     else if (action === "END") onSeek(maxDuration);
     else onSeek(stepCompositionFrame(currentTime, action === "BACKWARD" ? -1 : 1, fps, maxDuration, event.shiftKey));
   }}>
+    <nav aria-label="Ruta de agrupaciones" className="flex flex-wrap items-center gap-2 text-xs">
+      <button type="button" disabled={saving} onClick={() => { onEditingGroupChange(null); clearTimelineSelection(); }}>Raíz</button>
+      {editingPath.map(id => <Fragment key={id}><span aria-hidden="true">›</span><button type="button" disabled={saving} aria-current={id === editingGroupId ? "location" : undefined} onClick={() => { onEditingGroupChange(id); clearTimelineSelection(); }}>{groupIndex.groupsById.get(id)?.label || id}</button></Fragment>)}
+    </nav>
     <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">
       <span>Timeline</span>
       <div className="flex flex-wrap items-center justify-end gap-2">
@@ -570,9 +595,9 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
           {lanes.map((lane, laneIndex) => {
             const laneClipIds = new Set(lane.map((clip) => clip.id));
             const laneTransitions = (document.transitions?.items || []).filter((transition) => laneClipIds.has(transition.fromClipId));
-            const laneGroupOverlays = logicalGroups.flatMap((logicalGroup) => {
+            const laneGroupOverlays = logicalGroups.filter(candidate => (groupIndex.parentByGroupId.get(candidate.id) ?? null) === editingGroupId).flatMap((logicalGroup) => {
               if (!logicalGroup.clipIds.some((clipId) => laneClipIds.has(clipId))) return [];
-              const bounds = resolveCompositionGroupBounds(document, logicalGroup.id);
+              const bounds = groupBoundsById.get(logicalGroup.id) ?? null;
               return bounds ? [{ bounds, logicalGroup }] : [];
             });
             return <div key={`${group.id}-${laneIndex}`} data-timeline-lane onClick={(event) => { if (event.target === event.currentTarget) clearTimelineSelection(); }} onPointerDown={(event) => { if (event.target === event.currentTarget) beginScrub(event); }} onPointerMove={(event) => { if (scrubbing) continueScrub(event); }} onPointerUp={() => { if (scrubbing) endScrub(); }} onPointerCancel={() => { if (scrubbing) endScrub(); }} className="relative h-9 overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-white/5">
@@ -674,7 +699,7 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
                     }
                     const direction = action === "MOVE_LEFT" ? -1 : 1;
                     if (logicalGroup && editingGroupId !== logicalGroup.id) {
-                      const bounds = resolveCompositionGroupBounds(document, logicalGroup.id);
+                      const bounds = groupBoundsById.get(logicalGroup.id) ?? null;
                       if (!bounds) return;
                       onMoveGroup(logicalGroup.id, stepCompositionFrame(
                         bounds.startSeconds,

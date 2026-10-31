@@ -7,8 +7,10 @@ export async function requestCompositionDocumentSave(
   timeoutMs: number = COMPOSITION_PREVIEW_SAVE_QUEUE_CONFIG.requestTimeoutMs,
 ): Promise<{ response: Response; body: unknown }> {
   const signal = AbortSignal.timeout(timeoutMs);
+  const headers = new Headers(options.headers);
+  headers.set("X-Composition-Grouping-Version", "2");
   try {
-    const response = await fetch(url, { ...options, signal });
+    const response = await fetch(url, { ...options, headers, signal });
     const body: unknown = await response.json();
     return { response, body };
   } catch (error) {

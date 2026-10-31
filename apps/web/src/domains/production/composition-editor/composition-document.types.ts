@@ -1,3 +1,4 @@
+import { COMPOSITION_MAX_GROUPS, COMPOSITION_MAX_CLIPS, COMPOSITION_GROUP_MAX_DIRECT_MEMBERS, validateCompositionGroupGraph } from "./composition-group-hierarchy";
 import { z } from "zod";
 import { buildCaptionEffectPlan } from "./composition-caption-effects-plan";
 import { compositionVolumeEnvelopeSchema } from "./composition-volume-envelope";
@@ -334,7 +335,8 @@ export const compositionClipSchema = z.object({
  * tracks; the render compiler continues to consume the resolved clip list.
  */
 export const compositionGroupSchema = z.object({
-  clipIds: z.array(editorIdSchema).min(2).max(500),
+  clipIds: z.array(editorIdSchema).max(COMPOSITION_GROUP_MAX_DIRECT_MEMBERS),
+  childGroupIds: z.array(editorIdSchema).max(COMPOSITION_MAX_GROUPS).optional(),
   id: editorIdSchema,
   label: z.string().trim().min(1).max(120).optional(),
   order: z.number().int().min(0).max(499),
@@ -357,11 +359,12 @@ export const compositionEditorDocumentSchema = z.object({
     height: z.number().int().positive().max(8_192),
     width: z.number().int().positive().max(8_192),
   }).strict(),
-  clips: z.array(compositionClipSchema).max(500),
+  clips: z.array(compositionClipSchema).max(COMPOSITION_MAX_CLIPS),
   deckStyles: deckStylesSchema.nullable(),
   format: z.enum([LEGACY_COMPOSITION_DOCUMENT_FORMAT, COMPOSITION_DOCUMENT_FORMAT, NATIVE_TEXT_COMPOSITION_DOCUMENT_FORMAT, HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT]),
   htmlEditing: htmlEditingReferencesSchema.optional(),
-  groups: z.array(compositionGroupSchema).max(250).optional(),
+  groups: z.array(compositionGroupSchema).max(COMPOSITION_MAX_GROUPS).optional(),
+  groupingVersion: z.literal(2).optional(),
   motion: compositionMotionSchema,
   /** Optional for backward compatibility; new transition edits initialize V1. */
   transitions: compositionTransitionsSchema.optional(),
@@ -440,27 +443,8 @@ export const compositionEditorDocumentSchema = z.object({
       context.addIssue({ code: "custom", message: `El clip ${clip.id} congelado debe ser B-roll independiente y sin transiciones.` });
     }
   }
-  const groupIds = new Set<string>();
-  const groupedClipIds = new Set<string>();
-  const groupOrders = new Set<number>();
-  for (const group of document.groups || []) {
-    if (groupIds.has(group.id)) {
-      context.addIssue({ code: "custom", message: `El id de grupo ${group.id} está duplicado.` });
-    }
-    if (groupOrders.has(group.order)) {
-      context.addIssue({ code: "custom", message: `El orden ${group.order} está repetido entre grupos.` });
-    }
-    groupIds.add(group.id);
-    groupOrders.add(group.order);
-    for (const clipId of group.clipIds) {
-      if (!clipIds.has(clipId)) {
-        context.addIssue({ code: "custom", message: `El grupo ${group.id} apunta al clip inexistente ${clipId}.` });
-      }
-      if (groupedClipIds.has(clipId)) {
-        context.addIssue({ code: "custom", message: `El clip ${clipId} pertenece a más de un grupo.` });
-      }
-      groupedClipIds.add(clipId);
-    }
+  for (const message of validateCompositionGroupGraph(document.groups ?? [], clipIds, document.groupingVersion)) {
+    context.addIssue({ code: "custom", message });
   }
   const animationIds = new Set<string>();
   const animationsByTargetAndGroup = new Map<string, Array<{ end: number; id: string; start: number }>>();

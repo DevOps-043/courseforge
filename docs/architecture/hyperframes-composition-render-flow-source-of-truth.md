@@ -492,3 +492,48 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - 2026-09-04: documento creado; incidente SFX diagnosticado; auditoria completa
   de documento, preview, snapshot ZIP, entrega remota y provider; plan de seis
   fases definido. No se implementaron aun las correcciones.
+
+## Agrupaciones editoriales anidadas
+
+El contrato incorpora `groupingVersion: 2` y referencias `childGroupIds` dentro
+de `groups`. `clipIds` conserva exclusivamente miembros clips directos. Los
+grupos tienen padre único, sin ciclos y hasta ocho niveles; siguen vigentes
+los máximos de 250 grupos y 500 clips por documento. Los tiempos, pistas,
+geometría y motion permanecen en los clips; los contenedores no crean clips
+HyperFrames ni transformaciones audiovisuales heredadas.
+
+La selección opera por unidades del nivel actual. Agrupar envuelve hermanos;
+desagrupar promueve únicamente sus hijos; al eliminar miembros se disuelven
+contenedores vacíos o se promueve su única unidad. Mover un contenedor resuelve
+hojas y vínculos avatar–voz una sola vez. La copia reconstruye de hijos a padres;
+la extracción narrativa exige grupos completos y valida el mismo árbol en SQL.
+
+Lecturas legacy no agregan campos ni reescriben hashes. Después de introducir
+el marcador, las nuevas versiones lo conservan, incluso al restaurar un estado
+plano; el historial original permanece inmutable. El guard SQL de inserción
+valida el grafo y rechaza downgrades, también desde el wrapper de append antiguo.
+
+Para habilitar nuevas relaciones grupo→grupo se necesitan las migraciones
+`20261029230000_nested_composition_groups.sql` y
+`20261029230100_nested_narrative_fragment_groups.sql`, además de
+`COMPOSITION_NESTED_GROUPS_ENABLED=true` en servidor. La env por sí sola no
+habilita: un RPC restringido confirma el contrato SQL, con caché de 30 segundos
+y fallo cerrado. Las migraciones se entregan preparadas; no se aplican remotamente
+por el hecho de editar el repositorio.
+
+GET/PUT anuncian `capabilities` fuera del documento hasheado. El cliente envía
+`X-Composition-Grouping-Version: 2`; su ausencia en escrituras jerárquicas produce
+409 con `COMPOSITION_GROUPING_CLIENT_OUTDATED`. Esto es negociación de formato;
+la autorización de usuario, rol, tenant y hash continúa siendo obligatoria.
+
+Desactivar la habilitación impide nuevas relaciones, también mediante restore,
+reconcile y copia, y conserva lectura, movimiento, edición y desagrupación de
+árboles existentes. No se debe regresar a lectores incompatibles tras guardar
+el primer árbol. La integración local, comandos, evidencia y límites se conservan
+en [el cambio OpenSpec](../../openspec/changes/nested-composition-groups/proposal.md).
+
+La integración con edición local inmediata conserva `localEditingBlocked` en
+inspector, selección y transiciones. La capacidad de crear grupos anidados se
+negocia por separado; limpiar la selección del timeline conserva el grupo en
+edición. La proyección local y sus confirmaciones usan el mismo reducer de
+grupos, sin sustituir movimientos pendientes por respuestas anteriores.
