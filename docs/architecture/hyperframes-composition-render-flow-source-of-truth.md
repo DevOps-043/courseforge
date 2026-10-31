@@ -216,6 +216,17 @@ service role, SQL manual o un bug del backend.
 
 ## 6. Contrato del preview
 
+- La automatización de producción admite `nativeCaptions` explícito en el perfil
+  general y por componente (ausente: desactivado). En una ejecución aprobada,
+  el refresco prepara el borrador cuando están listos los assets y las voces por
+  escena con timestamps, y añade captions nativos con fondo transparente mediante
+  el append versionado con hash. No activa captions del proveedor ni ASR nuevo.
+  Los reintentos reconocen la misma capa; diferencias, capas manuales/importadas,
+  recortes o eliminación de una capa registrada requieren revisión. Readiness
+  refleja faltantes o conflictos y no declara listo un item incompleto. El render
+  conserva su aprobación explícita. Contrato y evidencia:
+  [subtítulos automáticos](../../openspec/changes/automatic-transparent-captions/design.md).
+
 - Al extender videos sin velocidad ni congelación explícitas, el preview repite
   la fuente. La sincronización tolera el cruce del final al inicio con distancia
   circular; el precalentamiento no reposiciona medios activos durante buffering
@@ -460,6 +471,12 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-31: generación optativa de subtítulos transparentes durante el refresco
+  de producción y tras el despacho. Configuración general/por componente,
+  protección editorial, ID determinista y append con hash. Se requieren voces
+  por escena con timestamps; sin ASR adicional. Pruebas y límites en
+  [evidencia del cambio](../../openspec/changes/automatic-transparent-captions/reports/validation.md).
 
 - 2026-10-31: zoom de monitor 25–400% con ajuste a lienzo completo, porcentajes,
   slider y presets. La geometría del iframe y áreas seguras conserva el mismo

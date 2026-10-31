@@ -219,6 +219,13 @@ Convierte componentes de video en assets, slides, clips de avatar y composicione
 
 ### Editor De Composicion y HyperFrames
 
+La automatización de producción permite activar **Crear subtítulos transparentes
+editables automáticamente** en el perfil general o por componente. Cuando las
+voces por escena y sus tiempos están disponibles, el refresco prepara una capa
+nativa en el borrador. Las capas existentes se conservan y los conflictos quedan
+visibles al actualizar el estado. No incorpora transcripción de archivos sin
+timestamps. Véase el [contrato de subtítulos automáticos](openspec/changes/automatic-transparent-captions/design.md).
+
 El editor nativo (`production/composition-editor`) gestiona assets, pistas, timecodes, profundidad de capas (0..10), mezcla de audio, autoorganizacion, presets de movimiento y propuestas del agente convertidas en patches validados. Cada version del documento es inmutable, se identifica con hash y se guarda via `append_video_composition_draft_document_v2`.
 
 Capacidades agregadas recientemente:

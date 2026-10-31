@@ -60,6 +60,7 @@ export interface ProductionSlidesConfiguration {
 
 export interface ProductionRunItemConfiguration {
   avatar?: ProductionAvatarConfiguration;
+  nativeCaptions?: boolean;
   slides?: ProductionSlidesConfiguration;
 }
 
@@ -78,7 +79,14 @@ export interface ProductionRunConfiguration {
 export interface ProductionItemReadiness {
   complete: boolean;
   evaluatedAt: string;
+  nativeCaptions?: ProductionNativeCaptionReadiness;
   requirements: Array<ProductionAssetRequirement & { complete: boolean; detail?: string }>;
+}
+
+export interface ProductionNativeCaptionReadiness {
+  status: "DISABLED" | "READY" | "WAITING_TIMESTAMPS" | "REVIEW_REQUIRED" | "FAILED";
+  detail: string;
+  hfId?: string;
 }
 
 export interface ProductionAutomationComponent {

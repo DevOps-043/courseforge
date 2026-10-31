@@ -42,7 +42,7 @@ export async function GET(request: Request, context: { params: Promise<{ runId: 
   }
 }
 
-/** Re-evaluates persisted assets; it does not enqueue, compose, or render media. */
+/** Reevalúa assets y prepara subtítulos nativos si se aprobaron; no envía renders. */
 export async function POST(request: Request, context: { params: Promise<{ runId: string }> }) {
   const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   const logger = createOperationalLogger("production.automation.run", { correlationId: requestId });

@@ -195,6 +195,14 @@ Incluye:
 
 ## Remotion y Produccion
 
+La automatización admite `nativeCaptions` optativo en defaults y overrides por
+componente. El refresco de runs aprobados prepara captions transparentes desde
+voces por escena con timestamps, con append optimista y auditoría SYSTEM.
+`readiness.nativeCaptions` distingue éxito, dependencia pendiente, revisión,
+fallo y desactivación; conserva identidad de capas para evitar recrear una capa
+retirada. No añade ASR ni autoriza render. Contrato:
+[flujo HyperFrames](hyperframes-composition-render-flow-source-of-truth.md).
+
 El control plane activo vive en `apps/web` bajo `/api/v1/production` y expone:
 
 - `POST /remotion/render`

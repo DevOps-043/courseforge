@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createOperationalLogger } from "@/lib/server/operational-logger";
+import { ensureProductionNativeCaptions } from "./production-native-captions.service";
+import { productionNativeCaptionPorts } from "./production-native-captions.server";
+import { nativeCaptionsEnabledForItem } from "./production-automation-configuration";
 import { getHeygenClientForOrganization } from "../providers/heygen/heygen-credential-resolver.service";
 import { HeygenScenesService } from "../providers/heygen/heygen-scenes.service";
 import { HeygenVideoService } from "../providers/heygen/heygen-video.service";
@@ -12,6 +16,7 @@ import type {
   ProductionRunConfiguration,
   ProductionRunItemStatus,
   ProductionRunStatus,
+  ProductionItemReadiness,
 } from "./production-automation.types";
 
 type ComponentRow = {
@@ -37,7 +42,7 @@ export class ProductionAutomationRunError extends Error {
   }
 }
 
-/** Plans and evaluates asset readiness only. Rendering remains an editor action. */
+/** Evalúa assets y prepara subtítulos optativos; el render sigue siendo explícito. */
 export class ProductionAutomationRunService {
   constructor(private readonly supabase: SupabaseClient<any, "public", any>) {}
 
@@ -102,21 +107,23 @@ export class ProductionAutomationRunService {
   async refreshRun(runId: string, organizationId: string) {
     const { data: run, error: runLookupError } = await this.supabase
       .from("production_runs")
-      .select("configuration")
+      .select("configuration, created_by, status")
       .eq("id", runId)
       .eq("organization_id", organizationId)
       .maybeSingle();
     if (runLookupError) throw runLookupError;
     if (!run) throw new ProductionAutomationRunError("Ejecucion de produccion no encontrada.", 404);
+    if (run.status === "CANCELLED") return { runId, status: "CANCELLED" as const, totalItems: 0 };
     const defaults = (run.configuration as ProductionRunConfiguration | null)?.defaults;
     const { data: items, error } = await this.supabase
       .from("production_run_items")
-      .select("id, material_component_id, requirements, configuration, status")
+      .select("id, material_component_id, requirements, configuration, status, readiness")
       .eq("production_run_id", runId)
       .eq("organization_id", organizationId);
     if (error) throw error;
 
     for (const item of items || []) {
+      if (["SKIPPED", "FAILED", "IN_ASSEMBLY"].includes(item.status)) continue;
       const requirements = Array.isArray(item.requirements) ? item.requirements : [];
       if (item.status === "WAITING_PROVIDER" && requirements.some((requirement: { kind?: string }) => requirement.kind === "AVATAR_AND_VOICE")) {
         const configuration = item.configuration as ProductionRunItemConfiguration | null;
@@ -132,8 +139,30 @@ export class ProductionAutomationRunService {
       }
       const component = await this.loadComponentAssets(item.material_component_id, organizationId);
       const readiness = evaluateProductionItemReadiness({ assets: component.assets, requirements });
+      const configuration = item.configuration as ProductionRunItemConfiguration | null;
+      const nativeCaptionsEnabled = nativeCaptionsEnabledForItem(run.configuration as ProductionRunConfiguration | null, configuration);
+      const previous = (item.readiness as ProductionItemReadiness | null)?.nativeCaptions;
+      if (nativeCaptionsEnabled) {
+        readiness.nativeCaptions = readiness.complete
+          ? await ensureProductionNativeCaptions({
+            componentId: item.material_component_id, organizationId, userId: run.created_by || "",
+            itemId: item.id, assets: component.assets, previous,
+          }, productionNativeCaptionPorts(this.supabase))
+          : { status: "WAITING_TIMESTAMPS", detail: "Los assets requeridos todavía no están listos.",
+            ...(previous?.hfId ? { hfId: previous.hfId } : {}) };
+        readiness.complete = readiness.complete && readiness.nativeCaptions.status === "READY";
+        if (JSON.stringify(previous) !== JSON.stringify(readiness.nativeCaptions)) {
+          createOperationalLogger("produccion.subtitulos", { runId, organizationId, itemId: item.id })
+            .info("Estado de subtítulos automáticos actualizado", { status: readiness.nativeCaptions.status });
+        }
+      } else if (previous?.hfId) {
+        readiness.nativeCaptions = { status: "DISABLED", detail: "La generación automática está desactivada. Se conservó la capa registrada.", hfId: previous.hfId };
+      }
       const nextStatus: ProductionRunItemStatus = readiness.complete
         ? "READY_FOR_ASSEMBLY"
+        : nativeCaptionsEnabled && readiness.nativeCaptions?.status !== "READY"
+          && readiness.requirements.every(requirement => requirement.complete)
+          ? "STALE"
         : item.status === "WAITING_PROVIDER" && hasFailedAvatarGeneration(component.assets)
           ? "FAILED_RETRYABLE"
         : item.status === "READY_FOR_ASSEMBLY" || item.status === "IN_ASSEMBLY"
@@ -147,7 +176,9 @@ export class ProductionAutomationRunService {
           status: nextStatus,
           updated_at: readiness.evaluatedAt,
         })
-        .eq("id", item.id);
+        .eq("id", item.id)
+        .eq("organization_id", organizationId)
+        .eq("production_run_id", runId);
       if (updateError) throw updateError;
     }
 

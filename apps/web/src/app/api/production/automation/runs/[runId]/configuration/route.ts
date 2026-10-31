@@ -6,46 +6,16 @@ import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
+import { productionAutomationConfigurationSchema } from "@/domains/production/automation/production-automation-configuration";
+
 const MAX_AUTOMATION_CONFIGURATION_BYTES = 256 * 1024;
 const runIdSchema = z.string().uuid();
-
-const avatarSchema = z.object({
-  aspectRatio: z.enum(["16:9", "9:16"]),
-  avatarPresetId: z.string().uuid(),
-  caption: z.boolean(),
-  engine: z.enum(["avatar_iv", "avatar_v"]),
-  generationMode: z.enum(["scene_clips", "single_video"]),
-  outputFormat: z.enum(["mp4", "webm"]),
-  resolution: z.enum(["720p", "1080p", "4k"]),
-  voicePresetId: z.string().uuid(),
-}).strict();
-
-const slidesSchema = z.object({
-  appearance: z.enum(["light", "dark"]).default("light"),
-  generateVisuals: z.boolean(),
-  locale: z.enum(["es", "en"]),
-  slideTemplateRunId: z.string().uuid().optional(),
-  template: z.enum(["concept-lesson", "course-module", "data-explainer", "demo-guide"]),
-}).strict();
-
-const itemConfigurationSchema = z.object({
-  avatar: avatarSchema.optional(),
-  slides: slidesSchema.optional(),
-}).strict();
-
-const configurationSchema = z.object({
-  approve: z.boolean().default(false),
-  defaults: itemConfigurationSchema.optional(),
-  items: z.array(z.object({
-    componentId: z.string().uuid(),
-  }).merge(itemConfigurationSchema).strict()).default([]),
-}).strict();
 
 export async function PUT(request: Request, context: { params: Promise<{ runId: string }> }) {
   const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   const logger = createOperationalLogger("production.automation.configuration", { correlationId: requestId });
   try {
-    const parsedRequest = await parseJsonRequest(request, configurationSchema, MAX_AUTOMATION_CONFIGURATION_BYTES);
+    const parsedRequest = await parseJsonRequest(request, productionAutomationConfigurationSchema, MAX_AUTOMATION_CONFIGURATION_BYTES);
     if (!parsedRequest.success) {
       return apiErrorResponse({
         code: parsedRequest.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
@@ -96,6 +66,7 @@ export async function PUT(request: Request, context: { params: Promise<{ runId: 
           configuration: {
             ...existingConfiguration,
             ...(item.avatar ? { avatar: item.avatar } : {}),
+            ...(item.nativeCaptions !== undefined ? { nativeCaptions: item.nativeCaptions } : {}),
             ...(item.slides ? { slides: item.slides } : {}),
           },
           updated_at: now,
@@ -116,6 +87,7 @@ export async function PUT(request: Request, context: { params: Promise<{ runId: 
         const itemConfiguration = {
           ...asObject(item.configuration),
           ...(incoming?.avatar ? { avatar: incoming.avatar } : {}),
+          ...(incoming?.nativeCaptions !== undefined ? { nativeCaptions: incoming.nativeCaptions } : {}),
           ...(incoming?.slides ? { slides: incoming.slides } : {}),
         };
         return { ...item, configuration: itemConfiguration };
