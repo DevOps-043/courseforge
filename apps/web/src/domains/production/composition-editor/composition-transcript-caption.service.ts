@@ -83,13 +83,15 @@ export function createCompositionTranscriptCaptionPlan(params: {
   document: CompositionEditorDocument;
   id: string;
   scenes: CompositionSceneSummary[];
+  overwriteClipId?: string;
 }) {
   const cues = buildCompositionTranscriptCaptionCues({
     durationSeconds: params.document.canvas.durationSeconds,
     scenes: params.scenes,
   });
   const captionLayers = params.document.clips.filter((clip) => clip.source.type === "NATIVE_CAPTIONS");
-  const transcriptLayers = captionLayers.filter((clip) => clip.source.type === "NATIVE_CAPTIONS" && clip.source.origin === "TRANSCRIPT");
+  const transcriptLayers = captionLayers.filter((clip) => clip.source.type === "NATIVE_CAPTIONS"
+    && (clip.source.origin === "TRANSCRIPT" || clip.id === params.overwriteClipId));
   if (captionLayers.length > transcriptLayers.length) {
     throw new CompositionTranscriptCaptionError(
       "Ya existe una capa manual o importada de captions. Retírala antes de generar captions desde la voz.",
@@ -114,6 +116,9 @@ export function createCompositionTranscriptCaptionPlan(params: {
       timingSource: "USER_EDITED",
       type: "clip.template",
     }];
+    if (params.overwriteClipId === existing.id) {
+      operations.push({ type: "clip.text-style", clipId: existing.id, style: { backgroundOpacity: 0 } });
+    }
     const discardedCueCustomizations = existing.source.type === "NATIVE_CAPTIONS"
       ? existing.source.cues.filter((cue) => cue.effects !== undefined || Boolean(cue.emphasis?.length)).length : 0;
     return { cueCount: cues.length, discardedCueCustomizations, hfId: existing.hfId, mode: "UPDATE" as const, operations };

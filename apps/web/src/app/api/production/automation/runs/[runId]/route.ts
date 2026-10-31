@@ -10,11 +10,13 @@ import {
   ProductionAutomationRunService,
 } from "@/domains/production/automation/production-automation-run.service";
 import { createClient } from "@/utils/supabase/server";
-import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
+import { productionAutomationRefreshSchema } from "@/domains/production/automation/production-automation-configuration";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 const runIdSchema = z.string().uuid();
+const MAX_CAPTION_CONFIRMATION_BYTES = 2_048;
 
 async function getAuthorizedService(requestId: string) {
   const supabase = await createClient();
@@ -24,7 +26,7 @@ async function getAuthorizedService(requestId: string) {
   if (!tenant || !(await canReviewContent(user.userId, tenant))) {
     return { error: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para consultar producción.", requestId, status: 403 }) };
   }
-  return { service: new ProductionAutomationRunService(getServiceRoleClient()), tenant };
+  return { service: new ProductionAutomationRunService(getServiceRoleClient()), tenant, userId: user.userId };
 }
 
 export async function GET(request: Request, context: { params: Promise<{ runId: string }> }) {
@@ -51,7 +53,14 @@ export async function POST(request: Request, context: { params: Promise<{ runId:
     if ("error" in authorized) return authorized.error;
     const { runId } = await context.params;
     if (!runIdSchema.safeParse(runId).success) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "runId inválido.", requestId, status: 400 });
-    const result = await authorized.service.refreshRun(runId, authorized.tenant.organizationId);
+    let input: z.infer<typeof productionAutomationRefreshSchema> = {};
+    if (request.headers.get("content-type")?.includes("application/json")) {
+      const parsed = await parseJsonRequest(request, productionAutomationRefreshSchema, MAX_CAPTION_CONFIRMATION_BYTES);
+      if (!parsed.success) return apiErrorResponse({ code: parsed.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest,
+        message: "La confirmación de subtítulos no es válida.", requestId, status: parsed.reason === "too_large" ? 413 : 400 });
+      input = parsed.data;
+    }
+    const result = await authorized.service.refreshRun(runId, authorized.tenant.organizationId, { userId: authorized.userId, ...input });
     return apiSuccessResponse({ data: result }, { requestId });
   } catch (error: unknown) {
     return respond(error, requestId, logger);

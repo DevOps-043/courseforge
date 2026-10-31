@@ -2335,10 +2335,14 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     if (!currentPayload) return;
     try {
       const scenes = deriveCompositionScenes(currentPayload.document);
+      const captionLayers = currentPayload.document.clips.filter(clip => clip.source.type === "NATIVE_CAPTIONS");
+      const overwriteClipId = captionLayers.length === 1 ? captionLayers[0]!.id : undefined;
+      if (overwriteClipId && !window.confirm("¿Quieres sobrescribir la capa de subtítulos existente? Se reemplazarán el texto, los tiempos y los ajustes por frase. Se conservarán la posición y el estilo de capa, con fondo transparente.")) return;
       const plan = createCompositionTranscriptCaptionPlan({
         document: currentPayload.document,
         id: `caption-transcript-${crypto.randomUUID()}`,
         scenes,
+        overwriteClipId,
       });
       const saved = await savePatch(
         plan.operations,

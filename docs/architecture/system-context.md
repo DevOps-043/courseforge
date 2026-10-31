@@ -203,6 +203,11 @@ fallo y desactivación; conserva identidad de capas para evitar recrear una capa
 retirada. No añade ASR ni autoriza render. Contrato:
 [flujo HyperFrames](hyperframes-composition-render-flow-source-of-truth.md).
 
+Una capa existente puede regenerarse con confirmación explícita y puntual del
+revisor, vinculada a item, clip y hash. La opción se ofrece desde la revisión de
+producción; «Generar desde la voz» también pregunta antes de reemplazar una capa.
+No se persiste permiso de sobrescritura para el reconciliador.
+
 El control plane activo vive en `apps/web` bajo `/api/v1/production` y expone:
 
 - `POST /remotion/render`

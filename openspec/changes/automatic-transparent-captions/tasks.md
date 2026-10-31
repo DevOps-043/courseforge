@@ -12,3 +12,8 @@
 - [x] Verificaciones de dominio, tipos, documentación y revisión adversarial propia.
 - [x] Registrar evidencia real, límites y reversión.
 - [ ] Archivar después de integrar en la rama objetivo.
+
+## 4. Confirmación de sobrescritura
+- [x] Ofrecer confirmación explícita para una capa editable existente.
+- [x] Vincular orden a item, clip, usuario y hash; no persistir autorización.
+- [x] Probar aceptación, cancelación/ausencia de orden, versión obsoleta y reintento.

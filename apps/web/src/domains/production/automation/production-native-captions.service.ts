@@ -13,6 +13,7 @@ export interface ProductionNativeCaptionContext {
   itemId: string;
   assets: MaterialAssets | null;
   previous?: ProductionNativeCaptionReadiness;
+  overwrite?: { clipId: string; documentHash: string };
 }
 
 export interface ProductionNativeCaptionPorts {
@@ -26,8 +27,14 @@ const review = (detail: string, hfId?: string): ProductionNativeCaptionReadiness
   status: "REVIEW_REQUIRED", detail, ...(hfId ? { hfId } : {}),
 });
 
-/** No regenera contenido existente: la automatización solo tiene autoridad para crear. */
-export function planProductionNativeCaptions(document: CompositionEditorDocument, id: string, previous?: ProductionNativeCaptionReadiness) {
+type ProductionNativeCaptionPlan = {
+  result: ProductionNativeCaptionReadiness;
+  operations?: CompositionEditorPatchOperation[];
+  overwriteClipId?: string;
+};
+
+/** La regeneración de contenido existente exige una orden puntual del revisor. */
+export function planProductionNativeCaptions(document: CompositionEditorDocument, id: string, previous?: ProductionNativeCaptionReadiness, confirmedClipId?: string): ProductionNativeCaptionPlan {
   const captionLayers = document.clips.filter(clip => clip.source.type === "NATIVE_CAPTIONS");
   const scenes = deriveCompositionScenes(document);
   const visibleVoices = document.clips.filter(clip => !clip.hidden
@@ -43,13 +50,23 @@ export function planProductionNativeCaptions(document: CompositionEditorDocument
     const existing = captionLayers[0]!;
     const source = existing.source;
     const track = document.tracks.find(candidate => candidate.id === existing.trackId);
-    if (captionLayers.length === 1 && existing.id === id && existing.hfId === id && !existing.hidden && !track?.hidden
+    if (captionLayers.length === 1 && (existing.id === id || existing.hfId === previous?.hfId) && !existing.hidden && !track?.hidden
       && existing.startSeconds === 0 && existing.durationSeconds === document.canvas.durationSeconds
       && source.type === "NATIVE_CAPTIONS" && source.origin === "TRANSCRIPT" && source.style.backgroundOpacity === 0
       && JSON.stringify(source.cues) === JSON.stringify(cues)) {
       return { result: { status: "READY", detail: `${cues.length} subtítulos transparentes sincronizados.`, hfId: existing.hfId } as ProductionNativeCaptionReadiness };
     }
-    return { result: review("Los subtítulos existentes requieren revisión. Se conservaron las capas y sus ediciones.", previous?.hfId) };
+    const canOverwrite = captionLayers.length === 1 && Boolean(track) && !track?.locked;
+    if (canOverwrite && confirmedClipId === existing.id) {
+      const plan = createCompositionTranscriptCaptionPlan({ document, id, scenes, overwriteClipId: existing.id });
+      return { operations: plan.operations, result: {
+        status: "READY", detail: `${plan.cueCount} subtítulos regenerados con confirmación.`, hfId: existing.hfId,
+      } as ProductionNativeCaptionReadiness };
+    }
+    return { result: review(canOverwrite
+      ? "La capa de subtítulos contiene cambios. ¿Quieres sobrescribirla con los subtítulos generados desde la voz?"
+      : "Hay varias capas de subtítulos o su pista está bloqueada. Revisa las capas en el editor antes de regenerarlas.", previous?.hfId),
+      ...(canOverwrite ? { overwriteClipId: existing.id } : {}) };
   }
   if (previous?.hfId) return { result: review("La capa registrada fue retirada. No se recreará automáticamente.", previous.hfId) };
   const plan = createCompositionTranscriptCaptionPlan({ document, id, scenes });
@@ -85,7 +102,16 @@ export async function ensureProductionNativeCaptions(
         || !voice?.asset_id || clip.source.type !== "PRODUCTION_ASSET" || clip.source.productionAssetId !== voice.asset_id;
     });
     if (incompatibleVoice) return review("Las voces o los tiempos del borrador difieren de Producción. Revisa su sincronización antes de crear subtítulos.", context.previous?.hfId);
-    const plan = planProductionNativeCaptions(current.document, `auto-captions-${context.itemId}`, context.previous);
+    const confirmedClipId = context.overwrite?.documentHash === current.documentHash ? context.overwrite.clipId : undefined;
+    const plan = planProductionNativeCaptions(current.document, `auto-captions-${context.itemId}`, context.previous, confirmedClipId);
+    if (plan.overwriteClipId) {
+      plan.result.overwrite = { clipId: plan.overwriteClipId, documentHash: current.documentHash };
+      if (context.overwrite) plan.result.detail = "La confirmación ya no corresponde a la capa o versión actual. Confirma nuevamente para sobrescribir.";
+    }
+    if (context.overwrite && (!confirmedClipId || !current.document.clips.some(clip => clip.id === confirmedClipId && clip.source.type === "NATIVE_CAPTIONS"))) {
+      return { ...review("El documento cambió o la capa fue retirada. Revisa la versión actual antes de confirmar nuevamente.", context.previous?.hfId),
+        ...(plan.result.overwrite ? { overwrite: plan.result.overwrite } : {}) };
+    }
     if (plan.operations) {
       await ports.append({ draftId, organizationId: context.organizationId, userId: context.userId,
         expectedDocumentHash: current.documentHash, operations: plan.operations });

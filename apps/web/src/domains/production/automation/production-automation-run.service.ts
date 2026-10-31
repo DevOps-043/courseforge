@@ -17,6 +17,7 @@ import type {
   ProductionRunItemStatus,
   ProductionRunStatus,
   ProductionItemReadiness,
+  ProductionCaptionOverwriteRequest,
 } from "./production-automation.types";
 
 type ComponentRow = {
@@ -104,7 +105,7 @@ export class ProductionAutomationRunService {
     return { runId: run.id as string, status: "PLANNING" as const, totalItems: itemRows.length };
   }
 
-  async refreshRun(runId: string, organizationId: string) {
+  async refreshRun(runId: string, organizationId: string, command?: { userId: string; overwriteCaptions?: ProductionCaptionOverwriteRequest }) {
     const { data: run, error: runLookupError } = await this.supabase
       .from("production_runs")
       .select("configuration, created_by, status")
@@ -121,6 +122,10 @@ export class ProductionAutomationRunService {
       .eq("production_run_id", runId)
       .eq("organization_id", organizationId);
     if (error) throw error;
+
+    if (command?.overwriteCaptions && !(items || []).some(item => item.id === command.overwriteCaptions?.itemId)) {
+      throw new ProductionAutomationRunError("La capa solicitada no pertenece a esta ejecución.", 404);
+    }
 
     for (const item of items || []) {
       if (["SKIPPED", "FAILED", "IN_ASSEMBLY"].includes(item.status)) continue;
@@ -140,13 +145,15 @@ export class ProductionAutomationRunService {
       const component = await this.loadComponentAssets(item.material_component_id, organizationId);
       const readiness = evaluateProductionItemReadiness({ assets: component.assets, requirements });
       const configuration = item.configuration as ProductionRunItemConfiguration | null;
+      const overwrite = command?.overwriteCaptions;
       const nativeCaptionsEnabled = nativeCaptionsEnabledForItem(run.configuration as ProductionRunConfiguration | null, configuration);
       const previous = (item.readiness as ProductionItemReadiness | null)?.nativeCaptions;
       if (nativeCaptionsEnabled) {
         readiness.nativeCaptions = readiness.complete
           ? await ensureProductionNativeCaptions({
-            componentId: item.material_component_id, organizationId, userId: run.created_by || "",
+            componentId: item.material_component_id, organizationId, userId: command?.userId || run.created_by || "",
             itemId: item.id, assets: component.assets, previous,
+            ...(overwrite && overwrite.itemId === item.id ? { overwrite } : {}),
           }, productionNativeCaptionPorts(this.supabase))
           : { status: "WAITING_TIMESTAMPS", detail: "Los assets requeridos todavía no están listos.",
             ...(previous?.hfId ? { hfId: previous.hfId } : {}) };

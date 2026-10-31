@@ -7,7 +7,7 @@ import { createCompositionNativeOverlay } from "../composition-native-overlay.fa
 import { applyCompositionEditorPatches } from "../editor-patch.service";
 import { createNarrativeDocumentFixture } from "./fixtures/composition-narrative.fixture";
 import { compileCompositionPreview, COMPOSITION_COMPILATION_TARGETS } from "../composition-preview-compiler.service";
-import { nativeCaptionsEnabledForItem, productionAutomationConfigurationSchema } from "../../automation/production-automation-configuration";
+import { nativeCaptionsEnabledForItem, productionAutomationConfigurationSchema, productionAutomationRefreshSchema } from "../../automation/production-automation-configuration";
 
 test("la opción requiere booleano, aprobación y respeta un override false", () => {
   assert.equal(productionAutomationConfigurationSchema.safeParse({ defaults: { nativeCaptions: "true" } }).success, false);
@@ -199,4 +199,95 @@ test("errores de acceso no alcanzan el append ni filtran detalles internos", asy
   assert.equal(result.status, "FAILED");
   assert.doesNotMatch(result.detail, /detalle interno/);
   assert.deepEqual(state.calls, []);
+});
+
+test("sobrescribir requiere una orden estricta con item, clip y hash", () => {
+  const command = { itemId: "11111111-1111-4111-8111-111111111111", clipId: "caption", documentHash: "a".repeat(64) };
+  assert.equal(productionAutomationRefreshSchema.safeParse({ overwriteCaptions: command }).success, true);
+  assert.equal(productionAutomationRefreshSchema.safeParse({ overwriteCaptions: { ...command, documentHash: "anterior" } }).success, false);
+  assert.equal(productionAutomationRefreshSchema.safeParse({ overwriteCaptions: { ...command, organizationId: "otra" } }).success, false);
+  assert.equal(productionAutomationRefreshSchema.safeParse({ overwriteCaptions: true }).success, false);
+});
+
+test("ofrece preguntar por una capa editada y solo sobrescribe al recibir confirmación vigente", async () => {
+  const state = fixture();
+  const previous = await ensureProductionNativeCaptions(state.context, state.ports);
+  const clip = state.document().clips.find(candidate => candidate.hfId === previous.hfId)!;
+  assert.ok(clip.source.type === "NATIVE_CAPTIONS");
+  clip.source.cues[0]!.text = "Edición del usuario";
+  clip.source.style.fontSize = 64;
+  clip.source.style.backgroundOpacity = 0.5;
+  const pending = await ensureProductionNativeCaptions({ ...state.context, previous }, state.ports);
+  assert.equal(pending.status, "REVIEW_REQUIRED");
+  assert.equal(pending.overwrite?.clipId, clip.id);
+  assert.equal(state.calls.filter(call => call === "append").length, 1);
+  // Cancelar no envía la orden. Los refrescos de fondo tampoco la reutilizan.
+  const again = await ensureProductionNativeCaptions({ ...state.context, previous: pending }, state.ports);
+  assert.equal(again.status, "REVIEW_REQUIRED");
+  assert.equal(state.calls.filter(call => call === "append").length, 1);
+  const result = await ensureProductionNativeCaptions({ ...state.context, previous: pending, overwrite: pending.overwrite }, state.ports);
+  assert.equal(result.status, "READY");
+  const updated = state.document().clips.find(candidate => candidate.id === clip.id)!;
+  assert.ok(updated.source.type === "NATIVE_CAPTIONS");
+  assert.notEqual(updated.source.cues[0]!.text, "Edición del usuario");
+  assert.equal(updated.source.style.fontSize, 64);
+  assert.equal(updated.source.style.backgroundOpacity, 0);
+  assert.deepEqual(updated.layout, clip.layout);
+  assert.equal(result.overwrite, undefined);
+});
+
+test("una capa manual puede regenerarse tras confirmar y el reintento no duplica", async () => {
+  const state = fixture();
+  const { clip, track } = createCompositionNativeOverlay({ document: state.document(), id: "manual", kind: "CAPTION", playheadSeconds: 2 });
+  state.document().clips.push(clip);
+  if (track) state.document().tracks.push(track);
+  const pending = await ensureProductionNativeCaptions(state.context, state.ports);
+  assert.ok(pending.overwrite);
+  const result = await ensureProductionNativeCaptions({ ...state.context, previous: pending, overwrite: pending.overwrite }, state.ports);
+  assert.equal(result.status, "READY");
+  assert.equal(result.hfId, "manual");
+  const retried = await ensureProductionNativeCaptions({ ...state.context, previous: result }, state.ports);
+  assert.equal(retried.status, "READY");
+  assert.equal(state.calls.filter(call => call === "append").length, 1);
+});
+
+test("confirmación de otra versión o capa no sobrescribe y exige otra decisión", async () => {
+  for (const invalid of ["hash", "clip"] as const) {
+    const state = fixture();
+    const previous = await ensureProductionNativeCaptions(state.context, state.ports);
+    const clip = state.document().clips.find(candidate => candidate.hfId === previous.hfId)!;
+    assert.ok(clip.source.type === "NATIVE_CAPTIONS");
+    clip.source.cues[0]!.text = "Conservar";
+    const pending = await ensureProductionNativeCaptions({ ...state.context, previous }, state.ports);
+    assert.ok(pending.overwrite);
+    const overwrite = { ...pending.overwrite, ...(invalid === "hash" ? { documentHash: "anterior" } : { clipId: "otra" }) };
+    const result = await ensureProductionNativeCaptions({ ...state.context, previous: pending, overwrite }, state.ports);
+    assert.equal(result.status, "REVIEW_REQUIRED");
+    assert.ok(result.overwrite);
+    assert.equal(state.calls.filter(call => call === "append").length, 1);
+    assert.equal(clip.source.cues[0]!.text, "Conservar");
+  }
+});
+
+test("una confirmación obsoleta no recrea una capa retirada", async () => {
+  const state = fixture();
+  const result = await ensureProductionNativeCaptions({ ...state.context, overwrite: { clipId: "retirada", documentHash: "anterior" } }, state.ports);
+  assert.equal(result.status, "REVIEW_REQUIRED");
+  assert.equal(state.calls.includes("append"), false);
+});
+
+test("no ofrece sobrescribir pistas bloqueadas ni varias capas", async () => {
+  for (const mode of ["locked", "multiple"] as const) {
+    const state = fixture();
+    const previous = await ensureProductionNativeCaptions(state.context, state.ports);
+    const clip = state.document().clips.find(candidate => candidate.hfId === previous.hfId)!;
+    assert.ok(clip.source.type === "NATIVE_CAPTIONS");
+    clip.source.cues[0]!.text = "Edición";
+    if (mode === "locked") state.document().tracks.find(track => track.id === clip.trackId)!.locked = true;
+    else state.document().clips.push({ ...structuredClone(clip), id: "second", hfId: "second" });
+    const pending = await ensureProductionNativeCaptions({ ...state.context, previous, overwrite: { clipId: clip.id, documentHash: "2" } }, state.ports);
+    assert.equal(pending.status, "REVIEW_REQUIRED");
+    assert.equal(pending.overwrite, undefined);
+    assert.equal(state.calls.filter(call => call === "append").length, 1);
+  }
 });

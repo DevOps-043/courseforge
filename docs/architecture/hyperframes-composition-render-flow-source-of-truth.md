@@ -226,6 +226,13 @@ service role, SQL manual o un bug del backend.
   refleja faltantes o conflictos y no declara listo un item incompleto. El render
   conserva su aprobación explícita. Contrato y evidencia:
   [subtítulos automáticos](../../openspec/changes/automatic-transparent-captions/design.md).
+- Si existe una única capa de subtítulos editable, la revisión ofrece preguntar
+  si se quiere sobrescribir. Aceptar autoriza solo esa capa y el hash mostrado;
+  cancelar conserva su contenido. Una versión distinta exige otra confirmación.
+  La autorización no se guarda en el perfil ni la reutiliza el cron. Se reemplazan
+  texto, tiempos y ajustes por frase, conservando identidad, posición y estilo de
+  capa con fondo transparente. Varias capas o pista bloqueada se revisan en el
+  editor. «Generar desde la voz» también pregunta antes de regenerar una capa.
 
 - Al extender videos sin velocidad ni congelación explícitas, el preview repite
   la fuente. La sincronización tolera el cruce del final al inicio con distancia
@@ -471,6 +478,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-31: los subtítulos existentes pueden sobrescribirse tras preguntar al
+  revisor. Confirmación por capa/versión, preservación al cancelar y rechazo de
+  decisiones obsoletas. El editor también confirma antes de regenerar una capa.
 
 - 2026-10-31: generación optativa de subtítulos transparentes durante el refresco
   de producción y tras el despacho. Configuración general/por componente,

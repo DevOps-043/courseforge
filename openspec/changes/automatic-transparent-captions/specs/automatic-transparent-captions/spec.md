@@ -22,6 +22,14 @@ El sistema SHALL preservar captions existentes y usar persistencia optimista.
 - **WHEN** existen captions incompatibles o se eliminó la capa registrada
 - **THEN** requiere revisión sin reemplazar o recrear contenido.
 
+#### Scenario: Usuario confirma sobrescritura de una capa
+- **WHEN** el usuario acepta reemplazar la única capa existente y confirma su item, clip y hash vigentes
+- **THEN** regenera esa capa desde la voz, conserva su identidad y estilo de capa, y establece fondo transparente.
+
+#### Scenario: Usuario cancela o cambia el documento
+- **WHEN** cancela el diálogo o la versión ya no coincide con la confirmada
+- **THEN** no sobrescribe la capa y una nueva versión requiere otra confirmación.
+
 #### Scenario: Conflicto de versión
 - **WHEN** el documento cambia antes del append
 - **THEN** no sobrescribe la edición concurrente y comunica un estado pendiente de revisión.

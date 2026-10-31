@@ -17,7 +17,9 @@ export function productionNativeCaptionPorts(supabase: Parameters<typeof getCurr
     },
     read: scope => getCurrentCompositionDocument({ ...scope, supabase }),
     append: ({ operations, ...scope }) => applyAndAppendCompositionDocumentPatches({ ...scope, supabase,
-      auditSource: "SYSTEM", patch: { operations, source: "AGENT", summary: "Generó subtítulos transparentes automáticamente desde la voz." } }),
+      auditSource: "SYSTEM", patch: { operations, source: "AGENT", summary: operations.some(operation => operation.type === "clip.caption-cues")
+        ? "Regeneró la capa de subtítulos con confirmación explícita del revisor."
+        : "Generó subtítulos transparentes automáticamente desde la voz." } }),
     isConflict: error => error instanceof CompositionDocumentConflictError,
   };
 }

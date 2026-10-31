@@ -5,6 +5,14 @@ export function nativeCaptionsEnabledForItem(run: ProductionRunConfiguration | n
   return run?.approval_state === "APPROVED" && (item?.nativeCaptions ?? run.defaults?.nativeCaptions) === true;
 }
 
+export const productionAutomationRefreshSchema = z.object({
+  overwriteCaptions: z.object({
+    itemId: z.string().uuid(),
+    clipId: z.string().min(1).max(120),
+    documentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  }).strict().optional(),
+}).strict();
+
 const avatarSchema = z.object({
   aspectRatio: z.enum(["16:9", "9:16"]),
   avatarPresetId: z.string().uuid(),

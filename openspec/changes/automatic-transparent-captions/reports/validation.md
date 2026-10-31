@@ -22,7 +22,7 @@ de guion, timestamps y UUID del asset de voz entre Producción y el borrador.
 No modifica fuentes ni tablas para fabricar esa coincidencia.
 
 La creación es idempotente por ID de item y contenido esperado. No se regeneran
-capas existentes. Ediciones, otras capas, recortes, eliminación registrada,
+capas existentes sin confirmación explícita (véase la ampliación al final). Ediciones, otras capas, recortes, eliminación registrada,
 faltantes y conflictos impiden declarar el item listo. Su estado queda en
 readiness y los cambios de estado se registran sin texto transcrito ni URLs.
 
@@ -91,3 +91,41 @@ readiness y los cambios de estado se registran sin texto transcrito ni URLs.
 
 Esta revisión fue realizada por el mismo agente que implementó el cambio;
 no se presenta como revisión independiente ni despliegue observado.
+
+## Ampliación: preguntar antes de sobrescribir
+
+Se reemplazó el bloqueo sin salida por una pregunta para una única capa con pista
+desbloqueada. «Sobrescribir subtítulos…» abre confirmación en la revisión de
+producción. Cancelar no envía la orden. Aceptar envía itemId, clipId y hash del
+documento ofrecido. Se conserva la identidad y el estilo de capa (con fondo
+transparente) y se regeneran texto, tiempos y ajustes por frase desde la voz.
+«Generar desde la voz» del editor también solicita confirmación cuando ya existe
+una capa. Múltiples capas y pistas bloqueadas conservan la revisión en el editor.
+
+La orden HTTP tiene schema estricto y límite de 2 KiB. Identidad y organización
+se resuelven en servidor; el item debe pertenecer al run. El actor del append es
+el revisor autenticado. La confirmación no se guarda en configuración ni se
+transmite al cron. Un hash o clip obsoleto no autoriza sobrescribir ni recrear
+una capa retirada; el guardado conserva el CAS existente.
+
+Verificación de la ampliación:
+
+- Suite de captions: código 0, 53 pruebas (6 adicionales para la confirmación).
+- Reejecución de las 18 pruebas de automatización con la última aserción de
+  idempotencia compilada: código 0. Cubren la aceptación, ausencia de orden,
+  orden obsoleta, pista bloqueada, múltiples capas y reintento de capa manual.
+- Seguridad: código 0, 30 pruebas. Remotion: código 0.
+- ESLint focalizado: código 0; 19 warnings en el componente grande del editor y
+  la firma de Supabase existente; sin errores ni nuevas supresiones.
+- OpenSpec focalizado: código 0. `verify:pr`: código 1, este cambio es válido,
+  pero `diagnose-font-catalog` sigue sin deltas. Documentación, adaptadores y
+  arnés estructural pasan antes de ese bloqueo.
+- HyperFrames completo: código 1, mismo alias no resuelto
+  `@/lib/server/outbound-http` en `composition-agent-model-output.test.js`.
+- Auditoría documental acotada con la copia temporal descrita arriba: código 0.
+- Tipos web: código 0. Comprobación final del diff: código 0.
+- Documentación final: código 0, 208 documentos comprobados.
+
+No se ejecutó un diálogo en navegador ni una sobrescritura remota. La prueba de
+ausencia de orden cubre el comportamiento del dominio al cancelar; el retorno
+antes de fetch del diálogo se revisó en código. No se afirma QA E2E de la UI.

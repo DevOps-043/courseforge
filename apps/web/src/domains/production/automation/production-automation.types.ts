@@ -87,6 +87,13 @@ export interface ProductionNativeCaptionReadiness {
   status: "DISABLED" | "READY" | "WAITING_TIMESTAMPS" | "REVIEW_REQUIRED" | "FAILED";
   detail: string;
   hfId?: string;
+  overwrite?: { clipId: string; documentHash: string };
+}
+
+export interface ProductionCaptionOverwriteRequest {
+  itemId: string;
+  clipId: string;
+  documentHash: string;
 }
 
 export interface ProductionAutomationComponent {
