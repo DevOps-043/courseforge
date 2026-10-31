@@ -1,6 +1,7 @@
 "use client";
 
 import { APP_CONFIG } from "../../../../config/app";
+import { CompositionClipIntervalControls } from "./CompositionClipIntervalControls";
 import { COMPOSITION_CANVAS_FORMATS, resolveCompositionCanvasFormat } from "@/domains/production/composition-editor/composition-canvas-format";
 import { requestCompositionDocumentSave } from "@/domains/production/composition-editor/composition-document-save-request";
 import { createHtmlEditingPreviewSession } from "@/domains/production/composition-editor/composition-html-editing-preview-channel.contract";
@@ -2890,30 +2891,28 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     if (saved) setSelectedHfId(identity.hfId);
   }
 
-  async function removeSelectedInterval() {
-    if (!await autosaveCoordinatorRef.current.flush()) return;
+  async function removeSelectedInterval(explicitRange?: { startSeconds: number; endSeconds: number }): Promise<boolean> {
+    if (!await autosaveCoordinatorRef.current.flush()) return false;
     const selectedClip = payloadRef.current?.document.clips.find((candidate) => candidate.hfId === selectedHfId) ?? null;
-    if (!selectedClip || removalRangeStart === null) return;
-    if (selectedClip.id !== removalRangeStart.clipId) {
+    if (!selectedClip || (!explicitRange && removalRangeStart === null)) return false;
+    if (!explicitRange && selectedClip.id !== removalRangeStart?.clipId) {
       setSaveError("La marca pertenece a otro clip. Selecciona nuevamente el clip y vuelve a marcar el intervalo.");
       setRemovalRangeStart(null);
-      return;
+      return false;
     }
-    const rangeStart = Math.min(removalRangeStart.seconds, seconds);
-    const rangeEnd = Math.max(removalRangeStart.seconds, seconds);
+    const rangeStart = explicitRange?.startSeconds ?? Math.min(removalRangeStart!.seconds, seconds);
+    const rangeEnd = explicitRange?.endSeconds ?? Math.max(removalRangeStart!.seconds, seconds);
     const clipEnd = selectedClip.startSeconds + selectedClip.durationSeconds;
-    const minimumRange = 1 / (payloadRef.current?.document.canvas.fps || 30);
+    const minimumRange = Math.max(0.05, 1 / (payloadRef.current?.document.canvas.fps || 30));
     if (rangeStart < selectedClip.startSeconds - 0.001 || rangeEnd > clipEnd + 0.001) {
       setSaveError(`El intervalo debe quedar entre ${formatCompositionTimecode(selectedClip.startSeconds)} y ${formatCompositionTimecode(clipEnd)}, que son los límites de ${selectedClip.label}.`);
-      return;
+      return false;
     }
     if (rangeEnd - rangeStart < minimumRange - 0.001) {
-      setSaveError("Mueve el cursor al menos un frame después de la marca para eliminar un intervalo.");
-      return;
+      setSaveError("El intervalo debe durar al menos 50 ms o un frame, lo que sea mayor.");
+      return false;
     }
     const identity = createDerivedClipIdentity(selectedClip.id);
-    const removesWholeClip = rangeStart <= selectedClip.startSeconds + 0.001 && rangeEnd >= clipEnd - 0.001;
-    const createsRightClip = rangeStart > selectedClip.startSeconds + 0.001 && rangeEnd < clipEnd - 0.001;
     const saved = await savePatch([{
       clipId: selectedClip.id,
       endSeconds: rangeEnd,
@@ -2925,13 +2924,27 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     }], `Eliminó un intervalo de ${selectedClip.label} sin modificar el asset original.`);
     if (saved) {
       setRemovalRangeStart(null);
-      if (removesWholeClip) {
+      const remaining = payloadRef.current?.document.clips;
+      const nextSelectedClip = remaining?.find(clip => clip.id === identity.clipId)
+        ?? remaining?.find(clip => clip.id === selectedClip.id);
+      if (!nextSelectedClip) {
         clearSelection();
       } else {
-        setSelectedHfId(createsRightClip ? identity.hfId : selectedClip.hfId);
+        selectClip(nextSelectedClip.hfId);
       }
       seek(rangeStart);
     }
+    return saved;
+  }
+
+  async function prepareSelectedClipExport() {
+    if (!await autosaveCoordinatorRef.current.flush()) throw new Error("Guarda los cambios pendientes antes de descargar.");
+    await saveQueueRef.current?.whenIdle();
+    const clip = payloadRef.current?.document.clips.find(candidate => candidate.hfId === selectedHfId);
+    const assetId = clip?.source.type === "PRODUCTION_ASSET" ? clip.source.productionAssetId : null;
+    const source = assets.find(asset => asset.id === assetId && asset.valid);
+    if (!clip || !source?.previewUrl) throw new Error("El medio seleccionado no está disponible. Renueva el preview.");
+    return { clip: structuredClone(clip), sourceUrl: source.previewUrl };
   }
 
   function markSelectedIntervalStart() {
@@ -3950,6 +3963,13 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
               analysis={assets.find((asset) => asset.id === selectedSourceAssetId)?.audioAnalysis}
               clip={selectedClip}
               track={payload.document.tracks.find((track) => track.id === selectedClip?.trackId)}
+            />}
+            {inspectorTab === "properties" && selectedClip && ["VIDEO", "AUDIO", "TEXT", "CAPTION"].includes(selectedClip.kind) && <CompositionClipIntervalControls
+              key={`${selectedClip.id}:${selectedClip.startSeconds}:${selectedClip.durationSeconds}:${selectedClip.sourceOffsetSeconds}`}
+              clip={selectedClip}
+              disabled={saving || Boolean(agentProposal || presetPreview) || Boolean(payload.document.tracks.find(track => track.id === selectedClip.trackId)?.locked)}
+              onRemoveInterval={(startSeconds, endSeconds) => removeSelectedInterval({ startSeconds, endSeconds })}
+              onPrepareExport={prepareSelectedClipExport}
             />}
             {inspectorTab === "properties" && <CompositionInspector animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} colorGradingStatus={selectedHfId ? colorGradingStatuses[selectedHfId] || null : null} componentId={componentId} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} sourcePreviewUrl={selectedSourcePreviewUrl} selectedAnimationId={selectedAnimationId} onAnimationSelect={(id) => { if (id && selectedClip) selectAnimation(id, selectedClip.hfId); else setSelectedAnimationId(null); }} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewColorGrading={(hfId, colorGrading) => postPreviewMessage({ type: "courseforge-composition-preview-color-grading", hfId, colorGrading })} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} />}
             {inspectorTab === "selection" && <CompositionSelectionPanel canPaste={canPasteTimelineClipboard} document={payload.document} editingGroupId={editingTimelineGroupId} frameStep={timelineFrameStep} keyboardEditMode={timelineKeyboardEditMode} onAlign={(alignment, target) => void alignTimelineSelection(alignment, target)} onClear={clearSelection} onCopy={copyTimelineSelection} onCreateGroup={createTimelineGroup} onDelete={() => void deleteTimelineSelection(false)} onDistribute={(axis) => void distributeTimelineSelection(axis)} onDuplicate={() => void duplicateTimelineSelection()} onEnterGroup={enterTimelineGroup} onExitGroup={exitTimelineGroup} onFrameStepChange={changeTimelineFrameStep} onInspectClip={(hfId) => selectClip(hfId, true)} onKeyboardEditModeChange={changeTimelineKeyboardEditMode} onPaste={() => void pasteTimelineClipboard()} onRippleDelete={() => void deleteTimelineSelection(true)} onRoll={(edge, deltaFrames) => void rollTimelineSelection(edge, deltaFrames)} onSlide={(deltaFrames) => void slideTimelineSelection(deltaFrames)} onUngroup={ungroupTimelineSelection} saving={saving} selectedClipIds={selectedTimelineClipIds} selectedGroupId={selectedTimelineGroupId} />}

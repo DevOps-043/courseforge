@@ -1,7 +1,7 @@
 # Fuente de verdad: documento, medios y render de composiciones HyperFrames
 
 Estado: **vigente; correccion P0 implementada, migracion de integridad pendiente de despliegue**  
-Ultima revision tecnica: 2026-10-21
+Ultima revision tecnica: 2026-10-29
 Responsables: Production Engineering, Platform y QA  
 Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega de medios y HyperFrames Cloud.
 
@@ -96,6 +96,15 @@ Ninguna URL firmada forma parte del snapshot inmutable. Se genera justo antes
 del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 4. Contrato del documento editable
+
+- Descarga individual (2026-10-29): el inspector permite eliminar un intervalo
+  en segundos relativos al clip y descargar su ventana fuente vigente como
+  MP4 o WAV. Un corte central produce dos clips; se descarga solo el seleccionado.
+  Esta salida local aplica recortes temporales, no efectos visuales ni mezcla
+  del ensamble. Usa el acceso ya autorizado al medio, sin snapshot ni render
+  cloud; rechaza velocidad, congelación y bucles no representables. Fuente y
+  salida limitadas a 256 MiB y tramo a diez minutos, con cancelación explícita.
+  Alcance y evidencia: `openspec/changes/fix-clip-range-export/`.
 
 - Plantillas HTML importadas (2026-10-19): el generador de diapositivas admite
   `importedDesign` estático opcional. Antes de registrar un paquete se ejecuta
@@ -407,6 +416,11 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-10-29: controles explícitos de intervalo y descarga local del clip
+  multimedia seleccionado con sus offsets vigentes. Selección posterior resuelta
+  contra el documento guardado. QA con MP4/WAV sintéticos, cancelación y errores
+  de codificador: `openspec/changes/fix-clip-range-export/reports/verification.md`.
 
 - 2026-10-27: nombre de presentación y etiquetas predeterminadas de composiciones nuevas derivados de `apps/web/src/config/app.ts`, escapados al generar HTML. No cambian formatos, namespaces, documento editable, motion ni snapshots históricos. Contrato: [identidad global](product-branding.md).
 
