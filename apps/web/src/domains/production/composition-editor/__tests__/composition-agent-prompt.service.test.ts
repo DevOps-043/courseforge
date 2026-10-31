@@ -75,12 +75,12 @@ test("rejects agent audio-mix properties outside the allow-list", () => {
 
 test("constrains agent visual depth to the persisted layout range", () => {
   const valid = compositionEditorPatchRequestSchema.safeParse({
-    operations: [{ clipId: "visual-clip", layout: { zIndex: 10 }, type: "clip.layout" }],
+    operations: [{ clipId: "visual-clip", layout: { zIndex: 12 }, type: "clip.layout" }],
     source: "AGENT",
     summary: "Traerá el clip al frente.",
   });
   const invalid = compositionEditorPatchRequestSchema.safeParse({
-    operations: [{ clipId: "visual-clip", layout: { zIndex: 11 }, type: "clip.layout" }],
+    operations: [{ clipId: "visual-clip", layout: { zIndex: 1001 }, type: "clip.layout" }],
     source: "AGENT",
     summary: "Excederá la profundidad permitida.",
   });

@@ -9,6 +9,8 @@ export const COMPOSITION_PREVIEW_UPDATE_STRATEGIES = [
 export type CompositionPreviewUpdateStrategy = typeof COMPOSITION_PREVIEW_UPDATE_STRATEGIES[number];
 
 const OPERATION_STRATEGIES: Record<CompositionEditorPatchOperation["type"], CompositionPreviewUpdateStrategy> = {
+  "layer.add": "LIVE_TIMELINE",
+  "layer.remove": "LIVE_TIMELINE",
   "animation.add-preset": "LIVE_TIMELINE",
   "animation.configure-preset": "LIVE_TIMELINE",
   "animation.remove": "LIVE_TIMELINE",

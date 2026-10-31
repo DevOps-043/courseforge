@@ -20,6 +20,20 @@ import type { CompositionPreviewAssetDiagnostics } from "../composition-preview-
 
 const COLOR_GRADING_RUNTIME_FIXTURE = "window.__hfColorGradingRuntimeInstalled=true;";
 
+test("preview y render conservan la profundidad adicional registrada", async () => {
+  const assetId = "55555555-5555-4555-8555-555555555558";
+  const initial = createInitialCompositionDocument({
+    animatedDeck: null,
+    assets: [{ checksum: "b".repeat(64), durationSeconds: 2, fileSizeBytes: 42, hasAudio: false, mimeType: "video/mp4", productionAssetId: assetId, publicUrl: null, storageBucket: "production-assets", storagePath: "layers.mp4", timelineRole: "BROLL" }],
+    plan: { accentColor: "#38BDF8", durationSeconds: 2, subtitle: "", title: "Capas adicionales" },
+  });
+  const document = applyCompositionEditorPatches(initial, [{ type: "layer.add", depth: 12 }, { type: "clip.layout", clipId: initial.clips[0].id, layout: { zIndex: 12 } }]);
+  for (const target of [COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW, COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER]) {
+    const html = await compileCompositionPreview({ document, target, assetUrls: new Map([[assetId, "https://assets.test/layers.mp4"]]), colorGradingRuntimeOverride: COLOR_GRADING_RUNTIME_FIXTURE });
+    assert.match(html, /z-index:12;/);
+  }
+});
+
 test("el sincronizador deja completar el bucle sin regresar al último fotograma", async () => {
   const assetId = "55555555-5555-4555-8555-555555555558";
   const document = createInitialCompositionDocument({

@@ -1,3 +1,5 @@
+import { COMPOSITION_LAYER_MAX, COMPOSITION_LAYER_DEPTH_LIMIT } from "./composition-layer-depth";
+import { COMPOSITION_MAX_CLIPS } from "./composition-group-hierarchy";
 import { z } from "zod";
 import { compositionCaptionEffectsSchema } from "./composition-caption-effects.types";
 import { compositionVolumeEnvelopeSchema } from "./composition-volume-envelope";
@@ -418,7 +420,14 @@ const clipPatchOperationSchema = z.discriminatedUnion("type", [
   clipTextStyleOperationSchema,
 ]).and(z.object({ clipId: editorIdSchema }).strict());
 
+const extraLayerDepthSchema = z.number().int().gt(COMPOSITION_LAYER_MAX).max(COMPOSITION_LAYER_DEPTH_LIMIT);
+
 export const compositionEditorPatchOperationSchema = z.union([
+  z.object({ type: z.literal("layer.add"), depth: extraLayerDepthSchema }).strict(),
+  z.object({
+    type: z.literal("layer.remove"), depth: extraLayerDepthSchema,
+    confirmedClipIds: z.array(editorIdSchema).max(COMPOSITION_MAX_CLIPS).optional(),
+  }).strict(),
   canvasSizeOperationSchema,
   audioMixUpdateOperationSchema,
   documentReconcileOperationSchema,

@@ -20,6 +20,7 @@ import {
 } from "./composition-transition.types";
 import {
   COMPOSITION_LAYER_MAX,
+  COMPOSITION_LAYER_DEPTH_LIMIT,
   COMPOSITION_LAYER_MIN,
 } from "./composition-layer-depth";
 import {
@@ -97,7 +98,7 @@ const compositionLayoutFieldSchemas = {
   width: finiteNumberSchema.positive().max(8_192),
   x: finiteNumberSchema.min(-8_192).max(8_192),
   y: finiteNumberSchema.min(-8_192).max(8_192),
-  zIndex: z.number().int().min(COMPOSITION_LAYER_MIN).max(COMPOSITION_LAYER_MAX),
+  zIndex: z.number().int().min(COMPOSITION_LAYER_MIN).max(COMPOSITION_LAYER_DEPTH_LIMIT),
 };
 
 export const compositionLayoutSchema = z.object({
@@ -347,6 +348,8 @@ export const compositionGroupSchema = z.object({
 });
 
 export const compositionEditorDocumentSchema = z.object({
+  extraLayerDepths: z.array(z.number().int().gt(COMPOSITION_LAYER_MAX).max(COMPOSITION_LAYER_DEPTH_LIMIT))
+    .max(COMPOSITION_LAYER_DEPTH_LIMIT - COMPOSITION_LAYER_MAX).optional(),
   sourceInsertionMode: z.enum(["MANUAL", "AUTOMATIC"]).optional(),
   excludedSources: z.array(z.string().min(1).max(200)).max(1000).optional(),
   narrativeScenes: z.array(compositionNarrativeSceneSchema).max(250).optional(),
@@ -375,6 +378,14 @@ export const compositionEditorDocumentSchema = z.object({
     title: z.string().min(1).max(100),
   }).strict(),
 }).strict().superRefine((document, context) => {
+  const extras = document.extraLayerDepths || [];
+  if (extras.some((depth, index) => index > 0 && depth <= extras[index - 1])) {
+    context.addIssue({ code: "custom", message: "Las capas adicionales deben ser únicas y estar ordenadas." });
+  }
+  const registeredLayers = new Set(extras);
+  if (document.clips.some(clip => clip.layout.zIndex > COMPOSITION_LAYER_MAX && !registeredLayers.has(clip.layout.zIndex))) {
+    context.addIssue({ code: "custom", message: "Registra la capa adicional antes de asignarle elementos." });
+  }
   try { buildCaptionEffectPlan(document); }
   catch { context.addIssue({ code: "custom", message: "La composición excede el presupuesto de efectos de captions. Reduce las frases animadas o divide la composición." }); }
   if (document.sourceInsertionMode !== "MANUAL" && (!document.clips.length || !document.tracks.length)) {

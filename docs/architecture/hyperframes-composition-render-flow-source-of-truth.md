@@ -521,6 +521,30 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
   de documento, preview, snapshot ZIP, entrega remota y provider; plan de seis
   fases definido. No se implementaron aun las correcciones.
 
+## Capas visuales adicionales
+
+El rango inicial de profundidad sigue siendo 0–10 y los valores predeterminados
+por tipo no cambian. `extraLayerDepths`, opcional en el documento, registra
+profundidades únicas y ordenadas de 11 a 1000 (límite técnico de validación).
+Las capas extra vacías también se guardan; quitar una no renumera las demás.
+Los clips solo pueden usar profundidades base o extras registradas. Documentos
+sin este campo conservan la normalización histórica 0–10 y su hash persistido.
+
+`layer.add` y `layer.remove` requieren origen USER y usan la cola, ETag e historial
+existentes. Quitar una capa ocupada requiere dos confirmaciones en la interfaz
+y una lista exacta de IDs confirmados en el dominio; incluye clips ocultos.
+Pistas bloqueadas y cambios del conjunto confirmado impiden eliminarla. La
+operación es atómica sobre el documento y limpia motion, grupos y transiciones
+mediante la eliminación de clips existente; conserva los assets originales y
+la regla de conservar un clip en composiciones automáticas. Deshacer restaura
+la capa y sus elementos mediante el historial del editor.
+
+Preview incremental y compilación para render admiten las mismas profundidades.
+El agente puede usar extras registradas, pero no crear ni quitar capas. No se
+requiere migración SQL ni cambia el contrato del proveedor. Tras guardar extras,
+una reversión debe conservar lectores compatibles. Evidencia y límites:
+[capas dinámicas](../../openspec/changes/dynamic-composition-layers/proposal.md).
+
 ## Agrupaciones editoriales anidadas
 
 El contrato incorpora `groupingVersion: 2` y referencias `childGroupIds` dentro

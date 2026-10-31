@@ -7,25 +7,29 @@ import { ArrowDown, ArrowUp, Layers2 } from "lucide-react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
 import {
-  COMPOSITION_LAYER_MAX,
   COMPOSITION_LAYER_MIN,
-  clampCompositionLayerDepth,
+  compositionLayerDepths,
 } from "@/domains/production/composition-editor/composition-layer-depth";
 
 interface LayerDepthControlsProps {
   clip: CompositionClip;
+  extraLayerDepths?: number[];
   disabled: boolean;
   onPatch: (operations: CompositionEditorPatchOperation[], summary: string) => Promise<boolean>;
 }
 
-export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthControlsProps) {
+export function LayerDepthControls({ clip, extraLayerDepths, disabled, onPatch }: LayerDepthControlsProps) {
+  const depths = compositionLayerDepths({ extraLayerDepths });
+  const depthIndex = depths.indexOf(clip.layout.zIndex);
+  const maxDepth = depths[depths.length - 1];
   const autosavePending = useCompositionAutosavePending();
   const [depth, setDepth] = useState(String(clip.layout.zIndex));
 
   useEffect(() => { if (!autosavePending) setDepth(String(clip.layout.zIndex)); }, [autosavePending, clip.id, clip.layout.zIndex]);
 
   const persistDepth = async (requestedDepth: number) => {
-    const nextDepth = clampCompositionLayerDepth(requestedDepth);
+    if (!depths.includes(requestedDepth)) return false;
+    const nextDepth = requestedDepth;
     if (nextDepth === clip.layout.zIndex) {
       setDepth(String(nextDepth));
       return true;
@@ -38,7 +42,7 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
 
   const saveTypedDepth = () => {
     const requestedDepth = Number(depth);
-    if (!depth.trim() || !Number.isInteger(requestedDepth) || requestedDepth < COMPOSITION_LAYER_MIN || requestedDepth > COMPOSITION_LAYER_MAX) {
+    if (!depth.trim() || !Number.isInteger(requestedDepth) || !depths.includes(requestedDepth)) {
       return;
     }
     return persistDepth(requestedDepth);
@@ -51,7 +55,7 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
           <Layers2 className="text-[var(--engine-accent-strong)]" size={15} />
           <div>
             <p className="text-[11px] font-bold text-slate-800 dark:text-gray-100">Profundidad visual</p>
-            <p className="text-[10px] text-slate-500 dark:text-gray-400">{describeDepth(clip.layout.zIndex)} · z-index {clip.layout.zIndex}</p>
+            <p className="text-[10px] text-slate-500 dark:text-gray-400">{describeDepth(clip.layout.zIndex, maxDepth)} · z-index {clip.layout.zIndex}</p>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -59,7 +63,7 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
             type="button"
             disabled={disabled || clip.layout.zIndex <= COMPOSITION_LAYER_MIN}
             aria-label={`Enviar ${clip.label} un plano hacia atrás`}
-            onClick={() => void persistDepth(clip.layout.zIndex - 1)}
+            onClick={() => void persistDepth(depths[depthIndex - 1])}
             className="rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-white disabled:opacity-40 dark:border-white/15 dark:text-gray-300 dark:hover:bg-white/10"
             title="Enviar un plano atrás"
           >
@@ -67,9 +71,9 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
           </button>
           <button
             type="button"
-            disabled={disabled || clip.layout.zIndex >= COMPOSITION_LAYER_MAX}
+            disabled={disabled || clip.layout.zIndex >= maxDepth}
             aria-label={`Traer ${clip.label} un plano hacia delante`}
-            onClick={() => void persistDepth(clip.layout.zIndex + 1)}
+            onClick={() => void persistDepth(depths[depthIndex + 1])}
             className="rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-white disabled:opacity-40 dark:border-white/15 dark:text-gray-300 dark:hover:bg-white/10"
             title="Traer un plano al frente"
           >
@@ -79,17 +83,13 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
       </div>
       <label className="mt-2 flex items-end gap-2 text-[10px] font-semibold text-slate-600 dark:text-gray-300">
         <span className="flex-1">Plano exacto
-          <input
+          <select
             aria-label={`Profundidad visual de ${clip.label}`}
             disabled={disabled}
-            type="number"
-            min={COMPOSITION_LAYER_MIN}
-            max={COMPOSITION_LAYER_MAX}
-            step={1}
             value={depth}
             onChange={(event) => setDepth(event.target.value)}
             className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white"
-          />
+          >{depths.map(value => <option key={value} value={value}>Capa {value}</option>)}</select>
         </span>
 
       </label>
@@ -97,8 +97,8 @@ export function LayerDepthControls({ clip, disabled, onPatch }: LayerDepthContro
   );
 }
 
-function describeDepth(depth: number) {
+function describeDepth(depth: number, maxDepth: number) {
   if (depth === COMPOSITION_LAYER_MIN) return "Fondo";
-  if (depth === COMPOSITION_LAYER_MAX) return "Primer plano";
+  if (depth === maxDepth) return "Primer plano";
   return "Plano intermedio";
 }

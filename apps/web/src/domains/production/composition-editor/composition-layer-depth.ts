@@ -1,5 +1,10 @@
 export const COMPOSITION_LAYER_MIN = 0;
 export const COMPOSITION_LAYER_MAX = 10;
+export const COMPOSITION_LAYER_DEPTH_LIMIT = 1_000;
+
+export function compositionLayerDepths(document: { extraLayerDepths?: number[] }): number[] {
+  return [...Array.from({ length: COMPOSITION_LAYER_MAX + 1 }, (_, depth) => depth), ...(document.extraLayerDepths || [])];
+}
 
 export const DEFAULT_COMPOSITION_LAYER = {
   AUDIO: 0,
@@ -24,6 +29,8 @@ export function clampCompositionLayerDepth(value: number): number {
 export function normalizeCompositionDocumentLayerDepths(input: unknown): unknown {
   if (!input || typeof input !== "object" || Array.isArray(input)) return input;
   const document = input as Record<string, unknown>;
+  // Los documentos extensibles se validan sin recortar sus capas registradas.
+  if (document.extraLayerDepths !== undefined) return input;
   if (!Array.isArray(document.clips)) return input;
 
   return {

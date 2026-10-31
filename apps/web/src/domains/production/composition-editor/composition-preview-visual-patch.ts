@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { COMPOSITION_LAYER_DEPTH_LIMIT, COMPOSITION_LAYER_MIN } from "./composition-layer-depth";
 import type { CompositionEditorDocument } from "./composition-document.types";
 import type { CompositionEditorPatchOperation } from "./editor-patch.types";
 import { compositionColorGradingSchema, normalizeCompositionColorGrading } from "./composition-color-grading.types";
@@ -25,7 +26,7 @@ const runtimeLayoutSchema = z.object({
   width: z.number().finite().positive().max(8_192),
   x: z.number().finite().min(-8_192).max(8_192),
   y: z.number().finite().min(-8_192).max(8_192),
-  zIndex: z.number().int().min(0).max(10),
+  zIndex: z.number().int().min(COMPOSITION_LAYER_MIN).max(COMPOSITION_LAYER_DEPTH_LIMIT),
 }).strict();
 
 export const compositionPreviewVisualChangeSchema = z.object({

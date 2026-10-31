@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { normalizeCompositionDocumentLayerDepths, compositionLayerDepths, COMPOSITION_LAYER_DEPTH_LIMIT } from "../composition-layer-depth";
+import { buildCompositionPreviewVisualPatch } from "../composition-preview-visual-patch";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import { buildCompositionAutoOrganizePatch } from "../composition-auto-organize.service";
 import { COMPOSITION_DOCUMENT_FORMAT, compositionEditorDocumentSchema, LEGACY_COMPOSITION_DOCUMENT_FORMAT } from "../composition-document.types";
@@ -35,6 +37,71 @@ const baseDocument = () => createInitialCompositionDocument({
     storagePath: "production-assets/avatar.mp4",
   }],
   plan: { accentColor: "#38BDF8", durationSeconds: 30, subtitle: "Prueba", title: "Video de prueba" },
+});
+
+test("capas extra: registro, asignación, lectura y restauración conservan 11 y 12", () => {
+  const initial = baseDocument();
+  const registered = applyCompositionEditorPatches(initial, [{ type: "layer.add", depth: 11 }, { type: "layer.add", depth: 12 }]);
+  assert.equal(initial.extraLayerDepths, undefined);
+  assert.deepEqual(registered.extraLayerDepths, [11, 12]);
+  assert.deepEqual(compositionLayerDepths(registered), Array.from({ length: 13 }, (_, index) => index));
+  const operation = { type: "clip.layout" as const, clipId: registered.clips[0].id, layout: { zIndex: 12 } };
+  const assigned = applyCompositionEditorPatches(registered, [operation]);
+  const reloaded = compositionEditorDocumentSchema.parse(normalizeCompositionDocumentLayerDepths(JSON.parse(JSON.stringify(assigned))));
+  assert.equal(reloaded.clips[0].layout.zIndex, 12);
+  assert.ok(buildCompositionPreviewVisualPatch({ document: reloaded, operations: [operation] }));
+  const removed = applyCompositionEditorPatches(reloaded, [{ type: "layer.remove", depth: 12, confirmedClipIds: [reloaded.clips[0].id] }]);
+  const restored = applyCompositionEditorPatches(removed, [{ type: "document.restore", document: reloaded }]);
+  assert.deepEqual(restored, reloaded);
+});
+
+test("capas extra: eliminar una vacía conserva los números y los planos base", () => {
+  const registered = applyCompositionEditorPatches(baseDocument(), [{ type: "layer.add", depth: 11 }, { type: "layer.add", depth: 12 }]);
+  const result = applyCompositionEditorPatches(registered, [{ type: "layer.remove", depth: 11 }]);
+  assert.deepEqual(result.extraLayerDepths, [12]);
+  assert.deepEqual(result.clips, registered.clips);
+  assert.throws(() => applyCompositionEditorPatches(result, [{ type: "layer.remove", depth: 10 }]), /adicional válida/);
+});
+
+test("capas extra: ocupación oculta, confirmación obsoleta y pista bloqueada fallan sin mutar", () => {
+  let document = applyCompositionEditorPatches(baseDocument(), [{ type: "layer.add", depth: 11 }]);
+  const clip = document.clips[0];
+  document = applyCompositionEditorPatches(document, [{ type: "clip.layout", clipId: clip.id, layout: { zIndex: 11 } }, { type: "clip.visibility", clipId: clip.id, hidden: true }]);
+  const snapshot = structuredClone(document);
+  for (const confirmedClipIds of [undefined, [], ["otro-clip"], [clip.id, "otro-clip"]]) {
+    assert.throws(() => applyCompositionEditorPatches(document, [{ type: "layer.remove", depth: 11, confirmedClipIds }]), /Confirma nuevamente/);
+    assert.deepEqual(document, snapshot);
+  }
+  document.tracks.find(track => track.id === clip.trackId)!.locked = true;
+  assert.throws(() => applyCompositionEditorPatches(document, [{ type: "layer.remove", depth: 11, confirmedClipIds: [clip.id] }]), /bloqueadas/);
+  document.tracks.find(track => track.id === clip.trackId)!.locked = false;
+  const removed = applyCompositionEditorPatches(document, [{ type: "layer.remove", depth: 11, confirmedClipIds: [clip.id] }]);
+  assert.equal(removed.clips.some(candidate => candidate.id === clip.id), false);
+  assert.deepEqual(removed.extraLayerDepths, []);
+});
+
+test("capas extra: entradas inválidas, duplicados y agente están restringidos", () => {
+  const initial = baseDocument();
+  for (const depth of [10, -1, 11.5, COMPOSITION_LAYER_DEPTH_LIMIT + 1, Number.NaN]) {
+    assert.equal(compositionEditorPatchRequestSchema.safeParse({ operations: [{ type: "layer.add", depth }], summary: "Agregó capa" }).success, false);
+    assert.throws(() => applyCompositionEditorPatches(initial, [{ type: "layer.add", depth }]));
+  }
+  assert.throws(() => applyCompositionEditorPatches(initial, [{ type: "layer.add", depth: 11 }], "AGENT"));
+  assert.throws(() => applyCompositionEditorPatches(initial, [{ type: "clip.layout", clipId: initial.clips[0].id, layout: { zIndex: 11 } }]), /Registra/);
+  assert.throws(() => applyCompositionEditorPatches(initial, [{ type: "layer.add", depth: 11 }, { type: "layer.add", depth: 11 }]), /ya existe/);
+  for (const extras of [[12, 11], [11, 11], [10], [COMPOSITION_LAYER_DEPTH_LIMIT + 1]]) {
+    assert.equal(compositionEditorDocumentSchema.safeParse({ ...initial, extraLayerDepths: extras }).success, false);
+  }
+});
+
+test("capas extra: no elimina parcialmente una capa que dejaría vacía una composición automática", () => {
+  const initial = baseDocument();
+  const registered = applyCompositionEditorPatches(initial, [{ type: "layer.add", depth: 11 },
+    ...initial.clips.map(clip => ({ type: "clip.layout" as const, clipId: clip.id, layout: { zIndex: 11 } })),
+  ]);
+  const snapshot = structuredClone(registered);
+  assert.throws(() => applyCompositionEditorPatches(registered, [{ type: "layer.remove", depth: 11, confirmedClipIds: registered.clips.map(clip => clip.id) }]), /al menos un clip/);
+  assert.deepEqual(registered, snapshot);
 });
 
 const linkedAvatarVoiceDocument = () => createInitialCompositionDocument({

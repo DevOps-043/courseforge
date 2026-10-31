@@ -94,6 +94,7 @@ export function projectCompositionAgentReadDocument(document: CompositionEditorD
   return {
     audioMix: document.audioMix,
     canvas: document.canvas,
+    extraLayerDepths: document.extraLayerDepths || [],
     clips: document.clips.map((clip) => ({
       durationSeconds: clip.durationSeconds,
       hidden: clip.hidden,

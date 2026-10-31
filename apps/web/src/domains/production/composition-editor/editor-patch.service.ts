@@ -1,3 +1,4 @@
+import { COMPOSITION_LAYER_MAX, COMPOSITION_LAYER_DEPTH_LIMIT } from "./composition-layer-depth";
 import { resolveCompositionGroupClipIds, validateCompositionGroupGraph } from "./composition-group-hierarchy";
 import { ungroupCompositionGroup, wrapCompositionGroup } from "./composition-group.service";
 import { HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT } from "./html-editing/html-editing-reference.contract";
@@ -367,6 +368,30 @@ export function applyCompositionEditorPatches(
       next = structuredClone(operation.document);
       if (document.groupingVersion === 2) next.groupingVersion = 2;
       next.format = COMPOSITION_DOCUMENT_FORMAT;
+      continue;
+    }
+    if (operation.type === "layer.add" || operation.type === "layer.remove") {
+      if (source !== "USER") throw new CompositionEditorPatchError("Gestionar capas requiere una acción explícita del usuario.");
+      if (!Number.isInteger(operation.depth) || operation.depth <= COMPOSITION_LAYER_MAX || operation.depth > COMPOSITION_LAYER_DEPTH_LIMIT) {
+        throw new CompositionEditorPatchError("La profundidad debe corresponder a una capa adicional válida.");
+      }
+      const extras = next.extraLayerDepths || [];
+      if (operation.type === "layer.add") {
+        if (extras.includes(operation.depth)) throw new CompositionEditorPatchError("La capa adicional ya existe.");
+        next.extraLayerDepths = [...extras, operation.depth].sort((left, right) => left - right);
+      } else {
+        if (!extras.includes(operation.depth)) throw new CompositionEditorPatchError("Solo puedes quitar capas adicionales existentes.");
+        const occupants = next.clips.filter(clip => clip.layout.zIndex === operation.depth);
+        const confirmed = new Set(operation.confirmedClipIds || []);
+        if (occupants.length && (confirmed.size !== occupants.length || occupants.some(clip => !confirmed.has(clip.id)))) {
+          throw new CompositionEditorPatchError("Confirma nuevamente todos los elementos de la capa antes de eliminarla.");
+        }
+        if (occupants.some(clip => next.tracks.find(track => track.id === clip.trackId)?.locked)) {
+          throw new CompositionEditorPatchError("No puedes eliminar una capa con elementos en pistas bloqueadas.");
+        }
+        for (const clip of occupants) removeClipOrThrow(next, clip.id);
+        next.extraLayerDepths = extras.filter(depth => depth !== operation.depth);
+      }
       continue;
     }
     if (operation.type === "document.restore") {
