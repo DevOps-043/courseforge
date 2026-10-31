@@ -1,0 +1,208 @@
+✔ preview y render conservan la profundidad adicional registrada (115.5915ms)
+✔ el sincronizador deja completar el bucle sin regresar al último fotograma (11.4847ms)
+✔ audio meters are opt-in, CORS-enabled in preview and absent from the render target (19.7623ms)
+✔ vertical canvas preserves the original HTML deck dimensions (9.6207ms)
+✔ uses stable public URLs and scoped signatures without iframe authentication (3.677ms)
+✔ keeps preview media warming bounded for remote assets (0.5378ms)
+✔ compiles bounded silent video rate consistently for preview and render (13.7456ms)
+✔ compiles final-frame hold without loop in both targets (10.6121ms)
+✔ seeks browser animations on the deterministic composition clock (4.7179ms)
+✖ compiles HyperFrames media as provider variables instead of ZIP paths (8.6633ms)
+✔ serializa la correcciÃ³n bÃ¡sica en el medio real para preview y render (129.696ms)
+✔ omite el atributo neutro y conserva el contrato en imÃ¡genes (8.2379ms)
+✔ treats a bundled numeric HyperFrames module id as an optional runtime without a filesystem path (0.4018ms)
+✔ usa el fallback de Courseforge cuando el runtime de color externo no está publicado (7.3492ms)
+✔ no usa un checkout vecino de HyperFrames cuando el paquete instalado no publica el runtime (7.5563ms)
+✔ el agrupamiento editorial no altera el HTML enviado a HyperFrames (7.9577ms)
+✔ embeds a stable Storage URL for public production media (3.4234ms)
+✔ signs preview assets in bounded parallel batches (4.7528ms)
+✔ compiles the native document into a seekable preview with stable visual ids (16.5526ms)
+✔ repairs appearance selectors in persisted legacy composition documents (4.2509ms)
+✔ scales an inset deck with contain semantics instead of clipping its authored canvas (5.9299ms)
+✔ applies an HTML slide crop identically in preview and HyperFrames render (6.6797ms)
+✔ fails closed when a document references an asset without a preview URL (11.1531ms)
+✔ compiles the same spatial crop into preview and HyperFrames render (20.9187ms)
+✔ scales crop insets with layout size instead of narrowing the visible window (4.3665ms)
+✔ keeps vertical B-roll fully visible with identical preview and render fit (18.4318ms)
+✔ compiles a deterministic HyperFrames render document without the interactive controller (2.9106ms)
+✔ creates a separate synchronized audio element for an avatar video (14.9768ms)
+✔ applies independent B-roll clip volume in preview and render (27.8753ms)
+✔ compiles derived video clips with the same source and their distinct media offsets (8.2141ms)
+✔ compila la misma transición real y sus handles en preview y render (35.9424ms)
+✔ compila dip to color como overlay determinista dentro del timeline (5.8639ms)
+✔ mantiene preview y render en paridad para dividir a 01:30 y eliminar un intervalo intermedio (10.2562ms)
+✔ compiles the same seek-safe music ducking envelope for preview and render (5.0076ms)
+✔ compiles motion on an inner subject without replacing the editable layout (10.6822ms)
+✔ compiles ambient motion as a finite loop that closes at the assigned duration (6.7996ms)
+✔ compiles simple path points identically in preview and render (8.4091ms)
+✔ compiles reversible intermediate visibility presets identically for preview and render (3.8092ms)
+✔ compiles assembly branding with the same remote variable contract (1.2979ms)
+✔ intro y outro compilan sus capas y animaciones en preview y render (15.7574ms)
+✔ resolves a linked READY sound effect into a private preview URL (2.1012ms)
+✔ compiles a transition sound effect with the complete HyperFrames audio contract (1.6312ms)
+ℹ tests 42
+ℹ suites 0
+ℹ pass 41
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9160.8403
+
+✖ failing tests:
+
+test at apps\web\.tmp\hyperframes-tests\domains\production\composition-editor\__tests__\composition-preview-compiler.service.test.js:235:25
+✖ compiles HyperFrames media as provider variables instead of ZIP paths (8.6633ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /<html lang="es" data-color-grading-runtime="not_required" data-composition-variables='\[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;cf_asset_00000000000040008000000000000099&quot;,&quot;label&quot;:&quot;SofLIA - Engine remote asset&quot;,&quot;type&quot;:&quot;string&quot;}\]'/. Input:
+  
+  '<!doctype html>\n' +
+    `<html lang="es" data-color-grading-runtime="not_required" data-composition-variables='[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;cf_asset_00000000000040008000000000000099&quot;,&quot;label&quot;:&quot;SofLIA Architect remote asset&quot;,&quot;type&quot;:&quot;string&quot;}]'>\n` +
+    '<head>\n' +
+    '  <meta charset="utf-8" />\n' +
+    '  <meta name="viewport" content="width=1920, height=1080" />\n' +
+    '  <title>Remoto</title>\n' +
+    '  <style>\n' +
+    '    * { box-sizing: border-box; }\n' +
+    '    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #020617; }\n' +
+    '    #composition-viewport { position: fixed; inset: 0; overflow: hidden; background: #020617; }\n' +
+    '    #composition-root { --preview-scale: 1; --preview-user-scale: 1; --editor-control-scale: 1; --editor-outline-width: 3px; position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; overflow: hidden; background: #020617; transform: translate(-50%, -50%) scale(calc(var(--preview-scale) * var(--preview-user-scale))); transform-origin: center; }\n' +
+    '    .clip { position: absolute; inset: 0; }\n' +
+    '    .clip-content { position: absolute; overflow: hidden; transform-origin: top left; visibility: hidden; }\n' +
+    '    .motion-subject { position: relative; width: 100%; height: 100%; transform-origin: center; }\n' +
+    '    \n' +
+    '    .composition-media { width: 100%; height: 100%; object-fit: cover; display: block; filter: var(--courseforge-color-filter, none); }\n' +
+    '    .clip-content[data-media-fit="CONTAIN"] .composition-media { object-fit: contain; }\n' +
+    '    .composition-audio { display: none; }\n' +
+    '    .composition-transition-overlay { position: absolute; inset: 0; z-index: 100000; visibility: hidden; opacity: 0; pointer-events: none; }\n' +
+    '    \n' +
+    '    .deck-content { overflow: hidden; }\n' +
+    '    .deck-content .deck-shell, .deck-content .deck-stage, .deck-content .deck-stage > .slide { width: 100%; height: 100%; }\n' +
+    '    \n' +
+    '    \n' +
+    '  </style>\n' +
+    '</head>\n' +
+    '<body>\n' +
+    '  <div id="composition-viewport" data-composition-id="courseforge-composition" data-start="0" data-width="1920" data-height="1080" data-duration="8" data-fps="25">\n' +
+    '    <div id="composition-root">\n' +
+    '      <div id="asset-00000000-0000-4000-8000-000000000099" data-hf-id="asset-00000000-0000-4000-8000-000000000099" data-croppable="true" data-layout-opacity="1" data-media-fit="CONTAIN" data-crop-top="0" data-crop-right="0" data-crop-bottom="0" data-crop-left="0" data-preserve-aspect="BOTTOM_RIGHT" style="left:1258px;top:330px;width:614px;height:702px;opacity:1;z-index:2;transform:rotate(0deg);" class="clip-content"><div id="asset-00000000-0000-4000-8000-000000000099-motion" class="motion-subject" style="clip-path:inset(0px 0px 0px 0px);"><video id="asset-00000000-0000-4000-8000-000000000099-media" class="composition-media clip" crossorigin="anonymous" data-var-src="cf_asset_00000000000040008000000000000099" muted playsinline loop preload="metadata" data-source-offset="0" data-media-start="0" data-start="0" data-duration="8" data-track-index="0"></video></div></div><audio id="asset-00000000-0000-4000-8000-000000000099-audio" class="composition-audio clip" data-var-src="cf_asset_00000000000040008000000000000099" loop preload="metadata" data-source-offset="0" data-media-start="0" data-volume="1" data-start="0" data-duration="8" data-end="8" data-track-index="1"></audio>\n' +
+    '      \n' +
+    '      \n' +
+    '    </div>\n' +
+    '    \n' +
+    '  </div>\n' +
+    '  <script src="assets/gsap.min.js"></script>\n' +
+    '  \n' +
+    '  \n' +
+    '  <script>\n' +
+    '    (() => {\n' +
+    '    const clips = [{"captionCues":[],"duration":8,"hfId":"asset-00000000-0000-4000-8000-000000000099","hidden":false,"id":"asset-00000000-0000-4000-8000-000000000099","kind":"VIDEO","layoutOpacity":1,"layoutRotation":0,"runtimeDuration":8,"runtimeStart":0,"start":0}];\n' +
+    '    const motionAnimations = [];\n' +
+    '    const transitionEffects = [];\n' +
+    '    const volumeAutomations = [];\n' +
+    '    const captionEffects = [];\n' +
+    '    window.__courseforgeInstallTimeline = (state) => {\n' +
+    '      const { clips, motionAnimations, transitionEffects, volumeAutomations, captionEffects } = state;\n' +
+    '      const timeline = gsap.timeline({ paused: true });\n' +
+    '      for (const clip of clips) {\n' +
+    '        if (clip.kind === "AUDIO") continue;\n' +
+    '        const element = document.getElementById(clip.id);\n' +
+    '        if (!element) continue;\n' +
+    "        // Reused elements can retain GSAP's previous transition transform cache.\n" +
+    '        gsap.set(element, { x: 0, y: 0, xPercent: 0, yPercent: 0, scaleX: 1, scaleY: 1, rotation: clip.layoutRotation });\n' +
+    '        if (clip.hidden) { timeline.set(element, { autoAlpha: 0 }, 0); continue; }\n' +
+    '        timeline.set(element, { autoAlpha: clip.layoutOpacity }, clip.runtimeStart);\n' +
+    '        for (const cue of clip.captionCues) {\n' +
+    '          const cueElement = document.getElementById(cue.elementId);\n' +
+    '          if (!cueElement) continue;\n' +
+    '          timeline.set(cueElement, { autoAlpha: 0 }, clip.runtimeStart);\n' +
+    '          timeline.set(cueElement, { autoAlpha: 1 }, cue.start);\n' +
+    '          timeline.set(cueElement, { autoAlpha: 0 }, cue.end);\n' +
+    '          for (const word of cue.enhanced ? [] : cue.words) {\n' +
+    '            const wordElement = document.getElementById(word.elementId);\n' +
+    '            if (!wordElement) continue;\n' +
+    '            timeline.set(wordElement, { opacity: 0.55 }, clip.runtimeStart);\n' +
+    '            timeline.set(wordElement, { opacity: 1 }, word.start);\n' +
+    '            timeline.set(wordElement, { opacity: 0.55 }, word.end);\n' +
+    '          }\n' +
+    '        }\n' +
+    '        if (clip.kind === "DECK_SLIDE") {\n' +
+    '          const deckScope = element.querySelector(".deck-scope");\n' +
+    '          if (deckScope) {\n' +
+    '            timeline.fromTo(\n' +
+    '              deckScope,\n' +
+    '              { "--deck-t": 0 },\n' +
+    '              { "--deck-t": clip.duration, duration: clip.duration, ease: "none", immediateRender: false },\n' +
+    '              clip.start,\n' +
+    '            );\n' +
+    '          }\n' +
+    '        }\n' +
+    '        // HyperFrames treats clip intervals as half-open. Hiding at the exact\n' +
+    '        // end frame keeps preview seek and renderSeek identical at boundaries.\n' +
+    '        timeline.set(element, { autoAlpha: 0 }, clip.runtimeStart + clip.runtimeDuration);\n' +
+    '      }\n' +
+    '      const captionTimeline = gsap.timeline();\n' +
+    '      (function scheduleCaptionEffects(timeline, steps, resolveTarget) {\n' +
+    '    for (const step of steps) {\n' +
+    '        const target = resolveTarget(step.targetId);\n' +
+    '        if (!target)\n' +
+    '            throw new Error("CAPTION_EFFECT_TARGET_NOT_FOUND");\n' +
+    '        if (step.duration === 0)\n' +
+    '            timeline.set(target, step.to, step.at);\n' +
+    '        else\n' +
+    '            timeline.fromTo(target, step.from, { ...step.to, duration: step.duration, ease: step.ease, immediateRender: false }, step.at);\n' +
+    '    }\n' +
+    '})(captionTimeline, captionEffects, (id) => document.getElementById(id));\n' +
+    '      // Initialize finite caption states before the first distant seek.\n' +
+    '      captionTimeline.render(captionTimeline.duration(), true, true);\n' +
+    '      captionTimeline.render(0, true, true);\n' +
+    '      timeline.add(captionTimeline, 0);\n' +
+    '      function addTransitions(targetTimeline, transitions) {\n' +
+    '        (function scheduleCompositionTransitions(timeline, transitions, resolveTarget) {\n' +
+    '    const pushVectors = {\n' +
+    '        DOWN: { from: { yPercent: 100 }, to: { yPercent: -100 } }, LEFT: { from: { xPercent: -100 }, to: { xPercent: 100 } },\n' +
+    '        RIGHT: { from: { xPercent: 100 }, to: { xPercent: -100 } }, UP: { from: { yPercent: -100 }, to: { yPercent: 100 } },\n' +
+    '    };\n' +
+    '    const wipeInsets = { DOWN: "inset(100% 0 0 0)", LEFT: "inset(0 0 0 100%)", RIGHT: "inset(0 100% 0 0)", UP: "inset(0 0 100% 0)" };\n' +
+    '    for (const transition of transitions) {\n' +
+    '        const from = resolveTarget(transition.fromClipId), to = resolveTarget(transition.toClipId);\n' +
+    '        if (!from || !to)\n' +
+    '            continue;\n' +
+    '        const common = { duration: transition.durationSeconds, ease: transition.easing, immediateRender: false };\n' +
+    '        if (transition.type === "CROSS_DISSOLVE") {\n' +
+    '            timeline.fromTo(from, { autoAlpha: transition.fromOpacity }, { ...common, autoAlpha: 0 }, transition.startSeconds);\n' +
+    '            timeline.fromTo(to, { autoAlpha: 0 }, { ...common, autoAlpha: transition.toOpacity }, transition.startSeconds);\n' +
+    '        }\n' +
+    '        else if (transition.type === "BLUR_DISSOLVE") {\n' +
+    '            const blur = Math.max(0, Math.min(40, transition.blurPixels || 0));\n' +
+    '            timeline.fromTo(from, { autoAlpha: transition.fromOpacity, filter: "blur(0px)" }, { ...common, autoAlpha: 0, filter: "blur(" + blur + "px)" }, transition.startSeconds);\n' +
+    '            timeline.fromTo(to, { autoAlpha: 0, filter: "blur(" + blur + "px)" }, { ...common, autoAlpha: transition.toOpacity, filter: "blur(0px)" }, transition.startSeconds);\n' +
+    '        }\n' +
+    '        else if (transition.type === "PUSH") {\n' +
+    '            const vector = pushVectors[transition.direction || "LEFT"];\n' +
+    '            timeline.fromTo(from, { autoAlpha: transition.fromOpacity, xPercent: 0, yPercent: 0 }, { ...common, ...vector.from, autoAlpha: transition.fromOpacity }, transition.startSeconds);\n' +
+    '            timeline.fromTo(to, { ...vector.to, autoAlpha: transition.toOpacity }, { ...common, autoAlpha: transition.toOpacity, xPercent: 0, yPercent: 0 }, transition.startSeconds);\n' +
+    '        }\n' +
+    '        else if (transition.type === "SOFT_WIPE") {\n' +
+    '            const inset = wipeInsets[transition.direction || "LEFT"];\n' +
+    '            timeline.fromTo(from, { autoAlpha: transition.fromOpacity }, { ...common, autoAlpha: 0 }, transition.startSeconds);\n' +
+    '            timeline.fromTo(to, { autoAlpha: transition.toOpacity * 0.35, clipPath: inset }, { ...common, autoAlpha: transition.toOpacity, clipPath: "inset(0% 0% 0% 0%)" }, transition.startSeconds);\n' +
+    '        }\n' +
+    '        else if (transition.type === "DIP_TO_COLOR") {\n' +
+    '            const overlay = transition.overlayId ? resolveTarget(transition.overlayId) : null;\n' +
+    '            if (!overlay)\n' +
+    '                continue;\n' +
+    '            const halfDuration = transition.durationSeconds / 2, midpoint = transition.startSeconds + halfDuration;\n' +
+    '            timeline.set(to, { autoAlpha: 0 }, transition.startSeconds);\n' +
+    '            timeline.to(overlay, { autoAlpha: 1, duration: halfDuration, ease: transition.easing }, transition.startSeconds);\n' +
+    '            timeline.set(from, { autoAlph'... 4796 more characters
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\hyperframes-tests\domains\production\composition-editor\__tests__\composition-preview-compiler.service.test.js:250:22)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: `<!doctype html>\n<html lang="es" data-color-grading-runtime="not_required" data-composition-variables='[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;cf_asset_00000000000040008000000000000099&quot;,&quot;label&quot;:&quot;SofLIA Architect remote asset&quot;,&quot;type&quot;:&quot;string&quot;}]'>\n<head>\n  <meta charset="utf-8" />\n  <meta name="viewport" content="width=1920, height=1080" />\n  <title>Remoto</title>\n  <style>\n    * { box-sizing: border-box; }\n    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #020617; }\n    #composition-viewport { position: fixed; inset: 0; overflow: hidden; background: #020617; }\n    #composition-root { --preview-scale: 1; --preview-user-scale: 1; --editor-control-scale: 1; --editor-outline-width: 3px; position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; overflow: hidden; background: #020617; transform: translate(-50%, -50%) scale(calc(var(--preview-scale) * var(--preview-user-scale))); transform-origin: center; }\n    .clip { position: absolute; inset: 0; }\n    .clip-content { position: absolute; overflow: hidden; transform-origin: top left; visibility: hidden; }\n    .motion-subject { position: relative; width: 100%; height: 100%; transform-origin: center; }\n    \n    .composition-media { width: 100%; height: 100%; object-fit: cover; display: block; filter: var(--courseforge-color-filter, none); }\n    .clip-content[data-media-fit="CONTAIN"] .composition-media { object-fit: contain; }\n    .composition-audio { display: none; }\n    .composition-transition-overlay { position: absolute; inset: 0; z-index: 100000; visibility: hidden; opacity: 0; pointer-events: none; }\n    \n    .deck-content { overflow: hidden; }\n    .deck-content .deck-shell, .deck-content .deck-stage, .deck-content .deck-stage > .slide { width: 100%; height: 100%; }\n    \n    \n  </style>\n</head>\n<body>\n  <div id="composition-viewport" data-composition-id="courseforge-composition" data-start="0" data-width="1920" data-height="1080" data-duration="8" data-fps="25">\n    <div id="composition-root">\n      <div id="asset-00000000-0000-4000-8000-000000000099" data-hf-id="asset-00000000-0000-4000-8000-000000000099" data-croppable="true" data-layout-opacity="1" data-media-fit="CONTAIN" data-crop-top="0" data-crop-right="0" data-crop-bottom="0" data-crop-left="0" data-preserve-aspect="BOTTOM_RIGHT" style="left:1258px;top:330px;width:614px;height:702px;opacity:1;z-index:2;transform:rotate(0deg);" class="clip-content"><div id="asset-00000000-0000-4000-8000-000000000099-motion" class="motion-subject" style="clip-path:inset(0px 0px 0px 0px);"><video id="asset-00000000-0000-4000-8000-000000000099-media" class="composition-media clip" crossorigin="anonymous" data-var-src="cf_asset_00000000000040008000000000000099" muted playsinline loop preload="metadata" data-source-offset="0" data-media-start="0" data-start="0" data-duration="8" data-track-index="0"></video></div></div><audio id="asset-00000000-0000-4000-8000-000000000099-audio" class="composition-audio clip" data-var-src="cf_asset_00000000000040008000000000000099" loop preload="metadata" data-source-offset="0" data-media-start="0" data-volume="1" data-start="0" data-duration="8" data-end="8" data-track-index="1"></audio>\n      \n      \n    </div>\n    \n  </div>\n  <script src="assets/gsap.min.js"></script>\n  \n  \n  <script>\n    (() => {\n    const clips = [{"captionCues":[],"duration":8,"hfId":"asset-00000000-0000-4000-8000-000000000099","hidden":false,"id":"asset-00000000-0000-4000-8000-000000000099","kind":"VIDEO","layoutOpacity":1,"layoutRotation":0,"runtimeDuration":8,"runtimeStart":0,"start":0}];\n    const motionAnimations = [];\n    const transitionEffects = [];\n    const volumeAutomations = [];\n    const captionEffects = [];\n    window.__courseforgeInstallTimeline = (state) => {\n      const { clips, motionAnimations, transitionEffects, volumeAutomations, captionEffects } = state;\n      const timeline = gsap.timeline({ paused: true });\n      for (const clip of clips) {\n        if (clip.kind === "AUDIO") continue;\n        const element = document.getElementById(clip.id);\n        if (!element) continue;\n        // Reused elements can retain GSAP's previous transition transform cache.\n        gsap.set(element, { x: 0, y: 0, xPercent: 0, yPercent: 0, scaleX: 1, scaleY: 1, rotation: clip.layoutRotation });\n        if (clip.hidden) { timeline.set(element, { autoAlpha: 0 }, 0); continue; }\n        timeline.set(element, { autoAlpha: clip.layoutOpacity }, clip.runtimeStart);\n        for (const cue of clip.captionCues) {\n          const cueElement = document.getElementById(cue.elementId);\n          if (!cueElement) continue;\n          timeline.set(cueElement, { autoAlpha: 0 }, clip.runtimeStart);\n          timeline.set(cueElement, { autoAlpha: 1 }, cue.start);\n          timeline.set(cueElement, { autoAlpha: 0 }, cue.end);\n          for (const word of cue.enhanced ? [] : cue.words) {\n            const wordElement = document.getElementById(word.elementId);\n            if (!wordElement) continue;\n            timeline.set(wordElement, { opacity: 0.55 }, clip.runtimeStart);\n            timeline.set(wordElement, { opacity: 1 }, word.start);\n            timeline.set(wordElement, { opacity: 0.55 }, word.end);\n          }\n        }\n        if (clip.kind === "DECK_SLIDE") {\n          const deckScope = element.querySelector(".deck-scope");\n          if (deckScope) {\n            timeline.fromTo(\n              deckScope,\n              { "--deck-t": 0 },\n              { "--deck-t": clip.duration, duration: clip.duration, ease: "none", immediateRender: false },\n              clip.start,\n            );\n          }\n        }\n        // HyperFrames treats clip intervals as half-open. Hiding at the exact\n        // end frame keeps preview seek and renderSeek identical at boundaries.\n        timeline.set(element, { autoAlpha: 0 }, clip.runtimeStart + clip.runtimeDuration);\n      }\n      const captionTimeline = gsap.timeline();\n      (function scheduleCaptionEffects(timeline, steps, resolveTarget) {\n    for (const step of steps) {\n        const target = resolveTarget(step.targetId);\n        if (!target)\n            throw new Error("CAPTION_EFFECT_TARGET_NOT_FOUND");\n        if (step.duration === 0)\n            timeline.set(target, step.to, step.at);\n        else\n            timeline.fromTo(target, step.from, { ...step.to, duration: step.duration, ease: step.ease, immediateRender: false }, step.at);\n    }\n})(captionTimeline, captionEffects, (id) => document.getElementById(id));\n      // Initialize finite caption states before the first distant seek.\n      captionTimeline.render(captionTimeline.duration(), true, true);\n      captionTimeline.render(0, true, true);\n      timeline.add(captionTimeline, 0);\n      function addTransitions(targetTimeline, transitions) {\n        (function scheduleCompositionTransitions(timeline, transitions, resolveTarget) {\n    const pushVectors = {\n        DOWN: { from: { yPercent: 100 }, to: { yPercent: -100 } }, LEFT: { from: { xPercent: -100 }, to: { xPercent: 100 } },\n        RIGHT: { from: { xPercent: 100 }, to: { xPercent: -100 } }, UP: { from: { yPercent: -100 }, to: { yPercent: 100 } },\n    };\n    const wipeInsets = { DOWN: "inset(100% 0 0 0)", LEFT: "inset(0 0 0 100%)", RIGHT: "inset(0 100% 0 0)", UP: "inset(0 0 100% 0)" };\n    for (const transition of transitions) {\n        const from = resolveTarget(transition.fromClipId), to = resolveTarget(transition.toClipId);\n        if (!from || !to)\n            continue;\n        const common = { duration: transition.durationSeconds, ease: transition.easing, immediateRender: false };\n        if (transition.type === "CROSS_DISSOLVE") {\n            timeline.fromTo(from, { autoAlpha: transition.fromOpacity }, { ...common, autoAlpha: 0 }, transition.startSeconds);\n            timeline.fromTo(to, { autoAlpha: 0 }, { ...common, autoAlpha: transition.toOpacity }, transition.startSeconds);\n        }\n        else if (transition.type === "BLUR_DISSOLVE") {\n            const blur = Math.max(0, Math.min(40, transition.blurPixels || 0));\n            timeline.fromTo(from, { autoAlpha: transition.fromOpacity, filter: "blur(0px)" }, { ...common, autoAlpha: 0, filter: "blur(" + blur + "px)" }, transition.startSeconds);\n            timeline.fromTo(to, { autoAlpha: 0, filter: "blur(" + blur + "px)" }, { ...common, autoAlpha: transition.toOpacity, filter: "blur(0px)" }, transition.startSeconds);\n        }\n        else if (transition.type === "PUSH") {\n            const vector = pushVectors[transition.direction || "LEFT"];\n            timeline.fromTo(from, { autoAlpha: transition.fromOpacity, xPercent: 0, yPercent: 0 }, { ...common, ...vector.from, autoAlpha: transition.fromOpacity }, transition.startSeconds);\n            timeline.fromTo(to, { ...vector.to, autoAlpha: transition.toOpacity }, { ...common, autoAlpha: transition.toOpacity, xPercent: 0, yPercent: 0 }, transition.startSeconds);\n        }\n        else if (transition.type === "SOFT_WIPE") {\n            const inset = wipeInsets[transition.direction || "LEFT"];\n            timeline.fromTo(from, { autoAlpha: transition.fromOpacity }, { ...common, autoAlpha: 0 }, transition.startSeconds);\n            timeline.fromTo(to, { autoAlpha: transition.toOpacity * 0.35, clipPath: inset }, { ...common, autoAlpha: transition.toOpacity, clipPath: "inset(0% 0% 0% 0%)" }, transition.startSeconds);\n        }\n        else if (transition.type === "DIP_TO_COLOR") {\n            const overlay = transition.overlayId ? resolveTarget(transition.overlayId) : null;\n            if (!overlay)\n                continue;\n            const halfDuration = transition.durationSeconds / 2, midpoint = transition.startSeconds + halfDuration;\n            timeline.set(to, { autoAlpha: 0 }, transition.startSeconds);\n            timeline.to(overlay, { autoAlpha: 1, duration: halfDuration, ease: transition.easing }, transition.startSeconds);\n            timeline.set(from, { autoAlph`... 4796 more characters,
+    expected: /<html lang="es" data-color-grading-runtime="not_required" data-composition-variables='\[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;cf_asset_00000000000040008000000000000099&quot;,&quot;label&quot;:&quot;SofLIA - Engine remote asset&quot;,&quot;type&quot;:&quot;string&quot;}\]'/,
+    operator: 'match',
+    diff: 'simple'
+  }

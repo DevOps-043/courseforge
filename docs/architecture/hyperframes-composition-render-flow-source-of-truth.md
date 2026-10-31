@@ -461,6 +461,11 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-10-31: el inspector nativo ofrece posición X/Y con deslizadores y campos
+  en píxeles para clips visuales. Reutiliza `clip.layout` y el guardado al terminar
+  el gesto, con rangos del lienzo y límites del esquema, sin cambiar el contrato
+  de preview/render. Alcance y QA: [posición manual](../../openspec/changes/manual-position-controls/proposal.md).
+
 - 2026-10-31: integración de descarga individual con edición local inmediata y
   agrupaciones. La fuente se captura después de confirmar la cola y comprobar
   recuperación pendiente. Evidencia:
