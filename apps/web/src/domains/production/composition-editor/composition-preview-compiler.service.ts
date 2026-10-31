@@ -1,4 +1,6 @@
 import { createCompositionMaskPreviewRuntime } from "./composition-mask-preview-runtime";
+import { createCompositionReferenceGuidesRuntime } from "./composition-reference-guides-runtime";
+import { COMPOSITION_REFERENCE_GUIDE_LIMIT } from "./composition-reference-guides";
 import { compositionVisualMaskClipPath } from "./composition-visual-mask";
 import { APP_CONFIG } from "../../../config/app";
 import { createCompositionPositionPreviewRuntime } from "./composition-position-preview-runtime";
@@ -317,6 +319,9 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         previewGeneration,
         protocolVersion: ${COMPOSITION_PREVIEW_PROTOCOL_VERSION},
       }, "*");
+      const referenceGuides = (${createCompositionReferenceGuidesRuntime.toString()})(root,
+        (id, ratio) => postParentMessage({ type: "courseforge-composition-guide-move", id, ratio }),
+        ${COMPOSITION_REFERENCE_GUIDE_LIMIT});
       const activeMedia = new Set();
       ${renderCompositionAudioMeterRuntime(audioMetersEnabled)}
       // Remote previews cannot eagerly download the whole composition. Warm a
@@ -1035,7 +1040,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
             ? [box.left, box.centerX, box.right]
             : [box.top, box.centerY, box.bottom];
         });
-        return [...new Set([...canvasPositions, ...peerPositions])];
+        return [...new Set([...referenceGuides.positions(axis, axis === "x" ? canvasWidth : canvasHeight), ...canvasPositions, ...peerPositions])];
       };
       const resolveClosestSmartGuide = (anchors, guides, threshold) => {
         let match = null;
@@ -1525,6 +1530,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         if (message.type === "courseforge-composition-play") play();
         if (message.type === "courseforge-composition-pause") pause();
         if (message.type === "courseforge-composition-reset-audio-meter") audioMeters.reset();
+        if (message.type === "courseforge-composition-editor-guides") referenceGuides.update(message.state);
         if (message.type === "courseforge-composition-editor-settings") {
           editingEnabled = message.editingEnabled !== false;
           cropEnabled = message.cropEnabled === true;

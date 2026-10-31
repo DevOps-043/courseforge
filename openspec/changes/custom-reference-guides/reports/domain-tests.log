@@ -1,0 +1,36 @@
+✔ snap tolerance stays at seven screen pixels across preview scales (2.0519ms)
+✔ proportional resize respects both canvas bounds without deformation (1.6917ms)
+✔ portrait, grid fallback and minimum sizes preserve the aspect ratio (0.719ms)
+✔ canvas constraints win over impossible minimum dimensions (0.35ms)
+✔ invalid geometry does not produce a resize (0.3851ms)
+✔ serialized preview geometry executes without module dependencies (1.8308ms)
+✔ uncropped layout and asymmetric crop expose editorial visible edges and center (5.2235ms)
+✔ resize scales crop instead of treating source box edges as visible (1.2461ms)
+✔ proportional snap chooses one dominant axis for cropped rotated rectangles (2.5693ms)
+✔ free resize solves both rotated guide constraints including quarter turns (0.8697ms)
+✔ missing or invalid candidates and geometry cannot emit a guide (0.5827ms)
+✔ runtime geometry and resize solver have no hidden module dependencies (2.8134ms)
+✔ el runtime serializado funciona después de minificar el módulo de producción (241.4111ms)
+✔ normalizes legacy iframe messages to the current protocol version (3.9569ms)
+✔ focus restoration accepts only bounded target identity and rejects arbitrary selectors (2.7993ms)
+✔ accepts a versioned ready event and rejects malformed document hashes (1.2175ms)
+✔ accepts only fixed, versioned load failures from the active iframe (3.1439ms)
+✔ builds a nonce-restricted error bridge without server messages (1.5176ms)
+✔ maps load failures to safe recovery actions (0.3971ms)
+✔ rejects unknown fields, unsafe bounds and unsupported protocol versions (2.7815ms)
+✔ adds a version to valid parent commands and rejects invalid ranges (1.4164ms)
+✔ identifies whether a preview selection came from the canvas or a parent command (3.1238ms)
+✔ validates visual patches and their correlated acknowledgements (3.5882ms)
+✔ valida preview efímero y estados del runtime de color (2.5984ms)
+✔ guías locales separan drafts y conservan posición, color y visibilidad (5.9453ms)
+✔ contrato rechaza límites, duplicados, CSS y entradas no finitas (6.0971ms)
+✔ mover una guía valida ID, ratio y generación del iframe (2.0957ms)
+✔ las guías son exclusivas del preview interactivo y no aparecen en render (50.3705ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2147.342

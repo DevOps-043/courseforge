@@ -25,7 +25,7 @@ function Fixture() {
     onToggleFullscreen: () => { void previewRef.current?.requestFullscreen(); },
     onCanvasFormatChange: noop, onContinueToPublication: noop, onOpenLibrary: noop,
     onIntervalAction: noop, onOpenAssistant: noop, onOpenCommandPalette: noop,
-    onOpenPresets: noop, onReload: noop, onRedo: noop, onRestoreHistory: noop,
+    onOpenReferenceGuides: noop, onOpenPresets: noop, onReload: noop, onRedo: noop, onRestoreHistory: noop,
     onSplit: noop, onToggleDirectEditing: noop, onToggleComparison: noop,
     onToggleGrid: noop, onToggleSafeAreas: noop, onToggleSnap: noop,
     onToggleTrim: noop, onToggleVisualCrop: noop, onUndo: noop, onZoom: noop,

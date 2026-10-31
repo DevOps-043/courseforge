@@ -160,6 +160,8 @@ import {
   type SoundEffectCatalogItem,
 } from "./CompositionStudioLibrary";
 import { CompositionLayerManager } from "./CompositionLayerManager";
+import { useCompositionReferenceGuides } from "./useCompositionReferenceGuides";
+import { CompositionReferenceGuidesPanel } from "./CompositionReferenceGuidesPanel";
 import { CompositionInspector } from "./CompositionInspector";
 import { CompositionAudioDiagnostics } from "./CompositionAudioDiagnostics";
 import { CompositionAudioMeters } from "./CompositionAudioMeters";
@@ -420,6 +422,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
+  const { state: referenceGuides, setState: setReferenceGuides, storageError: referenceGuidesStorageError } = useCompositionReferenceGuides(draftId);
+  const [referenceGuidesOpen, setReferenceGuidesOpen] = useState(false);
   const [safeAreasVisible, setSafeAreasVisible] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
   const [audioMeterMessage, setAudioMeterMessage] = useState<CompositionAudioMeterMessage | null>(null);
@@ -1111,6 +1115,11 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         }
         return;
       }
+      if (message.type === "courseforge-composition-guide-move") {
+        if (!isCurrentFrame || message.previewGeneration !== previewGenerationRef.current) return;
+        setReferenceGuides(current => ({ ...current, guides: current.guides.map(guide => guide.id === message.id ? { ...guide, ratio: message.ratio } : guide) }));
+        return;
+      }
       if (message.type === "courseforge-composition-visual-patch-result") {
         runtimePatchCoordinatorRef.current?.acknowledge(message);
         return;
@@ -1559,6 +1568,10 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     if (previewReady) postPreviewMessage({ scale: previewZoom, type: "courseforge-composition-preview-zoom" });
     if (comparisonBaselineReadyRef.current) postComparisonBaselineMessage({ scale: previewZoom, type: "courseforge-composition-preview-zoom" });
   }, [previewReady, previewZoom]);
+  useEffect(() => {
+    if (previewReady) postPreviewMessage({ type: "courseforge-composition-editor-guides",
+      state: { ...referenceGuides, visible: referenceGuides.visible && !comparisonActive && !presetPreview && !agentProposal } });
+  }, [previewReady, referenceGuides, comparisonActive, presetPreview, agentProposal, postPreviewMessage]);
   useEffect(() => {
     if (!previewReady || !payload?.document) return;
     const hfIds = payload.document.clips
@@ -3829,6 +3842,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           {payload.document.sourceInsertionMode === "MANUAL" && payload.document.clips.length === 0 &&
             <p role="status" className="px-4 py-2 text-sm text-slate-500">Tu timeline está vacío. Elige un archivo de la biblioteca y pulsa «Añadir a timeline».</p>}
           <CompositionPreviewToolbar
+            onOpenReferenceGuides={() => setReferenceGuidesOpen(true)}
             canvas={payload.document.canvas}
             canRedo={commandHistoryState.canRedo}
             canUndo={commandHistoryState.canUndo}
@@ -3906,6 +3920,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
             undoLabel={commandHistoryState.undoLabel}
             visualCropEnabled={visualCropEnabled}
           />
+          {referenceGuidesOpen && <CompositionReferenceGuidesPanel state={referenceGuides} canvas={payload.document.canvas}
+            onChange={setReferenceGuides} onClose={() => setReferenceGuidesOpen(false)} storageError={referenceGuidesStorageError} />}
           {areCompositionAudioMetersEnabled() && <CompositionAudioMeters
             message={audioMeterMessage}
             onReset={() => postPreviewMessage({ type: "courseforge-composition-reset-audio-meter" })}

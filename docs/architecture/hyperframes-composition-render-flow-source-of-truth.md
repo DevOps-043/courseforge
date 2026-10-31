@@ -461,6 +461,13 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-10-31: guías de referencia configurables exclusivamente en el editor.
+  Posición proporcional, orientación, color y visibilidad se conservan localmente
+  por draft; las líneas visibles alimentan el snap existente. El iframe permite
+  arrastre y teclado mediante mensajes validados y generación vigente. No forman
+  parte del documento, snapshots ni HTML de render. Diseño y evidencia:
+  [guías personalizables](../../openspec/changes/custom-reference-guides/proposal.md).
+
 - 2026-10-31: máscaras geométricas opcionales en `clip.mask` para imagen, video
   y diapositiva. `clip.mask` aplica/quita formas validadas; el renderer compartido
   anida la máscara dentro del sujeto recortado para intersectarla con los bordes.
