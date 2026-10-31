@@ -461,6 +461,13 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-10-31: posición X/Y temporal desde el inspector con el comando
+  `courseforge-composition-preview-position`. El monitor recibe cambios válidos
+  durante el gesto; el guardado sigue agrupado al terminar. Los patches canónicos
+  actualizan la base sin sobrescribir un desplazamiento temporal posterior. Al
+  cambiar selección o bloquear se retira la superposición, sin alterar motion,
+  tamaño u opacidad. Contrato y evidencia en el cambio de posición manual.
+
 - 2026-10-31: el inspector nativo ofrece posición X/Y con deslizadores y campos
   en píxeles para clips visuales. Reutiliza `clip.layout` y el guardado al terminar
   el gesto, con rangos del lienzo y límites del esquema, sin cambiar el contrato

@@ -1,4 +1,6 @@
 import { APP_CONFIG } from "../../../config/app";
+import { createCompositionPositionPreviewRuntime } from "./composition-position-preview-runtime";
+import { compositionLayoutSchema } from "./composition-document.types";
 import { buildCompositionPreviewTimelineState } from "./composition-preview-timeline-state";
 import { renderCompositionTimelineInstaller } from "./composition-preview-timeline-runtime";
 import { prepareCompositionPreviewScenePatch } from "./composition-preview-scene-runtime";
@@ -1290,6 +1292,10 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           target.style.opacity = !hidden && active ? String(Number.isFinite(layoutOpacity) ? layoutOpacity : 1) : "0";
         });
       };
+      const inspectorPositionPreview = (${createCompositionPositionPreviewRuntime.toString()})(
+        (hfId) => document.querySelector('[data-hf-id="' + CSS.escape(hfId) + '"]'),
+        { minimum: ${compositionLayoutSchema.shape.x.minValue}, maximum: ${compositionLayoutSchema.shape.x.maxValue} }
+      );
       const setRuntimeMediaVisibility = (target, hidden) => {
         const mediaElements = [
           ...(target.matches("audio, video") ? [target] : []),
@@ -1405,6 +1411,7 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
           resolvedChanges.push({ change, target });
         }
         try {
+          inspectorPositionPreview.restore();
           if (message.patch.scene !== undefined) {
             if (htmlLayoutRequired) throw new Error("CONTROLLED_HTML_REQUIRES_COMPILATION");
             const scene = message.patch.scene;
@@ -1470,9 +1477,11 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
             }
           }
           if (message.patch.motion !== undefined) window.__courseforgeReplaceMotion(message.patch.motion);
+          inspectorPositionPreview.rebase();
           seek(currentTime);
           finish(true, "APPLIED");
         } catch {
+          inspectorPositionPreview.rebase();
           finish(false, "RUNTIME_ERROR");
         }
       };
@@ -1499,6 +1508,11 @@ function renderInteractivePreviewController(document: CompositionEditorDocument,
         if (message.type === "courseforge-composition-preview-zoom") {
           previewUserScale = Math.max(.5, Math.min(2, Number(message.scale) || 1));
           fitCompositionToViewport();
+        }
+        if (message.type === "courseforge-composition-preview-position" && typeof message.hfId === "string") {
+          if (message.position === null || (editingEnabled && message.position && typeof message.position === "object")) {
+            inspectorPositionPreview.preview(message.hfId, message.position);
+          }
         }
         if (message.type === "courseforge-composition-preview-crop" && typeof message.hfId === "string") {
           const target = document.querySelector('[data-hf-id="' + CSS.escape(message.hfId) + '"]');

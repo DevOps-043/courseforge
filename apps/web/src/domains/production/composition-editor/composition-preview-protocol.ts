@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { compositionVisualCropSchema } from "./composition-document.types";
+import { compositionLayoutSchema, compositionVisualCropSchema } from "./composition-document.types";
 import { compositionColorGradingSchema } from "./composition-color-grading.types";
 import { compositionPreviewMetricSchema } from "./composition-preview-telemetry";
 import { compositionPreviewVisualPatchSchema } from "./composition-preview-visual-patch";
@@ -91,6 +91,12 @@ export const compositionPreviewParentCommandSchema = z.discriminatedUnion("type"
   }).strict(),
   z.object({ protocolVersion: protocolVersionSchema, scale: z.number().finite().min(0.5).max(2), type: z.literal("courseforge-composition-preview-zoom") }).strict(),
   z.object({ crop: compositionVisualCropSchema, hfId: hfIdSchema, protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-preview-crop") }).strict(),
+  z.object({
+    hfId: hfIdSchema, protocolVersion: protocolVersionSchema,
+    type: z.literal("courseforge-composition-preview-position"),
+    position: z.object({ x: compositionLayoutSchema.shape.x.optional(), y: compositionLayoutSchema.shape.y.optional() })
+      .strict().refine(position => position.x !== undefined || position.y !== undefined).nullable(),
+  }).strict(),
   z.object({ colorGrading: compositionColorGradingSchema.nullable(), hfId: hfIdSchema, protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-preview-color-grading") }).strict(),
   z.object({ hfId: hfIdSchema.nullable(), hfIds: z.array(hfIdSchema).max(100).optional(), protocolVersion: protocolVersionSchema, type: z.literal("courseforge-composition-select") }).strict(),
   z.object({

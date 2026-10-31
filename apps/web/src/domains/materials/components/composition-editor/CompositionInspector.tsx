@@ -33,6 +33,7 @@ import { areCompositionVideoRatesEnabled, isCompositionVideoFreezeEnabled } from
 import { CompositionColorCorrectionControls } from "./CompositionColorCorrectionControls";
 import { LayerDepthControls } from "./LayerDepthControls";
 import { VolumeSlider } from "./VolumeSlider";
+import { useCompositionPositionPreview, type CompositionPositionPreviewHandler } from "./useCompositionPositionPreview";
 import { CompositionPositionControls } from "./CompositionPositionControls";
 import { CompositionTextControls } from "./CompositionTextControls";
 import { AudioProcessingControls } from "./AudioProcessingControls";
@@ -55,6 +56,7 @@ interface CompositionInspectorProps {
   onAnimationSelect: (animationId: string | null) => void;
   onDetachAudio: (clip: CompositionClip) => Promise<void>;
   onPatch: PatchHandler;
+  onPreviewPosition: CompositionPositionPreviewHandler;
   onPreviewCrop: (hfId: string, crop: CompositionVisualCrop) => void;
   onPreviewColorGrading: (hfId: string, colorGrading: CompositionColorGrading | null) => void;
   onRemove: (clip: CompositionClip) => Promise<void>;
@@ -67,7 +69,8 @@ interface CompositionInspectorProps {
   track: CompositionTrack | null;
 }
 
-export function CompositionInspector({ canvasWidth, canvasHeight, extraLayerDepths, animations, clip, colorGradingStatus, componentId, cropModeEnabled, onAnimationSelect, onDetachAudio, onPatch, onPreviewColorGrading, onPreviewCrop, onRemove, saving, editingDisabled = saving, selectedAnimationId, separatingAudio, separatingAudioProgress, sourcePreviewUrl, track }: CompositionInspectorProps) {
+export function CompositionInspector({ canvasWidth, canvasHeight, extraLayerDepths, animations, clip, colorGradingStatus, componentId, cropModeEnabled, onAnimationSelect, onDetachAudio, onPatch, onPreviewPosition, onPreviewColorGrading, onPreviewCrop, onRemove, saving, editingDisabled = saving, selectedAnimationId, separatingAudio, separatingAudioProgress, sourcePreviewUrl, track }: CompositionInspectorProps) {
+  const previewPosition = useCompositionPositionPreview(clip?.hfId, editingDisabled || separatingAudio || Boolean(track?.locked), onPreviewPosition);
   const autosavePending = useCompositionAutosavePending();
   const [startSeconds, setStartSeconds] = useState("");
   const [durationSeconds, setDurationSeconds] = useState("");
@@ -221,7 +224,7 @@ export function CompositionInspector({ canvasWidth, canvasHeight, extraLayerDept
     return commitFields(operations, `Guardó tiempo, posición, transformación${hasConfigurableClipAudio ? " y volumen" : ""} de ${clip.label}.`);
   };
   const positionControls = <CompositionPositionControls canvasWidth={canvasWidth} canvasHeight={canvasHeight}
-    disabled={editingDisabled || separatingAudio || Boolean(track?.locked)} x={x} y={y} onXChange={setX} onYChange={setY} />;
+    disabled={editingDisabled || separatingAudio || Boolean(track?.locked)} x={x} y={y} onXChange={(value) => { setX(value); previewPosition("x", value); }} onYChange={(value) => { setY(value); previewPosition("y", value); }} />;
   const resetAsset = async () => {
     const confirmed = window.confirm(`¿Reiniciar ${clip.label}? Se restaurarán su tamaño, tiempo y encuadre originales; también se quitarán sus animaciones y fragmentos derivados.`);
     if (!confirmed) return;

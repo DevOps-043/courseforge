@@ -19,3 +19,20 @@ El inspector SHALL ofrecer controles X/Y con deslizador horizontal y campo numé
 #### Scenario: Pista bloqueada
 - **WHEN** la pista está bloqueada o la edición restringida
 - **THEN** los nuevos controles están deshabilitados
+
+### Requirement: Vista de posición durante la interacción
+El editor SHALL reflejar cada posición válida en el monitor antes de guardar el gesto, sin escribir una versión por cada movimiento.
+
+#### Scenario: Arrastrar sin soltar
+- **WHEN** el autor desplaza X o Y y mantiene pulsado el deslizador
+- **THEN** el elemento cambia de posición en el iframe durante el gesto
+- **AND** el guardado espera al final de la interacción
+
+#### Scenario: Confirmación anterior y nuevo borrador
+- **WHEN** llega un patch canónico durante un movimiento posterior pendiente
+- **THEN** el preview conserva ese movimiento sobre la base actualizada
+- **AND** al retirar el preview se restaura esa base actualizada
+
+#### Scenario: Cambiar selección o bloquear
+- **WHEN** el inspector cambia de clip, se desmonta o queda bloqueado
+- **THEN** retira la superposición temporal sin cambiar la posición persistida

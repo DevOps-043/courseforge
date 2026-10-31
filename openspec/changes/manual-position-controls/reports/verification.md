@@ -1,5 +1,8 @@
 # Verificación — 2026-10-31
 
+Esta evidencia corresponde a la entrega inicial `47e71625`. La ampliación de
+preview en tiempo real y sus límites se registran en [la verificación posterior](realtime-verification.md).
+
 ## Entrega
 Componente compartido CompositionPositionControls, integración en las dos ramas visuales de CompositionInspector y dimensiones del lienzo desde NativeCompositionPreview. Campos en píxeles, deslizadores de paso entero y rango basado en el lienzo. La escritura numérica conserva decimales. La validación local rechaza X/Y fuera del esquema; el servidor mantiene su validación existente.
 
