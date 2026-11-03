@@ -1,0 +1,35 @@
+✔ imports ordered multiline SRT captions with relative timing (6.1032ms)
+✔ imports WebVTT identifiers and settings while removing caption markup (1.3277ms)
+✔ rejects mismatched formats, overlaps and cues outside the layer (2.0443ms)
+✔ rejects caption payloads beyond the bounded import size (2.6831ms)
+✔ un gesto conserva sólo su último valor y no repite pointerup más blur (7.4603ms)
+✔ una respuesta tardía no descarta un gesto posterior ni sustituye su callback (1.1798ms)
+✔ un error conserva el borrador y exige recuperación explícita (1.2514ms)
+✔ una confirmación anterior no borra el error de admisión del último borrador (1.0436ms)
+✔ un campo inválido conserva su edición y no bloquea una corrección posterior (1.3991ms)
+✔ el coordinador vacía los controles en orden sin recursión al persistir (1.5647ms)
+✔ cerrar un panel no descarta su borrador fallido (0.9692ms)
+✔ los campos editoriales exclusivos conservan commits seriales entre sesiones (19.5576ms)
+✔ la cola puede cancelar envíos sin perder los comandos todavía no enviados (54.4469ms)
+✔ la copia local valida comandos, tamaño, vigencia y fallos de almacenamiento (11.8542ms)
+✔ confirmar una edición nueva no rebasa pendientes de otra base o sesión (4.8916ms)
+✔ se admiten controles concurrentes y la única cola serializa su persistencia (5.1044ms)
+✔ crea subtítulos manuales sin voz con espacio para una segunda frase (33.8433ms)
+✔ crear otra capa manual conserva los subtítulos existentes y limita la frase al final disponible (4.8042ms)
+✔ Unicode text and captions use identical bidi-safe markup in preview and render (40.5439ms)
+✔ timed CJK captions preserve authored punctuation and retain word element IDs (7.4244ms)
+✔ unalignable legacy karaoke renders the cue, with hidden seek-safe word anchors (6.5496ms)
+✔ creates a transparent caption layer and promotes the document contract to v3 (4.5157ms)
+✔ edits text through allow-listed patches and escapes authored markup in preview HTML (8.4067ms)
+✔ renders caption cues on the composition timeline without turning them into clips (5.9599ms)
+✔ renders word-level karaoke spans and seek-safe opacity events (5.318ms)
+✔ persists the imported caption origin through the allow-listed patch (3.0323ms)
+✔ embeds an explicitly resolved custom font and fails closed when it is missing (11.1868ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3111.3889

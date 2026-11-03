@@ -499,6 +499,13 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-11-03: pestaña «Subtítulos» con «Crear subtítulos manuales», independiente
+  de voz o transcripción. La capa conserva `origin: MANUAL`, fondo transparente y
+  una primera frase de hasta dos segundos para continuar escribiendo; se abre
+  Propiedades y se sitúa el cursor en su inicio. Los documentos históricos no se
+  reescriben y la automatización optativa de producción conserva su configuración.
+  Contrato: [autoría manual](../../openspec/changes/manual-caption-creation/design.md).
+
 - 2026-11-03: acceso directo «Guías» en el monitor, con texto visible también en
   barra compacta, panel enlazado y cierre con Escape. El menú distingue «Rejilla
   fija» de las líneas personalizables. No cambia preferencias, snap ni render.

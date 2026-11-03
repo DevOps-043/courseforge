@@ -23,6 +23,42 @@ function baseDocument() {
   });
 }
 
+test("crea subtítulos manuales sin voz con espacio para una segunda frase", () => {
+  const initial = baseDocument();
+  initial.canvas.durationSeconds = 12;
+  const { clip, track } = createCompositionNativeOverlay({ document: initial, id: "manual-captions", kind: "CAPTION", playheadSeconds: 3 });
+  assert.equal(clip.startSeconds, 3);
+  assert.equal(clip.durationSeconds, 5);
+  if (clip.source.type !== "NATIVE_CAPTIONS") throw new Error("Se esperaba una capa de subtítulos");
+  assert.equal(clip.source.origin, "MANUAL");
+  assert.equal(clip.source.cues[0]!.endSeconds, 2);
+  assert.equal(clip.source.style.backgroundOpacity, 0);
+  const created = applyCompositionEditorPatches(initial, [{ type: "clip.add", clipId: clip.id, clip, ...(track ? { track } : {}) }]);
+  const edited = applyCompositionEditorPatches(created, [{ type: "clip.caption-cues", clipId: clip.id, origin: "MANUAL", cues: [
+    { ...clip.source.cues[0]!, text: "Primera frase manual" },
+    { id: "second-cue", startSeconds: 2, endSeconds: 4, text: "Segunda frase manual" },
+  ] }]);
+  const restored = compositionEditorDocumentSchema.parse(JSON.parse(JSON.stringify(edited)));
+  const source = restored.clips.find(candidate => candidate.id === clip.id)!.source;
+  assert.equal(source.type, "NATIVE_CAPTIONS");
+  if (source.type !== "NATIVE_CAPTIONS") return;
+  assert.equal(source.origin, "MANUAL");
+  assert.deepEqual(source.cues.map(cue => cue.text), ["Primera frase manual", "Segunda frase manual"]);
+  assert.deepEqual(initial.clips, created.clips.filter(candidate => candidate.id !== clip.id));
+});
+
+test("crear otra capa manual conserva los subtítulos existentes y limita la frase al final disponible", () => {
+  const initial = baseDocument();
+  initial.canvas.durationSeconds = 12;
+  const first = createCompositionNativeOverlay({ document: initial, id: "manual-first", kind: "CAPTION", playheadSeconds: 0 });
+  const created = applyCompositionEditorPatches(initial, [{ type: "clip.add", clipId: first.clip.id, clip: first.clip, track: first.track }]);
+  const second = createCompositionNativeOverlay({ document: created, id: "manual-second", kind: "CAPTION", playheadSeconds: 11 });
+  if (second.clip.source.type !== "NATIVE_CAPTIONS") throw new Error("Se esperaba una capa de subtítulos");
+  assert.equal(second.clip.source.cues[0]!.endSeconds, 1);
+  const appended = applyCompositionEditorPatches(created, [{ type: "clip.add", clipId: second.clip.id, clip: second.clip }]);
+  assert.deepEqual(appended.clips.find(clip => clip.id === first.clip.id), first.clip);
+});
+
 test("Unicode text and captions use identical bidi-safe markup in preview and render", async () => {
   for (const kind of ["TEXT", "CAPTION"] as const) {
     const initial = baseDocument();

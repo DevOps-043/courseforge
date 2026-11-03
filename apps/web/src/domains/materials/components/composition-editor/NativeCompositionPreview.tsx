@@ -2323,9 +2323,12 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         ...(track ? { track } : {}),
         type: "clip.add",
       }], kind === "CAPTION"
-        ? "Añadió una capa de captions transparentes."
+        ? "Añadió una capa de subtítulos manuales."
         : "Añadió una capa de texto nativo.");
-      if (saved) selectClip(clip.hfId);
+      if (saved) {
+        selectClip(clip.hfId);
+        if (kind === "CAPTION") seek(clip.startSeconds);
+      }
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "No se pudo crear la capa de texto.");
     }

@@ -691,6 +691,10 @@
 }
 
 @container (max-width: 21rem) {
+  .captionLibraryTab svg {
+    display: none;
+  }
+
   .panelTabsWithNarrative {
     gap: 0.12rem;
     padding: 0.32rem;

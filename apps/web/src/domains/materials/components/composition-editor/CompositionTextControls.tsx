@@ -15,7 +15,7 @@ import type {
   CompositionCaptionCue,
   CompositionTextLayerStyle,
 } from "@/domains/production/composition-editor/composition-text-layer.types";
-import { compositionTextLayerStyleSchema } from "@/domains/production/composition-editor/composition-text-layer.types";
+import { compositionTextLayerStyleSchema, MANUAL_CAPTION_DEFAULT_CUE_SECONDS } from "@/domains/production/composition-editor/composition-text-layer.types";
 import { readCompositionApiResponse } from "@/domains/production/composition-editor/composition-editor-api.client";
 import {
   MAX_CAPTION_IMPORT_BYTES,
@@ -111,14 +111,14 @@ export function CompositionTextControls({
     const ordered = [...cues].sort((left, right) => left.startSeconds - right.startSeconds);
     const startSeconds = ordered.at(-1)?.endSeconds || 0;
     if (startSeconds >= clip.durationSeconds) {
-      setError("No queda tiempo libre al final de la capa para agregar otro caption.");
+      setError("No queda tiempo libre para otro subtítulo. Amplía la duración de la capa o acorta el final de la última frase.");
       return;
     }
     setCues([...ordered, {
-      endSeconds: Math.min(clip.durationSeconds, startSeconds + 2),
+      endSeconds: Math.min(clip.durationSeconds, startSeconds + MANUAL_CAPTION_DEFAULT_CUE_SECONDS),
       id: `cue-${crypto.randomUUID()}`,
       startSeconds,
-      text: "Nuevo caption",
+      text: "Nuevo subtítulo",
     }]);
     setError(null);
   };
@@ -189,12 +189,13 @@ export function CompositionTextControls({
     <div className="mb-2 flex items-center gap-2">
       {source.type === "NATIVE_TEXT" ? <Type size={14} /> : <Subtitles size={14} />}
       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-        {source.type === "NATIVE_TEXT" ? "Contenido de texto" : "Captions"}
+        {source.type === "NATIVE_TEXT" ? "Contenido de texto" : "Editar subtítulos"}
       </p>
     </div>
     {source.type === "NATIVE_TEXT"
       ? <textarea aria-label="Contenido de la capa de texto" dir="auto" style={{ unicodeBidi: "plaintext" }} value={text} maxLength={4_000} disabled={disabled} onChange={(event) => setText(event.target.value)} className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white" />
       : <div className="space-y-2">
+        <p className="text-xs text-slate-600 dark:text-gray-300">Escribe cada frase y ajusta su inicio y fin, en segundos relativos a esta capa. Usa «Agregar subtítulo» para continuar. No se genera texto automáticamente.</p>
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-slate-300 p-2 dark:border-white/15">
           <div><p className="text-[10px] font-semibold text-slate-600 dark:text-gray-300">Importar subtítulos</p><p className="text-[9px] text-slate-400">SRT o WebVTT · máximo 1 MiB · reemplaza los cues automáticamente al validar el archivo</p></div>
           <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 dark:border-white/15 dark:text-gray-300"><FileUp size={12} /> {isImportingCaptions ? "Importando…" : "Seleccionar archivo"}<input type="file" accept=".srt,.vtt,text/vtt,application/x-subrip" disabled={disabled || isImportingCaptions} className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void importCaptions(file); event.currentTarget.value = ""; }} /></label>
@@ -211,11 +212,11 @@ export function CompositionTextControls({
         {(areCaptionEffectsEnabled() || source.type === "NATIVE_CAPTIONS" && source.effects) && <CompositionCaptionEffectsControls effects={captionEffects} cues={cues} disabled={disabled || !areCaptionEffectsEnabled()} onEffectsChange={setCaptionEffects} onCuesChange={setCues} />}
         <p className="text-[10px] text-slate-500">Cambiar el texto retira los timestamps por palabra y las palabras clave de esa frase. Al acortar sus tiempos, se recortan las palabras fuera del intervalo.</p>
         {cues.map((cue, index) => <div key={cue.id} className="rounded-md border border-slate-200 p-2 dark:border-white/10">
-          <textarea aria-label={`Texto del caption ${index + 1}`} dir="auto" style={{ unicodeBidi: "plaintext" }} value={cue.text} disabled={disabled} onChange={(event) => setCues((current) => current.map((item) => item.id === cue.id ? invalidateChangedCaptionText(item, { ...item, text: event.target.value }) : item))} className="min-h-14 w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs dark:border-white/10 dark:bg-slate-950" />
+          <textarea aria-label={`Texto del subtítulo ${index + 1}`} dir="auto" style={{ unicodeBidi: "plaintext" }} value={cue.text} disabled={disabled} onChange={(event) => setCues((current) => current.map((item) => item.id === cue.id ? invalidateChangedCaptionText(item, { ...item, text: event.target.value }) : item))} className="min-h-14 w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs dark:border-white/10 dark:bg-slate-950" />
           <div className="mt-2 grid grid-cols-2 gap-2"><NumberField label="Inicio (s)" value={cue.startSeconds} disabled={disabled} onChange={(value) => setCues((current) => current.map((item) => item.id === cue.id ? { ...item, startSeconds: value } : item))} /><NumberField label="Fin (s)" value={cue.endSeconds} disabled={disabled} onChange={(value) => setCues((current) => current.map((item) => item.id === cue.id ? { ...item, endSeconds: value } : item))} /></div>
-          <div className="mt-1 flex items-center justify-between"><p className="text-[9px] text-slate-400">Caption {index + 1}</p><button type="button" aria-label={`Eliminar caption ${index + 1}`} disabled={disabled || cues.length === 1} onClick={() => setCues((current) => current.filter((item) => item.id !== cue.id))} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 dark:hover:bg-red-500/10"><Trash2 size={12} /></button></div>
+          <div className="mt-1 flex items-center justify-between"><p className="text-[9px] text-slate-400">Subtítulo {index + 1}</p><button type="button" aria-label={`Eliminar subtítulo ${index + 1}`} disabled={disabled || cues.length === 1} onClick={() => setCues((current) => current.filter((item) => item.id !== cue.id))} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 dark:hover:bg-red-500/10"><Trash2 size={12} /></button></div>
         </div>)}
-        <button type="button" disabled={disabled} onClick={appendCaptionCue} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-300"><Plus size={12} /> Agregar caption</button>
+        <button type="button" disabled={disabled} onClick={appendCaptionCue} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-300"><Plus size={12} /> Agregar subtítulo</button>
       </div>}
     <div className="mt-3 grid grid-cols-2 gap-2">
       <label className="text-[10px] font-medium text-slate-600 dark:text-gray-300">Fuente<select value={fontAssetId ? `asset:${fontAssetId}` : `builtin:${style.fontFamily}`} disabled={disabled} onChange={(event) => {
