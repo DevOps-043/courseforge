@@ -1,0 +1,19 @@
+
+> courseforge@1.0.0 test:composition-nested-groups:sql
+> node scripts/test-nested-composition-groups-sql.mjs
+
+✔ SQL acepta anidación explícita y rechaza modos desconocidos o sin versión (37.7249ms)
+✔ fixtures compartidos coinciden en TypeScript y PostgreSQL (20.2907ms)
+✔ profundidad SQL admite ocho niveles y rechaza nueve (10.3734ms)
+✔ SQL conserva los máximos de 250 grupos y 500 clips (161.0935ms)
+✔ guard protege append, wrapper y escritura directa; conflicto no altera documento (29.6835ms)
+✔ delta narrativo SQL coincide con copia jerárquica TypeScript y rechaza pérdidas (156.6575ms)
+✔ capacidad publicada después de guards y helpers privados sin permisos runtime (9.0501ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 445.3109

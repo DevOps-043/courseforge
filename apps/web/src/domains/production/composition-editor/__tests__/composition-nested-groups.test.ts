@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "../composition-document.types";
-import { buildCompositionGroupIndex, resolveCompositionGroupClipIds, resolveCompositionGroupSelection, validateCompositionGroupGraph } from "../composition-group-hierarchy";
+import { buildCompositionGroupIndex, resolveCompositionGroupClipIds, resolveCompositionGroupSelection, toggleCompositionGroupSelection, validateCompositionGroupGraph } from "../composition-group-hierarchy";
 import { applyCompositionEditorPatches, ensureCanvasDurationForClipPatches } from "../editor-patch.service";
 import { hashCompositionDocument } from "../composition-document-hash";
 import { buildCompositionDuplicateSelectionPlan } from "../composition-timeline-batch.service";
@@ -100,6 +100,19 @@ function tree() {
   const nested = applyCompositionEditorPatches(flat, [{ type: "group.create", groupId: "group-parent", clipIds: [], childGroupIds: ["group-a", "group-b"] }]);
   return { initial, flat, nested, ids };
 }
+
+test("seleccionar grupos completos conserva hermanos y respeta el nivel actual", () => {
+  const { flat, nested, ids } = tree();
+  const first = toggleCompositionGroupSelection(flat, new Set(), "group-a");
+  assert.deepEqual([...first], ids.slice(0, 2));
+  const both = toggleCompositionGroupSelection(flat, first, "group-b");
+  assert.deepEqual([...both], ids.slice(0, 4));
+  assert.deepEqual([...first], ids.slice(0, 2));
+  assert.deepEqual([...toggleCompositionGroupSelection(flat, both, "group-a")], ids.slice(2, 4));
+  assert.throws(() => toggleCompositionGroupSelection(nested, new Set(), "group-a"), /nivel actual/);
+  assert.deepEqual([...toggleCompositionGroupSelection(nested, new Set(), "group-a", "group-parent")], ids.slice(0, 2));
+  assert.throws(() => toggleCompositionGroupSelection(flat, first, "missing"), /nivel actual/);
+});
 
 test("agrupa hermanos conservando IDs, hojas, tiempos y documento fuente", () => {
   const { initial, flat, nested, ids } = tree();

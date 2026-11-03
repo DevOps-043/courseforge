@@ -271,6 +271,9 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
       || document.tracks.find((track) => track.id === clip.trackId)?.locked
       || (editingGroup && !editingGroup.clipIds.includes(clip.id))
     ) return;
+    // La selección aditiva se resuelve una sola vez, en click. Preparar un
+    // arrastre aquí sustituía la selección antes de aplicar Shift/Ctrl.
+    if (kind === "move" && !event.altKey && (multiSelectEnabled || event.ctrlKey || event.metaKey || event.shiftKey)) return;
     event.preventDefault();
     event.stopPropagation();
     setMotionEditError(null);
@@ -584,6 +587,7 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
       </div>
     </div>
     <div role="toolbar" aria-label="Controles de selección múltiple" className="flex flex-wrap items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-2 py-1.5 text-[10px] text-violet-950 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-100">
+      <button type="button" onClick={onInspectSelection} className="rounded border border-violet-300 px-2 py-1 font-bold">Grupos</button>
       <button type="button" aria-pressed={multiSelectEnabled} disabled={saving} onClick={() => setMultiSelectEnabled((current) => !current)} className={`inline-flex items-center gap-1 rounded border px-2 py-1 font-bold disabled:opacity-40 ${multiSelectEnabled ? "border-violet-600 bg-violet-600 text-white dark:border-violet-300 dark:bg-violet-300 dark:text-violet-950" : "border-violet-300 bg-white dark:border-violet-300/30 dark:bg-white/10"}`}><CheckSquare2 size={12} /> Selección múltiple</button>
       <span className="mr-auto font-semibold">También puedes usar Ctrl/Cmd o Shift + clic sobre los clips.</span>
       {selectedClipIds.size > 0 && <button type="button" disabled={saving} onClick={clearTimelineSelection} className="inline-flex items-center gap-1 rounded border border-violet-300 bg-white px-2 py-1 font-bold disabled:opacity-40 dark:border-violet-300/30 dark:bg-white/10"><X size={12} /> Limpiar</button>}

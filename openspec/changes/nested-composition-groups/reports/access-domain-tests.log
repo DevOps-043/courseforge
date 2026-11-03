@@ -1,0 +1,35 @@
+
+> courseforge@1.0.0 test:composition-nested-groups
+> tsc -p apps/web/tsconfig.hyperframes-test.json && node --test apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-nested-groups.test.js
+
+✔ anidar colapsa un rango con huecos y conserva el documento de reproducción (136.1368ms)
+✔ grupos ordinarios no colapsan y las anidaciones se proyectan por nivel (7.0671ms)
+✔ ocultar extremos de transiciones no invalida el layout editorial (8.1489ms)
+✔ el servidor exige capacidad para crear anidaciones, conservando lectura y desanidación (5.258ms)
+✔ fixtures compartidos con SQL conservan las mismas reglas de grafo (1.0848ms)
+✔ seleccionar grupos completos conserva hermanos y respeta el nivel actual (3.8886ms)
+✔ agrupa hermanos conservando IDs, hojas, tiempos y documento fuente (3.0637ms)
+✔ resuelve selección por nivel sin aplanar las unidades (3.0405ms)
+✔ grupo mixto y desagrupación conservan los subgrupos (3.741ms)
+✔ agrupar clips hermanos dentro de un grupo legacy migra explícitamente el contrato (2.8533ms)
+✔ mover padre aplica un delta único y rechaza pistas bloqueadas sin efectos parciales (4.6299ms)
+✔ la proyección amplía el canvas al agrupar y mover descendientes en un solo lote (4.4828ms)
+✔ eliminar normaliza contenedores de abajo hacia arriba sin perder hojas (3.3185ms)
+✔ copiar un padre reconstruye hijos antes que padre y rechaza selección parcial (4.2339ms)
+✔ lectura y restauración mantienen hashes legacy y marcador persistente (4.4988ms)
+✔ rechaza ciclos, padre duplicado, referencias inválidas y childGroupIds legacy (5.0431ms)
+✔ el límite acepta ocho niveles y rechaza nueve (0.7556ms)
+✔ el rechazo de membresías masivas duplicadas genera un diagnóstico acotado (1.4085ms)
+✔ política exige cliente compatible y bloquea creaciones incluso en restore (2.6752ms)
+✔ deshabilitar creaciones permite promover subgrupos al desagrupar (4.291ms)
+✔ agrupar sin mover conserva exactamente la compilación de preview y render (14.1983ms)
+✔ avatar y voz en subgrupos hermanos se mueven una vez con su padre (7.6295ms)
+✔ el grafo máximo permanece acotado y reutilizable por selección y UI (2.586ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17241.3037

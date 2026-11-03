@@ -2,9 +2,9 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CompositionTimeline } from "@/domains/materials/components/composition-editor/CompositionTimeline";
 import { CompositionSelectionPanel } from "@/domains/materials/components/composition-editor/CompositionSelectionPanel";
-import type { CompositionEditorDocument } from "../composition-document.types";
+import { compositionEditorDocumentSchema, type CompositionEditorDocument } from "../composition-document.types";
 import { applyCompositionEditorPatches } from "../editor-patch.service";
-import { resolveCompositionGroupSelection } from "../composition-group-hierarchy";
+import { resolveCompositionGroupSelection, toggleCompositionGroupSelection } from "../composition-group-hierarchy";
 
 const initial = (window as unknown as { nestedGroupsQaDocument: CompositionEditorDocument }).nestedGroupsQaDocument;
 const noop = () => undefined;
@@ -18,6 +18,7 @@ function Fixture() {
   const [enabled, setEnabled] = useState(false);
   return <main>
     <button id="enable" onClick={() => setEnabled(true)}>Habilitar capacidad de prueba</button>
+    <button id="reload" onClick={() => setDocument(compositionEditorDocumentSchema.parse(JSON.parse(JSON.stringify(document))))}>Recargar documento de prueba</button>
     <output id="state">{JSON.stringify({ selected: [...selectedClipIds].sort(), selectedGroupId, editingGroupId, groups: document.groups, starts: document.clips.map(clip => clip.startSeconds) })}</output>
     <CompositionTimeline document={document} assetLabels={{}} waveforms={{}} currentTime={0} editingGroupId={editingGroupId}
       onClearSelection={() => setSelectedHfId(null)} onDurationChange={noop} onAnimationSelect={noop} onAnimationTimingChange={noop}
@@ -26,6 +27,11 @@ function Fixture() {
       onTrackUpdate={noop} onTransitionSelect={noop} onTrim={noop} saving={false} selectedAnimationId={null} selectedClipIds={selectedClipIds}
       selectedGroupId={selectedGroupId} selectedHfId={selectedHfId} selectedTransitionId={null} />
     <CompositionSelectionPanel document={document} canPaste={false} canCreateNestedGroups={enabled} canNestTimeline={enabled} editingGroupId={editingGroupId}
+      onToggleGroupSelection={groupId => {
+        const next = toggleCompositionGroupSelection(document, selectedClipIds, groupId, editingGroupId);
+        setSelectedClipIds(next); setSelectedGroupId(null);
+        setSelectedHfId(document.clips.find(clip => next.has(clip.id))?.hfId ?? null);
+      }}
       onNestSelection={() => {
         const selection = resolveCompositionGroupSelection(document, selectedClipIds, editingGroupId);
         if (selection) setDocument(applyCompositionEditorPatches(document, [{ ...selection, type: "group.create", groupId: "nested-parent", label: "Secuencia", timelineMode: "NESTED" }]));

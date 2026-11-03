@@ -1,5 +1,23 @@
 ## ADDED Requirements
 
+### Requirement: Acceso explícito a la agrupación jerárquica
+El editor SHALL ofrecer acceso Grupos desde el timeline y permitir seleccionar unidades completas del nivel actual sin perder selección con el puntero.
+
+#### Scenario: Seleccionar grupos con ratón
+- **WHEN** el autor hace clic sobre un grupo y Shift/Ctrl/Cmd + clic sobre otro, o usa Selección múltiple
+- **THEN** ambos grupos permanecen seleccionados después de la secuencia pointerdown, pointerup y click
+- **AND** puede agruparlos desde el inicio del panel Selección.
+
+#### Scenario: Lista de grupos
+- **WHEN** el autor abre Grupos sin selección
+- **THEN** puede marcar grupos completos del mismo nivel mediante casillas
+- **AND** agruparlos conserva sus descendientes y tiempos.
+
+#### Scenario: Entorno deshabilitado
+- **WHEN** el servidor no anuncia capacidad de agrupación jerárquica
+- **THEN** se explica que falta habilitación y contrato SQL compatible, incluso sin selección
+- **AND** no se elude la política del servidor.
+
 ### Requirement: Jerarquía editorial válida
 El sistema SHALL permitir clips y grupos como miembros directos, con un único
 padre por miembro, referencias del mismo documento y ausencia de ciclos.

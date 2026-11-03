@@ -499,6 +499,13 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-11-03: acceso «Grupos» desde el timeline y selección explícita de grupos
+  completos en el panel. La selección aditiva se procesa una sola vez en click
+  para que pointerdown no sustituya las unidades elegidas con Shift/Ctrl/Cmd o
+  Selección múltiple. Las acciones aparecen al inicio y se explica la capacidad
+  de servidor deshabilitada. Contrato y habilitación:
+  [grupos jerárquicos](../../openspec/changes/nested-composition-groups/design.md).
+
 - 2026-11-03: pestaña «Subtítulos» con «Crear subtítulos manuales», independiente
   de voz o transcripción. La capa conserva `origin: MANUAL`, fondo transparente y
   una primera frase de hasta dos segundos para continuar escribiendo; se abre

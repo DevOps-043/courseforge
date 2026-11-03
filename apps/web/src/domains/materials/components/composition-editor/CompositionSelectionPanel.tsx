@@ -1,9 +1,9 @@
 "use client";
-import { resolveCompositionGroupSelection } from "@/domains/production/composition-editor/composition-group-hierarchy";
+import { CompositionGroupSelectionControls } from "./CompositionGroupSelectionControls";
 
 
-import { useMemo, useState, type ReactNode } from "react";
-import { AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter, ChevronsLeft, ClipboardCopy, ClipboardPaste, Combine, Copy, FolderOpen, Layers3, LogOut, MousePointer2, Trash2, Ungroup, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter, ChevronsLeft, ClipboardCopy, ClipboardPaste, Copy, FolderOpen, Layers3, LogOut, MousePointer2, Trash2, Ungroup, X } from "lucide-react";
 import type { CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
 import { formatCompositionTimecode } from "@/domains/production/composition-editor/composition-timecode";
 import type {
@@ -28,6 +28,7 @@ interface CompositionSelectionPanelProps {
   onClear: () => void;
   onCopy: () => void;
   onCreateGroup: () => void;
+  onToggleGroupSelection?: (groupId: string) => void;
   onNestSelection?: () => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -47,22 +48,25 @@ interface CompositionSelectionPanelProps {
   selectedGroupId: string | null;
 }
 
-export function CompositionSelectionPanel({ canCreateNestedGroups = false, canNestTimeline = false, canPaste, document, editingGroupId, frameStep, keyboardEditMode, onAlign, onClear, onCopy, onCreateGroup, onNestSelection, onDelete, onDistribute, onDuplicate, onEnterGroup, onExitGroup, onFrameStepChange, onInspectClip, onKeyboardEditModeChange, onPaste, onRippleDelete, onRoll, onSlide, onUngroup, saving, selectedClipIds, selectedGroupId }: CompositionSelectionPanelProps) {
+export function CompositionSelectionPanel({ canCreateNestedGroups = false, canNestTimeline = false, canPaste, document, editingGroupId, frameStep, keyboardEditMode, onAlign, onClear, onCopy, onCreateGroup, onToggleGroupSelection, onNestSelection, onDelete, onDistribute, onDuplicate, onEnterGroup, onExitGroup, onFrameStepChange, onInspectClip, onKeyboardEditModeChange, onPaste, onRippleDelete, onRoll, onSlide, onUngroup, saving, selectedClipIds, selectedGroupId }: CompositionSelectionPanelProps) {
   const [alignmentTarget, setAlignmentTarget] = useState<CompositionSelectionAlignmentTarget>("CANVAS");
   const selectedClips = document.clips.filter((clip) => selectedClipIds.has(clip.id));
   const selectedGroup = document.groups?.find((group) => group.id === selectedGroupId) || null;
   const editingGroup = document.groups?.find((group) => group.id === editingGroupId) || null;
-  const groupSelection = useMemo(() => resolveCompositionGroupSelection({ groups: document.groups }, selectedClipIds, editingGroupId), [document.groups, selectedClipIds, editingGroupId]);
-  const canCreateGroup = Boolean(groupSelection && (canCreateNestedGroups || (!editingGroupId && !groupSelection.childGroupIds.length)));
   const tracksById = new Map(document.tracks.map((track) => [track.id, track]));
   const hasLockedTrack = selectedClips.some((clip) => tracksById.get(clip.trackId)?.locked);
   const visualClipCount = selectedClips.filter((clip) => tracksById.get(clip.trackId)?.kind !== "AUDIO").length;
 
+  const groupingControls = <CompositionGroupSelectionControls document={document} editingGroupId={editingGroupId} selectedClipIds={selectedClipIds}
+    disabled={saving || hasLockedTrack} canCreateNestedGroups={canCreateNestedGroups} canNestTimeline={canNestTimeline}
+    onToggleGroup={onToggleGroupSelection} onCreateGroup={onCreateGroup} onNestSelection={onNestSelection} />;
+
   if (!selectedClips.length) {
-    return <div className="grid min-h-44 place-items-center rounded-lg border border-dashed border-slate-300 bg-slate-50/70 p-4 text-center text-xs leading-5 text-slate-500 dark:border-white/15 dark:bg-white/5 dark:text-gray-400"><span><MousePointer2 className="mx-auto mb-2" size={20} />Activa <strong>Selección múltiple</strong> en el timeline o usa Ctrl/Cmd o Shift + clic para elegir assets.</span></div>;
+    return <div className="space-y-3">{groupingControls}<div className="grid min-h-44 place-items-center rounded-lg border border-dashed border-slate-300 bg-slate-50/70 p-4 text-center text-xs leading-5 text-slate-500 dark:border-white/15 dark:bg-white/5 dark:text-gray-400"><span><MousePointer2 className="mx-auto mb-2" size={20} />Activa <strong>Selección múltiple</strong> en el timeline o usa Ctrl/Cmd o Shift + clic para elegir clips o grupos.</span></div></div>;
   }
 
   return <div className="space-y-3">
+    {groupingControls}
     <section className="rounded-lg border border-violet-200 bg-violet-50/70 p-3 text-violet-950 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-100">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -167,13 +171,9 @@ export function CompositionSelectionPanel({ canCreateNestedGroups = false, canNe
           <FrameEditButton disabled={saving || hasLockedTrack} label={`Roll salida +${frameStep}f`} onClick={() => onRoll("RIGHT", frameStep)} />
         </div>
       </section>
-      {<button type="button" disabled={saving || !canCreateGroup} onClick={onCreateGroup} className="inline-flex items-center justify-center gap-1.5 rounded-md border border-violet-300 bg-violet-50 px-2.5 py-2 text-xs font-bold text-violet-800 disabled:opacity-40 dark:border-violet-400/30 dark:bg-violet-400/10 dark:text-violet-100"><Combine size={13} /> Agrupar selección</button>}
-      <button type="button" disabled={saving || !canCreateGroup || !canNestTimeline || !onNestSelection} onClick={onNestSelection} title="Colapsar la selección en un solo clip editable" className="inline-flex items-center justify-center gap-1.5 rounded-md border border-violet-300 px-2.5 py-2 text-xs font-bold text-violet-800 disabled:opacity-40 dark:text-violet-100"><Layers3 size={13} /> Anidar selección</button>
-      <p className="text-[10px] leading-4 text-slate-500 dark:text-gray-400">Agrupar vincula los elementos visibles. Anidar los colapsa en un clip; abre su contenido con doble clic o Enter.{!canNestTimeline ? " La anidación no está habilitada en este entorno." : ""}</p>
       {selectedGroup && selectedGroup.id !== editingGroupId && <button type="button" disabled={saving} onClick={onEnterGroup} className="inline-flex items-center justify-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-2 text-xs font-bold text-slate-700 disabled:opacity-40 dark:border-white/15 dark:text-gray-200"><FolderOpen size={13} /> Editar contenido</button>}
       {selectedGroup && selectedGroup.id !== editingGroupId && <button type="button" disabled={saving} onClick={onUngroup} className="inline-flex items-center justify-center gap-1.5 rounded-md border border-red-300 px-2.5 py-2 text-xs font-bold text-red-700 disabled:opacity-40 dark:border-red-400/30 dark:text-red-200"><Ungroup size={13} /> {selectedGroup.timelineMode === "NESTED" ? "Desanidar" : "Desagrupar"}</button>}
       {editingGroup && <button type="button" disabled={saving} onClick={onExitGroup} className="inline-flex items-center justify-center gap-1.5 rounded-md border border-violet-300 bg-violet-50 px-2.5 py-2 text-xs font-bold text-violet-800 disabled:opacity-40 dark:border-violet-400/30 dark:bg-violet-400/10 dark:text-violet-100"><LogOut size={13} /> Salir del grupo</button>}
-      {!canCreateGroup && !selectedGroup && selectedClips.length > 1 && <p className="text-[10px] leading-4 text-slate-500 dark:text-gray-400">{groupSelection ? "La creación de agrupaciones anidadas no está habilitada en este entorno." : "Selecciona unidades completas del mismo nivel para agruparlas."}</p>}
     </div>
   </div>;
 }
