@@ -15,7 +15,7 @@ import { captureHtmlEditingPreviewSource, resolveHtmlEditingPreviewChannel, reso
 import {readHtmlPreviewCandidateQuery} from "@/domains/production/composition-editor/composition-html-editing-preview-candidate.contract";
 import {useCompositionHtmlCandidatePreview} from "./useCompositionHtmlCandidatePreview";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { AlertTriangle, GripHorizontal, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -427,6 +427,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const [playing, setPlaying] = useState(false);
   const { state: referenceGuides, setState: setReferenceGuides, storageError: referenceGuidesStorageError } = useCompositionReferenceGuides(draftId);
   const [referenceGuidesOpen, setReferenceGuidesOpen] = useState(false);
+  const referenceGuidesPanelId = useId();
   const [safeAreasVisible, setSafeAreasVisible] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
   const [audioMeterMessage, setAudioMeterMessage] = useState<CompositionAudioMeterMessage | null>(null);
@@ -3852,7 +3853,9 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           <CompositionPreviewToolbar
             monitorExpanded={monitorExpanded}
             onToggleMonitorExpanded={toggleMonitorExpanded}
-            onOpenReferenceGuides={() => setReferenceGuidesOpen(true)}
+            onToggleReferenceGuides={() => setReferenceGuidesOpen(open => !open)}
+            referenceGuidesOpen={referenceGuidesOpen}
+            referenceGuidesPanelId={referenceGuidesPanelId}
             canvas={payload.document.canvas}
             canRedo={commandHistoryState.canRedo}
             canUndo={commandHistoryState.canUndo}
@@ -3930,7 +3933,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
             undoLabel={commandHistoryState.undoLabel}
             visualCropEnabled={visualCropEnabled}
           />
-          {referenceGuidesOpen && <CompositionReferenceGuidesPanel state={referenceGuides} canvas={payload.document.canvas}
+          {referenceGuidesOpen && <CompositionReferenceGuidesPanel panelId={referenceGuidesPanelId} state={referenceGuides} canvas={payload.document.canvas}
             onChange={setReferenceGuides} onClose={() => setReferenceGuidesOpen(false)} storageError={referenceGuidesStorageError} />}
           {areCompositionAudioMetersEnabled() && <CompositionAudioMeters
             message={audioMeterMessage}

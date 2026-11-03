@@ -967,6 +967,11 @@
   padding: 0.38rem 0.48rem;
 }
 
+/* El acceso a guías conserva su nombre también en la barra compacta. */
+.previewToolbar .toolButton .referenceGuidesLabel {
+  display: inline;
+}
+
 .toolIconButton {
   width: 1.95rem;
   padding: 0;
@@ -2288,13 +2293,13 @@
   .compactViewMenu { display: grid; }
 }
 
-@container (max-width: 44rem) {
+@container (max-width: 48rem) {
   .previewToolbar .saveStatus,
   .secondaryToolbarControl { display: none; }
   .compactDocumentMenu { display: grid; }
 }
 
-@container (max-width: 30rem) {
+@container (max-width: 36rem) {
   .previewToolbar [aria-label="Edición principal"] > button:nth-child(n + 3) { display: none; }
   .compactEditMenu { display: grid; }
   .canvasFormat { width: 6rem; }
@@ -2517,6 +2522,9 @@
   display: none;
 }
 @container (max-width: 26rem) {
+  .canvasFormat { width: 3.75rem; }
+  .previewTools,
+  .previewUtilities { gap: 0.08rem; }
   .previewToolbar [aria-label="Edición principal"] {
     display: none;
   }

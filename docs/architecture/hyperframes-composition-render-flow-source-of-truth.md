@@ -499,6 +499,11 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-11-03: acceso directo «Guías» en el monitor, con texto visible también en
+  barra compacta, panel enlazado y cierre con Escape. El menú distingue «Rejilla
+  fija» de las líneas personalizables. No cambia preferencias, snap ni render.
+  Contrato: [guías personalizables](../../openspec/changes/custom-reference-guides/design.md).
+
 - 2026-11-03: el inspector visual coloca «Posición manual» antes de tiempo/audio,
   identifica «Horizontal (X)» y «Vertical (Y)» y retira los campos X/Y duplicados
   que no emitían preview inmediato. Se conserva el canal temporal y autoguardado
