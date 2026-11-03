@@ -6,6 +6,7 @@ import { DeliveryAgendaEditor } from "./DeliveryAgendaEditor";
 import { DeliveryContentEditor } from "./DeliveryContentEditor";
 import type { DeliveryConfig } from "../types/delivery.schemas";
 import { DELIVERY_LIMITS } from "../config/delivery.config";
+import { DeliveryLivePanel } from "./DeliveryLivePanel";
 const RUN_LABELS: Record<string, string> = { QUEUED: "En cola", RUNNING: "Generando", PAUSED: "En pausa", FAILED: "Requiere atención", COMPLETED: "Completado", CANCELLED: "Cancelado", AGENDA: "Agenda", PLAN: "Plan", MATERIALS: "Materiales" };
 
 function Configuration({ controller }: { controller: CourseDeliveryController }) {
@@ -64,6 +65,7 @@ export function DeliveryStagePanel({ controller, stage }: { controller: CourseDe
           {stage === 8 && snapshot.readiness.materialsReady && <a className="ml-3 underline" href={exportUrl(audience, true)}>Descargar HTML</a>}
         </div>)}</div>
         {stage === 8 && !snapshot.readiness.materialsReady && <p role="status">La entrega se habilita cuando los materiales requeridos estén aprobados y vigentes.</p>}
+        {stage === 8 && <DeliveryLivePanel controller={controller}/>}
       </>}
     </>}
   </section>;

@@ -96,3 +96,13 @@ La prueba aplica la migración sobre un esquema fixture mínimo. Comprueba sinta
 La [QA de documentos](../../scripts/qa-course-delivery-exports.mjs) requiere compilar la suite del dominio y disponer de Playwright/navegador. COURSE_DELIVERY_PLAYWRIGHT_PATH permite usar el runtime disponible y COURSE_DELIVERY_BROWSER_CHANNEL un navegador instalado. Solo usa datos sintéticos y guarda HTML, capturas e impresión A4 en .tmp.
 
 La evidencia y límites se conservan en el [reporte de implementación](../../openspec/changes/archive/2026-10-26-add-synchronous-hybrid-course-flow/reports/implementation.md).
+
+## Entrega a una sesión de Learning
+
+La etapa final permite a revisores consultar sus sesiones programadas de Learning en la organización activa y entregar láminas/prácticas aprobadas. La modalidad debe incluir sesiones; cambiar a Nexus conserva los materiales antiguos, pero no autoriza entregarlos. El destino vuelve a validar instructor, organización, curso, revisión y ausencia de respuestas.
+
+La conexión usa SOFLIA_API_URL HTTPS y SOFLIA_API_KEY exclusivamente en servidor; Learning verifica su COURSEFORGE_API_KEY mediante HMAC con propósito y fecha de cinco minutos. No se envían credenciales al navegador ni se aceptan URLs de destino del formulario. La entrega reemplaza la preparación anterior de la sesión elegida. Reintentar una respuesta perdida conserva el comando determinista del mismo payload.
+
+El contrato del aula admite 32 KiB, doce láminas con título de 160 y contenido de 500 caracteres y veinte prácticas con instrucciones de 2000 caracteres. El exceso se rechaza con diagnóstico, sin truncar. Guía, notas, respuestas y criterios del facilitador permanecen en Engine; no se convierten respuestas privadas en materiales públicos.
+
+Learning debe publicar primero su endpoint interno live-engine-preparation y la migración de participación/guardas 20261103120000. La autoría y descarga HTML existentes conservan su comportamiento. No se publicaron cursos ni se aplicaron migraciones remotas durante esta implementación. Para comprobar la copia canónica: definir LEARNING_CHECKOUT y ejecutar node scripts/sync-live-preparation-contract.mjs --check.

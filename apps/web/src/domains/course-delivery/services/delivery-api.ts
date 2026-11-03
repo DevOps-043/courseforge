@@ -11,8 +11,11 @@ import { startMaterialsGenerationAction } from "../../materials/actions/material
 import { nexusGenerationRequired } from "../lib/delivery-nexus-policy";
 import type { DeliveryOperation, DeliveryWorkspace } from "../types/delivery.schemas";
 import { deliveryEnabled } from "../config/delivery-enabled";
+import { deliverLivePreparation,livePreparationTargets } from "./delivery-live";
 
 export const deliveryCommandSchema = z.discriminatedUnion("action", [
+  z.object({action:z.literal("LIVE_TARGETS"),revision:z.number().int().nonnegative()}).strict(),
+  z.object({action:z.literal("DELIVER"),revision:z.number().int().nonnegative(),sourceSessionId:z.uuid(),target:z.object({organization_slug:z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100),session_id:z.uuid(),course_id:z.uuid()}).strict()}).strict(),
   z.object({ action: z.literal("SAVE"), revision: z.number().int().nonnegative(), kind: z.enum(["CONFIG", "AGENDA", "PLAN", "MATERIALS"]), sessionId: z.uuid().optional(), value: z.unknown() }).strict(),
   z.object({ action: z.literal("GENERATE"), revision: z.number().int().nonnegative(), operation: z.enum(["AGENDA", "PLAN", "MATERIALS"]) }).strict(),
   z.object({ action: z.literal("APPROVE"), revision: z.number().int().nonnegative(), operation: z.enum(["PLAN", "MATERIALS"]) }).strict(),
@@ -24,7 +27,7 @@ export async function deliverySnapshot(artifactId: string, includeSettings = tru
   const workspace = await readDeliveryWorkspace(admin, artifactId, tenant.organizationId);
   const canReview = ["ADMIN", "ARQUITECTO", "SUPERADMIN"].includes(tenant.platformRole || "");
   if (workspace.document.config.mode === "NEXUS") return {
-    enabled: deliveryEnabled(), workspace,
+    organizationSlug:tenant.organizationSlug, enabled: deliveryEnabled(), workspace,
     readiness: { planReady: true, materialsReady: true, nexus: true, sessions: false, assembly: true },
     lessons: [] as Awaited<ReturnType<typeof readDeliveryContext>>["lessons"],
     syllabusApproved: false, nexusPlanState: null, nexusMaterialsState: null,
@@ -41,7 +44,7 @@ export async function deliverySnapshot(artifactId: string, includeSettings = tru
       catch { return { operation, model: "Configuración requerida", inherited: false, source: "organization", version: "" }; }
     }),
   ) : [];
-  return { enabled: deliveryEnabled(), workspace, readiness: deliveryReadiness(workspace.document, context), lessons: context.lessons,
+  return { organizationSlug:tenant.organizationSlug, enabled: deliveryEnabled(), workspace, readiness: deliveryReadiness(workspace.document, context), lessons: context.lessons,
     syllabusApproved: context.syllabusApproved, nexusPlanState: context.nexusState || null, nexusMaterialsState: context.materials?.state || null, sourceCount: context.sources.length, run, settings,
     canReview };
 }
@@ -62,6 +65,8 @@ async function coordinateNexus(admin: Parameters<typeof readDeliveryContext>[0],
   if (!result.success) throw new Error("No se pudo iniciar la rama Nexus. Revisa su panel antes de reanudar.");
 }
 export async function executeDeliveryCommand(artifactId: string, input: z.infer<typeof deliveryCommandSchema>) {
+  if(input.action==="DELIVER")return deliverLivePreparation(artifactId,input.revision,input.sourceSessionId,input.target);
+  if(input.action==="LIVE_TARGETS")return livePreparationTargets(artifactId);
   const { tenant, admin } = await requireDeliveryAccess(artifactId, input.action === "APPROVE");
   if (!deliveryEnabled()) throw new Error("La autoría sincrónica no está habilitada.");
   const workspace = await readDeliveryWorkspace(admin, artifactId, tenant.organizationId);
