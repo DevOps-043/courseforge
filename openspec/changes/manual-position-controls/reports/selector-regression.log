@@ -1,0 +1,45 @@
+✔ un gesto conserva sólo su último valor y no repite pointerup más blur (6.815ms)
+✔ una respuesta tardía no descarta un gesto posterior ni sustituye su callback (0.8001ms)
+✔ un error conserva el borrador y exige recuperación explícita (0.9223ms)
+✔ una confirmación anterior no borra el error de admisión del último borrador (0.7586ms)
+✔ un campo inválido conserva su edición y no bloquea una corrección posterior (1.4117ms)
+✔ el coordinador vacía los controles en orden sin recursión al persistir (2.3033ms)
+✔ cerrar un panel no descarta su borrador fallido (1.6698ms)
+✔ los campos editoriales exclusivos conservan commits seriales entre sesiones (20.5128ms)
+✔ la cola puede cancelar envíos sin perder los comandos todavía no enviados (44.4411ms)
+✔ la copia local valida comandos, tamaño, vigencia y fallos de almacenamiento (7.4271ms)
+✔ confirmar una edición nueva no rebasa pendientes de otra base o sesión (3.9494ms)
+✔ se admiten controles concurrentes y la única cola serializa su persistencia (4.2387ms)
+✔ dos comandos se proyectan antes del PUT y la respuesta anterior conserva el último (35.9868ms)
+✔ una normalización confirmada por el servidor se conserva al recomponer el borrador (8.0266ms)
+✔ confirmar un grupo anidado conserva su movimiento local pendiente y permite recuperarlo (15.0118ms)
+✔ cancelar tras un error vuelve al confirmado y rechaza respuestas fuera de orden (2.556ms)
+✔ sin copia recuperable no se admite ni se proyecta una edición (2.6313ms)
+✔ cambiar sólo X elimina timing y opacidad redundantes y conserva el patch DOM (7.2255ms)
+✔ el redondeo del timecode del formulario no crea una edición de timing (1.2295ms)
+✔ volver a un valor todavía en vuelo admite otra intención y no reutiliza su respuesta (1.1643ms)
+✔ recuperar un comando confirma su interacción exacta y conserva un borrador posterior (0.495ms)
+✔ el preview parcial conserva el otro eje, tamaño, opacidad y rotación (6.5682ms)
+✔ una confirmación anterior actualiza la base y conserva el borrador posterior (0.6045ms)
+✔ confirmar la posición temporal elimina la superposición sin revertir al limpiar (0.4125ms)
+✔ una escena nueva conserva el borrador sobre el nodo nuevo y tolera eliminación (1.2631ms)
+✔ protocolo y receptor rechazan valores inválidos sin tocar el último preview válido (6.4934ms)
+✔ normalizes legacy iframe messages to the current protocol version (4.2547ms)
+✔ focus restoration accepts only bounded target identity and rejects arbitrary selectors (2.8894ms)
+✔ accepts a versioned ready event and rejects malformed document hashes (1.3584ms)
+✔ accepts only fixed, versioned load failures from the active iframe (3.3667ms)
+✔ builds a nonce-restricted error bridge without server messages (2.4168ms)
+✔ maps load failures to safe recovery actions (0.6524ms)
+✔ rejects unknown fields, unsafe bounds and unsupported protocol versions (4.9338ms)
+✔ adds a version to valid parent commands and rejects invalid ranges (1.5067ms)
+✔ identifies whether a preview selection came from the canvas or a parent command (3.375ms)
+✔ validates visual patches and their correlated acknowledgements (4.8099ms)
+✔ valida preview efímero y estados del runtime de color (4.2949ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3613.8837

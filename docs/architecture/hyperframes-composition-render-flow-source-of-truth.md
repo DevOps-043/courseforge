@@ -499,6 +499,11 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-11-03: el inspector visual coloca «Posición manual» antes de tiempo/audio,
+  identifica «Horizontal (X)» y «Vertical (Y)» y retira los campos X/Y duplicados
+  que no emitían preview inmediato. Se conserva el canal temporal y autoguardado
+  existente. Contrato: [posición manual](../../openspec/changes/manual-position-controls/design.md).
+
 - 2026-11-03: distinción entre agrupación visible y anidación editorial en un solo
   bloque de timeline mediante `groups[].timelineMode`. Migración y capacidad SQL
   específicas; no modifica el documento audiovisual compilado. Contrato:

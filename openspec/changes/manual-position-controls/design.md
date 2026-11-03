@@ -11,6 +11,15 @@
 ## Diseño
 Componente de presentación controlado sin persistencia propia. Cada eje muestra un rango desde menos la dimensión del lienzo hasta esa dimensión, extendido si la posición existente queda fuera. Los límites absolutos provienen de compositionLayoutSchema. Los campos mantienen texto incompleto para que el guardado existente muestre validación sin convertir vacío en cero. El boundary agrupa el gesto y confirma al soltar; el teclado mantiene su flujo actual.
 
+### Acceso al selector — 2026-11-03
+La rama de medios conservaba campos X/Y simples antes de tiempo/audio y colocaba
+los deslizadores compartidos al final. Estos campos duplicados no emitían preview
+temporal. Se retiran y se coloca una única sección «Posición manual» antes de
+capas, tiempo y audio, como en texto y subtítulos. Los ejes se identifican
+visualmente como «Horizontal (X)» y «Vertical (Y)». Se preservan nombres accesibles,
+validación, rangos y el guardado existente. La QA debe montar también el inspector
+completo: el control aislado no acredita su ubicación en el producto.
+
 ## Reversión
 Retirar el componente y sus dos integraciones. Los documentos existentes siguen siendo compatibles porque no cambia su esquema.
 

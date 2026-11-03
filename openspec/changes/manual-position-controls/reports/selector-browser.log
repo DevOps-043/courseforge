@@ -1,0 +1,6 @@
+Bundle del componente listo.
+Iniciando navegador de QA.
+Navegador listo.
+PASS: movimiento X/Y en iframe antes del guardado, limpieza por selección/bloqueo, negativos, sincronización, guardado al soltar, precisión decimal, entradas inválidas y formato.
+PASS: inspector completo VIDEO/IMAGE/DECK_SLIDE/TEXT/CAPTION con selector horizontal único antes de tiempo/audio, preview antes del guardado, commit al soltar y bloqueo de pista.
+Cerrando QA.
