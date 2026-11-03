@@ -1,6 +1,6 @@
 # Plan de activación del esquema de Engine
 
-Fecha: 2026-11-03. Estado: aprobado por el usuario, verificado localmente y pendiente de acceso a Supabase. Proyecto autorizado: Engine emsjctbdevufloxntjll. Aprobación recibida: «Aprobar migración y verificaciones en Engine». No solicitar de nuevo esta aprobación al recuperar la conexión.
+Fecha: 2026-11-03. Estado: ejecutado manualmente por el usuario; postflight compartido verificado. Proyecto autorizado: Engine emsjctbdevufloxntjll. Aprobación recibida: «Aprobar migración y verificaciones en Engine». Se conserva el plan como registro histórico; consultar [ejecución manual y límites](engine-manual-execution.md). El historial remoto sigue pendiente de comprobar.
 
 ## Alcance concreto
 
@@ -21,7 +21,7 @@ Las pruebas SQL locales cubren CAS, aislamiento, reservas/claims, cancelación, 
 
 ## Estado del acceso
 
-Al continuar después de la aprobación, las herramientas Supabase ya no estaban disponibles. La búsqueda del proveedor confirmó que requiere instalación/conexión en esta sesión; se solicitó su conexión. No se ejecutó SQL remoto de Engine ni se obtuvo un respaldo remoto nuevo. El permiso del usuario persiste, pero no acredita conectividad, preflight ni ejecución. Al recuperar el acceso, repetir la secuencia desde el primer paso y conservar los resultados reales.
+Al continuar después de la aprobación, las herramientas Supabase ya no estaban disponibles. La búsqueda del proveedor confirmó que requería instalación/conexión en esta sesión. El usuario eligió ejecutar el SQL manualmente y aportó capturas de Engine main y el JSON completo posterior, conservado en el reporte de ejecución. Al recuperar acceso, consultar estado e historial antes de cualquier operación; no repetir la migración ya ejecutada. El agente no obtuvo un respaldo remoto previo ni ejecutó SQL adicional.
 
 ## Recuperación
 
