@@ -22,7 +22,7 @@ La guía y el cuaderno son HTML imprimible, no archivos Word/PPTX ni un servicio
 
 Las tablas nuevas son course_delivery_workspaces, course_delivery_versions y course_delivery_runs. No se guardan sesiones como lecciones Nexus ficticias. El borrador es un agregado JSON validado y acotado por curso; las unidades del run conservan progreso por sesión. Un trigger conserva las revisiones anteriores antes de modificar el agregado.
 
-Las tablas privadas y RPCs solo permiten acceso del backend. Las capacidades nuevas de modelos/prompts tienen políticas restrictivas que impiden editarlas directamente desde navegador mediante políticas históricas de settings.
+Las tablas privadas y RPCs solo permiten acceso del backend. Las siete funciones SQL mantienen los privilegios del llamador mediante SECURITY INVOKER y search_path vacío. Las capacidades nuevas de modelos/prompts tienen políticas restrictivas que impiden editarlas directamente desde navegador mediante políticas históricas de settings, incluida la promoción de una fila legacy a una capacidad síncrona.
 
 ## Límites actuales
 
@@ -52,7 +52,7 @@ La ejecución fija texto, versión, origen, modelo, parámetros, hash y contexto
 
 ## Activación controlada
 
-1. Revisar y aplicar la migración en la base de desarrollo mediante el proceso autorizado. El guard de versiones no aplica SQL; no ejecutar SQL remoto automáticamente.
+1. Revisar y aplicar la migración mediante el proceso autorizado y comprobar catálogo/permisos antes y después. El [plan de activación de Engine](../../openspec/changes/complete-live-preparation-delivery/reports/engine-activation-plan.md) registra la aprobación de emsjctbdevufloxntjll y el acceso pendiente a Supabase. No se ha ejecutado esa migración remota. El guard de versiones no aplica SQL.
 2. Confirmar modelos de fases heredadas o configurar capacidades propias.
 3. Configurar SYNCHRONOUS_COURSES_ENABLED=true en el entorno autorizado.
 4. La habilitación es global para todas las organizaciones. SYNCHRONOUS_COURSES_ORGANIZATIONS ya no se utiliza y puede eliminarse del entorno; los permisos de curso siguen siendo obligatorios.
@@ -91,8 +91,18 @@ npm install --ignore-scripts --no-save --package-lock=false --prefix .tmp/sql-ve
 node --test scripts/test-course-delivery-sql.mjs
 ~~~
 
-La prueba aplica la migración sobre un esquema fixture mínimo. Comprueba sintaxis ejecutable, revisiones, claim, cancelación, privilegios y políticas; no sustituye una migración sobre el esquema completo desplegado ni sesiones Auth Bridge reales.
+La prueba aplica la migración sobre un esquema fixture mínimo y ejecuta los mismos preflight/postflight del plan. Comprueba sintaxis ejecutable, revisiones, claim, cancelación, privilegios y políticas. Además ejecuta guardar, reservar, reclamar, confirmar, aprobar y configurar modelos/prompts como service_role sin superusuario ni ownership; el trigger conserva historial con sus privilegios de llamador. Comprueba que el navegador no promueve settings legacy a capacidades síncronas. No sustituye una migración sobre el esquema completo desplegado ni sesiones Auth Bridge reales.
 
 La [QA de documentos](../../scripts/qa-course-delivery-exports.mjs) requiere compilar la suite del dominio y disponer de Playwright/navegador. COURSE_DELIVERY_PLAYWRIGHT_PATH permite usar el runtime disponible y COURSE_DELIVERY_BROWSER_CHANNEL un navegador instalado. Solo usa datos sintéticos y guarda HTML, capturas e impresión A4 en .tmp.
 
 La evidencia y límites se conservan en el [reporte de implementación](../../openspec/changes/archive/2026-10-26-add-synchronous-hybrid-course-flow/reports/implementation.md).
+
+## Entrega a una sesión de Learning
+
+La etapa final permite a revisores consultar sus sesiones programadas de Learning en la organización activa y entregar láminas/prácticas aprobadas. La modalidad debe incluir sesiones; cambiar a Nexus conserva los materiales antiguos, pero no autoriza entregarlos. El destino vuelve a validar instructor, organización, curso, revisión y ausencia de respuestas.
+
+La conexión usa SOFLIA_API_URL HTTPS y SOFLIA_API_KEY exclusivamente en servidor; Learning verifica su COURSEFORGE_API_KEY mediante HMAC con propósito y fecha de cinco minutos. No se envían credenciales al navegador ni se aceptan URLs de destino del formulario. La entrega reemplaza la preparación anterior de la sesión elegida. Reintentar una respuesta perdida conserva el comando determinista del mismo payload.
+
+El contrato del aula admite 32 KiB, doce láminas con título de 160 y contenido de 500 caracteres y veinte prácticas con instrucciones de 2000 caracteres. El exceso se rechaza con diagnóstico, sin truncar. Guía, notas, respuestas y criterios del facilitador permanecen en Engine; no se convierten respuestas privadas en materiales públicos.
+
+Learning debe publicar primero su endpoint interno live-engine-preparation. La migración de participación/guardas 20261103120000 ya se aplicó con aprobación a Learning principal, con versión remota 20261103184120; la de Video tiene versión 20261103184110. El reporte canónico está en docs/reports/live-activation-2026-11-03/ de Learning. La migración de autoría de Engine sigue pendiente de acceso, con autorización recibida. La autoría y descarga HTML existentes conservan su comportamiento. No se publicaron cursos. Para comprobar la copia canónica: definir LEARNING_CHECKOUT y ejecutar node scripts/sync-live-preparation-contract.mjs --check.
