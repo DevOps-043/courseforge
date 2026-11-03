@@ -499,6 +499,11 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-11-03: distinción entre agrupación visible y anidación editorial en un solo
+  bloque de timeline mediante `groups[].timelineMode`. Migración y capacidad SQL
+  específicas; no modifica el documento audiovisual compilado. Contrato:
+  [anidación del timeline](../../openspec/changes/timeline-nesting/design.md).
+
 - 2026-10-31: crossfades entre clips de audio con handles verificados, ventanas y
   offsets extendidos, sin animación visual. Zoom focal de onda y doble clic para
   situar el cursor antes de dividir audio. [Evidencia](../../openspec/changes/audio-clip-editing/reports/validation.md).
@@ -642,6 +647,32 @@ una reversión debe conservar lectores compatibles. Evidencia y límites:
 [capas dinámicas](../../openspec/changes/dynamic-composition-layers/proposal.md).
 
 ## Agrupaciones editoriales anidadas
+
+### Agrupar y anidar en la línea del tiempo
+
+Agrupar mantiene los clips visibles y coordina su selección y movimiento.
+Anidar selección crea un grupo con `timelineMode: "NESTED"` y `groupingVersion: 2`;
+la ausencia del modo conserva el comportamiento y hash históricos. El timeline
+oculta las hojas y muestra un único bloque en una fila editorial propia, desde
+el inicio mínimo al final máximo de la selección, incluyendo huecos internos.
+Solo incorpora unidades completas seleccionadas del mismo nivel, sin capturar
+otros clips que crucen ese rango. Doble clic o Enter abre el contenido; Escape
+o la ruta vuelve al padre. Desanidar elimina el contenedor y conserva sus hijos.
+El rango se mueve como una unidad; para recortar se abre primero el contenido.
+
+El modo se conserva al duplicar o extraer fragmentos narrativos. No crea un medio
+intermedio ni efectos o transformaciones heredados: preview y render continúan
+consumiendo las hojas originales con sus tiempos, pistas, audio y motion.
+La proyección vive en `composition-timeline-nesting.service.ts` y solo se usa en
+el editor, nunca como documento de entrada del compilador audiovisual.
+
+Además de los requisitos jerárquicos siguientes, crear nuevos contenedores exige
+`20261103010000_timeline_nesting.sql`. El RPC anuncia `timelineNesting: true` y
+GET/PUT exponen `canNestTimeline`; la UI y el servidor fallan cerrados si falta
+esa capacidad. Desactivar creación conserva lectura, edición y desanidación.
+La migración se entrega localmente y requiere aplicación autorizada en destino;
+no se debe revertir a lectores incompatibles mientras existan estos documentos.
+Pruebas y límites: [cambio OpenSpec](../../openspec/changes/timeline-nesting/proposal.md).
 
 El contrato incorpora `groupingVersion: 2` y referencias `childGroupIds` dentro
 de `groups`. `clipIds` conserva exclusivamente miembros clips directos. Los

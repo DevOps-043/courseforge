@@ -1,0 +1,34 @@
+
+> courseforge@1.0.0 test:composition-nested-groups
+> tsc -p apps/web/tsconfig.hyperframes-test.json && node --test apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-nested-groups.test.js
+
+✔ anidar colapsa un rango con huecos y conserva el documento de reproducción (90.1096ms)
+✔ grupos ordinarios no colapsan y las anidaciones se proyectan por nivel (9.8282ms)
+✔ ocultar extremos de transiciones no invalida el layout editorial (8.4338ms)
+✔ el servidor exige capacidad para crear anidaciones, conservando lectura y desanidación (6.3894ms)
+✔ fixtures compartidos con SQL conservan las mismas reglas de grafo (0.5623ms)
+✔ agrupa hermanos conservando IDs, hojas, tiempos y documento fuente (5.01ms)
+✔ resuelve selección por nivel sin aplanar las unidades (6.8635ms)
+✔ grupo mixto y desagrupación conservan los subgrupos (7.2809ms)
+✔ agrupar clips hermanos dentro de un grupo legacy migra explícitamente el contrato (5.0544ms)
+✔ mover padre aplica un delta único y rechaza pistas bloqueadas sin efectos parciales (7.6402ms)
+✔ la proyección amplía el canvas al agrupar y mover descendientes en un solo lote (5.8987ms)
+✔ eliminar normaliza contenedores de abajo hacia arriba sin perder hojas (4.5202ms)
+✔ copiar un padre reconstruye hijos antes que padre y rechaza selección parcial (5.575ms)
+✔ lectura y restauración mantienen hashes legacy y marcador persistente (6.817ms)
+✔ rechaza ciclos, padre duplicado, referencias inválidas y childGroupIds legacy (7.8304ms)
+✔ el límite acepta ocho niveles y rechaza nueve (0.8989ms)
+✔ el rechazo de membresías masivas duplicadas genera un diagnóstico acotado (2.0495ms)
+✔ política exige cliente compatible y bloquea creaciones incluso en restore (3.7299ms)
+✔ deshabilitar creaciones permite promover subgrupos al desagrupar (6.5592ms)
+✔ agrupar sin mover conserva exactamente la compilación de preview y render (22.7105ms)
+✔ avatar y voz en subgrupos hermanos se mueven una vez con su padre (11.2952ms)
+✔ el grafo máximo permanece acotado y reutilizable por selección y UI (3.7798ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2999.2842

@@ -34,6 +34,7 @@ async function main() {
     await evaluate(client, "document.querySelector('[data-clip-id=\"clip-2\"]').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}))");
     await waitFor(client, `${state}.selected.length === 4`);
     assert.equal(await evaluate(client, `${groupButton}.disabled`), true);
+    assert.equal(await evaluate(client, "[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Anidar selección').disabled"), true);
     await evaluate(client, "document.querySelector('#enable').click()");
     await waitFor(client, `${groupButton}.disabled === false`);
     await evaluate(client, `${groupButton}.click()`);
@@ -51,8 +52,37 @@ async function main() {
     await waitFor(client, `${state}.selectedGroupId === 'group-parent'`);
     await evaluate(client, "[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Desagrupar').click()");
     await waitFor(client, `${state}.groups.length === 2`);
+    // Agrupar mantiene cuatro botones; anidar los reemplaza por un solo bloque.
+    assert.equal(await evaluate(client, "document.querySelectorAll('button[data-clip-id]').length"), 4);
+    await evaluate(client, "document.querySelector('[data-clip-id=\"clip-0\"]').click()");
+    await evaluate(client, "document.querySelector('[data-clip-id=\"clip-2\"]').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}))");
+    await waitFor(client, `${state}.selected.length === 4`);
+    await evaluate(client, "[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Anidar selección').click()");
+    await waitFor(client, "document.querySelectorAll('button[data-nested-group-id]').length === 1 && document.querySelectorAll('button[data-clip-id]').length === 1");
+    const originalStarts = await evaluate<number[]>(client, `${state}.starts`);
+    await evaluate(client, "document.querySelector('button[data-nested-group-id]').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))");
+    await waitFor(client, `${state}.starts[0] > ${originalStarts[0]}`);
+    const movedStarts = await evaluate<number[]>(client, `${state}.starts`);
+    movedStarts.forEach((start, index) => assert.ok(Math.abs(start - originalStarts[index] - (movedStarts[0] - originalStarts[0])) < 0.00001));
+    const point = await evaluate<{ x: number; y: number }>(client, "(() => { const box = document.querySelector('button[data-nested-group-id]').getBoundingClientRect(); return {x:box.left + box.width / 2,y:box.top + box.height / 2}; })()");
+    await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
+    await client.send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
+    await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x + 50, y: point.y, button: "left", buttons: 1 });
+    await compositionQaDelay(50);
+    await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x + 50, y: point.y, button: "left", clickCount: 1 });
+    await waitFor(client, `${state}.starts[0] > ${movedStarts[0]}`);
+    const draggedStarts = await evaluate<number[]>(client, `${state}.starts`);
+    draggedStarts.forEach((start, index) => assert.ok(Math.abs(start - movedStarts[index] - (draggedStarts[0] - movedStarts[0])) < 0.00001));
+    await writeFile(resolve(directory, "nested-screenshot.png"), await captureCompositionQaScreenshot(client));
+    await evaluate(client, "document.querySelector('button[data-nested-group-id]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))");
+    await waitFor(client, `${state}.editingGroupId === 'nested-parent' && document.querySelectorAll('button[data-clip-id]').length === 4`);
+    await evaluate(client, "document.querySelector('[data-composition-timeline]').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await waitFor(client, `${state}.editingGroupId === null && document.querySelectorAll('button[data-clip-id]').length === 1`);
+    await evaluate(client, "document.querySelector('button[data-nested-group-id]').click()");
+    await evaluate(client, "[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Desanidar').click()");
+    await waitFor(client, `${state}.groups.length === 2 && document.querySelectorAll('button[data-clip-id]').length === 4`);
     await writeFile(resolve(directory, "screenshot.png"), await captureCompositionQaScreenshot(client));
-    process.stdout.write("QA Chromium: selección aditiva, capacidad, agrupación, navegación de dos niveles, Escape y desagrupación correctas.\n");
+    process.stdout.write("QA Chromium: agrupación visible, anidación en un bloque, movimiento conjunto, apertura con Enter, Escape y desanidación correctas.\n");
   } finally { await browser.close(); }
 }
 void main().catch(error => { process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`); process.exitCode = 1; });

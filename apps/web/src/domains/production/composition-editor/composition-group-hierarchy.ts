@@ -6,6 +6,7 @@ export const COMPOSITION_GROUP_MAX_DIRECT_MEMBERS = 500;
 export const COMPOSITION_GROUPING_VERSION = 2;
 
 export interface CompositionGroupNode {
+  timelineMode?: "NESTED";
   id: string;
   clipIds: string[];
   childGroupIds?: string[];

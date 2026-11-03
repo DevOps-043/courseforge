@@ -18,14 +18,18 @@ function Fixture() {
   const [enabled, setEnabled] = useState(false);
   return <main>
     <button id="enable" onClick={() => setEnabled(true)}>Habilitar capacidad de prueba</button>
-    <output id="state">{JSON.stringify({ selected: [...selectedClipIds].sort(), selectedGroupId, editingGroupId, groups: document.groups })}</output>
+    <output id="state">{JSON.stringify({ selected: [...selectedClipIds].sort(), selectedGroupId, editingGroupId, groups: document.groups, starts: document.clips.map(clip => clip.startSeconds) })}</output>
     <CompositionTimeline document={document} assetLabels={{}} waveforms={{}} currentTime={0} editingGroupId={editingGroupId}
       onClearSelection={() => setSelectedHfId(null)} onDurationChange={noop} onAnimationSelect={noop} onAnimationTimingChange={noop}
-      onEditingGroupChange={setEditingGroupId} onInspectSelection={noop} onMove={noop} onMoveGroup={noop} onRoll={noop} onSeek={noop}
+      onEditingGroupChange={setEditingGroupId} onInspectSelection={noop} onMove={noop} onMoveGroup={(groupId, startSeconds) => setDocument(applyCompositionEditorPatches(document, [{ type: "group.move", groupId, startSeconds }]))} onRoll={noop} onSeek={noop}
       onSelect={setSelectedHfId} onSlide={noop} onSelectedClipIdsChange={setSelectedClipIds} onSelectedGroupChange={setSelectedGroupId}
       onTrackUpdate={noop} onTransitionSelect={noop} onTrim={noop} saving={false} selectedAnimationId={null} selectedClipIds={selectedClipIds}
       selectedGroupId={selectedGroupId} selectedHfId={selectedHfId} selectedTransitionId={null} />
-    <CompositionSelectionPanel document={document} canPaste={false} canCreateNestedGroups={enabled} editingGroupId={editingGroupId}
+    <CompositionSelectionPanel document={document} canPaste={false} canCreateNestedGroups={enabled} canNestTimeline={enabled} editingGroupId={editingGroupId}
+      onNestSelection={() => {
+        const selection = resolveCompositionGroupSelection(document, selectedClipIds, editingGroupId);
+        if (selection) setDocument(applyCompositionEditorPatches(document, [{ ...selection, type: "group.create", groupId: "nested-parent", label: "Secuencia", timelineMode: "NESTED" }]));
+      }}
       frameStep={1} keyboardEditMode="SLIDE" onAlign={noop} onClear={noop} onCopy={noop} onCreateGroup={() => {
         const selection = resolveCompositionGroupSelection(document, selectedClipIds, editingGroupId);
         if (selection) setDocument(applyCompositionEditorPatches(document, [{ ...selection, type: "group.create", groupId: "group-parent", label: "Principal" }]));

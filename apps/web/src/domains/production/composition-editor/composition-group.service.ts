@@ -61,7 +61,7 @@ export function wrapCompositionGroup(document: {
   clips: Array<{ id: string }>;
   groups?: CompositionGroup[];
   groupingVersion?: 2;
-}, operation: { groupId: string; clipIds: string[]; childGroupIds?: string[]; label?: string }) {
+}, operation: { groupId: string; clipIds: string[]; childGroupIds?: string[]; label?: string; timelineMode?: "NESTED" }) {
   const groups = document.groups ?? [];
   const index = buildCompositionGroupIndex(groups);
   const children = operation.childGroupIds ?? [];
@@ -74,7 +74,7 @@ export function wrapCompositionGroup(document: {
   if (parents.size !== 1) throw new Error("Selecciona miembros del mismo nivel y padre.");
   const parentId = [...parents][0];
   if (parentId && operation.childGroupIds === undefined && document.groupingVersion !== 2) throw new Error("Cada clip solo puede pertenecer a un grupo.");
-  if (children.length || parentId) document.groupingVersion = 2;
+  if (children.length || parentId || operation.timelineMode) document.groupingVersion = 2;
   if (parentId) {
     const parent = groups.find(group => group.id === parentId)!;
     parent.clipIds = parent.clipIds.filter(id => !operation.clipIds.includes(id));
@@ -82,6 +82,7 @@ export function wrapCompositionGroup(document: {
   }
   groups.sort((left, right) => left.order - right.order).forEach((group, order) => { group.order = order; });
   groups.push({ clipIds: [...operation.clipIds], id: operation.groupId, ...(children.length ? { childGroupIds: [...children] } : {}),
+    ...(operation.timelineMode ? { timelineMode: operation.timelineMode } : {}),
     ...(operation.label ? { label: operation.label } : {}), order: groups.length });
   document.groups = normalizeCompositionGroups(groups, document.clips);
   const issues = validateCompositionGroupGraph(document.groups ?? [], available, document.groupingVersion);

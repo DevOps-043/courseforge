@@ -9,6 +9,72 @@ import { buildCompositionDuplicateSelectionPlan } from "../composition-timeline-
 import { assertCompositionGroupingWrite, CompositionGroupingPolicyError } from "../composition-group-policy";
 import graphFixtures from "./fixtures/composition-group-graphs.json";
 import { compileCompositionPreview, COMPOSITION_COMPILATION_TARGETS } from "../composition-preview-compiler.service";
+import { resolveCompositionTimelineNesting } from "../composition-timeline-nesting.service";
+
+test("anidar colapsa un rango con huecos y conserva el documento de reproducción", async () => {
+  const initial = fixture();
+  const ids = initial.clips.slice(0, 2).map(clip => clip.id);
+  const nested = applyCompositionEditorPatches(initial, [{ type: "group.create", groupId: "sequence-a", clipIds: ids, timelineMode: "NESTED" }]);
+  const reloaded = compositionEditorDocumentSchema.parse(JSON.parse(JSON.stringify(nested)));
+  assert.equal(reloaded.groups?.[0]?.timelineMode, "NESTED");
+  assert.deepEqual(reloaded.clips, initial.clips);
+  assert.equal(initial.groups, undefined);
+  const root = resolveCompositionTimelineNesting(reloaded, null);
+  assert.equal(root.containers.length, 1);
+  assert.deepEqual(root.containers[0]!.bounds, { startSeconds: 0, endSeconds: 3, durationSeconds: 3 });
+  assert.deepEqual(root.clips.map(clip => clip.id), initial.clips.slice(2).map(clip => clip.id));
+  const opened = resolveCompositionTimelineNesting(reloaded, "sequence-a");
+  assert.equal(opened.containers.length, 0);
+  assert.deepEqual(opened.clips.map(clip => clip.id), ids);
+  const duplicate = buildCompositionDuplicateSelectionPlan({ document: reloaded, clipIds: ids, destinationStartSeconds: 10 });
+  const copied = applyCompositionEditorPatches(reloaded, duplicate.operations);
+  assert.equal(copied.groups?.filter(group => group.timelineMode === "NESTED").length, 2);
+  assert.equal(resolveCompositionTimelineNesting(copied, null).containers.length, 2);
+  for (const target of [COMPOSITION_COMPILATION_TARGETS.INTERACTIVE_PREVIEW, COMPOSITION_COMPILATION_TARGETS.HYPERFRAMES_RENDER]) {
+    assert.equal(await compileCompositionPreview({ document: reloaded, assetUrls: new Map(), target }),
+      await compileCompositionPreview({ document: initial, assetUrls: new Map(), target }));
+  }
+  const restored = applyCompositionEditorPatches(reloaded, [{ type: "group.ungroup", groupId: "sequence-a" }]);
+  assert.deepEqual(restored.clips, initial.clips);
+  assert.equal(resolveCompositionTimelineNesting(restored, null).containers.length, 0);
+});
+
+test("grupos ordinarios no colapsan y las anidaciones se proyectan por nivel", () => {
+  const { flat, ids } = tree();
+  assert.equal(resolveCompositionTimelineNesting(flat, null).clips.length, flat.clips.length);
+  const inner = applyCompositionEditorPatches(flat, [{ type: "group.create", groupId: "inner", clipIds: [], childGroupIds: ["group-a", "group-b"], timelineMode: "NESTED" }]);
+  const outer = applyCompositionEditorPatches(inner, [{ type: "group.create", groupId: "outer", clipIds: ids.slice(4), childGroupIds: ["inner"], timelineMode: "NESTED" }]);
+  assert.deepEqual(resolveCompositionTimelineNesting(outer, null).containers.map(item => item.group.id), ["outer"]);
+  assert.deepEqual(resolveCompositionTimelineNesting(outer, "outer").containers.map(item => item.group.id), ["inner"]);
+  assert.equal(resolveCompositionTimelineNesting(outer, "inner").clips.length, 4);
+});
+
+test("ocultar extremos de transiciones no invalida el layout editorial", () => {
+  const initial = fixture();
+  initial.clips[0]!.durationSeconds = 2;
+  const transitioned = applyCompositionEditorPatches(initial, [{ type: "transition.add", transition: {
+    id: "transition-nested", type: "CROSS_DISSOLVE", alignment: "CENTER_AT_CUT", audioMode: "CUT",
+    durationSeconds: 0.16, easing: "sine.inOut", fromClipId: initial.clips[0]!.id,
+    toClipId: initial.clips[1]!.id, origin: "USER",
+  } }]);
+  const nested = applyCompositionEditorPatches(transitioned, [{ type: "group.create", groupId: "sequence-transition",
+    clipIds: [initial.clips[0]!.id, initial.clips[2]!.id], timelineMode: "NESTED" }]);
+  const root = resolveCompositionTimelineNesting(nested, null);
+  assert.equal(root.containers.length, 1);
+  assert.ok(root.groups.some(group => group.clips.some(clip => clip.id === initial.clips[1]!.id)));
+  assert.doesNotThrow(() => resolveCompositionTimelineNesting(nested, "sequence-transition"));
+});
+
+test("el servidor exige capacidad para crear anidaciones, conservando lectura y desanidación", () => {
+  const initial = fixture();
+  const nested = applyCompositionEditorPatches(initial, [{ type: "group.create", groupId: "sequence-a", clipIds: initial.clips.slice(0, 2).map(clip => clip.id), timelineMode: "NESTED" }]);
+  assert.throws(() => assertCompositionGroupingWrite({ before: initial, after: nested, clientVersion: "2", canCreateNestedGroups: true }), /no está habilitada/);
+  assert.doesNotThrow(() => assertCompositionGroupingWrite({ before: initial, after: nested, clientVersion: "2", canCreateNestedGroups: true, canNestTimeline: true }));
+  assert.doesNotThrow(() => assertCompositionGroupingWrite({ before: nested, after: nested, clientVersion: "2", canCreateNestedGroups: false }));
+  const restored = applyCompositionEditorPatches(nested, [{ type: "group.ungroup", groupId: "sequence-a" }]);
+  assert.doesNotThrow(() => assertCompositionGroupingWrite({ before: nested, after: restored, clientVersion: "2", canCreateNestedGroups: false }));
+  assert.equal(compositionEditorDocumentSchema.safeParse({ ...nested, groupingVersion: undefined }).success, false);
+});
 
 test("fixtures compartidos con SQL conservan las mismas reglas de grafo", () => {
   for (const fixture of graphFixtures) {

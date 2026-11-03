@@ -243,6 +243,7 @@ const clipColorGradingOperationSchema = z.object({
 }).strict();
 
 const groupCreateOperationSchema = z.object({
+  timelineMode: z.literal("NESTED").optional(),
   clipIds: z.array(editorIdSchema).max(500),
   childGroupIds: z.array(editorIdSchema).max(250).optional(),
   groupId: editorIdSchema,
