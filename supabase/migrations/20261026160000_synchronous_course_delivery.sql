@@ -1,5 +1,6 @@
 -- Autoría por curso: agregado acotado a 24 sesiones; escrituras CAS breves.
 -- Contenido privado y configuración reconstructible: acceso solo por backend autorizado.
+-- Las funciones mantienen los privilegios del llamador; no elevan al propietario.
 BEGIN;
 CREATE TABLE public.course_delivery_workspaces (
   artifact_id uuid PRIMARY KEY REFERENCES public.artifacts(id) ON DELETE CASCADE,
@@ -44,7 +45,7 @@ ALTER TABLE public.course_delivery_versions ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.course_delivery_versions FROM anon,authenticated;
 GRANT SELECT,INSERT ON public.course_delivery_versions TO service_role;
 CREATE FUNCTION public.preserve_course_delivery_version()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 BEGIN
   INSERT INTO public.course_delivery_versions(artifact_id,organization_id,revision,document)
     VALUES(OLD.artifact_id,OLD.organization_id,OLD.revision,OLD.document) ON CONFLICT DO NOTHING;
@@ -67,7 +68,7 @@ CREATE TRIGGER preserve_course_delivery_version BEFORE UPDATE ON public.course_d
 
 CREATE FUNCTION public.save_course_delivery(
   p_artifact_id uuid, p_organization_id uuid, p_revision integer, p_document jsonb
-) RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+) RETURNS integer LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 DECLARE current_row public.course_delivery_workspaces; next_revision integer;
 BEGIN
   -- La relación curso/organización también se comprueba en DB antes de persistir.
@@ -93,7 +94,7 @@ END $$;
 
 CREATE FUNCTION public.reserve_course_delivery_run(
   p_artifact_id uuid,p_organization_id uuid,p_revision integer,p_operation text,p_snapshot jsonb,p_units jsonb
-) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+) RETURNS uuid LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 DECLARE current_row public.course_delivery_workspaces; run_id uuid;
 BEGIN
   SELECT * INTO current_row FROM public.course_delivery_workspaces WHERE artifact_id=p_artifact_id FOR UPDATE;
@@ -105,7 +106,7 @@ BEGIN
 END $$;
 
 CREATE FUNCTION public.claim_course_delivery_run(p_run_id uuid,p_token uuid)
-RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+RETURNS boolean LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 BEGIN
   UPDATE public.course_delivery_runs SET status='RUNNING',lease_token=p_token,
     lease_expires_at=now()+interval '12 minutes',updated_at=now()
@@ -115,7 +116,7 @@ END $$;
 
 CREATE FUNCTION public.commit_course_delivery_unit(
   p_run_id uuid,p_token uuid,p_document jsonb,p_units jsonb
-) RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+) RETURNS integer LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 DECLARE run_row public.course_delivery_runs; current_row public.course_delivery_workspaces;
 BEGIN
   -- Orden de locks común: workspace antes de run, también en edición/aprobación.
@@ -137,7 +138,7 @@ END $$;
 CREATE FUNCTION public.approve_course_delivery(
   p_artifact_id uuid,p_organization_id uuid,p_revision integer,p_document jsonb,
   p_syllabus jsonb,p_nexus jsonb,p_materials jsonb,p_sources jsonb,p_phase text
-) RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+) RETURNS integer LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 DECLARE current_row public.course_delivery_workspaces; actual_syllabus jsonb; actual_nexus jsonb; actual_materials jsonb; actual_sources jsonb; nexus_state text;
 BEGIN
   SELECT * INTO current_row FROM public.course_delivery_workspaces WHERE artifact_id=p_artifact_id FOR UPDATE;
@@ -189,7 +190,7 @@ GRANT EXECUTE ON FUNCTION public.approve_course_delivery(uuid,uuid,integer,jsonb
 
 CREATE FUNCTION public.save_course_delivery_setting(
   p_organization_id uuid,p_user_id uuid,p_setting_type text,p_model jsonb,p_prompt text
-) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+) RETURNS void LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 DECLARE next_version text;
 BEGIN
   IF p_setting_type NOT IN ('SYNCHRONOUS_AGENDA','SYNCHRONOUS_PLAN','SYNCHRONOUS_MATERIALS')

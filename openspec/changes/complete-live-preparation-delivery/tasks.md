@@ -4,6 +4,9 @@
 - [x] 1.3 Verificar tipos y pruebas dirigidas, incluida regresión Nexus.
 ## 2. Verificación
 - [x] 2.1 Cerrar documentación, revisión independiente y evidencia de compuertas.
-- [ ] 2.2 Realizar piloto de staging con Learning publicado y configuración autorizada.
+- [x] 2.2 Verificar SQL con service_role sin superusuario y retirar elevación de privilegios innecesaria.
+- [x] 2.3 Preparar plan de activación de Engine con preflight, postflight y recuperación.
+- [ ] 2.4 Aplicar y verificar la migración autorizada de Engine al recuperar la conexión Supabase.
+- [ ] 2.5 Realizar piloto de staging con Learning publicado y configuración autorizada.
 
 Evidencia: [reporte](reports/implementation.md). No se archiva hasta integrar y realizar la validación operativa.
