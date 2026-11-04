@@ -1,24 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import path from "node:path";
-import vm from "node:vm";
 import { describe, it } from "node:test";
-import ts from "typescript";
+import { load } from "./source-test-loader";
 
-// Carga las fuentes reales con fronteras de red/Next simuladas, sin credenciales.
-function load<T>(relative: string, imports: Record<string, unknown> = {}): T {
-  const filename = path.resolve(relative);
-  const source = ts.transpileModule(readFileSync(filename, "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
-  const module = { exports: {} };
-  const require = createRequire(filename);
-  vm.runInNewContext("(function(require,module,exports){" + source + "\n})", { console, TextEncoder })(
-    (name: string) => Object.hasOwn(imports, name) ? imports[name] : require(name), module, module.exports,
-  );
-  return module.exports as T;
-}
 const ownId = "123e4567-e89b-42d3-a456-426614174000";
 const foreignId = "123e4567-e89b-42d3-a456-426614174001";
 const errorModule = load<typeof import("../../../lib/server/tenant-context-error")>("src/lib/server/tenant-context-error.ts");
@@ -91,6 +74,21 @@ describe("autoridad tenant vigente", () => {
   it("revocación prevalece sobre claim firmado y rol local", async () => {
     const f = fixture(); f.state.rows = []; f.state.count = 0;
     assert.equal(await f.tenant.resolveTenantContext("empresa"), null); assert.equal(f.roleReads(), 0);
+  });
+  it("resuelve por ID solo membresía vigente y rol local", async () => {
+    const f = fixture();
+    assert.equal(await f.tenant.resolveTenantContextByOrganizationId(foreignId), null);
+    assert.equal(f.roleReads(), 0);
+    assert.equal((await f.tenant.resolveTenantContextByOrganizationId(ownId))?.platformRole, "CONSTRUCTOR");
+    f.state.storedRole = null;
+    assert.equal(await f.tenant.resolveTenantContextByOrganizationId(ownId), null);
+    f.state.storedRole = "CONSTRUCTOR";
+    f.state.rows = [
+      { organization_id: ownId, role: "member", organizations: { id: ownId, name: "Empresa", slug: "empresa" } },
+      { organization_id: foreignId, role: "member", organizations: { id: foreignId, name: "Duplicada", slug: "empresa" } },
+    ];
+    f.state.count = 2;
+    assert.equal(await f.tenant.resolveTenantContextByOrganizationId(foreignId), null);
   });
   it("no consulta roles para slug ajeno ni membresías sin identidad", async () => {
     const f = fixture(); assert.equal(await f.tenant.resolveTenantContext("ajena"), null); assert.equal(f.roleReads(), 0);

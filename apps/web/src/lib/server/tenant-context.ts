@@ -163,6 +163,14 @@ export async function resolveDefaultTenantPath(targetPath = "/admin") {
   return buildTenantPath(activeOrganization.slug, targetPath);
 }
 
+export const resolveTenantContextByOrganizationId = cache(async (organizationId: string) => {
+  const { organizations } = await getOrganizationsFromSession();
+  const organization = organizations.find((candidate) => candidate.id === organizationId);
+  if (!organization) return null;
+  const tenant = await resolveTenantContext(organization.slug);
+  return tenant?.organizationId === organizationId ? tenant : null;
+});
+
 export function buildTenantPath(organizationSlug: string, path: string) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `/${organizationSlug}${normalizedPath}`;

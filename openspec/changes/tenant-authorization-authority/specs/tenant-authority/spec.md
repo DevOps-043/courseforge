@@ -35,3 +35,15 @@ antes de conceder permisos. Cookies y claims históricos no conceden membresía.
 #### Scenario: Ausencia de identidad
 - **WHEN** no existe identidad autenticada verificable
 - **THEN** no se concede acceso incluso si las cookies contienen organizaciones
+
+#### Scenario: DTO de revisión adulterado
+- **WHEN** se presenta un contexto con rol ADMIN o con identidad distinta del actor
+- **THEN** se revalida la organización en servidor y solo el rol vigente del actor autoriza revisión
+
+#### Scenario: Selector explícito de organización
+- **WHEN** un helper ForTenant recibe una organización sin membresía y rol vigentes
+- **THEN** se deniega antes de consultar artefactos con service-role
+
+#### Scenario: Artefacto global legacy
+- **WHEN** no existe contexto tenant válido o el artefacto carece de organización
+- **THEN** el helper tenant no concede acceso global de respaldo

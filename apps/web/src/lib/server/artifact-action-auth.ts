@@ -1,12 +1,9 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
-import {
-  getActiveOrganizationId,
-  getAuthBridgeUser,
-} from "@/utils/auth/session";
+import { getAuthBridgeUser } from "@/utils/auth/session";
 import type { TenantContext } from "@/lib/server/tenant-context";
 import {
-  getOrganizationPlatformRole,
+  resolveTenantContextByOrganizationId,
   resolveActiveTenantContext,
 } from "@/lib/server/tenant-context";
 import { REVIEWER_ROLE_SET } from "@/lib/pipeline-constants";
@@ -67,28 +64,11 @@ export function getServiceRoleClient() {
 }
 
 export async function canReviewContent(userId: string, resolvedTenant?: TenantContext | null) {
-  const tenant = resolvedTenant === undefined ? await resolveActiveTenantContext() : resolvedTenant;
-  if (tenant?.organizationId) {
-    if (tenant.userId === userId) {
-      return Boolean(tenant.platformRole && REVIEWER_ROLE_SET.has(tenant.platformRole));
-    }
-    const organizationRole = await getOrganizationPlatformRole(
-      userId,
-      tenant.organizationId,
-    );
-    if (organizationRole) {
-      return REVIEWER_ROLE_SET.has(organizationRole);
-    }
-  }
-
-  const admin = getServiceRoleClient();
-  const { data } = await admin
-    .from("profiles")
-    .select("platform_role")
-    .eq("id", userId)
-    .single();
-
-  return REVIEWER_ROLE_SET.has(data?.platform_role);
+  if (resolvedTenant === null) return false;
+  const tenant = resolvedTenant === undefined
+    ? await resolveActiveTenantContext()
+    : await resolveTenantContextByOrganizationId(resolvedTenant.organizationId);
+  return Boolean(tenant && tenant.userId === userId && tenant.platformRole && REVIEWER_ROLE_SET.has(tenant.platformRole));
 }
 
 export async function getAccessToken(supabase: SupabaseAuthLike) {
@@ -112,54 +92,33 @@ export async function assertArtifactOrgAccess(
   activeOrgId: string | null,
   tenantContext?: Pick<TenantContext, "organizationId"> | null,
 ) {
+  if (tenantContext?.organizationId && activeOrgId && tenantContext.organizationId !== activeOrgId) return null;
+  const requestedOrganizationId = tenantContext?.organizationId ?? activeOrgId;
+  const tenant = requestedOrganizationId
+    ? await resolveTenantContextByOrganizationId(requestedOrganizationId)
+    : await resolveActiveTenantContext();
+  if (!tenant) return null;
+
   const admin = getServiceRoleClient();
-  const bridgeUser = await getAuthBridgeUser();
-  const organizationIds = new Set<string>();
-
-  if (tenantContext?.organizationId) {
-    organizationIds.add(tenantContext.organizationId);
-  } else {
-    if (activeOrgId) {
-      organizationIds.add(activeOrgId);
-    }
-    if (bridgeUser?.active_organization_id) {
-      organizationIds.add(bridgeUser.active_organization_id);
-    }
-    if (Array.isArray(bridgeUser?.organization_ids)) {
-      bridgeUser.organization_ids.forEach((orgId) => {
-        if (orgId) {
-          organizationIds.add(orgId);
-        }
-      });
-    }
-  }
-
-  let query = admin
+  const { data, error } = await admin
     .from("artifacts")
     .select("id, organization_id")
-    .eq("id", artifactId);
-
-  if (organizationIds.size > 0) {
-    query = query.in("organization_id", Array.from(organizationIds));
-  } else {
-    query = query.is("organization_id", null);
-  }
-
-  const { data, error } = await query.maybeSingle();
+    .eq("id", artifactId)
+    .eq("organization_id", tenant.organizationId)
+    .maybeSingle();
   if (error) {
-    console.error("[ArtifactAccess] Error checking artifact access:", error);
+    console.error("[ArtifactAccess] No se pudo verificar el acceso al artefacto.");
     return null;
   }
-
-  return data;
+  return data?.organization_id === tenant.organizationId ? data : null;
 }
 
 export async function getAuthorizedArtifactAdmin(artifactId: string) {
   const tenantContext = await resolveActiveTenantContext();
-  const activeOrgId = tenantContext?.organizationId ?? (await getActiveOrganizationId());
+  if (!tenantContext) return null;
   const artifact = await assertArtifactOrgAccess(
     artifactId,
-    activeOrgId,
+    tenantContext.organizationId,
     tenantContext,
   );
 

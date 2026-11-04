@@ -60,6 +60,18 @@ F1.3; los permisos de JWT/RLS existentes no quedan revocados solo por este dise�
 No certificar RLS ni cierre integral con tests simulados.
 
 ## Reversión
+### Subdivisión F1.3
+
+F1.3.a cierra assertArtifactOrgAccess/getAuthorizedArtifactAdmin/ForTenant y
+canReviewContent. El contexto recibido selecciona organización; no concede rol ni
+identidad. Resolver nuevamente por membresía vigente y rol local antes de leer
+artefactos con service-role; sin contexto no hay acceso legacy organization_id null.
+No usar cf_active_org ni claims como lista alternativa de acceso. Comparar actor
+en la comprobación de revisión; no consultar roles para otro usuario arbitrario.
+F1.3.b revisará prelecturas de filas/componentes y consumidores por flujo.
+F1.3.c cubrirá switch-organization, GoTrue legacy y proyección HTTP 503.
+Cerrar F1.3.a no cierra F1.3 ni TD-26.
+
 F1.1: retirar solo este OpenSpec. F1.2/F1.3: commits pequeños recuperables;
 ante fallo de autoridad preservar denegación segura, no restaurar cookies como
 fuente de permisos. Sin migración remota automática ni cambios de formato JWT.
