@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "test:course-sources": "tsc -p tsconfig.course-sources-test.json && node --test .tmp/course-sources-tests/domains/course-sources/__tests__/*.test.js",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

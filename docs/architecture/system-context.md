@@ -124,6 +124,16 @@ SofLIA es el asistente integrado en la app.
 
 ## Pipeline De Creacion De Cursos
 
+La base de fuentes documentales propias vive en `domains/course-sources`:
+`POST /api/artifacts/drafts` crea un borrador sin IA; las rutas
+`/api/artifacts/:artifactId/sources` y `/sources/uploads[/confirm]` reservan,
+listan y confirman originales privados. La migración `20261105010000` está
+preparada localmente, sin aplicación remota ni despliegue en este cambio.
+`UPLOADED` no significa texto extraído ni fuente apta. No hay UI o job de
+extracción nuevo ni integración con generación en esta fase; conservar los
+consumidores históricos. Contratos, cuotas y operación:
+[fuentes propias](course-owned-document-sources.md).
+
 ### Fase 1: BASE
 
 Entrada: titulo, descripcion, publico objetivo y resultados esperados.

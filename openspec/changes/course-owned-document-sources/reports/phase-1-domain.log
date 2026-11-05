@@ -1,0 +1,30 @@
+
+> web@1.0.0 test:course-sources
+> tsc -p tsconfig.course-sources-test.json && node --test .tmp/course-sources-tests/domains/course-sources/__tests__/*.test.js
+
+✔ sin sesión o rol permitido no hay cliente privilegiado, repositorio ni firma (545.5486ms)
+✔ curso ajeno se rechaza antes de construir repositorio o Storage (55.8015ms)
+✔ caída de autoridad mantiene 503 sin efectos ni detalles privados (32.8741ms)
+✔ borrador devuelve DRAFT y no construye servicio de carga ni generador (32.1097ms)
+✔ UUID inválido, autoridad enviada en payload y paginación excesiva fallan sin escritura (105.5602ms)
+✔ listado autorizado conserva paginación y no firma descargas (27.6714ms)
+✔ mutaciones rechazan formularios y origen cruzado antes de consultar autoridad (86.3146ms)
+✔ Storage firma sin sobrescribir y verifica metadata antes de descargar (4.4432ms)
+✔ metadata ausente o tamaño real distinto bloquea descarga (1.3981ms)
+✔ contratos rechazan autoridad del payload, rutas y tipos incompatibles (11.7856ms)
+✔ reserva firma únicamente la ruta persistida y no devuelve hash o identidad privada (3.0582ms)
+✔ confirmación verifica bytes y termina en UPLOADED, nunca READY (1.2943ms)
+✔ confirmación repetida conserva el estado sin descargar ni escribir (2.4836ms)
+✔ otro actor, reserva vencida y estado retirado no acceden a Storage (1.4796ms)
+✔ hash o tamaño diferentes no confirman el documento (1.1191ms)
+✔ inspección de recepción acepta los cuatro formatos sin extraerlos (25.5734ms)
+✔ rechaza MIME falsificado y texto binario sin marcar aptitud curricular (1.8457ms)
+✔ Office rechaza directorios masivos antes de cargar JSZip (2.6645ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2163.2752

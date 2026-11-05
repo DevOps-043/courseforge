@@ -1,0 +1,17 @@
+✔ borrador idempotente conserva DRAFT sin metadata de generación (4233.2173ms)
+✔ reserva y confirmación son idempotentes y el original queda vinculado al curso (2989.7741ms)
+✔ otra organización, otro actor y bytes distintos no confirman reservas (3481.0546ms)
+✔ cuota por curso se aplica antes de crear otra reserva (3148.247ms)
+✔ reserva vencida no se confirma ni se renueva por reintentar (3120.6516ms)
+✔ cuota de bytes es transaccional y no consume una clave fallida (2845.3208ms)
+✔ RLS y grants deniegan tablas y RPC a navegador; snapshots son inmutables para backend (3005.6322ms)
+✔ FK compuestas impiden asignar fragmentos de otro curso al snapshot (2788.3396ms)
+✔ Storage privado resiste una política histórica permisiva sin afectar otros buckets (2919.3326ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28976.1823

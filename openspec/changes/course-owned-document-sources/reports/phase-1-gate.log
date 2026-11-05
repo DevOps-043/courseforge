@@ -1,0 +1,908 @@
+
+> courseforge@1.0.0 verify:pr
+> node scripts/quality/run-gate.mjs
+
+Compuerta: npm run adapters:check
+
+> courseforge@1.0.0 adapters:check
+> node scripts/ai/sync-agent-adapters.mjs --check
+
+Adaptadores verificados: 27
+Compuerta: npm run harness:validate
+
+> courseforge@1.0.0 harness:validate
+> node scripts/quality/validate-harness.mjs
+
+Arnés de Coursegen válido.
+Compuerta: npm run docs:check
+
+> courseforge@1.0.0 docs:check
+> node scripts/quality/check-doc-links.mjs
+
+Enlaces locales verificados: 338 documentos; catálogo canónico y enlaces nuevos.
+Compuerta: npm run openspec:validate
+
+> courseforge@1.0.0 openspec:validate
+> openspec validate --all --strict --no-interactive
+
+✓ change/adapt-coursegen-harness
+✓ change/audio-clip-editing
+✓ change/audit-technical-debt-2026-11
+✓ change/automatic-transparent-captions
+✓ change/background-deploy-policy
+✓ change/branding-clip-controls
+✓ change/caption-animation-presets
+✓ change/classify-module-graph
+✓ change/complete-live-preparation-delivery
+✓ change/course-owned-document-sources
+✓ change/custom-reference-guides
+✓ change/decouple-caption-text-validation
+✓ change/decouple-composition-document-contracts
+✓ change/decouple-controlled-render-descriptor
+✓ change/decouple-narrative-http-authority
+✓ change/diagnose-font-catalog
+✓ change/dynamic-composition-layers
+✓ change/editor-action-autosave
+✓ change/expand-slide-import-size
+✓ change/fix-canvas-resize-format
+✓ change/fix-caption-paragraph-layout
+✓ change/fix-clip-range-export
+✓ change/fix-extended-video-loop
+✓ change/fix-heygen-external-import-v3
+✓ change/fix-heygen-preset-handoff
+✓ change/fix-heygen-scene-save
+✓ change/fix-opendesign-css-compatibility
+✓ change/fix-slide-import-modal-theme
+✓ change/fix-user-actions-menu
+✓ change/global-branding
+✓ change/import-html-slide-templates
+✓ spec/imported-template-bases
+✓ change/manual-caption-creation
+✓ change/manual-position-controls
+✓ change/monitor-space-zoom
+✓ change/nested-composition-groups
+✓ change/netlify-typecheck-memory
+✓ change/prepare-large-html-slide-files
+✓ change/preserve-imported-html-design
+✓ change/remediation-execution-baseline
+✓ change/resolve-module-graph-aliases
+✓ change/restore-hyperframes-test-runtime
+✓ change/restore-lint-gate
+✓ spec/synchronous-hybrid-authoring
+✓ change/tenant-authorization-authority
+✓ change/timeline-master-volume
+✓ change/timeline-nesting
+✓ change/video-canvas-motion
+✓ change/visual-clip-masks
+Totals: 49 passed, 0 failed (49 items)
+Compuerta: npm run test:harness
+
+> courseforge@1.0.0 test:harness
+> node --test scripts/quality/harness.test.mjs scripts/capture-background-deployment.test.mjs scripts/quality/lint-warning-baseline.test.mjs scripts/quality/module-graph.test.mjs
+
+✔ captura únicamente el origen del deploy concreto sin secretos (24.8034ms)
+✔ build local elimina metadatos antiguos y no depende de variables de producción (10.4785ms)
+✔ build de Netlify falla si no puede capturar un destino seguro (4.9756ms)
+✔ el comando de build captura el manifiesto junto al resolver incluso desde otro cwd (335.4584ms)
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+✔ genera adaptadores deterministas y acepta CRLF equivalente (4384.84ms)
+✔ rechaza drift y la regeneración lo corrige (3346.442ms)
+✔ rechaza huérfanos y conserva su contenido incluso al sincronizar (2308.8769ms)
+✔ rechaza metadatos que intentan cambiar la ruta de la skill (1805.1031ms)
+﹣ rechaza destinos enlazados sin escribir fuera del repositorio (1257.349ms) # El entorno no permite enlaces.
+✔ detecta una ruta obligatoria ausente (2138.6902ms)
+✔ rechaza skills registradas inexistentes y fuentes fuera de dominio (2263.0027ms)
+✔ rechaza exposición de desarrollo al runtime (1537.6721ms)
+✔ detecta un área perdida del estándar maestro (2333.2442ms)
+✔ rechaza cambios locales sensibles sin leer su contenido (1974.1338ms)
+✔ verifica enlaces nuevos con espacios y rechaza destinos inexistentes (2180.5449ms)
+✔ no oculta enlaces rotos nuevos tras una línea base histórica (2884.1657ms)
+✔ CI detecta enlaces nuevos ya comprometidos frente a la base del PR (3549.534ms)
+✔ rechaza referencias base inexistentes en vez de omitir la comprobación (1356.6019ms)
+✔ CI no puede sustituir la verificación de producto por la del arnés (2211.6063ms)
+✔ la compuerta conserva verify de producto y se detiene con el código real (2.5776ms)
+✔ baseline compara cada archivo y regla sin compensar incrementos entre archivos (6.9898ms)
+✔ reducciones y archivos eliminados exigen retirar tolerancias obsoletas (3.1469ms)
+✔ configuración efectiva resuelve plugins de overrides en TSX, MJS y CJS (10488.1403ms)
+✔ canarios reales de ESLint rechazan un error y un warning nuevo (1366.8855ms)
+✔ rechaza sustituir un warning por otro aunque el conteo por archivo y regla sea igual (2.153ms)
+✔ excluye artefactos generados y conserva scripts y fuentes (72.8139ms)
+✔ el alias relativo al tsconfig resuelve con base absoluta sin depender del cwd (142.4686ms)
+✔ un ciclo por alias hace fallar la misma política del gate (43.6462ms)
+✔ los ciclos solo de tipos no se excluyen (56.5974ms)
+✔ un alias inexistente bloquea aunque no haya ciclos (60.3292ms)
+✔ la clasificación CSS exige exports.style y un recurso real del paquete (32.7783ms)
+✔ un import CSS inexistente bloquea sin ciclos (56.6914ms)
+✔ no acepta una entrada CSS que escape del paquete (26.6968ms)
+✔ server-only exige alias de Next y recursos de servidor y cliente existentes (29.9674ms)
+✔ el comando no justifica recursos ausentes usando otro proyecto (6266.502ms)
+✔ variaciones de las referencias conocidas no reciben tolerancia (11.5382ms)
+✔ el gate y el arnés conservan el runner y sus canarios (1.8151ms)
+✔ el comando real devuelve fallo ante ciclos e imports desconocidos y aprueba el caso válido (9067.7644ms)
+✔ un tsconfig ausente no produce un grafo aprobado (13.7601ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 35916.7794
+Compuerta: npm run verify
+
+> courseforge@1.0.0 verify
+> npm run lint && npm run typecheck && npm run architecture:cycles && npm run db:migrations:check && npm run test:branding && npm run test:security-boundaries && npm run test:audio-processing && npm run test:coverage-gaps -w apps/web && npm run test:course-delivery
+
+
+> courseforge@1.0.0 lint
+> npm run lint -w apps/web
+
+
+> web@1.0.0 lint
+> node ../../scripts/quality/lint-web.mjs
+
+Lint: 0 errores, 570 warnings detectados, 0 diferencias con baseline.
+Diagnóstico completo: D:\Pulse Hub\courseforge\apps\web\.tmp\lint\latest.json
+
+> courseforge@1.0.0 typecheck
+> node --max-old-space-size=4096 node_modules/typescript/bin/tsc -p apps/web/tsconfig.json --noEmit --pretty false
+
+
+> courseforge@1.0.0 architecture:cycles
+> node scripts/quality/check-module-graph.mjs
+
+Grafo: 2338 módulos, 9164 aristas, 0 ciclos; 2 referencias de bundler justificadas, 0 sin resolver.
+Bundler tailwindcss: Entrada CSS declarada en exports.style de Tailwind.
+Bundler server-only: Marcador de servidor con alias de Next comprobados para servidor y cliente.
+Reporte completo: D:\Pulse Hub\courseforge\.tmp\module-graph\latest.json
+
+> courseforge@1.0.0 db:migrations:check
+> node scripts/check-migration-versions.mjs
+
+Migration version guard passed (215 SQL files; historical collisions frozen).
+
+> courseforge@1.0.0 test:branding
+> tsc -p apps/web/tsconfig.branding-test.json && node --test apps/web/.tmp/branding-tests/config/__tests__/branding.test.js
+
+✔ la identidad pública es inmutable y sus recursos existen (4.4807ms)
+✔ una identidad alternativa se propaga a prompts, proveedor y schema sin cambiar contratos (1054.0415ms)
+✔ OAuth escapa la marca y conserva el canal de integración (271.116ms)
+✔ el escape HTML preserva texto y neutraliza caracteres de marcado (0.4659ms)
+✔ las superficies activas no reintroducen nombres de producto literales (4998.9126ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7065.6707
+
+> courseforge@1.0.0 test:security-boundaries
+> npm run test:security-boundaries -w apps/web
+
+
+> web@1.0.0 test:security-boundaries
+> tsc -p tsconfig.security-boundaries-test.json && node .tmp/security-boundaries-tests/domains/production/__tests__/external-media-import-policy.test.js && node .tmp/security-boundaries-tests/domains/production/providers/__tests__/artlist-types.test.js && node .tmp/security-boundaries-tests/domains/production/providers/__tests__/google-picker-runtime.test.js && node .tmp/security-boundaries-tests/domains/production/providers/__tests__/provider-json-contracts.test.js && node .tmp/security-boundaries-tests/domains/production/assembly-branding/__tests__/assembly-branding-upload.test.js && node .tmp/security-boundaries-tests/domains/production/bundle-agent/__tests__/bundle-agent-route-contract.test.js && node .tmp/security-boundaries-tests/domains/materials/validators/__tests__/material-assets-contract.test.js && node .tmp/security-boundaries-tests/domains/scorm/services/__tests__/scorm-parser-security.test.js && node .tmp/security-boundaries-tests/domains/scorm/__tests__/scorm-job-contracts.test.js && node .tmp/security-boundaries-tests/domains/publication/__tests__/publication-outbox.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/background-payload-signature.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/background-request-environment.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/outbound-http.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/tenant-lookup-retry.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/video-metadata.service.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/api-contract.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/external-import-concurrency.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/external-import-error.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/operational-logger.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/desktop-worker-job-contracts.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/privileged-background-inventory.test.js
+
+✔ rejects loopback, private networks, credentials and non-HTTPS URLs (20.1125ms)
+✔ reads a response only while it remains within the byte budget (64.0834ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 95.6577
+✔ Artlist result guards discriminate tracks and videos (1.9024ms)
+✔ Artlist parsing drops malformed provider payloads (1.8164ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18.334
+✔ Google Picker extracts only a non-empty string file ID (1.8397ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15.1829
+✔ provider token contracts require a usable token and optional positive expiry (3.997ms)
+✔ OAuth account profiles require a non-empty provider email (0.6201ms)
+✔ provider metadata contracts sanitize optional values and reject invalid containers (0.5879ms)
+✔ provider listings drop malformed entries but require the collection contract (0.9224ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20.398
+✔ assembly branding accepts only bounded MP4 or WebM files (3.3205ms)
+✔ assembly branding selections reject unknown fields and invalid IDs (3.8138ms)
+✔ assembly branding storage paths are bound to tenant and kind (0.7457ms)
+✔ direct upload finalization has an exact bounded contract (1.8617ms)
+✔ cleanup removes only unregistered uploads older than the retention window (4.1156ms)
+✔ cleanup rotates bounded organization pages without exceeding the total (0.5918ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28.6244
+✔ bundle agent conversation creation has a strict bounded contract (5.9892ms)
+✔ bundle agent messages reject empty, excessive and unknown input (1.9667ms)
+✔ bundle agent specs allow nested overrides but reject unknown boundary fields (1.7405ms)
+✔ bundle generation accepts only valid optional spec identifiers (1.4087ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 27.794
+✔ material assets accept explicit nullable removals (7.0097ms)
+✔ material assets preserve current production contracts (3.0837ms)
+✔ material assets reject impossible persisted statuses (1.5302ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23.9787
+✔ parses a small valid SCORM manifest (39.2963ms)
+✔ rejects an entry with an excessive compression ratio before extraction (103.216ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 154.9303
+✔ SCORM process requests require an exact UUID contract (7.6641ms)
+✔ SCORM transformation states distinguish ready, active and terminal imports (0.4015ms)
+✔ only the reserved queued step can be claimed by a background transformation (0.355ms)
+✔ SCORM leases are recoverable only after a valid deadline expires (0.3882ms)
+✔ SCORM queued jobs become recoverable when dispatch remains stale (0.4293ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22.1129
+✔ publication outbox hashes equivalent payloads deterministically (33.7181ms)
+✔ publication outbox validates its signed request and payload boundaries (5.2103ms)
+✔ publication reconciliation distinguishes stale queues and expired leases (0.423ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 51.7774
+✔ derives a stable background secret only for local development (618.8077ms)
+✔ round-trips a signed background payload and rejects tampering (38.4844ms)
+✔ rejects expired signed payloads (0.9587ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 672.2416
+✔ staging y previews conservan el despliegue aunque la URL pública apunte a producción (2.5076ms)
+✔ el metadato del build funciona cuando Netlify no expone DEPLOY_URL en ejecución (0.3535ms)
+✔ sin captura usa DEPLOY_URL explícito y nunca la dirección pública ni el origen de un request (1.3597ms)
+✔ rechaza destinos inválidos sin recurrir a otro entorno (2.3107ms)
+✔ desarrollo directo conserva destino local y Netlify nunca cae a localhost (0.4506ms)
+✔ builds direct-handler URLs independently from the configured public app URL (0.5621ms)
+✔ recognizes only development loopback background invocations (0.3816ms)
+✔ always requires persistent replay protection when deployed (0.3165ms)
+✔ keeps chained handlers in-process only during direct Next development (0.8693ms)
+✔ missing build flags never imply local execution or bypass replay protection (0.7075ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26.2646
+✔ fetchWithDeadline aborts a stalled outbound request (7.2675ms)
+✔ fetchWithDeadline preserves an earlier caller cancellation (2.8353ms)
+✔ idempotent retries recover from 429 and transient 5xx responses (73.1688ms)
+✔ idempotent retries return the last response after the bounded attempts (14.551ms)
+✔ idempotent retries do not violate a Retry-After beyond the wait budget (1.1956ms)
+✔ idempotent retries reject mutating methods before issuing a request (0.7377ms)
+✔ idempotent retries share one total deadline across all attempts (12.958ms)
+✔ circuit breaker opens after complete logical requests keep failing (1.9804ms)
+✔ circuit breaker admits one recovery probe and closes after success (1.4279ms)
+✔ bounded response reads reject an excessive declared body (4.9286ms)
+✔ bounded response reads enforce streamed bytes without a content length (8.4945ms)
+✔ bounded JSON reads parse valid provider responses (3.5549ms)
+✔ bounded binary reads preserve bytes inside the budget (1.2735ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 151.2135
+✔ recognizes Supabase fetch failures as transient (2.7099ms)
+✔ retries a transient tenant lookup and returns the successful result (2.8556ms)
+✔ does not retry non-transient database errors (0.8416ms)
+✔ bounds stalled lookups and aborts each database request (46.5932ms)
+✔ recovers after a timeout with a fresh signal and clears the success timer (46.3918ms)
+✔ rejects unbounded or empty retry configurations (1.835ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 113.8679
+✔ extracts bounded YouTube metadata from supported duration fields (5.4429ms)
+✔ falls back safely when YouTube omits duration metadata (1.1078ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28.5263
+✔ API errors expose a stable contract and preserve the legacy error alias (5.7785ms)
+✔ API error extensions preserve compatibility without overriding the shared contract (8.442ms)
+✔ JSON parsing distinguishes malformed and oversized requests (3.9516ms)
+✔ JSON parsing returns schema-validated data (3.4805ms)
+✔ optional JSON parsing accepts an empty body without removing byte limits (1.7976ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 37.2714
+✔ external import capacity never exceeds its active or queued bounds (8.8267ms)
+✔ external import capacity rejects work beyond the queue budget (1.707ms)
+✔ external import capacity times out queued work and releases failed slots (7.6097ms)
+✔ external import capacity removes cancelled callers from the queue (1.439ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 32.5961
+✔ external import errors expose only allowlisted operational messages (3.4636ms)
+✔ external import errors preserve safe recovery semantics (0.8874ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17.4791
+✔ operational logging preserves valid correlation IDs and replaces invalid input (3.1981ms)
+✔ operational logging redacts credentials, emails and bearer tokens (2.7177ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18.3658
+✔ worker assignment staleness handles fresh, missing and malformed heartbeats (2.338ms)
+✔ duration contracts accept only positive finite frames and fps (1.786ms)
+✔ worker authorization enforces tenant, provider, status and assignment (1.4746ms)
+✔ render input resolution validates the snapshot and builds a stable hash (3.1801ms)
+✔ database boundary readers reject non-row values before control-plane mapping (0.6715ms)
+✔ desktop render assets are validated before reaching the assembly normalizer (10.3121ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 46.9308
+✔ production Server Actions trust only exact HTTPS deployment hosts (6.2682ms)
+✔ invalid and insecure production origins are ignored (0.7369ms)
+✔ development policy keeps local tooling without weakening production (2.1399ms)
+✔ production CSP is enforced and limits executable/network origins (1.4051ms)
+▶ HyperFrames Cloud client
+  ✔ uploads directly, finalizes and submits without a webhook (78.6849ms)
+  ✔ fails before network use when the idempotency key is unsafe (2.0959ms)
+  ✔ includes the durable callback correlation when configured (1.686ms)
+  ✔ rejects oversized provider JSON before parsing it (2.571ms)
+✔ HyperFrames Cloud client (86.7404ms)
+✔ LiveAvatar parses JSON only inside the response budget (3.1465ms)
+✔ LiveAvatar bounds provider errors and preserves a safe fallback (2.03ms)
+✔ privileged Netlify handlers verify the internal signed envelope (21.7221ms)
+✔ application code does not replace the complete material assets document (2373.4663ms)
+✔ the legacy Express application cannot expose mock authentication (95.7831ms)
+✔ audited outbound integrations keep explicit deadlines and download budgets (8.9057ms)
+✔ curation validates every redirect target and bounds remote HTML (3.8089ms)
+✔ remaining production provider JSON is bounded at the response boundary (3.0126ms)
+✔ la importación externa delega HeyGen al cliente acotado v3 con credenciales tenant (1.3737ms)
+✔ the central HeyGen client bounds successful and error response bodies (1.3091ms)
+✔ the composition studio keeps cohesive panels and its API boundary outside the god component (15.8639ms)
+✔ obsolete diagnostic and publication-preview APIs stay retired (1.8634ms)
+✔ publication delivery uses a durable signed outbox instead of the request lifecycle (3.4895ms)
+✔ durable SCORM and publication paths use structured operational events (11.7677ms)
+✔ Lia does not log prompts, model responses, actions or credential state (1.673ms)
+✔ critical public APIs preserve the shared response and request-boundary contract (76.9263ms)
+✔ critical AI provider calls keep deadlines and bounded response parsing (5.3941ms)
+✔ render control-plane responses and template bundle downloads stay bounded (2.7819ms)
+✔ critical material asset boundaries do not regress to any (7.4865ms)
+✔ desktop worker persistence rows do not regress to unsafe any (3.6084ms)
+✔ SCORM parsing and transformation stay outside requests and behind signed background boundaries (3.9777ms)
+✔ HeyGen catalog reconciliation stays durable and behind signed background boundaries (2.9585ms)
+ℹ tests 30
+ℹ suites 1
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3209.5837
+
+> courseforge@1.0.0 test:audio-processing
+> npm run test:audio-processing -w apps/web && npm run test:audio-processing -w apps/api
+
+
+> web@1.0.0 test:audio-processing
+> tsc -p tsconfig.audio-processing-test.json && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-waveform-status.client.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-analysis.service.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-waveform-read.service.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-waveform-projection.service.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-waveform-v2.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-waveform-window.client.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/ffmpeg-command.service.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-processing-worker-contracts.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-processing-job.service.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-source-correction.test.js
+
+✔ pending and running jobs have distinct messages even though both HTTP reads succeed (2.4818ms)
+✔ polling deadline preserves the distinction between an unclaimed job and ongoing processing (0.6368ms)
+✔ only backend terminal failure is presented as processing failure (0.4978ms)
+✔ finished waves and sources without audio do not retain a pending or failure notice (1.8727ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21.6118
+✔ estimates the clip peak with logarithmic gain without changing source measurements (2.4081ms)
+✔ distinguishes muted, unmeasured and silent sources without inventing zero peaks (2.0555ms)
+✔ warns above the source peak target and retains a failed source diagnosis after attenuation (0.4746ms)
+✔ rejects invalid gains instead of presenting misleading diagnostic levels (1.1961ms)
+✔ parses bounded loudness and content-addressed waveform metadata (9.1758ms)
+✔ rejects malformed or non-content-addressed metadata (2.1171ms)
+✔ validates the LOD chain and selects a bounded rendering level (2.9745ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 35.2669
+✔ reads a checksum-verified waveform through tenant, component and asset filters (13.9551ms)
+✔ rejects a derivative from another tenant before storage access (2.1746ms)
+✔ rejects derivative bytes whose checksum differs from the manifest (1.3677ms)
+✔ reuses a verified derivative but still checks authorization on every read (2.3034ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 33.971
+✔ trimmed waveform projects the correct source interval and preserves peak extrema (2.0268ms)
+✔ zoomed out waveform keeps a short peak visible within one column (0.3767ms)
+✔ invalid or out-of-range intervals produce no path (0.3019ms)
+✔ an audio tail beyond measured source duration stays visually empty (0.2892ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17.6112
+✔ reads a stereo original without voice processing metadata and projects a zoomed source window (10.9379ms)
+✔ rejects stale source fingerprints before accessing storage (1.3791ms)
+✔ rejects invalid manifests and mismatched channel pyramids (0.9394ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25.4301
+✔ limits parallel window reads and cancels a queued request before network access (76.931ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 88.287
+✔ builds a deterministic FFmpeg command without shell interpolation (4.8141ms)
+✔ keeps the approved voice chain explicit and free of denoise until calibrated (1.1022ms)
+✔ rejects URL, NUL and conflicting worker paths (1.634ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 27.6742
+✔ resolves only an allowlisted profile instead of trusting snapshot filters (6.4448ms)
+✔ rejects non-claimed jobs and malformed source identities (2.3533ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20.5199
+✔ creates a canonical worker input from a verified voice asset (5.073ms)
+✔ rejects an asset that is not an eligible voice source (1.7105ms)
+✔ rejects sources exceeding the worker input limit (0.8804ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 31.7679
+✔ accepts HeyGen and synchronized/detached voice without reclassifying the registry (3.6167ms)
+✔ rejects music, unclassified media, archived assets, bad checksum and oversized audio (0.5467ms)
+✔ canonical storage and MIME give equivalent idempotency inputs (2.2982ms)
+✔ rejects unsafe storage identities without broadening bucket access (1.224ms)
+✔ detects binary HeyGen formats and rejects disguised/non-audio payloads (1.216ms)
+✔ paired-scene replacement requires a passing derivative of the exact original component (0.5907ms)
+✔ web and separately deployed API worker use the same source contract (18.4288ms)
+✔ resolves originals through tenant and component filters and rejects foreign or cyclic derivatives (6.2249ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 52.4154
+
+> api@1.0.0 test:audio-processing
+> tsc -p tsconfig.audio-processing-test.json && node .tmp/audio-processing-tests/features/audio-processing/__tests__/audio-batch-runner.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/audio-analysis.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/audio-waveform.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/audio-waveform-stream.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/deepfilter-runtime-config.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/worker-capabilities.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/audio-source-probe.test.js
+
+✔ empty queue exits immediately instead of keeping a runner polling (3.6291ms)
+✔ job cap stops new claims and aggregates failures without abandoning claimed work (0.5384ms)
+✔ time budget is checked after an in-flight batch finishes (0.4944ms)
+✔ termination signal stops before claiming another lease (0.4374ms)
+✔ claim errors fail the run rather than reporting an empty queue (1.3082ms)
+✔ invalid limits cannot claim jobs (2.5605ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22.9893
+✔ builds a shell-free loudness measurement command (4.1508ms)
+✔ parses measured values and applies the phase-two QA thresholds (3.6466ms)
+✔ marks out-of-tolerance loudness or clipping risk without hiding measurements (1.0141ms)
+✔ represents digital silence as an explicit failed measurement (1.1667ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 27.8551
+✔ builds a bounded mono PCM extraction command without shell interpolation (3.5309ms)
+✔ creates a deterministic extrema pyramid that preserves peaks (1.0018ms)
+✔ rejects empty, odd-length and invalid-duration PCM (0.8594ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 24.2159
+✔ retains 1 kHz peaks and opposite-phase channels across unaligned stream chunks (81.4249ms)
+✔ rejects unsupported/unbounded formats, nonfinite samples and incomplete frames (1.416ms)
+✔ decoder preserves source rate/channels and excludes network and playlist demuxers (2.3011ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 110.7323
+✔ does nothing when neural enhancement is disabled (2.4192ms)
+✔ derives immutable runtime values from the approved manifest (21.8339ms)
+✔ rejects deployment values that disagree with the approved manifest (11.0938ms)
+✔ rejects a manifest that changes the fixed model filename (10.4112ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 58.1151
+✔ base image claims baseline and analysis-only profiles (3.0313ms)
+✔ managed neural image claims baseline and DeepFilterNet profiles (0.3364ms)
+✔ batch sends its capabilities to the atomic claim RPC (0.7023ms)
+✔ empty capability list fails before claiming a job (1.0841ms)
+✔ worker rejects an unsupported claimed profile before downloading audio (5.2245ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23.4421
+✔ accepts a real audio container without rounding its fractional duration (2.043ms)
+✔ rejects silent video, unsupported codec/container and unbounded duration (1.3424ms)
+✔ legacy worker snapshots resolve the object path rather than duplicating the bucket (2.2412ms)
+✔ caps automatic retries and records malformed claimed inputs as terminal failures (22.6877ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 37.6494
+
+> web@1.0.0 test:coverage-gaps
+> tsc -p tsconfig.remotion-test.json && node --test .tmp/remotion-tests/domains/production/slides/__tests__/imported-slide-templates.test.js && node .tmp/remotion-tests/lib/client/__tests__/slide-generation.test.js && node .tmp/remotion-tests/domains/production/providers/heygen/__tests__/heygen-client.test.js && tsc -p tsconfig.production-automation-test.json && node .tmp/production-automation-tests/domains/production/automation/__tests__/production-automation-readiness.service.test.js && tsc -p tsconfig.hyperframes-test.json && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-render-submission.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-branding-placement.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-duration-recalculation.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-timeline-trim.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-production-intro.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-playhead.service.test.js
+
+▶ importación de diseños HTML reutilizables
+  ✔ deduplica recursos y conserva el fondo y las imágenes del perfil HTML (100.3845ms)
+  ✔ sustituye campos sin perder recursos y separa HTML del editor nativo (96.2356ms)
+  ✔ guarda solo manifiestos en BD y recupera binarios del ZIP con autoridad de organización (213.5051ms)
+  ✔ rechaza MIME falso, SVG activo, referencias cruzadas y binarios alterados (29.5903ms)
+  ✔ acota dimensiones y presupuestos decodificados de imágenes y fuentes (2.9377ms)
+  ✔ conserva posiciones CSS originales al envolver texto mixto como campos (54.2422ms)
+  ✔ limita la expansión del ZIP y verifica ruta y checksum antes de hidratar (44.5696ms)
+  ✔ retira comentarios con escapes y conserva combinadores CSS válidos (4.2271ms)
+  ✔ conserva anclas visuales OpenDesign sin conceder identidad editable (88.1138ms)
+  ✔ admite 16 y 24 diseños y rechaza familias mayores (179.4512ms)
+  ✔ prepara un original de 21700000 bytes y envía solo el diseño compacto (608.1525ms)
+  ✔ prepara un original de 50000000 bytes y envía solo el diseño compacto (1122.1085ms)
+  ✔ prepara un original de 100000000 bytes y envía solo el diseño compacto (2363.3574ms)
+  ✔ rechaza originales mayores de 100 MB antes de leer y diseños reducidos excesivos (165.4044ms)
+  ✔ reduce URLs CSS grandes entre bloques y conserva texto, atributos y SVG (296.695ms)
+  ✔ reconoce URLs CSS y sus comillas aunque cada carácter llegue por separado (0.8007ms)
+  ✔ retira notas extensas sin perder diseños después de etiquetas vacías legadas (72.2277ms)
+  ✔ admite exactamente 2 MB de HTML y rechaza un byte adicional (204.2195ms)
+  ✔ analiza y guarda una familia editable mayor de 500 KB (5468.1116ms)
+  ✔ conserva límites de fragmentos y controla la expansión de previews (33.5261ms)
+  ✔ cuenta bytes UTF-8 del archivo incluso si tiene menos caracteres (41.2488ms)
+  ✔ limita el stream real sin confiar en Content-Length y cancela su lectura (8.1737ms)
+  ✔ rechaza JSON/UTF-8 inválidos y familias serializadas mayores de 2 MB (19.8941ms)
+  ✔ conserva la estructura del diseño 1 y compila su exportación editable (40.2897ms)
+  ✔ conserva la estructura del diseño 2 y compila su exportación editable (34.1756ms)
+  ✔ conserva la estructura del diseño 3 y compila su exportación editable (34.3053ms)
+  ✔ retira scripts, eventos, red y controles del preview (8.7158ms)
+  ✔ bloquea CSS escapado y elimina funciones de recursos y at-rules externas (4.4922ms)
+  ✔ materializa el estado visible de Open Design sin conservar su controlador (4.5523ms)
+  ✔ conserva nombres de clase parecidos a los selectores del documento y a slide (0.5968ms)
+  ✔ vuelve a sanear JSON persistido o enviado por el cliente (14.7466ms)
+  ✔ rechaza campos duplicados, ausentes y títulos ambiguos (10.3723ms)
+  ✔ no trunca texto ni omite bloques si ninguna plantilla tiene capacidad (27.2067ms)
+  ✔ escapa contenido nuevo y asigna IDs distintos a instancias repetidas (24.3178ms)
+  ✔ exige revisión y no acepta autoridad ni organización en el payload (8.2784ms)
+  ✔ deniega guardado sin rol antes de tocar la base de datos (4.4907ms)
+  ✔ empaqueta el HTML importado y produce el mismo hash en reintentos (88.0411ms)
+  ✔ reutiliza una importación y mantiene identidades distintas por organización (89.5599ms)
+  ✔ reanuda un fallo posterior al upload sin duplicar registros ni sobrescribir archivos (84.1295ms)
+✔ importación de diseños HTML reutilizables (11704.0063ms)
+ℹ tests 39
+ℹ suites 1
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21928.8399
+✔ polls the explicitly created slide-generation job and reports its status (60.8648ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 73.4454
+▶ HeyGen separated track client
+  ✔ paginates public and private avatars and preserves ownership (53.3027ms)
+  ✔ builds an authoritative snapshot from private account catalogs only (5.6999ms)
+  ✔ paginates public and private Starfish voices without duplicates (3.2489ms)
+  ✔ paginates the remote video catalog used to repair orphaned jobs (3.3347ms)
+  ✔ validates audio-only translation and estimates its public rate (9.4982ms)
+  ✔ lists only voices compatible with the TTS engine used for separated tracks (1.809ms)
+  ✔ generates speech and preserves word-level synchronization metadata (5.0985ms)
+  ✔ pins speech to the catalog engine even when the voice defaults to ElevenLabs (3.5072ms)
+  ✔ does not retry or switch engines after speech rejection (3.9983ms)
+  ✔ submits the generated audio URL as the avatar timing source (2.8697ms)
+  ✔ accepts audio-only generation without requiring an avatar (2.5467ms)
+  ✔ requires an explicit target for scene generation (7.0922ms)
+  ✔ retries an idempotent video submission after a transient provider failure (7.0597ms)
+  ✔ classifies a client-side abort as an uncertain timeout instead of a provider rejection (5.315ms)
+  ✔ rejects provider JSON that exceeds the shared response budget (20.1544ms)
+  ✔ bounds oversized provider errors without exposing their body (1.4084ms)
+  ✔ only suggests lowering resolution when the provider actually mentions that restriction (0.4586ms)
+  ✔ turns an HTML gateway timeout into a useful API message (1.8858ms)
+  ✔ keeps provider failure details in the job status contract (1.8071ms)
+✔ HeyGen separated track client (146.1989ms)
+ℹ tests 19
+ℹ suites 1
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 164.6227
+▶ production automation readiness
+  ✔ requires only the storyboard assets explicitly requested (4.9184ms)
+  ✔ requires every scene avatar to have its synchronized voice (7.2105ms)
+  ✔ does not treat a slide reference as a ready editable asset (0.9055ms)
+✔ production automation readiness (19.2185ms)
+ℹ tests 3
+ℹ suites 1
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 39.2181
+✔ selecciona la composición de la revisión mediante la FK no ambigua (2.0164ms)
+✔ diferencia cada reintento del mismo snapshot en la clave de idempotencia (1.4975ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 40.4911
+✔ coloca branding sin acumular desplazamientos en ejecuciones repetidas (35.0729ms)
+✔ organizar conserva la ventana reservada para intro y outro (9.4736ms)
+✔ permite colocar sólo intro, sólo outro o ninguno sin lanzar errores (4.9034ms)
+✔ materializa intro/outro como referencias remotas sin duplicarlos (3.0275ms)
+✔ editar capas y animaciones de branding sobrevive a reaplicar y reemplazar sólo el otro recurso (13.8099ms)
+✔ pistas bloqueadas rechazan cambios de capa y animación del branding (4.1919ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 104.8827
+✔ recalcula la duración sin modificar la posición de los clips (18.8536ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 47.5604
+✔ permite extender una diapositiva desde su borde izquierdo sin crear offset de fuente (1.8863ms)
+✔ conserva el límite temporal de audio y video al ajustar el borde izquierdo (0.388ms)
+✔ texto y captions pueden extender el borde izquierdo sin consumir material multimedia (0.3372ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18.3912
+✔ coloca, reemplaza y retira una intro de Producción sin acumular clips (22.2038ms)
+✔ reaplicar la misma intro conserva su capa, recorte y animación (13.6799ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 66.41
+✔ composition API responses preserve valid JSON contracts (64.2129ms)
+✔ composition API responses classify missing deployments (2.7276ms)
+✔ composition API responses reject malformed JSON predictably (1.0165ms)
+✔ ignora el cero inicial del iframe mientras espera restaurar el playhead (2.6512ms)
+✔ mantiene pendiente la restauración hasta que el iframe confirma el seek (0.5457ms)
+✔ conserva el comportamiento normal para reproducción y seeks manuales (0.3424ms)
+✔ ajusta la posición restaurada a la nueva duración del canvas (0.3835ms)
+✔ solicita una sola actualización cuando el documento guardado supera al preview (0.3759ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 103.1018
+
+> courseforge@1.0.0 test:course-delivery
+> npm run test:course-delivery --workspace=apps/web
+
+
+> web@1.0.0 test:course-delivery
+> tsc -p tsconfig.course-delivery-test.json && node --test .tmp/course-delivery-tests/src/domains/course-delivery/__tests__/*.test.js
+
+{"timestamp":"2026-11-05T22:03:02.600Z","level":"info","component":"imparticion.generacion","event":"unidad_guardada","runId":"run","artifactId":"course","unitId":"10000000-0000-4000-8000-000000000001","operation":"PLAN","model":"gpt-4o"}
+{"timestamp":"2026-11-05T22:03:02.613Z","level":"error","component":"imparticion.generacion","event":"generacion_fallida","runId":"run","error":{"name":"Error"}}
+{"timestamp":"2026-11-05T22:03:02.619Z","level":"info","component":"imparticion.generacion","event":"unidad_guardada","runId":"run","artifactId":"course","unitId":"10000000-0000-4000-8000-000000000002","operation":"PLAN","model":"gpt-4o"}
+✔ worker conserva unidades guardadas y reanuda solo pendientes con la configuración fijada (100.2835ms)
+✔ entrega identidad y revisión estables sin notas ni respuestas privadas (16.5088ms)
+✔ rechaza sesión ajena y exceso de límites sin truncar la preparación (4.3791ms)
+✔ cambiar a Nexus no permite entregar materiales síncronos anteriores (0.8227ms)
+✔ legacy conserva Nexus y sincrónico no exige ensamble (8.3711ms)
+✔ habilitación global exige activación explícita e ignora la antigua lista de organizaciones (0.4627ms)
+✔ coordinación híbrida reutiliza Nexus listo o en proceso y no inicia esa rama en sincrónico (0.4419ms)
+✔ normaliza identidad curricular con el fallback existente (0.5166ms)
+✔ rechaza referencias ajenas, cobertura solo de repaso y cantidad incompatible (34.243ms)
+✔ agenda permite dividir alcance sin duplicar identidad dentro de una sesión (6.3226ms)
+✔ plan comprueba tiempo e identidad de bloques y coordinación híbrida (1.0628ms)
+✔ no aprueba un conjunto con sesiones pendientes (2.6312ms)
+✔ fuentes ajenas y actividades sin correspondencia se rechazan (1.2081ms)
+✔ una fuente aprobada para otra lección no se concede a la sesión (0.8396ms)
+✔ aprobación depende del currículo, plan, fuentes y contenido vigentes (5.6589ms)
+✔ cambiar una consigna invalida su aprobación sin borrar contenidos (1.479ms)
+✔ marca pendiente de actualización conserva contenido y bloquea aprobación vigente (0.9316ms)
+✔ proyección de participante excluye campos privados desde el servidor (0.6348ms)
+✔ exportaciones coherentes, escapadas y distintas por audiencia (3.1448ms)
+✔ hash canónico es independiente del orden de claves (0.678ms)
+✔ configuración hereda etapa y nunca lee organizaciones ajenas (3.066ms)
+✔ configuración propia global precede a herencia; prompt de organización precede global (0.882ms)
+✔ error de lectura no permite fallback silencioso ni defaults de modelo (1.9762ms)
+✔ configuración rechaza proveedor no implementado y respaldo idéntico (2.0267ms)
+✔ instantánea de configuración conserva prompt y hash aunque se cambie el registro (1.5817ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9909.0084
+Compuerta completada.

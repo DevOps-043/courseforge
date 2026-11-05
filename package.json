@@ -6,6 +6,7 @@
     "apps/*"
   ],
   "scripts": {
+    "test:course-sources": "npm run test:course-sources --workspace=apps/web && node --test scripts/test-course-source-migration.mjs",
     "test:branding": "tsc -p apps/web/tsconfig.branding-test.json && node --test apps/web/.tmp/branding-tests/config/__tests__/branding.test.js",
     "test:composition-resize-format": "tsc -p apps/web/tsconfig.hyperframes-test.json && node --test apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-document-save-request.test.js apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-canvas-snap-geometry.test.js apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-canvas-visible-bounds.test.js",
     "qa:composition-resize-format": "tsc -p apps/web/tsconfig.hyperframes-test.json && node apps/web/.tmp/hyperframes-tests/domains/production/composition-editor/qa/run-composition-resize-format-smoke.js",

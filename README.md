@@ -15,6 +15,8 @@ SofLIA Architect crea cursos completos a partir de una idea o de un paquete SCOR
 
 El producto es un flujo operativo con aprobaciones humanas, contratos de datos versionados, configuracion por organizacion, importacion de assets externos, monitoreo de consumo de IA y una capa de produccion audiovisual (editor de composicion, HeyGen, slides, efectos de sonido y procesamiento de audio).
 
+La fase 1 de [fuentes documentales propias](docs/architecture/course-owned-document-sources.md) incorpora borradores sin IA, reserva y confirmación de originales privados por API, con contratos de fragmentos y versiones. Requiere aplicar la nueva migración y desplegar; no incluye todavía interfaz, extracción automática ni generación completa desde esos archivos.
+
 El código incorpora autoría sincrónica e híbrida bajo habilitación explícita, desactivada por defecto: agenda, plan y materiales por sesión dentro de las ocho etapas, con modelos/prompts configurables y entrega HTML imprimible desde Engine. Requiere migración y piloto autorizado; no se presenta como capacidad ya desplegada. Ver [operación y límites](docs/operations/synchronous-hybrid-courses.md).
 
 ## Tabla De Contenidos
