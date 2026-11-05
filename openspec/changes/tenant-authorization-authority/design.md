@@ -81,6 +81,16 @@ no ocurre durante switch. Fallo de autoridad produce 503, sin escribir cookies.
 F1.3.c.2 revisará identidad GoTrue/Auth Bridge y tokens usados por jobs;
 F1.3.c.3 normalizará errores de autoridad por lotes de rutas.
 
+F1.3.c.2 usa Auth Bridge válido primero, igual que la identidad de UI, y GoTrue
+verificado si no hay Bridge válido. El resolver tenant usa la misma elección,
+siempre con membresía SofLIA y rol local vigentes; GoTrue no concede permisos por
+sus metadatos. Sesiones duales divergentes conservan el actor Bridge. Para jobs,
+Bridge devuelve el token que se verificó; GoTrue verifica el token concreto de
+getSession y exige que corresponda al usuario resuelto. Errores operativos de
+identidad se propagan con código AUTH_LOOKUP_UNAVAILABLE, sin probar otro actor.
+JWT Bridge sin exp, identidad o firma válidas no constituye sesión. Las señales
+dinámicas de Next se conservan. Los DTO públicos siguen sin incluir tokens.
+
 F1.3.b resuelve tenant antes de prelecturas de curation_rows, materials,
 material_lessons y material_components. Las consultas usan relaciones !inner hasta
 artifacts y filtro organization_id. El helper ForTenant de componentes valida el

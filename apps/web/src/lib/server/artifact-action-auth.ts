@@ -1,6 +1,6 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
-import { getAuthBridgeUser } from "@/utils/auth/session";
+import { resolveServerIdentity, resolveServerAccessToken, type SupabaseSessionClient } from "./server-identity";
+
 import type { TenantContext } from "@/lib/server/tenant-context";
 import {
   resolveTenantContextByOrganizationId,
@@ -13,49 +13,10 @@ import {
 } from "@/lib/server/env";
 import { resolveBackgroundFunctionOrigin } from "./background-function-origin";
 
-interface AuthenticatedUserLike {
-  id: string;
-  email?: string | null;
+export async function getAuthenticatedUser(supabase: SupabaseSessionClient) {
+  const identity = await resolveServerIdentity(supabase);
+  return identity ? { userId: identity.user.id, email: identity.user.email } : null;
 }
-
-interface SupabaseAuthLike {
-  auth: {
-    getUser(): Promise<{
-      data: { user: AuthenticatedUserLike | null };
-      error: { message?: string | null } | null;
-    }>;
-    getSession(): Promise<{
-      data: { session: { access_token: string } | null };
-    }>;
-  };
-}
-
-export async function getAuthenticatedUser(supabase: SupabaseAuthLike) {
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (user) {
-    console.log("[Auth] Logged in via GoTrue");
-    return { userId: user.id, email: user.email };
-  }
-
-  if (authError) {
-    console.log("[Auth] GoTrue error or no user:", authError.message);
-  }
-
-  console.log("[Auth] Attempting Auth Bridge fallback...");
-  const bridgeUser = await getAuthBridgeUser();
-  if (bridgeUser) {
-    console.log("[Auth] Logged in via Auth Bridge");
-    return { userId: bridgeUser.id, email: bridgeUser.email };
-  }
-
-  console.log("[Auth] No authenticated user found in any provider");
-  return null;
-}
-
 export function getServiceRoleClient() {
   return createAdminClient(
     getSupabaseUrl(),
@@ -71,18 +32,9 @@ export async function canReviewContent(userId: string, resolvedTenant?: TenantCo
   return Boolean(tenant && tenant.userId === userId && tenant.platformRole && REVIEWER_ROLE_SET.has(tenant.platformRole));
 }
 
-export async function getAccessToken(supabase: SupabaseAuthLike) {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (session?.access_token) {
-    return session.access_token;
-  }
-
-  const cookieStore = await cookies();
-  return cookieStore.get("cf_access_token")?.value || null;
+export async function getAccessToken(supabase: SupabaseSessionClient) {
+  return resolveServerAccessToken(supabase);
 }
-
 export function getBackgroundFunctionsBaseUrl() {
   return resolveBackgroundFunctionOrigin(process.env);
 }

@@ -1,6 +1,7 @@
 import { getAuthBridgeUser } from "@/utils/auth/session";
 import { createClient } from "@/utils/supabase/server";
 import { createAuthSessionHandler } from "@/features/auth/session-http";
+import { resolveServerIdentity } from "@/lib/server/server-identity";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export const GET = createAuthSessionHandler({
   },
   readSupabaseUser: async () => {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = (await resolveServerIdentity(supabase))?.user;
     if (!user) return null;
     const { data: profile } = await supabase.from("profiles")
       .select("username, first_name, last_name_father, last_name_mother, avatar_url, platform_role")

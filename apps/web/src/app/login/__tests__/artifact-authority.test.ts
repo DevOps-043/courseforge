@@ -16,6 +16,7 @@ function fixture() {
     resolveTenantContextByOrganizationId: async (id: string) => { if (state.lookupError) throw state.lookupError; return state.tenant?.organizationId === id ? state.tenant : null; },
   };
   const auth = load<typeof import("../../../lib/server/artifact-action-auth")>("src/lib/server/artifact-action-auth.ts", {
+    "./server-identity": {},
     "@supabase/supabase-js": { createClient: () => ({ from: (table: string) => {
       queries.push(table);
       return { select() { return this; }, eq(field: string, value: unknown) { filters.push([field, value]); return this; },

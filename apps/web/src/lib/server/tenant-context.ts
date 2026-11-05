@@ -1,7 +1,7 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
-import { getAuthBridgeUser } from "@/utils/auth/session";
+import { resolveServerIdentity } from "./server-identity";
 import { loadCurrentUserMemberships, type VerifiedOrganizationMembership } from "./tenant-memberships";
 import { TenantContextLookupError } from "./tenant-context-error";
 export { TenantContextLookupError } from "./tenant-context-error";
@@ -103,7 +103,7 @@ export async function upsertOrganizationPlatformRole(params: {
 }
 
 export const getOrganizationsFromSession = cache(async () => {
-  const bridgeUser = await getAuthBridgeUser();
+  const bridgeUser = (await resolveServerIdentity())?.user ?? null;
   const organizations = bridgeUser?.id
     ? await loadCurrentUserMemberships(bridgeUser.id)
     : [];

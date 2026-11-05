@@ -42,7 +42,7 @@ function fixture() {
     } }) },
     react: { cache: <T>(fn: T) => fn },
     "next/headers": { cookies: async () => ({ get: () => state.activeCookie ? ({ value: state.activeCookie }) : undefined }), headers: async () => new Map([["referer", state.referer]]) },
-    "@/utils/auth/session": { getAuthBridgeUser: async () => state.user, getUserOrganizations: async () => { throw new Error("No debe leer cookies de organizaciones"); } },
+    "./server-identity": { resolveServerIdentity: async () => state.user ? { user: state.user } : null },
     "@/lib/server/env": { getSupabaseUrl: () => "https://example.invalid", getSupabaseServiceRoleKey: () => "sintetico" },
     "@/utils/auth/platform-role": roleModule,
     "@/lib/server/tenant-lookup-retry": retry,

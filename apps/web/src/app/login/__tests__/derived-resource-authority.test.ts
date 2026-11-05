@@ -46,6 +46,7 @@ function fixture() {
     resolveTenantContextByOrganizationId: async (id: string) => { if (state.unavailable) throw new Error("TENANT_LOOKUP_UNAVAILABLE"); return id === state.tenant?.organizationId ? state.tenant : null; },
   };
   const auth = load<typeof import("../../../lib/server/artifact-action-auth")>("src/lib/server/artifact-action-auth.ts", {
+    "./server-identity": {},
     "@supabase/supabase-js": { createClient: () => client },
     "next/headers": {}, "@/utils/auth/session": {},
     "@/lib/server/tenant-context": tenant,

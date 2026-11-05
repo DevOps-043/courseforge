@@ -59,3 +59,17 @@ antes de conceder permisos. Cookies y claims históricos no conceden membresía.
 - **THEN** la membresía y el rol local del destino se comprueban contra autoridad actual
 - **AND** el JWT reemitido conserva exp original y renueva la lista de membresías
 - **AND** una autoridad caída devuelve 503 sin escribir cookies
+
+#### Scenario: Identidad y credencial coherentes
+- **WHEN** conviven sesiones GoTrue y Auth Bridge con actores distintos
+- **THEN** Auth Bridge válido determina el actor de acciones y tenant
+- **AND** el token usado para jobs corresponde a ese mismo actor
+
+#### Scenario: GoTrue sin Bridge
+- **WHEN** solo existe una identidad GoTrue verificada
+- **THEN** resolver tenant exige membresía actual y rol local para ese ID
+- **AND** el token concreto de GoTrue se verifica antes de entregarlo a jobs
+
+#### Scenario: Fallo operativo de identidad
+- **WHEN** falla la configuración Bridge o el proveedor de identidad está indisponible
+- **THEN** se propaga AUTH_LOOKUP_UNAVAILABLE sin elegir silenciosamente otra identidad
