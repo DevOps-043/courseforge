@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --quiet",
+    "lint": "node ../../scripts/quality/lint-web.mjs",
     "lint:report": "eslint .",
     "test:composition-native-fragments": "tsc -p tsconfig.hyperframes-test.json && node --test .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-native-fragment.service.test.js",
     "test:composition-caption-effects": "tsc -p tsconfig.hyperframes-test.json && node --test .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-caption-effects.test.js",

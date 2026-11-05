@@ -2,12 +2,16 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTypeScript from "eslint-config-next/typescript";
 
+// Los overrides globales también alcanzan CommonJS; reutilizar los mismos plugins.
+const nextPlugins = nextVitals.find((config) => config.plugins?.["react-hooks"])?.plugins;
+if (!nextPlugins) throw new Error("El preset Next no expone los plugins necesarios para lint.");
+
 export default defineConfig([
   ...nextVitals,
   ...nextTypeScript,
+  { plugins: nextPlugins },
   {
-    // Existing violations remain visible while the restored lint gate blocks
-    // new parser/configuration failures. Tighten these rules incrementally.
+    // La deuda existente se registra por archivo/regla; el gate rechaza incrementos.
     rules: {
       "@next/next/no-assign-module-variable": "warn",
       "@next/next/no-html-link-for-pages": "warn",
@@ -25,7 +29,8 @@ export default defineConfig([
   globalIgnores([
     ".next/**",
     ".netlify/**",
-    ".tmp/**",
+    "**/.tmp/**",
+    "dist/**",
     "coverage/**",
     "public/**",
   ]),
