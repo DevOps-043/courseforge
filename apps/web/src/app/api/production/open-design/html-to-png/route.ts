@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
+import { isSlideHtmlSourceOwnedByComponent } from "@/domains/production/validation/slide-html-source-access";
 import { createClient } from "@/utils/supabase/server";
 import {
   getAuthenticatedUser,
@@ -60,6 +62,9 @@ export async function POST(request: Request) {
     } catch {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "La ruta del HTML de slides no es válida.", requestId, status: 400 });
     }
+    if (!isSlideHtmlSourceOwnedByComponent(normalizedHtmlPath, authorizedComponent.component.id)) {
+      return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "HTML no encontrado para este componente.", requestId, status: 404 });
+    }
     const result = await rasterizeStoredOpenDesignHtmlSlides({
       admin: authorizedComponent.admin,
       componentId,
@@ -97,6 +102,8 @@ export async function POST(request: Request) {
       cleanup: result.cleanup,
     }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "La solicitud para transformar slides no es válida.", requestId, status: 400 });
     }

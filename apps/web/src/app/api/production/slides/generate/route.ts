@@ -1,4 +1,5 @@
 import { APP_CONFIG } from "../../../../../config/app";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { createHash, randomUUID } from "node:crypto";
 import { normalizeImportedSlideDesign } from "@/domains/production/slides/import/imported-slide-design.service";
 import { detachedImportedDesign, hydrateImportedDesignForOrganization } from "@/domains/production/slides/import/imported-slide-bundle-assets.server";
@@ -445,6 +446,8 @@ export async function POST(request: Request) {
     { requestId, status: 202 },
   );
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.slides.request_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo iniciar la generación de slides.", requestId, retryable: true, status: 500 });
   }

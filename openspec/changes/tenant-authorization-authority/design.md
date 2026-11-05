@@ -221,7 +221,32 @@ La ruta de biblioteca proyecta 403/503. La página ya distingue success false de
 lista vacía y los demás consumidores manejan ese fallo sin cachearlo; se conserva
 esa UI existente haciendo que la acción deje de ocultar el fallo como éxito vacío.
 
-F1.3.c.3.c.5.b conserva pendiente normalizar los otros ocho handlers de slides y
-open-design, incluidos previews HTML y generación async, con sus fixtures.
-No cerrar el lote padre ni TD-26 por completar solo la biblioteca. No alterar
-schemas, render, firmas, CSP, idempotencia o compensación de efectos secundarios.
+F1.3.c.3.c.5.b abarca los otros ocho handlers de slides y open-design,
+incluidos previews HTML y generación async, con sus fixtures. La biblioteca
+por sí sola no acredita el lote padre. No alterar schemas, render, firmas,
+CSP, idempotencia o compensación de efectos secundarios. TD-26 conserva la
+aceptación de ambiente y los demás consumidores pendientes.
+
+### F1.3.c.3.c.5.b: fronteras HTTP y ownership de HTML
+
+Ocho handlers proyectan ambas clases internas de autoridad mediante el mapper
+existente antes del error genérico. Solo se modifican catches de frontera;
+despacho, compensación y errores de preparación internos conservan su orden.
+
+La inspección comprobó además que html-to-png y animated-deck/prepare aceptan
+un path independiente del componente autorizado. El primero descarga y puede
+eliminar ese archivo con service-role. Exigir namespace slides/{componentId}-
+antes de descargar/rasterizar, tanto al path del payload como al de assets.
+La apariencia también valida el namespace de la referencia guardada antes de
+descargar y sobrescribir HTML; las tres rutas comparten un predicado puro.
+El path sigue pasando por el normalizador existente. No exigir que esté ya
+registrado: el consumidor de upload llama a prepare inmediatamente después de
+onAssetChange y esa persistencia no está confirmada todavía. Se admite HTML
+recién subido al componente autorizado; se rechaza otro componente con 404 sin
+lecturas, rasterización, eliminación o escrituras posteriores.
+
+Pruebas sobre handlers/parser/schemas reales con fronteras simuladas: ambas
+clases en identidad, revisión, componente y contexto según la ruta; DTO/CSP,
+400/401/403/404/409/413/422/500, despacho/reutilización 202, atribución y firma,
+compensación de despacho y persistencia de fallo de preparación. Sin proveedores,
+render, credenciales o SQL reales. No acreditar el pipeline completo con mocks.

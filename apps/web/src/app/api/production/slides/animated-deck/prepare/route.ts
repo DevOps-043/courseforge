@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
+import { isSlideHtmlSourceOwnedByComponent } from "@/domains/production/validation/slide-html-source-access";
 import { createClient } from "@/utils/supabase/server";
 import {
   getAuthenticatedUser,
@@ -314,6 +316,9 @@ export async function POST(request: Request) {
     return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "La ruta del HTML de slides no es válida.", requestId, status: 400 });
   }
   const sourceHtmlPath = `${BUCKET}/${normalizedHtmlPath}`;
+  if (!isSlideHtmlSourceOwnedByComponent(normalizedHtmlPath, authorizedComponent.component.id)) {
+    return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "HTML no encontrado para este componente.", requestId, status: 404 });
+  }
 
   try {
     const { data, error } = await authorizedComponent.admin.storage
@@ -431,6 +436,8 @@ export async function POST(request: Request) {
     });
   }
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.slides.animated_deck_boundary_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar el deck animado.", requestId, retryable: true, status: 500 });
   }

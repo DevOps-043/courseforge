@@ -201,3 +201,28 @@ antes de conceder permisos. Cookies y claims históricos no conceden membresía.
 #### Scenario: Upload sin tenant vigente
 - **WHEN** no se puede resolver un tenant vigente para firmar un upload
 - **THEN** se deniega sin recuperar autoridad desde cookies ni claims históricos
+
+### Requirement: HTML de slides limitado al componente autorizado
+
+El servidor MUST limitar los paths de HTML al namespace del componente autorizado
+antes de cualquier lectura, transformación, eliminación o sobrescritura.
+
+#### Scenario: Transformación de HTML ajeno
+- **WHEN** html-to-png, animated-deck/prepare o appearance reciben un path de otro componente en el payload o en assets
+- **THEN** se responde 404 antes de leer, transformar o eliminar ese archivo
+
+#### Scenario: HTML propio recién subido
+- **WHEN** un actor autorizado prepara un HTML válido recién subido al namespace de su componente
+- **THEN** no se exige que la persistencia asíncrona de la referencia haya terminado
+- **AND** se conservan normalización de path, límites y autorización previa
+
+### Requirement: Errores de autoridad de slides y open-design
+
+Las fronteras HTTP MUST proyectar las clases conocidas de indisponibilidad de
+autoridad como 503 seguro y conservar los contratos de dominio y recuperación.
+
+#### Scenario: Autoridad temporalmente no disponible
+- **WHEN** cualquiera de los ocho handlers restantes recibe una clase interna de indisponibilidad de identidad o tenant en su frontera de autorización
+- **THEN** responde 503 seguro, reintentable, correlacionado y sin caché
+- **AND** no continúa con efectos posteriores a esa frontera
+- **AND** conserva los errores de dominio, CSP, firmas, reutilización de trabajos y compensaciones existentes

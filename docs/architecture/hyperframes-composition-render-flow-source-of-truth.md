@@ -208,7 +208,14 @@ devuelve fallo seguro y reintentable (HTTP 503), sin presentarlo como lista vac�
 El Server Action conserva success/error para sus consumidores y añade errorCode;
 la UI existente muestra ese fallo. Evidencia:
 [F1.3.c.3.c.5.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c5a.md).
-Los otros ocho handlers de slides/open-design permanecen pendientes en el lote b.
+Los otros ocho handlers de slides/open-design usan el mismo mapper de autoridad
+en sus fronteras HTTP. Se conservan CSP/DTO, firmas, reutilización de jobs y
+compensación de despacho/preparación; no se acredita ejecución real de proveedores.
+Transformación HTML a PNG, preparación de deck animado y apariencia exigen
+namespace del componente autorizado después de normalizar el path, incluso para
+referencias guardadas. El rechazo precede a descarga/rasterización/sobrescritura.
+Se admite HTML propio recién subido sin esperar la persistencia de su referencia.
+Evidencia: [F1.3.c.3.c.5.b](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c5b.md).
 
 Las operaciones HTTP de HeyGen (assets, plataforma, presets, escenas, voz,
 vídeos, clips y jobs) proyectan caídas internas conocidas de autoridad como
@@ -567,6 +574,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: ocho handlers de slides/open-design proyectan indisponibilidad de
+  autoridad; tres operaciones HTML verifican namespace del componente autorizado.
+  Recuperación y contratos multimedia preservados; evidencia F1.3.c.3.c.5.b en sección 5.
 
 - 2026-11-05: biblioteca de plantillas con autoridad vigente antes del acceso
   privilegiado, denegación explícita y errores seguros. Evidencia F1.3.c.3.c.5.a

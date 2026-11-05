@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
+import { isSlideHtmlSourceOwnedByComponent } from "@/domains/production/validation/slide-html-source-access";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -78,6 +80,9 @@ export async function PATCH(request: Request) {
     }
 
     const storagePath = normalizeProductionAssetStoragePath(currentSlides.html_content_path);
+    if (!isSlideHtmlSourceOwnedByComponent(storagePath, authorized.component.id)) {
+      return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "HTML no encontrado para este componente.", requestId, status: 404 });
+    }
     const { data: htmlBlob, error: downloadError } = await authorized.admin.storage
       .from(STORAGE_BUCKET)
       .download(storagePath);
@@ -144,6 +149,8 @@ export async function PATCH(request: Request) {
 
     return apiSuccessResponse({ assets }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Payload inválido para cambiar la apariencia de slides.", requestId, status: 400 });
     }
