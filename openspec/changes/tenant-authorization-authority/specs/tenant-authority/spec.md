@@ -79,3 +79,12 @@ antes de conceder permisos. Cookies y claims históricos no conceden membresía.
 - **THEN** responde 503 DEPENDENCY_UNAVAILABLE con retryable y correlación, sin caché
 - **AND** no refleja mensajes del proveedor ni continúa con efectos posteriores al fallo
 - **AND** los errores de validación y fallos ajenos a autoridad conservan su contrato
+
+#### Scenario: Indisponibilidad HTTP en syllabus y uploads
+- **WHEN** falla identidad o autoridad tenant en syllabus, prompt, documentos, imports o firma de uploads
+- **THEN** se responde 503 seguro sin iniciar efectos posteriores de extracción, generación, persistencia o firma
+- **AND** el POST de generación conserva la compensación de reservas antes de proyectar errores
+
+#### Scenario: Upload sin tenant vigente
+- **WHEN** no se puede resolver un tenant vigente para firmar un upload
+- **THEN** se deniega sin recuperar autoridad desde cookies ni claims históricos

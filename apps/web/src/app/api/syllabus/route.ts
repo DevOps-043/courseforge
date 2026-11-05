@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { GoogleGenAI } from "@google/genai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
@@ -154,6 +155,8 @@ export async function GET(request: Request) {
     );
     return apiSuccessResponse({ syllabus }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     createOperationalLogger("syllabus.read", {
       correlationId: requestId,
     }).error("syllabus.read_failed", error);
@@ -361,6 +364,8 @@ export async function PATCH(request: Request) {
 
     return apiSuccessResponse({ updated: true }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     createOperationalLogger("syllabus.update", {
       correlationId: requestId,
     }).error("syllabus.update_failed", error);
@@ -425,6 +430,8 @@ export async function DELETE(request: Request) {
     if (error) throw error;
     return apiSuccessResponse({ reset: true }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     createOperationalLogger("syllabus.reset", {
       correlationId: requestId,
     }).error("syllabus.reset_failed", error);
@@ -819,6 +826,8 @@ export async function POST(request: Request) {
         });
       }
     }
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("syllabus.generation_failed", error);
     return apiErrorResponse({
       code: API_ERROR_CODE.internalError,

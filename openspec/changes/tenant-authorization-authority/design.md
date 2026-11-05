@@ -89,6 +89,13 @@ mensajes del proveedor. Los otros errores conservan su contrato existente.
 La caída de autorización ocurre antes de efectos. No se marca resuelto el resto
 de rutas: syllabus/documentos y producción requieren lotes de consumidores propios.
 
+F1.3.c.3.b cubre métodos HTTP de syllabus, prompt, documentos, imports y firma de
+uploads. Usa el mapper de autoridad; POST syllabus conserva rollback de reserva
+antes de proyectar error. Documentos rechaza tenant ausente antes de leer multipart.
+Firma de uploads elimina fallbacks de cookies/claims y exige tenant vigente para
+todos sus propósitos. Los errores de archivos, cuotas e importación conservan sus
+contratos; el tamaño y parseo incremental siguen siendo alcance de TD-27.
+
 F1.3.c.2 usa Auth Bridge válido primero, igual que la identidad de UI, y GoTrue
 verificado si no hay Bridge válido. El resolver tenant usa la misma elección,
 siempre con membresía SofLIA y rol local vigentes; GoTrue no concede permisos por

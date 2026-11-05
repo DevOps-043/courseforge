@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -7,11 +8,7 @@ import {
     getAuthorizedMaterialComponentAdmin,
     getServiceRoleClient,
 } from '@/lib/server/artifact-action-auth';
-import {
-    getActiveOrganizationId,
-    getAuthBridgeUser,
-    getUserOrganizations,
-} from '@/utils/auth/session';
+
 import { createClient } from '@/utils/supabase/server';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 import { validateHyperframesMediaAsset } from '@/domains/production/hyperframes/hyperframes-media-constraints';
@@ -83,26 +80,6 @@ async function ensureCurationSourcesBucket(admin: ReturnType<typeof getServiceRo
     if (error) {
         throw new Error(`No se pudo asegurar el bucket privado curation-sources: ${error.message}`);
     }
-}
-
-async function resolveActiveUploadOrganizationId() {
-    const tenant = await resolveActiveTenantContext();
-    if (tenant?.organizationId) return tenant.organizationId;
-
-    const activeOrgId = await getActiveOrganizationId();
-    if (activeOrgId) return activeOrgId;
-
-    const bridgeUser = await getAuthBridgeUser();
-    if (bridgeUser?.active_organization_id) {
-        return bridgeUser.active_organization_id;
-    }
-
-    if (Array.isArray(bridgeUser?.organization_ids) && bridgeUser.organization_ids.length > 0) {
-        return bridgeUser.organization_ids[0];
-    }
-
-    const organizations = await getUserOrganizations();
-    return organizations[0]?.id || null;
 }
 
 export async function POST(request: Request) {
@@ -179,7 +156,11 @@ export async function POST(request: Request) {
             return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'No autorizado.', requestId, status: 401 });
         }
 
-        const activeOrgId = await resolveActiveUploadOrganizationId();
+        const uploadTenant = await resolveActiveTenantContext();
+        if (!uploadTenant) {
+            return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'Empresa no autorizada.', requestId, status: 403 });
+        }
+        const activeOrgId = uploadTenant.organizationId;
 
         let authorizedFilePath = filePath || '';
 
@@ -299,6 +280,8 @@ export async function POST(request: Request) {
             path: data.path,
         }, { requestId });
     } catch (error: unknown) {
+        const unavailable = authorizationUnavailableResponse(error, requestId);
+        if (unavailable) return unavailable;
         logger.error('storage.signed_upload_url.failed', error);
         return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo preparar la subida.', requestId, retryable: true, status: 500 });
     }
