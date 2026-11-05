@@ -1,6 +1,6 @@
 # Verificación de fronteras de importación
 
-Fecha de cierre en preparación: 2026-11-05. Estado: staging integrado, regresiones aprobadas y compuerta final en curso.
+Fecha: 2026-11-05. Estado: staging integrado, regresiones y verificación de producto aprobadas; código publicado en la rama coordinada de pruebas. No se archiva antes de integración final.
 
 Se separaron contratos de fuentes, fronteras Unicode, planificación pura de captions, descriptor de render y autorización HTTP narrativa. Los exports anteriores siguen disponibles mediante fachadas. Se comprobó por comparación local que los cuerpos de planificación y lectura de fuentes se conservaron con los cambios explícitos de firma, y que el runtime GSAP original es idéntico al del commit previo. No se alteró la configuración de madge ni se excluyeron tipos del análisis.
 
@@ -27,5 +27,7 @@ Se intentó refutar pérdida de validación Unicode, cambio de IDs/orden/presupu
 Antes de publicar se detectaron siete commits nuevos en origin/staging de Engine (37dcf7dc). Se integraron con merge 797a66c7 sin conflictos; se conservaron sus cambios de subtítulos/grupos y se repitió HyperFrames: 358 pruebas aprobadas. El análisis acíclico previo mantiene su configuración y la compuerta del producto se repite sobre la integración.
 
 Generar el worker produjo JavaScript bajo dist/composition-worker y ESLint estaba recorriendo esa salida. Se excluyó únicamente esa salida generada, conservando src completo. Los archivos CommonJS de QA incorporados por staging requerían acotar las excepciones React al mismo patrón del preset Next y permitir require en archivos .cjs. No se desactivaron reglas del código TypeScript ni se excluyeron módulos fuente del análisis de arquitectura. Lint global aprobó tras ese ajuste. La nueva ejecución del producto tras el merge aprobó lint, tipos, cero ciclos y guard de 214 migraciones; las suites posteriores siguen su ejecución en .tmp/verify-product-synchronous-release.log.
+
+Cierre posterior: npm run verify terminó con código 0 sobre la integración de staging, con 297 pruebas aprobadas (marca, seguridad, audio, cobertura de dominios y autoría), tipos/lint correctos y cero ciclos. HyperFrames se repitió después del merge: 358 aprobadas. verify:pr se había detenido en ESLint; tras corregir su alcance se volvió a ejecutar completo el componente verify, y verify:harness se repitió separadamente con código 0: adaptadores, arnés, documentación, OpenSpec estricto y 20 pruebas de tooling aprobados. No se afirma un nuevo código 0 de una invocación monolítica de verify:pr ni se confunde esta composición de evidencia con un deploy.
 
 El historial de la migración aplicada manualmente sigue pendiente de confirmar después de reparar el registro; el usuario respondió sin filas a la consulta inicial y tiene el SQL de reparación acotado. El despliegue, modelo/cuenta real y piloto audiovisual no se consideran verificados por estas pruebas. El acceso de navegador está deshabilitado en la sesión y no hay conexión Netlify; las ramas GitHub no acreditan despliegue web.

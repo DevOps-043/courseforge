@@ -3,7 +3,7 @@
 - [x] 1.2 Separar descriptor del render y tipo de autorización HTTP de sus implementaciones superiores.
 ## 2. Verificación
 - [x] 2.1 Ejecutar tipos, lint y análisis completo de ciclos sin relajar la configuración, también tras integrar staging actualizado.
-- [ ] 2.2 Ejecutar regresiones dirigidas, HyperFrames y verify:pr; corregir fallos del cambio y registrar límites reales.
-- [ ] 2.3 Registrar revisión adversarial, evidencia y continuidad de la entrega síncrona sin declarar despliegue.
+- [x] 2.2 Ejecutar regresiones dirigidas, HyperFrames y verify:pr; corregir fallos del cambio y registrar límites reales.
+- [x] 2.3 Registrar revisión adversarial, evidencia y continuidad de la entrega síncrona sin declarar despliegue.
 
 Evidencia: [verificación](reports/verification.md).
