@@ -313,3 +313,19 @@ autoridad como 503 seguro, con revisión ligada al tenant y sin efectos posterio
 - **WHEN** falla autoridad con un hash y generación válidos de sync v2
 - **THEN** conserva respuesta HTML, bridge DEPENDENCY_FAILED y CSP del protocolo
 - **AND** no refleja detalles internos; sin sync v2 conserva JSON de error
+
+### Requirement: Frontera delegada de lectura HTML
+
+La frontera compartida de lectura MUST validar identidad, correspondencia del
+actor con tenant, organización válida y rol antes del cliente privilegiado.
+MUST mantener errores neutrales y aislamiento de caché aunque falle el logger.
+
+#### Scenario: Error y denegación anteriores al dominio
+- **WHEN** authenticate falla, falta autoridad o la solicitud tiene origen ajeno
+- **THEN** no ejecuta acceso privilegiado ni lectura de dominio
+- **AND** conserva el contrato seguro existente, sin forzar reintento automático
+
+#### Scenario: Cambio de organización y cuota
+- **WHEN** el mismo handler atiende solicitudes de organizaciones distintas
+- **THEN** deriva cuotas y owner del contexto actual en cada solicitud
+- **AND** rechaza un resultado que no coincide con el owner autorizado

@@ -1,0 +1,140 @@
+{
+  "base": "dac19f4a6d133062599423666b1a67cd07db207a",
+  "criterion": "Topología de imports por inspección léxica; no acredita ejecución del adapter, schemas o dominio.",
+  "shared": "apps/web/src/domains/production/composition-editor/http/composition-html-authenticated-read-handler.server.ts",
+  "adapters": [
+    "composition-generated-deck-current-handler.server",
+    "composition-html-editing-historical-candidate-handler.server",
+    "composition-html-editing-legacy-inventory-handler.server",
+    "composition-html-editing-legacy-review-handler.server",
+    "composition-html-editing-reconstruction-library-handler.server",
+    "composition-html-editing-reconstruction-opening-handler.server",
+    "composition-html-editing-reconstruction-resource-handlers.server",
+    "composition-html-editing-snapshot-history-handler.server",
+    "composition-html-editing-snapshot-inspection-handler.server",
+    "composition-html-editing-snapshot-republication-review-handler.server",
+    "composition-html-editing-template-choices-handler.server"
+  ],
+  "routes": [
+    {
+      "route": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/generated-deck-initialization/current/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "adapters": [
+        "composition-generated-deck-current-handler.server"
+      ],
+      "sha256": "7ff62db2fc3961779a481665948a73a4e1bf2cb1891801f1a8bc5e0ab4ac24c9"
+    },
+    {
+      "route": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-editing/[clipId]/adopt/candidates/[candidateId]/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "adapters": [
+        "composition-html-editing-legacy-review-handler.server"
+      ],
+      "sha256": "dc19d80462626f101f4d0f71cc2fd73570595dad60c4afd4c2bddc6789cb4fb4"
+    },
+    {
+      "route": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-editing/[clipId]/templates/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "adapters": [
+        "composition-html-editing-template-choices-handler.server"
+      ],
+      "sha256": "061d2eb42ed1100290ff4b29d3c5e0a6c4f23957099b6ebacea865b600f6fe1a"
+    },
+    {
+      "route": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-historical-candidates/[candidateId]/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "adapters": [
+        "composition-html-editing-historical-candidate-handler.server"
+      ],
+      "sha256": "046e20e21c5617d25e44e376bd4c92a76bf347b089552ae0ba5b3dc1c5705257"
+    },
+    {
+      "route": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-legacy-inventory/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "adapters": [
+        "composition-html-editing-legacy-inventory-handler.server"
+      ],
+      "sha256": "91a3950d0c3b0fe7f11616605f324b99e92e7be5f74ab4530aec0ceb06f119c9"
+    },
+    {
+      "route": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-reconstruction-library/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "adapters": [
+        "composition-html-editing-reconstruction-library-handler.server"
+      ],
+      "sha256": "ab3852aa19ef6cb50ebdbf72754e5e81044a4e71fe36f7269822caf65a262383"
+    },
+    {
+      "route": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-reconstruction-opening/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "adapters": [
+        "composition-html-editing-reconstruction-opening-handler.server"
+      ],
+      "sha256": "dfe40c0ef8da8f59719827b92e8c0cf087f2805f439fdd7dd0879e334a7e9a51"
+    },
+    {
+      "route": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-reconstruction-resource-links/[operationId]/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "adapters": [
+        "composition-html-editing-reconstruction-resource-handlers.server"
+      ],
+      "sha256": "1c265a56b9c38e3a425b91487259d2751f21d88ad83526564c21443949bf3c41"
+    },
+    {
+      "route": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-reconstruction-resources/[assetId]/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "adapters": [
+        "composition-html-editing-reconstruction-resource-handlers.server"
+      ],
+      "sha256": "e05da44d56e1c6f5f47db534cbe034a902f8ec14dfc6242790de9020143e90bd"
+    },
+    {
+      "route": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-snapshot-history/[revisionId]/inspection/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "adapters": [
+        "composition-html-editing-snapshot-inspection-handler.server"
+      ],
+      "sha256": "6075ef49af623d7d978bfa84a19a01e1a43f0143ea8c5a6683d8f4365acb7e78"
+    },
+    {
+      "route": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-snapshot-history/[revisionId]/review/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "adapters": [
+        "composition-html-editing-snapshot-republication-review-handler.server"
+      ],
+      "sha256": "c2f21e01095f07a407e8c095c8b226a872929a0d38901578425f51082b6b9882"
+    },
+    {
+      "route": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-snapshot-history/route.ts",
+      "methods": [
+        "GET"
+      ],
+      "adapters": [
+        "composition-html-editing-snapshot-history-handler.server"
+      ],
+      "sha256": "20ec9aed8a9086ef3abbd635ebfb7296b8cae5ec14b3bb6501f2aa43d9e14eb9"
+    }
+  ]
+}

@@ -209,6 +209,14 @@ Los 30 adaptadores delegados requieren su inspección independiente. Inventario,
 transformación reproducible y alcance de pruebas:
 [F1.3.c.3.c.7.b.2.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2a.md).
 
+La frontera compartida de lectura HTML valida actor/tenant/rol antes del cliente
+privilegiado y conserva errores neutrales aunque falle observabilidad. Tiene
+regresión ejecutada para cuotas y aislamiento entre solicitudes. Las pruebas del
+core no acreditan los contratos de cada adaptador; el inventario delega doce GET
+en once adaptadores y mantiene pendientes escrituras, capabilities y narrativa.
+Alcance y canarios:
+[F1.3.c.3.c.7.b.2.b.1](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b1.md).
+
 GET/POST de renders proyectan las clases conocidas de autoridad como 503 seguro,
 con revisión anclada al tenant. El fallo de dispatcher conserva failDispatch
 antes de responder; fallar al compensar no acredita reparación durable. Se

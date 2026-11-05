@@ -373,3 +373,12 @@ Inventario y transformación AST limitan las ediciones a catches HTTP, contexto
 de revisión y formato de indisponibilidad. Verificar handlers con parser real,
 validación previa cuando exista, dependencias bloqueadas y pruebas explícitas
 de bridge/legacy. Los dobles no acreditan contratos completos de dominio o RLS.
+
+### F1.3.c.3.c.7.b.2.b.1: lecturas delegadas ya protegidas
+
+Verificar la frontera compartida de once adaptadores, incluidas dos instancias
+lookup/read de reconstruction-resource. No cambiar una factory solo por carecer
+del mapper: el contrato existente puede contener errores desconocidos sin
+reintento automático. Las pruebas deben detectar bypass de autoridad y owner,
+fallo del logger, contaminación de contexto y cuota antes del dominio. La prueba
+del core compartido no acredita schemas, integridad o composición de cada adapter.
