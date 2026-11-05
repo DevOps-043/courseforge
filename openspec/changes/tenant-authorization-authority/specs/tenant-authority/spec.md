@@ -73,3 +73,9 @@ antes de conceder permisos. Cookies y claims históricos no conceden membresía.
 #### Scenario: Fallo operativo de identidad
 - **WHEN** falla la configuración Bridge o el proveedor de identidad está indisponible
 - **THEN** se propaga AUTH_LOOKUP_UNAVAILABLE sin elegir silenciosamente otra identidad
+
+#### Scenario: Indisponibilidad HTTP en publicación y usuarios
+- **WHEN** guardar borrador, publicar o administrar usuarios recibe un error conocido de identidad o tenant
+- **THEN** responde 503 DEPENDENCY_UNAVAILABLE con retryable y correlación, sin caché
+- **AND** no refleja mensajes del proveedor ni continúa con efectos posteriores al fallo
+- **AND** los errores de validación y fallos ajenos a autoridad conservan su contrato

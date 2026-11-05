@@ -81,6 +81,14 @@ no ocurre durante switch. Fallo de autoridad produce 503, sin escribir cookies.
 F1.3.c.2 revisará identidad GoTrue/Auth Bridge y tokens usados por jobs;
 F1.3.c.3 normalizará errores de autoridad por lotes de rutas.
 
+F1.3.c.3.a cubre save-draft, publish y admin/users: errores conocidos de identidad
+o tenant se proyectan a 503 DEPENDENCY_UNAVAILABLE, retryable, con requestId y
+Cache-Control privado sin almacenamiento. Una función HTTP compartida reconoce
+clases internas y emite mensaje fijo; no confía en codes del payload ni refleja
+mensajes del proveedor. Los otros errores conservan su contrato existente.
+La caída de autorización ocurre antes de efectos. No se marca resuelto el resto
+de rutas: syllabus/documentos y producción requieren lotes de consumidores propios.
+
 F1.3.c.2 usa Auth Bridge válido primero, igual que la identidad de UI, y GoTrue
 verificado si no hay Bridge válido. El resolver tenant usa la misma elección,
 siempre con membresía SofLIA y rol local vigentes; GoTrue no concede permisos por

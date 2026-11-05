@@ -10,7 +10,10 @@
 | F1.3.c | TD-26 | Codex (tramo local) | en curso | 8a581b59 | reports/context-F1.3c1.md | F1.3.c.2 y F1.3.c.3 |
 | F1.3.c.1 | TD-26 | Codex | cerrado | 8a581b59 | reports/context-F1.3c1.md | F1.3.c.2: identidad uniforme |
 | F1.3.c.2 | TD-26 | Codex | cerrado | 416fc973 | reports/context-F1.3c2.md | F1.3.c.3: errores HTTP por flujo |
-| F1.3.c.3 | TD-26 | por asignar | planificado | — | — | Errores de autoridad 503 por flujo |
+| F1.3.c.3 | TD-26 | Codex (tramo local) | en curso | a95f8099 | reports/context-F1.3c3a.md | Lotes HTTP pendientes |
+| F1.3.c.3.a | TD-26 | Codex | cerrado | a95f8099 | reports/context-F1.3c3a.md | F1.3.c.3.b: syllabus y almacenamiento |
+| F1.3.c.3.b | TD-26 | por asignar | planificado | — | — | Syllabus, documentos y almacenamiento |
+| F1.3.c.3.c | TD-26 | por asignar | planificado | — | — | Producción y contratos HTTP particulares |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
 - [x] Definir contrato seguro y compatibilidad legacy.
@@ -24,4 +27,7 @@
 - [x] F1.3.c.1: switch con membresía/rol vigentes, exp conservada y 503 seguro.
 - [x] F1.3.c.2: identidad uniforme y tokens por proveedor (aceptación local).
 - [ ] F1.3.c.3: normalización de errores en consumidores restantes.
+- [x] F1.3.c.3.a: respuesta compartida y rutas de publicación/usuarios (aceptación local).
+- [ ] F1.3.c.3.b: syllabus, documentos y almacenamiento.
+- [ ] F1.3.c.3.c: producción y otros consumidores HTTP del inventario.
 - [ ] Acreditar permisos reales de escritura de roles, RLS y ambiente antes de cierre TD-26.
