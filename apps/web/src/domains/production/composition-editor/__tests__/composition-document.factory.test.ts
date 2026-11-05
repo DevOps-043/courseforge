@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as documentContract from "../composition-document.types";
+import * as clipContract from "../composition-clip.contract";
+import * as fontReferenceContract from "../composition-font-reference.contract";
+import * as fontReferenceReader from "../composition-font-references";
 import {
   appendMissingProductionAssetClips,
   buildSceneAssetTimings,
@@ -14,6 +18,16 @@ import {
 import { normalizeCompositionTrackTopology } from "../composition-track-registry";
 import { formatCompositionTimecode, parseCompositionTimecode, stepCompositionFrame } from "../composition-timecode";
 import { applyCompositionEditorPatches } from "../editor-patch.service";
+
+test("los exports existentes conservan los mismos contratos neutrales de clip y fuentes", () => {
+  for (const name of ["compositionClipSchema", "compositionLayoutSchema", "compositionLayoutPatchSchema",
+    "compositionVisualCropSchema", "COMPOSITION_MEDIA_FIT_MODES", "getCompositionClipMediaAssetId"] as const) {
+    assert.equal(documentContract[name], clipContract[name], name);
+  }
+  for (const name of ["compositionFontReferenceSchema", "compositionDeckFontReferencesSchema", "COMPOSITION_FONT_REFERENCE_LIMIT"] as const) {
+    assert.equal(fontReferenceReader[name], fontReferenceContract[name], name);
+  }
+});
 
 test("preserves deck HTML as editable clips and labels missing timings as estimated", () => {
   const document = createInitialCompositionDocument({

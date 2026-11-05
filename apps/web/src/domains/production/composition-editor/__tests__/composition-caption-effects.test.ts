@@ -78,6 +78,14 @@ test("cue overrides inherit untouched settings and unconfigured documents keep t
   assert.doesNotMatch(html, /id="captions-caption-first-effect"/);
 });
 
+test("el plan de captions solo requiere clips y conserva la entrada de solo lectura", () => {
+  const document = createCaptionEffectsFixture();
+  const clips = Object.freeze([...document.clips]);
+  const before = structuredClone(clips);
+  assert.deepEqual(buildCaptionEffectPlan({ clips }), buildCaptionEffectPlan(document));
+  assert.deepEqual(clips, before);
+});
+
 test("text parts preserve punctuation, spaces, emoji and authored text even without acoustic alignment", () => {
   const { source } = caption();
   const cue = source.cues[0]!;

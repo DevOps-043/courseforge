@@ -1,4 +1,4 @@
-import type { CompositionClip, CompositionEditorDocument } from "./composition-document.types";
+import type { CompositionClip } from "./composition-clip.contract";
 import type { CompositionCaptionCue } from "./composition-text-layer.types";
 import { CAPTION_EFFECT_COLORS, CAPTION_EFFECT_LIMITS, CAPTION_EFFECT_METRICS } from "./composition-caption-effects.types";
 import { captionHasEffects, resolveCaptionEffects, resolveCaptionWordRanges } from "./composition-caption-effects.service";
@@ -77,7 +77,7 @@ export function buildCaptionEffectPlanForClip(clip: CompositionClip): CaptionEff
   return steps;
 }
 
-export function buildCaptionEffectPlan(document: CompositionEditorDocument) {
+export function buildCaptionEffectPlan(document: { clips: readonly CompositionClip[] }) {
   const steps: CaptionEffectStep[] = [];
   const targets = new Set<string>();
   for (const clip of document.clips) {

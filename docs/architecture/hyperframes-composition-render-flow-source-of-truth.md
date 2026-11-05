@@ -284,6 +284,12 @@ service role, SQL manual o un bug del backend.
   del servicio de efectos. El schema consume ese módulo y el servicio conserva
   sus exports públicos. No cambia texto, rangos, errores, tiempos o formato.
   Evidencia: [desacoplamiento de captions](../../openspec/changes/decouple-caption-text-validation/reports/context-F3.5a.md).
+- El documento valida invariantes globales sobre `composition-clip.contract.ts`;
+  ese contrato conserva los schemas de clip, layout y crop. Las referencias de
+  fuentes se validan en `composition-font-reference.contract.ts`, separado de su
+  lector. El plan de captions consume solo clips; los exports de las rutas
+  anteriores reexportan los mismos contratos, sin cambiar reglas o formatos.
+  Evidencia: [contratos de documento](../../openspec/changes/decouple-composition-document-contracts/reports/context-F3.5b.md).
 - Los presets de animación Educativo, Lectura guiada y Social aplican settings de
   efectos a la capa sin modificar texto, tiempos o personalizaciones por frase.
   Los presets visuales permanecen independientes. Social usa karaoke `BACKGROUND`
@@ -529,6 +535,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: separación de contratos de clip y referencias tipográficas del
+  documento y sus lectores/planes. Serialización, hashes, errores y planes
+  caracterizados sin cambios; F3.5.b elimina su componente circular.
 
 - 2026-11-05: extracción neutral de validación de texto de captions; se elimina
   su componente circular preservando exports, Unicode y schemas. Evidencia
