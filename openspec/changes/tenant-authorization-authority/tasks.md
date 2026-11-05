@@ -31,13 +31,14 @@
 | F1.3.c.3.c.7.b.1 | TD-26 | Codex | cerrado (local) | 740544a0 | reports/context-F1.3c3c7b1.md | F1.3.c.3.c.7.b.2 |
 | F1.3.c.3.c.7.b.2 | TD-26 | Codex | en curso | 155a9b83 | reports/context-F1.3c3c7b1.md | 17 rutas directas y 30 delegadas |
 | F1.3.c.3.c.7.b.2.a | TD-26 | Codex | cerrado (local) | 155a9b83 | reports/context-F1.3c3c7b2a.md | 17 rutas/24 métodos; continuar .7.b.2.b |
-| F1.3.c.3.c.7.b.2.b | TD-26 | Codex | en curso | dac19f4a | reports/context-F1.3c3c7b2b1.md | Adaptadores de las 30 rutas delegadas |
+| F1.3.c.3.c.7.b.2.b | TD-26 | Codex | cerrado (local) | dac19f4a | reports/context-F1.3c3c7b2b4b.md | Composición de 30 rutas/38 métodos; emisores en .7.b.2.c |
 | F1.3.c.3.c.7.b.2.b.1 | TD-26 / QA | Codex | cerrado (local) | dac19f4a | reports/context-F1.3c3c7b2b1.md | Frontera compartida probada; no acredita todos los adaptadores |
 | F1.3.c.3.c.7.b.2.b.2 | TD-26 / observabilidad | Codex | cerrado (local) | c3b101d8 | reports/context-F1.3c3c7b2b2.md | Nueve regresiones; 31 tests snapshot ejecutados también en Node 22 |
 | F1.3.c.3.c.7.b.2.b.3 | TD-26 / observabilidad | Codex | cerrado (local) | 81e12e7a | reports/context-F1.3c3c7b2b3.md | 30 regresiones y 65 tests narrativos activos; continuar .b.4 |
-| F1.3.c.3.c.7.b.2.b.4 | TD-26 / QA | Codex | en curso | e22013bd | reports/context-F1.3c3c7b2b4.md | Contratos/composición de adapters editoriales HTML y preview/capabilities restantes |
+| F1.3.c.3.c.7.b.2.b.4 | TD-26 / QA | Codex | cerrado (local) | e22013bd | reports/context-F1.3c3c7b2b4b.md | Wiring y suites locales; no acredita aceptación real de permisos |
 | F1.3.c.3.c.7.b.2.b.4.a | TD-26 / QA | Codex | cerrado (local) | e22013bd | reports/context-F1.3c3c7b2b4.md | 20 rutas/27 métodos inline; 20 suites HTTP adicionales ejecutadas |
-| F1.3.c.3.c.7.b.2.b.4.b | TD-26 / QA | por asignar | planificado | — | reports/context-F1.3c3c7b2b4.md | 10 rutas/11 métodos de roots compartidos: narrativa, reconstruction y preview |
+| F1.3.c.3.c.7.b.2.b.4.b | TD-26 / QA | Codex | cerrado (local) | 1cbbf559 | reports/context-F1.3c3c7b2b4b.md | 51 tests nuevos y suite resource-link activada; seguir .7.b.2.c |
+| F1.3.c.3.c.7.b.2.c | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c7b2b4b.md | Emisores y consumidores posteriores al contexto; catches y acciones restantes |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
 - [x] Definir contrato seguro y compatibilidad legacy.

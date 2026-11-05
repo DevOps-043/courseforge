@@ -240,6 +240,13 @@ distintas; no equivalen a integración real ni cubren diez roots compartidos
 pendientes. Alcance y canarios:
 [F1.3.c.3.c.7.b.2.b.4.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b4.md).
 
+Las diez rutas compartidas restantes conservan wiring de narrativa/reconstruction
+y PAGE/RESOURCE_RENEWAL/RESOURCE con configuración del operador. La composición
+de treinta rutas/38 métodos tiene cobertura local, sin acreditar DB o cookies
+reales. Resource-link ejecuta además su suite indirecta de handlers. Sigue abierta
+la revisión de emisores posteriores al contexto. Evidencia:
+[F1.3.c.3.c.7.b.2.b.4.b](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b4b.md).
+
 GET/POST de renders proyectan las clases conocidas de autoridad como 503 seguro,
 con revisión anclada al tenant. El fallo de dispatcher conserva failDispatch
 antes de responder; fallar al compensar no acredita reparación durable. Se

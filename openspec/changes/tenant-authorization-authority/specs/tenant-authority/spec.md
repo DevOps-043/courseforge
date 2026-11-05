@@ -370,3 +370,19 @@ componer la ruta. Sus políticas de rollout MUST fallar cerradas por defecto.
 - **WHEN** los flags requeridos de GET están activos y los de escritura ausentes
 - **THEN** mantiene habilitada la lectura prevista sin conceder POST
 - **AND** valores distintos del literal true no activan la funcionalidad
+
+### Requirement: Raíces compartidas conservan protocolo de autoridad
+
+Las raíces narrativas, reconstruction y preview MUST conectar cada ruta al
+handler previsto con políticas del servidor y sin conceder autoridad del payload.
+
+#### Scenario: Escritura narrativa y recuperación
+- **WHEN** se solicita nueva escritura o consulta de recibo
+- **THEN** ambos modos usan identidad, tenant y revisión actuales
+- **AND** escritura exige organización habilitada mientras recuperación conserva su gate independiente
+
+#### Scenario: Preview y recursos firmados
+- **WHEN** una ruta construye PAGE, RESOURCE_RENEWAL o entrega de recursos
+- **THEN** el servidor decide el tipo y la configuración de audience/clave/origen
+- **AND** recurso firmado conserva su protocolo capability sin aceptar actor del payload
+- **AND** configuración ausente no se deriva del origen de la solicitud

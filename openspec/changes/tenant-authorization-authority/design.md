@@ -412,3 +412,15 @@ ambiente sintético, sin leer configuración local. Canarios de actor forjado y
 rollout abierto, con restauración byte a byte, deben invalidar las expectativas.
 Además ejecutar suites HTTP reales ya existentes, registrando su alcance y
 persistencia simulada. Diez roots compartidos quedan fuera de esta prueba inline.
+
+### F1.3.c.3.c.7.b.2.b.4.b: raíces compartidas
+
+Cargar las diez rutas/once métodos a través de seis módulos de composición y
+rollout reales, con factories terminales interceptadas y efectos externos
+bloqueados. El callback narrativo real valida correspondencia actor/tenant y
+recibe el tenant resuelto en la revisión. Probar organización habilitada para
+APPLY sin imponer ese flag a recuperación; conservar gate de persistencia.
+Preview PAGE/RESOURCE_RENEWAL y RESOURCE tienen distintos contratos. Probar
+configuración real con valores sintéticos y no usar URL/headers del caller.
+La suite indirecta de resource-link importa un fixture que construye handlers
+reales; activarla además de las suites identificadas por imports directos.
