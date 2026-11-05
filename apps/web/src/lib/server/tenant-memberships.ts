@@ -48,7 +48,8 @@ export async function loadCurrentUserMemberships(userId: string): Promise<Verifi
     });
   } catch {
     // No registrar errores del proveedor que puedan contener URLs o credenciales.
-    console.error("[TenantContext] No se pudo verificar la membresía vigente.");
+    try { console.error("[TenantContext] No se pudo verificar la membresía vigente."); }
+    catch { /* Conservar la clase de indisponibilidad aunque falle observabilidad. */ }
     throw new TenantContextLookupError();
   }
 }

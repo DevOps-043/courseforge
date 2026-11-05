@@ -386,3 +386,13 @@ handler previsto con políticas del servidor y sin conceder autoridad del payloa
 - **THEN** el servidor decide el tipo y la configuración de audience/clave/origen
 - **AND** recurso firmado conserva su protocolo capability sin aceptar actor del payload
 - **AND** configuración ausente no se deriva del origen de la solicitud
+
+### Requirement: Emisores tenant conservan clasificación de indisponibilidad
+
+Los emisores de error de membresía y rol local MUST preservar
+TenantContextLookupError aunque falle la escritura síncrona del log seguro.
+
+#### Scenario: Consulta y observabilidad fallan
+- **WHEN** falla la consulta de membresía o rol y console.error también lanza
+- **THEN** el resolver rechaza con código TENANT_LOOKUP_UNAVAILABLE y mensaje neutral
+- **AND** no concede tenant por fallback ni ejecuta lecturas posteriores

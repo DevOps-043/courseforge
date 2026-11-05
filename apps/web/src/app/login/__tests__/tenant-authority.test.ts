@@ -7,7 +7,12 @@ const foreignId = "123e4567-e89b-42d3-a456-426614174001";
 const errorModule = load<typeof import("../../../lib/server/tenant-context-error")>("src/lib/server/tenant-context-error.ts");
 const roleModule = load<typeof import("../../../utils/auth/platform-role")>("src/utils/auth/platform-role.ts");
 const retry = { runTenantLookupWithRetry: async (lookup: (signal: AbortSignal) => Promise<unknown>) => lookup(new AbortController().signal), isTransientTenantLookupError: () => false };
-function fixture() {
+function fixture(options: { loggerThrows?: boolean } = {}) {
+  const loggedMessages: string[] = [];
+  const isolatedConsole = { ...console, error: (message: string) => {
+    loggedMessages.push(message);
+    if (options.loggerThrows) throw new Error("CANARIO_PRIVADO_LOGGER");
+  } };
   const state = {
     user: { id: "usuario-prueba", platform_role: "ADMIN", organization_ids: [ownId] } as { id: string; platform_role: string; organization_ids?: string[] } | null,
     rows: [{ organization_id: ownId, role: "member", organizations: { id: ownId, name: "Empresa", slug: "empresa" } }] as unknown,
@@ -33,7 +38,7 @@ function fixture() {
     "./env": { getSofliaInboxEnv: () => ({ url: "https://example.invalid", key: "sintetico" }) },
     "./tenant-lookup-retry": retry,
     "./tenant-context-error": errorModule,
-  });
+  }, { console: isolatedConsole });
   const tenant = load<typeof import("../../../lib/server/tenant-context")>("src/lib/server/tenant-context.ts", {
     "@supabase/supabase-js": { createClient: () => ({ from: (table: string) => {
       assert.equal(table, "organization_user_roles"); roleReads++;
@@ -48,10 +53,23 @@ function fixture() {
     "@/lib/server/tenant-lookup-retry": retry,
     "./tenant-memberships": memberships,
     "./tenant-context-error": errorModule,
-  });
-  return { state, tenant, memberships, filters, roleReads: () => roleReads };
+  }, { console: isolatedConsole });
+  return { state, tenant, memberships, filters, loggedMessages, roleReads: () => roleReads };
 }
 describe("autoridad tenant vigente", () => {
+  for (const field of ["membershipError", "roleError"] as const) {
+    it(`conserva error de autoridad aunque fallen ${field} y observabilidad`, async () => {
+      const f = fixture({ loggerThrows: true }); f.state[field] = new Error("CANARIO_PRIVADO_PROVEEDOR");
+      await assert.rejects(f.tenant.resolveTenantContext("empresa"), error => {
+        assert.ok(error instanceof errorModule.TenantContextLookupError);
+        assert.equal(error.code, "TENANT_LOOKUP_UNAVAILABLE"); assert.equal(error.retryable, true);
+        assert.doesNotMatch(error.message, /CANARIO_PRIVADO/); return true;
+      });
+      assert.equal(f.roleReads(), field === "roleError" ? 1 : 0);
+      assert.equal(f.loggedMessages.length, 1);
+      assert.doesNotMatch(f.loggedMessages.join(" "), /CANARIO_PRIVADO/);
+    });
+  }
   it("conserva rol local e ignora cookie y rol global ADMIN", async () => {
     const f = fixture();
     assert.equal((await f.tenant.resolveTenantContext("empresa"))?.platformRole, "CONSTRUCTOR");

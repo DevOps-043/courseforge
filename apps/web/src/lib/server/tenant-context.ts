@@ -68,7 +68,8 @@ export const getOrganizationPlatformRole = cache(async (
   });
 
   if (error) {
-    console.error("[TenantContext] No se pudo verificar el rol de la organización.");
+    try { console.error("[TenantContext] No se pudo verificar el rol de la organización."); }
+    catch { /* Conservar la clase de indisponibilidad aunque falle observabilidad. */ }
     throw new TenantContextLookupError();
   }
 

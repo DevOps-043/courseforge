@@ -38,7 +38,9 @@
 | F1.3.c.3.c.7.b.2.b.4 | TD-26 / QA | Codex | cerrado (local) | e22013bd | reports/context-F1.3c3c7b2b4b.md | Wiring y suites locales; no acredita aceptación real de permisos |
 | F1.3.c.3.c.7.b.2.b.4.a | TD-26 / QA | Codex | cerrado (local) | e22013bd | reports/context-F1.3c3c7b2b4.md | 20 rutas/27 métodos inline; 20 suites HTTP adicionales ejecutadas |
 | F1.3.c.3.c.7.b.2.b.4.b | TD-26 / QA | Codex | cerrado (local) | 1cbbf559 | reports/context-F1.3c3c7b2b4b.md | 51 tests nuevos y suite resource-link activada; seguir .7.b.2.c |
-| F1.3.c.3.c.7.b.2.c | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c7b2b4b.md | Emisores y consumidores posteriores al contexto; catches y acciones restantes |
+| F1.3.c.3.c.7.b.2.c | TD-26 | Codex | en curso | 8f8fb474 | reports/context-F1.3c3c7b2c1.md | Emisores y consumidores posteriores al contexto; catches y acciones restantes |
+| F1.3.c.3.c.7.b.2.c.1 | TD-26 / observabilidad | Codex | cerrado (local) | 8f8fb474 | reports/context-F1.3c3c7b2c1.md | Inventario y dos regresiones de emisores; seguir ajustes |
+| F1.3.c.3.c.7.b.2.c.2 | TD-26 / seguridad | por asignar | planificado (prioritario) | — | reports/context-F1.3c3c7b2c1.md | Eliminar fallback de rol global/cookie en lecturas y escrituras de ajustes |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
 - [x] Definir contrato seguro y compatibilidad legacy.

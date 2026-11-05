@@ -424,3 +424,13 @@ Preview PAGE/RESOURCE_RENEWAL y RESOURCE tienen distintos contratos. Probar
 configuración real con valores sintéticos y no usar URL/headers del caller.
 La suite indirecta de resource-link importa un fixture que construye handlers
 reales; activarla además de las suites identificadas por imports directos.
+
+### F1.3.c.3.c.7.b.2.c.1: emisores tenant e inventario
+
+Los consumidores conocidos clasifican por instanceof; el log no puede sustituir
+la clase. Contener solo console.error de membresías y rol local. Mantener consulta,
+retry, cache y mensaje; no registrar error del proveedor como compensación.
+Reproducir ambos caminos desde resolveTenantContext con fuentes y clases reales,
+dobles de DB y console de VM aislada. Inventariar fuentes versionadas mediante
+AST y hashes; imports, llamadas y catches son candidatos y no acreditan captura
+efectiva o cobertura transitiva de acciones. Continuar la revisión manual.
