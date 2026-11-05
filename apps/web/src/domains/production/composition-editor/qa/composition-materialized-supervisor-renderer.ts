@@ -1,11 +1,12 @@
 import {isAbsolute,relative,sep} from "node:path";
 import type {ControlledSupervisorRenderer} from "./composition-render-supervisor.service";
+import type {ControlledRenderDescriptor} from "./composition-controlled-render-descriptor.contract";
 import {materializeControlledRenderRevision} from "./composition-controlled-render-materialization";
 import {admitControlledDependencyInventory, type ControlledDependencyInventoryConfiguration} from "./composition-controlled-dependency-inventory";
 import {requiresControlledExecutorIntervention} from "./composition-controlled-execution-fence";
 
 type Workspace = Awaited<ReturnType<typeof materializeControlledRenderRevision>>;
-export type ControlledMaterializedExecutor = (descriptor: Parameters<ControlledSupervisorRenderer>[0],
+export type ControlledMaterializedExecutor = (descriptor: ControlledRenderDescriptor,
   workspace: Pick<Workspace,"directory" | "entryPath" | "receipt"> & {
     /** Supplied by authorized materialization; absent legacy workspaces cannot measure fonts. */
     measurementPlan?: Awaited<ReturnType<Workspace["readMeasurementPlan"]>>;

@@ -15,14 +15,13 @@ import {pinConformanceFile, assertConformanceFileUnchanged, type ConformanceFile
 import {requiresControlledExecutorIntervention} from "./composition-controlled-execution-fence";
 import {evaluatePlaybackAudioWitness} from "./composition-playback-audio-gate";
 import type {ControlledSupervisorArtifacts} from "./composition-render-supervisor-binding";
-import type {ControlledMaterializedExecutor} from "./composition-materialized-supervisor-renderer";
+import type {ControlledRenderDescriptor as Descriptor} from "./composition-controlled-render-descriptor.contract";
 import type {ComparisonProcessPorts} from "./composition-comparison-process-ports";
 
 const limits = {referenceFileBytes: Math.max(131 * 1024 * 1024, AUDIO_EVIDENCE_LIMITS.wavBytes), referenceFiles: 256,
   receiptBytes: 20 * 1024 * 1024, videoBytes: 2 * 1024 * 1024 * 1024} as const;
 const defaults = {readVisual: readPersistedVisualConformanceEvidence, readAudio: readPersistedAudioConformanceEvidence,
   compare: compareExportedVideoWithPreview};
-type Descriptor = Parameters<ControlledMaterializedExecutor>[0];
 
 /** Trusted worker composition only. Checksums select exact scoped records, never arbitrary reference paths.
  * Results are local measurements, not signed supervisor receipts or durable conformance admission. */

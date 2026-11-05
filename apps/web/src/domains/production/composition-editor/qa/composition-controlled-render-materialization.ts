@@ -12,12 +12,11 @@ import {compileCompositionPreview, readCompositionAnimationRuntime, COMPOSITION_
 import {conformanceFontPath} from "../composition-conformance-font-bindings";
 import {compiledManifestFont} from "../composition-font-assets.service";
 import type {CompositionCompiledFont} from "../../fonts/organization-font.types";
-import type {ControlledSupervisorRenderer} from "./composition-render-supervisor.service";
+import type {ControlledRenderDescriptor as Descriptor} from "./composition-controlled-render-descriptor.contract";
 import {pinConformanceFile, assertConformanceFileUnchanged} from "./composition-conformance-file-integrity";
 import {assertControlledDeckSourcesLocal, applyControlledBrowserResourcePolicy} from "./composition-controlled-source-policy";
 import {MATERIALIZED_MEASUREMENT_PLAN_POLICY} from "./composition-materialized-measurement-plan-policy";
 
-type Descriptor = Parameters<ControlledSupervisorRenderer>[0];
 type MaterializationInput = Parameters<typeof materializeAuthorizedConformanceRevision>[0] & {
   expected: Pick<Descriptor,"projectHash" | "documentHash" | "contract">;
   animationRuntimeSha256: string;

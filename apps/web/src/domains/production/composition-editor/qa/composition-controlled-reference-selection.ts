@@ -2,7 +2,7 @@ import {createHash} from "node:crypto";
 import {z} from "zod";
 import {compositionConformanceContractSchema} from "../composition-preview-render-conformance";
 import {COMPOSITION_EVENT_PLAN_MAX_BATCHES} from "../composition-conformance-batch-contract";
-import type {ControlledMaterializedExecutor} from "./composition-materialized-supervisor-renderer";
+import type {ControlledRenderDescriptor as Descriptor} from "./composition-controlled-render-descriptor.contract";
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 export const controlledMeasurementReferencesSchema = z.array(z.object({batchIndex: z.number().int().nonnegative(),
@@ -13,7 +13,6 @@ export const controlledReferenceSelectionSchema = z.object({
   documentHash: hash, projectHash: hash, contractSha256: hash,
   references: controlledMeasurementReferencesSchema,
 }).strict();
-type Descriptor = Parameters<ControlledMaterializedExecutor>[0];
 export type ControlledReferenceSelection = z.output<typeof controlledReferenceSelectionSchema>;
 type Selection = ControlledReferenceSelection;
 const maximumSelections = 1024;

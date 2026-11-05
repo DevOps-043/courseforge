@@ -200,6 +200,13 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 5. Contrato de autorizacion y tenancy
 
+El descriptor de QA de render controlado vive en un contrato independiente de
+fence, materialización y supervisor. Contiene identidad de ejecución/revisión,
+organización, hashes y el contrato de conformidad existente; no contiene claves,
+credenciales o leases ni acredita autoridad por sí mismo. Las validaciones y
+garantías de esos servicios permanecen iguales. Evidencia:
+[F3.5.d1](../../openspec/changes/decouple-controlled-render-descriptor/reports/context-F3.5d1.md).
+
 Los handlers HTTP de narrativa comparten su tipo de autoridad desde
 `composition-narrative-http-authorization.contract.ts`; el adaptador de voz
 mantiene el export anterior. El contrato no depende de handlers y no concede
@@ -541,6 +548,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: descriptor neutral de QA; desaparece la componente circular
+  restante sin cambiar las seis implementaciones emitidas. verify:pr aprueba
+  localmente; TD-12 conserva pendiente la corrección del resolvedor de alias.
 
 - 2026-11-05: contrato neutral de autoridad HTTP narrativa; elimina la
   dependencia circular entre handler genérico y adaptador de voz con emisión
