@@ -1,0 +1,36 @@
+✔ snap tolerance stays at seven screen pixels across preview scales (3.9057ms)
+✔ proportional resize respects both canvas bounds without deformation (3.2787ms)
+✔ portrait, grid fallback and minimum sizes preserve the aspect ratio (1.3488ms)
+✔ canvas constraints win over impossible minimum dimensions (0.6931ms)
+✔ invalid geometry does not produce a resize (0.8495ms)
+✔ serialized preview geometry executes without module dependencies (3.1589ms)
+✔ uncropped layout and asymmetric crop expose editorial visible edges and center (6.9138ms)
+✔ resize scales crop instead of treating source box edges as visible (2.5655ms)
+✔ proportional snap chooses one dominant axis for cropped rotated rectangles (4.3081ms)
+✔ free resize solves both rotated guide constraints including quarter turns (1.3549ms)
+✔ missing or invalid candidates and geometry cannot emit a guide (0.9142ms)
+✔ runtime geometry and resize solver have no hidden module dependencies (5.2746ms)
+✔ el runtime serializado funciona después de minificar el módulo de producción (314.6314ms)
+✔ normalizes legacy iframe messages to the current protocol version (8.9342ms)
+✔ focus restoration accepts only bounded target identity and rejects arbitrary selectors (9.8255ms)
+✔ accepts a versioned ready event and rejects malformed document hashes (3.0128ms)
+✔ accepts only fixed, versioned load failures from the active iframe (9.5759ms)
+✔ builds a nonce-restricted error bridge without server messages (3.5488ms)
+✔ maps load failures to safe recovery actions (0.6606ms)
+✔ rejects unknown fields, unsafe bounds and unsupported protocol versions (12.8594ms)
+✔ adds a version to valid parent commands and rejects invalid ranges (2.8483ms)
+✔ identifies whether a preview selection came from the canvas or a parent command (6.0592ms)
+✔ validates visual patches and their correlated acknowledgements (9.951ms)
+✔ valida preview efímero y estados del runtime de color (5.523ms)
+✔ guías locales separan drafts y conservan posición, color y visibilidad (19.5047ms)
+✔ contrato rechaza límites, duplicados, CSS y entradas no finitas (6.8955ms)
+✔ mover una guía valida ID, ratio y generación del iframe (2.2292ms)
+✔ las guías son exclusivas del preview interactivo y no aparecen en render (47.5109ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3077.8332

@@ -6,6 +6,7 @@ export const COMPOSITION_GROUP_MAX_DIRECT_MEMBERS = 500;
 export const COMPOSITION_GROUPING_VERSION = 2;
 
 export interface CompositionGroupNode {
+  timelineMode?: "NESTED";
   id: string;
   clipIds: string[];
   childGroupIds?: string[];
@@ -133,4 +134,17 @@ export function resolveCompositionGroupSelection(
 export function compositionGroupsChildrenFirst(groups: readonly CompositionGroupNode[]): CompositionGroupNode[] {
   const index = buildCompositionGroupIndex(groups);
   return [...groups].sort((left, right) => index.depthByGroupId.get(right.id)! - index.depthByGroupId.get(left.id)! || left.order - right.order);
+}
+
+/** Selección explícita de unidades completas del nivel editorial actual. */
+export function toggleCompositionGroupSelection(document: { groups?: CompositionGroupNode[] }, selectedClipIds: ReadonlySet<string>, groupId: string, editingGroupId: string | null = null): Set<string> {
+  const index = buildCompositionGroupIndex(document.groups);
+  if (!index.groupsById.has(groupId) || (index.parentByGroupId.get(groupId) ?? null) !== editingGroupId) {
+    throw new Error("Selecciona un grupo del nivel actual.");
+  }
+  const leaves = index.leavesByGroupId.get(groupId)!;
+  const next = new Set(selectedClipIds);
+  const remove = leaves.every(id => next.has(id));
+  for (const id of leaves) { if (remove) next.delete(id); else next.add(id); }
+  return next;
 }

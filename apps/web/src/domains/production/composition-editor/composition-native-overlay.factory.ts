@@ -7,6 +7,7 @@ import {
   DEFAULT_NATIVE_TEXT_STYLE,
   DEFAULT_TRANSPARENT_CAPTION_STYLE,
   compositionCaptionCueSchema,
+  MANUAL_CAPTION_DEFAULT_CUE_SECONDS,
 } from "./composition-text-layer.types";
 
 export type NativeOverlayKind = "CAPTION" | "TEXT";
@@ -36,7 +37,7 @@ export function createCompositionNativeOverlay(params: {
   const track: CompositionTrack = existingTrack || {
     id: trackId,
     kind: "OVERLAY",
-    label: kind === "CAPTION" ? "Captions" : "Texto",
+    label: kind === "CAPTION" ? "Subtítulos" : "Texto",
     locked: false,
     order: nextTrackOrder(document.tracks),
     semanticRole: kind === "CAPTION" ? "CAPTIONS" : "TEXT",
@@ -54,7 +55,7 @@ export function createCompositionNativeOverlay(params: {
     hidden: false,
     id,
     kind,
-    label: isCaption ? "Caption" : "Texto",
+    label: isCaption ? "Subtítulos manuales" : "Texto",
     layout: {
       height,
       opacity: 1,
@@ -69,10 +70,10 @@ export function createCompositionNativeOverlay(params: {
     source: isCaption
       ? {
         cues: [{
-          endSeconds: durationSeconds,
+          endSeconds: Math.min(durationSeconds, MANUAL_CAPTION_DEFAULT_CUE_SECONDS),
           id: initialCueId,
           startSeconds: 0,
-          text: "Escribe tu caption",
+          text: "Escribe tu subtítulo",
         }],
         origin: "MANUAL",
         style: { ...DEFAULT_TRANSPARENT_CAPTION_STYLE },

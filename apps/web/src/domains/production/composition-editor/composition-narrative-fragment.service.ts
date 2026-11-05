@@ -108,6 +108,7 @@ export function buildNarrativeFragmentPlan(params: {
   for (const group of compositionGroupsChildrenFirst(orderedGroups)) {
     if (group.clipIds.some(id => !copyIds.has(id))) return { ok: false, reason: "MISSING_REQUIRED_CLIP" };
     operations.push({ type: "group.create", clipIds: group.clipIds.map(id => copyIds.get(id)!), groupId: groupCopies.get(group.id)!,
+      ...(group.timelineMode ? { timelineMode: group.timelineMode } : {}),
       ...(group.childGroupIds?.length ? { childGroupIds: group.childGroupIds.map(id => groupCopies.get(id)!) } : {}),
       label: group.label ? `${Array.from(group.label).slice(0, MAX_GROUP_LABEL_CODE_POINTS).join("")} · fragmento` : "Fragmento extraído" });
   }

@@ -53,3 +53,9 @@ límites en [el informe de entrega](reports/implementation.md). No se aplicó SQ
 - [ ] Probar migraciones en Supabase descartable con esquema y RLS reales.
 - [ ] Aplicar SQL remoto y habilitar piloto únicamente con autorización y evidencia completa.
 - [ ] Archivar OpenSpec después de integrar en la rama objetivo.
+
+## Acceso y selección real — 2026-11-03
+- [x] Corregir selección aditiva mediante pointerdown/click reales.
+- [x] Exponer acceso Grupos y acciones de agrupación al inicio del panel.
+- [x] Añadir selector explícito de grupos completos por nivel y explicar capacidad deshabilitada.
+- [x] Validar Shift/Ctrl, selección múltiple, lista de grupos y guardado local.

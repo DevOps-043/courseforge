@@ -1,20 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { COMPOSITION_REFERENCE_GUIDE_COLOR, COMPOSITION_REFERENCE_GUIDE_LIMIT, type CompositionReferenceGuide, type CompositionReferenceGuides } from "@/domains/production/composition-editor/composition-reference-guides";
 
-export function CompositionReferenceGuidesPanel({ state, canvas, onChange, onClose, storageError }: {
+export function CompositionReferenceGuidesPanel({ state, canvas, onChange, onClose, storageError, panelId }: {
   state: CompositionReferenceGuides; canvas: { width: number; height: number };
   onChange: (state: CompositionReferenceGuides) => void; onClose: () => void; storageError: string | null;
+  panelId?: string;
 }) {
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const panel = panelRef.current;
+    const previous = document.activeElement;
+    panel?.focus({ preventScroll: true });
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected && (document.activeElement === document.body || panel?.contains(document.activeElement))) previous.focus({ preventScroll: true });
+    };
+  }, []);
   const add = (axis: "x" | "y") => onChange({ visible: true, guides: [...state.guides,
     { id: crypto.randomUUID(), axis, ratio: 0.5, color: COMPOSITION_REFERENCE_GUIDE_COLOR }] });
-  return <section aria-label="Líneas de referencia" className="space-y-3 border-y border-slate-200 bg-slate-50 p-3 text-xs dark:border-white/10 dark:bg-slate-900">
+  return <section ref={panelRef} id={panelId} tabIndex={-1} aria-label="Líneas de referencia" onKeyDown={event => {
+    if (event.key === "Escape" && !event.nativeEvent.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey) { event.preventDefault(); event.stopPropagation(); onClose(); }
+  }} className="space-y-3 border-y border-slate-200 bg-slate-50 p-3 text-xs dark:border-white/10 dark:bg-slate-900">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <strong className="text-slate-800 dark:text-white">Líneas de referencia</strong>
+      <strong className="text-slate-800 dark:text-white">Guías personalizables · Líneas de referencia</strong>
       <button type="button" onClick={onClose} className="text-slate-600 underline dark:text-gray-300">Cerrar guías</button>
     </div>
-    <p className="text-slate-500 dark:text-gray-400">Sólo se ven en el editor y se guardan en este navegador. Arrastra las líneas o indica su posición. Usa Snap para alinear elementos.</p>
+    <p className="text-slate-500 dark:text-gray-400">Añade líneas horizontales o verticales y personaliza su posición y color. Son independientes de la rejilla fija. Sólo se ven en el editor y se guardan en este navegador. Arrastra las líneas o indica su posición. Usa Snap para alinear elementos.</p>
+    {state.guides.length === 0 && <p className="text-slate-600 dark:text-gray-300">Para crear tu primera referencia, pulsa «Añadir vertical» o «Añadir horizontal».</p>}
     <div className="flex flex-wrap gap-3 text-slate-700 dark:text-gray-200">
       <label><input type="checkbox" checked={state.visible} onChange={event => onChange({ ...state, visible: event.target.checked })} /> Mostrar guías</label>
       <button type="button" disabled={state.guides.length >= COMPOSITION_REFERENCE_GUIDE_LIMIT} onClick={() => add("x")} className="underline disabled:opacity-40">Añadir vertical</button>

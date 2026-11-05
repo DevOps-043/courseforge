@@ -40,7 +40,34 @@ async function main() {
               Math.min(rect.right, other.right) - Math.max(rect.left, other.left) <= 1 ||
               Math.min(rect.bottom, other.bottom) - Math.max(rect.top, other.top) <= 1));
         })()`);
-        if (!layoutValid) throw new Error(`Toolbar overflow or overlap: ${width}, inspector=${inspectorOpen}`);
+        if (!layoutValid) throw new Error(`Toolbar overflow or overlap: ${width}, inspector=${inspectorOpen}; ${JSON.stringify(await evaluate(`(() => {
+          const bounds = element => { const rect=element.getBoundingClientRect();return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}; };
+          return {panel:bounds(document.querySelector('[data-preview]')),controls:[...document.querySelectorAll('[data-preview] button,[data-preview] select')].filter(el=>el.getClientRects().length).map(el=>({label:el.getAttribute('aria-label')||el.textContent,...bounds(el)}))};
+        })()`))}`);
+        const guidesVisible = await evaluate(`(() => {
+          const button = document.querySelector('button[aria-label="Guías personalizables"]');
+          const label = [...button.querySelectorAll('span')].find(node => node.textContent === 'Guías');
+          return button.getClientRects().length > 0 && label.getClientRects().length > 0 && button.getAttribute('aria-expanded') === 'false';
+        })()`);
+        if (!guidesVisible) throw new Error(`Guías sin texto visible: ${width}, inspector=${inspectorOpen}`);
+        await evaluate(`(() => {const button=document.querySelector('button[aria-label="Guías personalizables"]');button.focus();button.click();})()`);
+        await compositionQaDelay(150);
+        if (!await evaluate(`(() => {
+          const button = document.querySelector('button[aria-label="Guías personalizables"]');
+          const panel = document.getElementById(button.getAttribute('aria-controls'));
+          return button.getAttribute('aria-expanded') === 'true' && panel?.contains(document.activeElement);
+        })()`)) throw new Error("Guías no abrió el panel enlazado o no recibió foco");
+        await evaluate(`[...document.querySelectorAll('button')].find(button=>button.textContent === 'Añadir vertical').click()`);
+        await compositionQaDelay(100);
+        if (!await evaluate(`document.querySelectorAll('input[type="color"]').length === 1`)) throw new Error("No se pudo crear una guía desde el acceso visible");
+        await evaluate(`document.querySelector('[aria-label="Líneas de referencia"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+        await compositionQaDelay(100);
+        if (!await evaluate(`!document.querySelector('[aria-label="Líneas de referencia"]') && document.activeElement?.getAttribute('aria-label') === 'Guías personalizables'`)) throw new Error("Escape no cerró guías o no devolvió foco");
+        await click("Guías personalizables");
+        if (!await evaluate(`document.querySelectorAll('input[type="color"]').length === 1`)) throw new Error("Cerrar guías perdió su configuración");
+        await evaluate(`document.querySelector('[aria-label="Eliminar guía 1"]').click()`);
+        await click("Guías personalizables");
+        if (await evaluate(`Boolean(document.querySelector('[aria-label="Líneas de referencia"]'))`)) throw new Error("El botón Guías no cerró el panel");
         await evaluate("document.querySelector('[aria-haspopup=menu]').focus(); document.querySelector('[aria-haspopup=menu]').click()");
         await compositionQaDelay(150);
         const menuValid = await evaluate(`(() => {
@@ -89,7 +116,7 @@ async function main() {
     await browser.client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: 20, y: 20, button: "left", clickCount: 1 });
     await compositionQaDelay(100);
     if (await evaluate("Boolean(document.querySelector('[role=menu]'))")) throw new Error("Outside pointer failed to close tools");
-    process.stdout.write("Single-row toolbar (<=52px), tools visibility, keyboard dismissal and history: passed at 6 widths, with inspector open and closed.\n");
+    process.stdout.write("Barra sin solapes (<=52px), Guías con texto visible, apertura/creación/cierre sin pérdida, foco/Escape y menú/historial: aprobado en 6 anchos, con inspector abierto y cerrado.\n");
   } finally { await browser.close(); }
 }
 

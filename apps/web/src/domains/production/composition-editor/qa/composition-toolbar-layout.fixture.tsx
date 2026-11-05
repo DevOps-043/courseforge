@@ -1,13 +1,18 @@
-import { useRef, useState, type ComponentProps } from "react";
+import { useId, useRef, useState, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { CompositionPreviewToolbar } from "@/domains/materials/components/composition-editor/CompositionPreviewToolbar";
 import { useCompositionStudioControls } from "@/domains/materials/components/composition-editor/useCompositionStudioControls";
 import styles from "@/domains/materials/components/composition-editor/CompositionStudio.module.css";
+import { CompositionReferenceGuidesPanel } from "@/domains/materials/components/composition-editor/CompositionReferenceGuidesPanel";
+import { useCompositionReferenceGuides } from "@/domains/materials/components/composition-editor/useCompositionReferenceGuides";
 
 function Fixture() {
   const controls = useCompositionStudioControls();
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [referenceGuidesOpen, setReferenceGuidesOpen] = useState(false);
+  const referenceGuidesPanelId = useId();
+  const { state: referenceGuides, setState: setReferenceGuides, storageError } = useCompositionReferenceGuides("toolbar-qa");
   const previewRef = useRef<HTMLElement>(null);
   const noop = () => {};
   const props: ComponentProps<typeof CompositionPreviewToolbar> = {
@@ -26,7 +31,8 @@ function Fixture() {
     onToggleFullscreen: () => { void previewRef.current?.requestFullscreen(); },
     onCanvasFormatChange: noop, onContinueToPublication: noop, onOpenLibrary: noop,
     onIntervalAction: noop, onOpenAssistant: noop, onOpenCommandPalette: noop,
-    onOpenReferenceGuides: noop, onOpenPresets: noop, onReload: noop, onRedo: noop, onRestoreHistory: noop,
+    onToggleReferenceGuides: () => setReferenceGuidesOpen(open => !open), referenceGuidesOpen, referenceGuidesPanelId,
+    onOpenPresets: noop, onReload: noop, onRedo: noop, onRestoreHistory: noop,
     onSplit: noop, onToggleDirectEditing: noop, onToggleComparison: noop,
     onToggleGrid: noop, onToggleSafeAreas: noop, onToggleSnap: noop,
     onToggleTrim: noop, onToggleVisualCrop: noop, onUndo: noop, onZoom: noop,
@@ -36,6 +42,8 @@ function Fixture() {
       <aside className={styles.library}>Biblioteca</aside>
       <section ref={previewRef} data-preview className={styles.previewPanel}>
         <CompositionPreviewToolbar {...props} />
+        {referenceGuidesOpen && <CompositionReferenceGuidesPanel panelId={referenceGuidesPanelId} state={referenceGuides} canvas={props.canvas}
+          onChange={setReferenceGuides} onClose={() => setReferenceGuidesOpen(false)} storageError={storageError} />}
         <div style={{ flex: 1, background: "#123" }}>Video</div>
       </section>
       {inspectorOpen && <aside className={styles.inspector}>Inspector</aside>}

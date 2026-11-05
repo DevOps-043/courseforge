@@ -342,6 +342,7 @@ export const compositionClipSchema = z.object({
  * tracks; the render compiler continues to consume the resolved clip list.
  */
 export const compositionGroupSchema = z.object({
+  timelineMode: z.literal("NESTED").optional(),
   clipIds: z.array(editorIdSchema).max(COMPOSITION_GROUP_MAX_DIRECT_MEMBERS),
   childGroupIds: z.array(editorIdSchema).max(COMPOSITION_MAX_GROUPS).optional(),
   id: editorIdSchema,
@@ -463,6 +464,9 @@ export const compositionEditorDocumentSchema = z.object({
   }
   for (const message of validateCompositionGroupGraph(document.groups ?? [], clipIds, document.groupingVersion)) {
     context.addIssue({ code: "custom", message });
+  }
+  if (document.groupingVersion !== 2 && document.groups?.some(group => group.timelineMode)) {
+    context.addIssue({ code: "custom", message: "La anidación del timeline requiere agrupaciones versión 2." });
   }
   const animationIds = new Set<string>();
   const animationsByTargetAndGroup = new Map<string, Array<{ end: number; id: string; start: number }>>();

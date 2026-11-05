@@ -2,10 +2,11 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Search, Filter, MoreHorizontal, Shield, Mail, Calendar, Edit } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Search, Filter, MoreHorizontal, Shield, Mail, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import UserModal from './UserModal';
+import UserActionsMenu from './UserActionsMenu';
 import type { PlatformUser, UserModalFormData } from './user-management.types';
 
 export default function UsersTable({ initialUsers }: { initialUsers: PlatformUser[] }) {
@@ -17,20 +18,17 @@ export default function UsersTable({ initialUsers }: { initialUsers: PlatformUse
 
   // Actions Menu State
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [menuPosition, setMenuPosition] = useState<{ top: number, left: number } | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
 
-  const toggleMenu = (e: React.MouseEvent, id: string) => {
+  const toggleMenu = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
     e.stopPropagation();
     if (openMenuId === id) {
         setOpenMenuId(null);
-        setMenuPosition(null);
+        setMenuAnchor(null);
     } else {
-        const rect = e.currentTarget.getBoundingClientRect();
-        // Calculate position: right aligned with the button, slightly below
-        setMenuPosition({ 
-            top: rect.bottom + 5, 
-            left: rect.right - 192 // 192px is w-48 (12rem)
-        }); 
+        menuTriggerRef.current = e.currentTarget;
+        setMenuAnchor(e.currentTarget.getBoundingClientRect());
         setOpenMenuId(id);
     }
   };
@@ -40,7 +38,7 @@ export default function UsersTable({ initialUsers }: { initialUsers: PlatformUse
     const handleScroll = () => {
         if(openMenuId) {
             setOpenMenuId(null);
-            setMenuPosition(null);
+            setMenuAnchor(null);
         }
     }
     window.addEventListener('scroll', handleScroll, true);
@@ -140,7 +138,7 @@ export default function UsersTable({ initialUsers }: { initialUsers: PlatformUse
 
       {/* Users Table */}
       <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl overflow-visible min-h-[400px] shadow-sm dark:shadow-none transition-colors">
-        <div className="overflow-x-auto pb-32"> {/* Added padding bottom to allow menu space if inline, but fixed menu ignores this */}
+        <div className="overflow-x-auto pb-32">
             <table className="w-full text-left border-collapse">
                 <thead>
                     <tr className="border-b border-gray-100 dark:border-[var(--engine-muted)]/10 bg-gray-50/50 dark:bg-[var(--engine-canvas)]/50">
@@ -191,6 +189,11 @@ export default function UsersTable({ initialUsers }: { initialUsers: PlatformUse
                             </td>
                             <td className="p-4 text-right">
                                 <button 
+                                    type="button"
+                                    aria-label={`Acciones de ${user.first_name || user.username || 'usuario'}`}
+                                    aria-expanded={openMenuId === user.id}
+                                    aria-haspopup="menu"
+                                    aria-controls={openMenuId === user.id ? 'user-actions-menu' : undefined}
                                     onClick={(e) => toggleMenu(e, user.id)}
                                     className={`p-2 rounded-lg transition-colors ${openMenuId === user.id ? 'bg-[var(--engine-accent)] text-white dark:text-black' : 'text-gray-400 dark:text-[var(--engine-text-muted)] hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2C333D]'}`}
                                 >
@@ -211,27 +214,14 @@ export default function UsersTable({ initialUsers }: { initialUsers: PlatformUse
         </div>
       </div>
 
-      {/* Fixed Dropdown Menu - Rendered outside of table overflow */}
-      {openMenuId && menuPosition && activeUser && (
-        <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />
-            <div 
-                className="fixed w-48 bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/30 rounded-xl shadow-xl dark:shadow-2xl z-50 py-1 overflow-hidden transition-colors"
-                style={{ top: menuPosition.top, left: menuPosition.left }}
-            >
-                <div className="px-3 py-2 border-b border-gray-100 dark:border-[var(--engine-muted)]/10 bg-gray-50 dark:bg-[var(--engine-surface-hover)]/50">
-                    <p className="text-[10px] text-gray-500 dark:text-[var(--engine-text-muted)] uppercase tracking-wider font-semibold">Acciones</p>
-                    <p className="text-xs text-gray-900 dark:text-white truncate font-medium">{activeUser.first_name}</p>
-                </div>
-                <button 
-                    onClick={() => handleEdit(activeUser)}
-                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-[var(--engine-accent)]/10 hover:text-[var(--engine-accent)] flex items-center gap-2 transition-colors"
-                >
-                    <Edit size={14} />
-                    Ver / Editar Rol
-                </button>
-            </div>
-        </>
+      {openMenuId && menuAnchor && activeUser && (
+        <UserActionsMenu
+          anchor={menuAnchor}
+          user={activeUser}
+          triggerRef={menuTriggerRef}
+          onClose={() => setOpenMenuId(null)}
+          onEdit={() => handleEdit(activeUser)}
+        />
       )}
 
       {/* Modals */}

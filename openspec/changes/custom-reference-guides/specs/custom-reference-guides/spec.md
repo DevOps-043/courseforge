@@ -3,6 +3,12 @@
 ### Requirement: Guías editoriales configurables
 El editor SHALL ofrecer guías horizontales/verticales con posición en píxeles, color y eliminación.
 
+#### Scenario: Encontrar las guías
+- **WHEN** el autor utiliza el monitor en escritorio o pantalla estrecha
+- **THEN** encuentra un botón con texto visible Guías sin abrir Herramientas
+- **AND** abre el panel de líneas personalizables, diferenciado de la rejilla fija
+- **AND** puede cerrarlo mediante el mismo botón, Cerrar guías o Escape sin perder sus referencias
+
 #### Scenario: Crear y mover
 - **WHEN** el autor agrega una guía y cambia su posición desde el panel o arrastrándola
 - **THEN** se actualiza inmediatamente en el monitor sin mover ningún clip

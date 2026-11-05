@@ -1,5 +1,15 @@
 # Plan de implementación: agrupaciones anidadas
 
+## Corrección de acceso y selección — 2026-11-03
+La secuencia pointerdown/click seleccionaba el grupo sin conservar la selección
+aditiva antes de aplicar Shift/Ctrl o Selección múltiple. Los fixtures previos
+enviaban click sin pointerdown y no detectaban esa diferencia. Las acciones
+estaban además al final del panel Selección. Se añade acceso «Grupos» al timeline,
+acciones al inicio y lista de grupos hermanos seleccionables completos. El
+servidor conserva la capacidad y el guard SQL existentes: no se habilita por UI.
+Sin capacidad se explica la dependencia de despliegue/habilitación, incluso sin
+selección. La validación debe incluir eventos físicos CDP, no sólo click sintético.
+
 Estado: plan técnico con decisiones concretadas en [technical-closure.md](technical-closure.md).
 Ese cierre fija contrato, límites, SQL, clientes antiguos y habilitación y prevalece
 sobre las opciones iniciales de este diseño. No son capacidades disponibles.

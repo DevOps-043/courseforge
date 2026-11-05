@@ -20,7 +20,8 @@ import {
 } from "@/domains/production/composition-editor/composition-group-color.service";
 import { resolveCompositionGroupBounds } from "@/domains/production/composition-editor/composition-group.service";
 import { resolveCompositionTimelineSelectionSync } from "@/domains/production/composition-editor/composition-timeline-selection.service";
-import { buildCompositionTimelineLayout } from "@/domains/production/composition-editor/composition-timeline-layout.service";
+import { resolveCompositionTimelineNesting } from "@/domains/production/composition-editor/composition-timeline-nesting.service";
+import { CompositionNestedTimelineRow } from "./CompositionNestedTimelineRow";
 import {
   buildTimelineSnapTargets,
   resolveTimelineSnap,
@@ -109,8 +110,9 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
   const didDragRef = useRef(false);
   const timelineViewportRef = useRef<HTMLDivElement>(null);
-  const timelineLayout = useMemo(() => buildCompositionTimelineLayout(document), [document]);
-  const groups = timelineLayout.groups;
+  const previousEditingGroupId = useRef(editingGroupId);
+  const nesting = useMemo(() => resolveCompositionTimelineNesting(document, editingGroupId), [document, editingGroupId]);
+  const groups = nesting.groups;
   const groupIndex = useMemo(() => buildCompositionGroupIndex(document.groups), [document.groups]);
   const logicalGroups = useMemo(() => (document.groups ?? []).map(group => ({ ...group, clipIds: groupIndex.leavesByGroupId.get(group.id)! })), [document.groups, groupIndex]);
   const groupBoundsById = useMemo(() => new Map(logicalGroups.map(group => [group.id, resolveCompositionGroupBounds(document, group.id, groupIndex)] as const)), [document, groupIndex, logicalGroups]);
@@ -128,6 +130,11 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
   const fps = document.canvas.fps;
   const ruler = useMemo(() => buildAudioTimelineRuler(maxDuration, timelineZoom), [maxDuration, timelineZoom]);
   const snappedToPlayhead = gesture?.snapMatch?.source === "PLAYHEAD";
+  useEffect(() => {
+    if (previousEditingGroupId.current === editingGroupId) return;
+    previousEditingGroupId.current = editingGroupId;
+    timelineViewportRef.current?.querySelector<HTMLButtonElement>("button[data-clip-id]:not([disabled])")?.focus();
+  }, [editingGroupId]);
   const clipSnapMatch = gesture?.snapMatch?.source === "CLIP_START" || gesture?.snapMatch?.source === "CLIP_END"
     ? gesture.snapMatch
     : null;
@@ -258,22 +265,25 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
     onSelect(clip.hfId);
   };
 
-  const beginGesture = (event: PointerEvent<HTMLElement>, clip: CompositionClip, kind: CompositionTimelinePointerBaseGesture) => {
+  const beginGesture = (event: PointerEvent<HTMLElement>, clip: CompositionClip, kind: CompositionTimelinePointerBaseGesture, container?: CompositionGroup) => {
     if (
       saving
       || document.tracks.find((track) => track.id === clip.trackId)?.locked
       || (editingGroup && !editingGroup.clipIds.includes(clip.id))
     ) return;
+    // La selección aditiva se resuelve una sola vez, en click. Preparar un
+    // arrastre aquí sustituía la selección antes de aplicar Shift/Ctrl.
+    if (kind === "move" && !event.altKey && (multiSelectEnabled || event.ctrlKey || event.metaKey || event.shiftKey)) return;
     event.preventDefault();
     event.stopPropagation();
     setMotionEditError(null);
-    const effectiveKind = resolveCompositionTimelinePointerGesture(kind, event.altKey);
+    const effectiveKind = resolveCompositionTimelinePointerGesture(kind, !container && event.altKey);
     const captureTarget = effectiveKind === "move" || effectiveKind === "slide"
       ? event.currentTarget
       : event.currentTarget.parentElement;
     captureTarget?.setPointerCapture?.(event.pointerId);
     didDragRef.current = false;
-    const logicalGroup = logicalGroupsByClipId.get(clip.id);
+    const logicalGroup = container ?? logicalGroupsByClipId.get(clip.id);
     const movesLogicalGroup = effectiveKind === "move" && logicalGroup && editingGroupId !== logicalGroup.id;
     const groupBounds = movesLogicalGroup
       ? groupBoundsById.get(logicalGroup.id) ?? null
@@ -306,7 +316,7 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
     const snapTargets = buildTimelineSnapTargets({
       clips: document.clips.filter((candidate) => (
         !document.tracks.find((track) => track.id === candidate.trackId)?.hidden
-        && (!gesture.groupId || !document.groups?.find((group) => group.id === gesture.groupId)?.clipIds.includes(candidate.id))
+        && (!gesture.groupId || !groupIndex.leavesByGroupId.get(gesture.groupId)?.includes(candidate.id))
       )),
       excludedClipId: gesture.clip.id,
       playheadSeconds: currentTime,
@@ -577,6 +587,7 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
       </div>
     </div>
     <div role="toolbar" aria-label="Controles de selección múltiple" className="flex flex-wrap items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-2 py-1.5 text-[10px] text-violet-950 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-100">
+      <button type="button" onClick={onInspectSelection} className="rounded border border-violet-300 px-2 py-1 font-bold">Grupos</button>
       <button type="button" aria-pressed={multiSelectEnabled} disabled={saving} onClick={() => setMultiSelectEnabled((current) => !current)} className={`inline-flex items-center gap-1 rounded border px-2 py-1 font-bold disabled:opacity-40 ${multiSelectEnabled ? "border-violet-600 bg-violet-600 text-white dark:border-violet-300 dark:bg-violet-300 dark:text-violet-950" : "border-violet-300 bg-white dark:border-violet-300/30 dark:bg-white/10"}`}><CheckSquare2 size={12} /> Selección múltiple</button>
       <span className="mr-auto font-semibold">También puedes usar Ctrl/Cmd o Shift + clic sobre los clips.</span>
       {selectedClipIds.size > 0 && <button type="button" disabled={saving} onClick={clearTimelineSelection} className="inline-flex items-center gap-1 rounded border border-violet-300 bg-white px-2 py-1 font-bold disabled:opacity-40 dark:border-violet-300/30 dark:bg-white/10"><X size={12} /> Limpiar</button>}
@@ -591,6 +602,31 @@ export function CompositionTimeline({ componentId, assetLabels, waveforms, curre
     <div ref={timelineViewportRef} data-composition-timeline-viewport onScroll={syncTimelineScroll} className="overflow-x-auto pb-4">
       <div className="space-y-2" style={{ minWidth: `${timelineZoom * 100}%` }}>
     <div className="grid grid-cols-[160px_minmax(0,1fr)] items-end gap-2"><span className="sticky left-0 z-40 bg-white pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:bg-[#101720] dark:text-gray-400">Tiempo</span><div role="slider" aria-label="Cursor de la composición" aria-valuemax={maxDuration} aria-valuemin={0} aria-valuenow={currentTime} tabIndex={0} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); onSeek(stepCompositionFrame(currentTime, -1, fps, maxDuration, event.shiftKey)); } if (event.key === "ArrowRight") { event.preventDefault(); onSeek(stepCompositionFrame(currentTime, 1, fps, maxDuration, event.shiftKey)); } }} onPointerDown={beginScrub} onPointerMove={continueScrub} onPointerUp={endScrub} onPointerCancel={endScrub} className="relative h-8 cursor-ew-resize select-none overflow-hidden rounded-t-md border border-b-0 border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">{ruler.minor.map((time) => <span key={`minor-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute bottom-0 h-2 w-px bg-slate-300 dark:bg-white/20" />)}{ruler.major.map((time) => <span key={`major-${time}`} aria-hidden="true" style={{ left: `${(time / maxDuration) * 100}%` }} className="absolute inset-y-0 w-px bg-slate-300 dark:bg-white/20"><span className="absolute left-1 top-1 whitespace-nowrap font-mono text-[9px] text-slate-500 dark:text-gray-400">{formatCompositionTimecode(time)}</span></span>)}{clipSnapMatch && <span aria-hidden="true" style={{ left: `${(clipSnapMatch.timeSeconds / maxDuration) * 100}%` }} className="absolute inset-y-0 z-30 w-0.5 bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.9)]"><span className="absolute left-1 top-0.5 whitespace-nowrap rounded bg-amber-100 px-1 py-0.5 text-[8px] font-bold normal-case tracking-normal text-amber-900 shadow-sm">{formatSnapLabel(clipSnapMatch)}</span></span>}<span aria-hidden="true" style={{ left: `${(currentTime / maxDuration) * 100}%` }} className={`absolute inset-y-0 z-30 w-0.5 ${snappedToPlayhead ? "bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.9)]" : "bg-cyan-600 shadow-[0_0_7px_rgba(8,145,178,0.75)] dark:bg-cyan-300"} ${scrubbing ? "opacity-100" : "opacity-90"}`}><span className={`absolute -left-1.5 top-0 h-3 w-3 rotate-45 border ${snappedToPlayhead ? "border-amber-600 bg-amber-100" : "border-cyan-700 bg-cyan-100 dark:border-cyan-100 dark:bg-cyan-400"}`} /></span></div></div>
+    {nesting.containers.map(({ group, bounds }) => {
+      const clip = document.clips.find(candidate => candidate.id === group.clipIds[0]);
+      if (!clip) return null;
+      const unit = resolveCompositionGroupAtLevel(groupIndex, clip.id, editingGroupId);
+      const selectionGroup = logicalGroups.find(candidate => candidate.id === unit?.id) ?? group;
+      const selectionBounds = groupBoundsById.get(selectionGroup.id) ?? bounds;
+      const locked = selectionGroup.clipIds.some(id => document.tracks.find(track => track.id === document.clips.find(member => member.id === id)?.trackId)?.locked);
+      const previewDeltaSeconds = gesture?.groupId === selectionGroup.id && gesture.groupStartSeconds !== null && gesture.originalGroupStartSeconds !== null
+        ? gesture.groupStartSeconds - gesture.originalGroupStartSeconds : 0;
+      return <CompositionNestedTimelineRow key={group.id} group={group} bounds={bounds} clip={clip} durationSeconds={maxDuration}
+        previewDeltaSeconds={previewDeltaSeconds} disabled={saving || locked} selected={selectedGroupId === selectionGroup.id}
+        onSelect={event => {
+          if (didDragRef.current) { didDragRef.current = false; return; }
+          selectLogicalGroup(selectionGroup, clip.hfId, multiSelectEnabled || event.ctrlKey || event.metaKey || event.shiftKey);
+        }} onEnter={() => enterSelectedGroup(group, clip)}
+        onKeyDown={event => {
+          if (event.nativeEvent.isComposing) return;
+          if (event.key === "Enter") { event.preventDefault(); enterSelectedGroup(group, clip); return; }
+          if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && !event.altKey && !event.ctrlKey && !event.metaKey) {
+            event.preventDefault(); event.stopPropagation();
+            onMoveGroup(selectionGroup.id, stepCompositionFrame(selectionBounds.startSeconds, event.key === "ArrowLeft" ? -1 : 1, fps, Math.max(0, maxDuration - selectionBounds.durationSeconds), event.shiftKey));
+          }
+        }} onPointerDown={event => { if (!trimMode) beginGesture(event, clip, "move", selectionGroup); }}
+        onPointerMove={updateGesture} onPointerUp={finishGesture} onPointerCancel={() => setGesture(null)} />;
+    })}
     {groups.map((group) => {
       const { track } = group;
       const expanded = expandedGroupIds.has(group.id);

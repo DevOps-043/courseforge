@@ -168,6 +168,7 @@ export function buildCompositionDuplicateSelectionPlan(params: {
   const groupCopies = new Map(copiedGroups.map(group => [group.id, createUniqueId(createId("group", group.id), occupiedGroupIds)]));
   for (const group of compositionGroupsChildrenFirst(copiedGroups)) {
     operations.push({ clipIds: group.clipIds.map(id => duplicateBySourceId.get(id)!.clipId),
+      ...(group.timelineMode ? { timelineMode: group.timelineMode } : {}),
       ...(group.childGroupIds?.length ? { childGroupIds: group.childGroupIds.map(id => groupCopies.get(id)!) } : {}),
       groupId: groupCopies.get(group.id)!, ...(group.label ? { label: `${group.label} copia`.slice(0, 120) } : {}), type: "group.create" });
   }

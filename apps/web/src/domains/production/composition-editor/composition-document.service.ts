@@ -210,7 +210,7 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
   assertCompositionGroupingWrite({ before: current.document, after: nextDocument,
     // SYSTEM procede del llamador interno; nunca se acepta desde el payload HTTP.
     clientVersion: params.auditSource === "SYSTEM" ? "2" : params.groupingClientVersion,
-    canCreateNestedGroups: (await getCompositionGroupingCapabilities(params.supabase)).canCreateNestedGroups });
+    ...await getCompositionGroupingCapabilities(params.supabase) });
   const nextHash = hashCompositionDocument(nextDocument);
   // Generic timeline/history commands cannot publish or retarget HTML revision
   // references. Only the dedicated atomic HTML repository may do that.

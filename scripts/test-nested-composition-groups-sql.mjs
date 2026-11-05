@@ -29,11 +29,26 @@ await database.exec(`
   INSERT INTO video_composition_drafts VALUES('${draft}','${org}','ACTIVE',1,NULL,NULL);
 `);
 for (const migration of ["20260815010000_replace_composition_document_append_rpc.sql", "20261006110000_narrative_fragment_caption_guard.sql", "20261006120000_narrative_fragment_clip_guard.sql",
-  "20261029230000_nested_composition_groups.sql", "20261029230100_nested_narrative_fragment_groups.sql"]) {
+  "20261029230000_nested_composition_groups.sql", "20261029230100_nested_narrative_fragment_groups.sql", "20261103010000_timeline_nesting.sql"]) {
   await database.exec(await readFile("supabase/migrations/" + migration, "utf8"));
 }
 const query = (sql, args = []) => database.query(sql, args);
 const validate = document => query("SELECT private.assert_composition_group_graph($1::jsonb)", [JSON.stringify(document)]);
+
+await test("SQL acepta anidación explícita y rechaza modos desconocidos o sin versión", async () => {
+  const document = structuredClone(fixtures[0].document);
+  document.groupingVersion = 2;
+  document.groups[0].timelineMode = "NESTED";
+  await validate(document);
+  document.groups[0].timelineMode = "INVALID";
+  await assert.rejects(validate(document), /TIMELINE_MODE_INVALID/);
+  document.groups[0].timelineMode = null;
+  await assert.rejects(validate(document), /TIMELINE_MODE_INVALID/);
+  document.groups[0].timelineMode = "NESTED";
+  delete document.groupingVersion;
+  await assert.rejects(validate(document), /TIMELINE_MODE_INVALID/);
+  assert.equal((await query("SELECT public.composition_grouping_capabilities() AS capabilities")).rows[0].capabilities.timelineNesting, true);
+});
 
 await test("fixtures compartidos coinciden en TypeScript y PostgreSQL", async () => {
   for (const fixture of fixtures) {
@@ -92,9 +107,9 @@ function fragmentFixture() {
     [visualId, { ...shared, id: visualId, asset_type: "SOURCE_MEDIA", mime_type: "video/mp4" }],
   ]);
   const grouped = applyCompositionEditorPatches(document, [
-    { type: "group.create", groupId: "group-a", clipIds: ["voice-1", "visual-1"] },
+    { type: "group.create", groupId: "group-a", clipIds: ["voice-1", "visual-1"], timelineMode: "NESTED" },
     { type: "group.create", groupId: "group-b", clipIds: ["visual-2", "visual-3"] },
-    { type: "group.create", groupId: "group-root", clipIds: [], childGroupIds: ["group-a", "group-b"] },
+    { type: "group.create", groupId: "group-root", clipIds: [], childGroupIds: ["group-a", "group-b"], timelineMode: "NESTED" },
   ]);
   return { document: grouped, documentHash: "b".repeat(64), organizationId, componentId, commandId: "55555555-5555-4555-8555-555555555555",
     selection: { documentHash: "b".repeat(64), occurrenceId: occurrence.id, firstSourceIndex: 1, lastSourceIndex: 2 },
@@ -106,6 +121,10 @@ await test("delta narrativo SQL coincide con copia jerárquica TypeScript y rech
   const next = applyCompositionEditorPatches(params.document, planned.plan.operations);
   const delta = proposed => query("SELECT private.narrative_fragment_document_delta($1::jsonb,$2::jsonb,$3::jsonb,$4::uuid)", [JSON.stringify(params.document), JSON.stringify(planned.plan), JSON.stringify(proposed), params.commandId]);
   await delta(next);
+  assert.equal(next.groups.filter(group => group.timelineMode === "NESTED").length, 4);
+  const withoutMode = structuredClone(next);
+  delete withoutMode.groups.find(group => group.id.startsWith("fragment-group-") && group.timelineMode).timelineMode;
+  await assert.rejects(delta(withoutMode), /DELTA_INVALID/);
   const flattened = structuredClone(next); flattened.groups = flattened.groups.filter(group => !group.childGroupIds?.length);
   await assert.rejects(delta(flattened), /DELTA_INVALID/);
   const partial = structuredClone(planned.plan); partial.candidateClipIds = partial.candidateClipIds.filter(id => id !== "visual-3");

@@ -15,6 +15,12 @@ async function main() {
     productionAssetId:'55555555-5555-4555-8555-555555555558',publicUrl:null,
     storageBucket:'production-assets',storagePath:'fixture.mp4',timelineRole:'BROLL',
   }], plan:{accentColor:'#38BDF8',durationSeconds:4,subtitle:'',title:'Posición en tiempo real'}});
+  const videoClip = structuredClone(document.clips[0]);
+  const deckDocument = createInitialCompositionDocument({animatedDeck:{css:'',fonts:[],width:1920,height:1080,
+    slides:[{index:0,label:'Diapositiva',classes:'slide',html:'<section>Prueba</section>',animationCount:0}]},assets:[],
+    plan:{accentColor:'#38BDF8',durationSeconds:4,subtitle:'',title:'Inspector'}});
+  const inspectorClips = [videoClip, {...videoClip,id:'image-test',hfId:'image-test',kind:'IMAGE',source:{...videoClip.source,hasAudio:false}},
+    deckDocument.clips[0], ...['TEXT','CAPTION'].map(kind => createCompositionNativeOverlay({document,id:`inspector-${kind.toLowerCase()}`,kind,playheadSeconds:0}).clip)];
   document.clips=[];
   const overlay=createCompositionNativeOverlay({document,id:'position-target',kind:'TEXT',playheadSeconds:0});
   document=applyCompositionEditorPatches(document,[{type:'clip.add',clipId:overlay.clip.id,clip:overlay.clip,track:overlay.track},{type:'clip.layout',clipId:overlay.clip.id,layout:{x:-100,y:50,width:400,height:200}}]);
@@ -24,6 +30,7 @@ async function main() {
       import React, {useState} from 'react';
       import {createRoot} from 'react-dom/client';
       import {CompositionPositionControls} from '@/domains/materials/components/composition-editor/CompositionPositionControls';
+      import {CompositionInspector} from '@/domains/materials/components/composition-editor/CompositionInspector';
       import {CompositionAutosaveBoundary} from '@/domains/materials/components/composition-editor/CompositionAutosaveBoundary';
       import {compositionLayoutSchema} from '@/domains/production/composition-editor/composition-document.types';
       import {useCompositionPositionPreview} from '@/domains/materials/components/composition-editor/useCompositionPositionPreview';
@@ -46,14 +53,25 @@ async function main() {
         }}><CompositionPositionControls canvasWidth={width} canvasHeight={1080} disabled={disabled} x={x} y={y} onXChange={value=>{setX(value);preview("x",value)}} onYChange={value=>{setY(value);preview("y",value)}}/></CompositionAutosaveBoundary>;
       }
       createRoot(document.getElementById('root')).render(<Harness/>);
+      const inspectorRoot = createRoot(document.getElementById('inspector-root'));
+      window.inspectorPreviews = []; window.inspectorCommits = [];
+      window.mountInspector = (clip, locked = false) => inspectorRoot.render(<CompositionInspector key={clip.id + locked}
+        canvasWidth={1920} canvasHeight={1080} animations={[]} clip={clip} componentId={null} cropModeEnabled={false}
+        colorGradingStatus={null} onAnimationSelect={()=>{}} onDetachAudio={async()=>{}} onPatch={async operations=>{window.inspectorCommits.push(operations);return true}}
+        onPreviewPosition={(hfId,position)=>window.inspectorPreviews.push({hfId,position})} onPreviewMask={()=>{}} onPreviewCrop={()=>{}}
+        onPreviewColorGrading={()=>{}} onRemove={async()=>{}} saving={false} selectedAnimationId={null}
+        separatingAudio={false} separatingAudioProgress={0} sourcePreviewUrl={null}
+        track={{id:clip.trackId,label:'Pista de prueba',kind:clip.kind === 'TEXT' || clip.kind === 'CAPTION' ? 'OVERLAY' : 'VISUAL',semanticRole:'BROLL',locked,order:0}}/>);
     `, resolveDir: process.cwd(), loader: 'tsx' },
     tsconfig: 'apps/web/tsconfig.json', bundle: true, write: false, platform: 'browser', jsx: 'automatic',
+    define: {'process.env':'{}'},
+    plugins:[{name:'css-del-inspector-en-fixture',setup(builder){builder.onLoad({filter:/\.module\.css$/},()=>({contents:'export default {};',loader:'js'}))}}],
   });
   console.log('Bundle del componente listo.');
   const server = createServer((request, response) => {
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     if(request.url === '/preview') {response.end(previewHtml);return;}
-    response.end(`<html lang="es"><div id="root"></div><iframe src="/preview" style="width:960px;height:540px"></iframe><script>${bundle.outputFiles[0].text}</script></html>`);
+    response.end(`<html lang="es"><div id="root"></div><iframe src="/preview" style="width:960px;height:540px"></iframe><div id="inspector-root"></div><script>${bundle.outputFiles[0].text}</script></html>`);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   let browser;
@@ -108,6 +126,24 @@ async function main() {
     await pause(100);
     assert.deepEqual(await evaluate('previewPosition()'), {x:-100,y:50},'Cambiar selección retira preview anterior');
     console.log('PASS: movimiento X/Y en iframe antes del guardado, limpieza por selección/bloqueo, negativos, sincronización, guardado al soltar, precisión decimal, entradas inválidas y formato.');
+    for (const clip of inspectorClips) {
+      await evaluate(`mountInspector(${JSON.stringify(clip)})`); await pause(150);
+      assert.equal(await evaluate(`document.querySelectorAll('#inspector-root input[aria-label="Posición X, deslizador"]').length`),1,clip.kind);
+      assert.equal(await evaluate(`document.querySelectorAll('#inspector-root input[aria-label="Posición X (px)"]').length`),1,clip.kind);
+      assert.equal(await evaluate(`document.querySelector('#inspector-root fieldset').textContent.includes('Horizontal (X)')`),true,clip.kind);
+      assert.equal(await evaluate(`document.querySelector('#inspector-root fieldset').compareDocumentPosition([...document.querySelectorAll('#inspector-root label')].find(label=>label.textContent.includes('Inicio (mm:ss)'))) & Node.DOCUMENT_POSITION_FOLLOWING ? true : false`),true,clip.kind);
+      const before = await evaluate('inspectorCommits.length');
+      await evaluate(`document.querySelector('#inspector-root input[aria-label="Posición X, deslizador"]').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));change('#inspector-root input[aria-label="Posición X, deslizador"]','333');`);
+      await pause(750);
+      assert.equal(await evaluate('inspectorPreviews.at(-1).position.x'),333,`${clip.kind}: preview inmediato`);
+      assert.equal(await evaluate('inspectorCommits.length'),before,`${clip.kind}: sin guardado durante gesto`);
+      await evaluate(`document.querySelector('#inspector-root input[aria-label="Posición X, deslizador"]').dispatchEvent(new PointerEvent('pointerup',{bubbles:true}));`);
+      await pause(150);
+      assert.equal(await evaluate('inspectorCommits.at(-1).some(op=>op.type==="clip.layout" && op.layout.x===333)'),true,clip.kind);
+      await evaluate(`mountInspector(${JSON.stringify(clip)},true)`); await pause(100);
+      assert.equal(await evaluate(`document.querySelector('#inspector-root input[aria-label="Posición X, deslizador"]').matches(':disabled')`),true,clip.kind);
+    }
+    console.log('PASS: inspector completo VIDEO/IMAGE/DECK_SLIDE/TEXT/CAPTION con selector horizontal único antes de tiempo/audio, preview antes del guardado, commit al soltar y bloqueo de pista.');
   } finally {
     console.log('Cerrando QA.');
     if (browser) await browser.close();

@@ -21,7 +21,11 @@ export interface NarrativeFragmentRpcTransport {
 export function createSupabaseNarrativeFragmentRpcTransport(supabase: SupabaseClient, signal: AbortSignal): NarrativeFragmentRpcTransport {
   return { invoke: async (name, parameters) => {
     if (name === "commit_narrative_fragment") {
-      const plan = parameters.p_plan as { operations?: Array<{ type: string; childGroupIds?: string[] }> };
+      const plan = parameters.p_plan as { operations?: Array<{ type: string; childGroupIds?: string[]; timelineMode?: string }> };
+      if (plan?.operations?.some(operation => operation.type === "group.create" && operation.timelineMode === "NESTED")
+        && !(await getCompositionGroupingCapabilities(supabase)).canNestTimeline) {
+        throw new CompositionGroupingPolicyError("COMPOSITION_TIMELINE_NESTING_DISABLED");
+      }
       if (plan?.operations?.some(operation => operation.type === "group.create" && operation.childGroupIds?.length)
         && !(await getCompositionGroupingCapabilities(supabase)).canCreateNestedGroups) {
         throw new CompositionGroupingPolicyError("COMPOSITION_NESTED_GROUPS_DISABLED");
@@ -61,7 +65,9 @@ export function createNarrativeFragmentCommandRepository(reads: Pick<NarrativeFr
     }
     const next = applyCompositionEditorPatches(current.document, operations, "USER");
     assertCompositionGroupingWrite({ before: current.document, after: next, clientVersion: "2",
-      canCreateNestedGroups: process.env.COMPOSITION_NESTED_GROUPS_ENABLED === "true" });
+      canCreateNestedGroups: process.env.COMPOSITION_NESTED_GROUPS_ENABLED === "true",
+      // El transporte real exige además el contrato SQL antes del RPC.
+      canNestTimeline: process.env.COMPOSITION_NESTED_GROUPS_ENABLED === "true" });
     if (!preservesCompositionHtmlRevisionReferences(current.document, next)) throw new Error("Fragment cannot retarget HTML references");
     const response = await transport.invoke("commit_narrative_fragment", {
       p_draft_id: scope.draftId, p_organization_id: scope.organizationId, p_actor_id: scope.userId, p_command_id: scope.commandId,

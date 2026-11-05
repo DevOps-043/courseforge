@@ -5,9 +5,10 @@ export const COMPOSITION_GROUPING_CLIENT_HEADER = "X-Composition-Grouping-Versio
 
 export class CompositionGroupingPolicyError extends Error {
   readonly status = 409;
-  constructor(readonly code: "COMPOSITION_GROUPING_CLIENT_OUTDATED" | "COMPOSITION_NESTED_GROUPS_DISABLED") {
+  constructor(readonly code: "COMPOSITION_GROUPING_CLIENT_OUTDATED" | "COMPOSITION_NESTED_GROUPS_DISABLED" | "COMPOSITION_TIMELINE_NESTING_DISABLED") {
     super(code === "COMPOSITION_GROUPING_CLIENT_OUTDATED"
       ? "Esta versión del editor no admite agrupaciones anidadas. Recarga la página."
+      : code === "COMPOSITION_TIMELINE_NESTING_DISABLED" ? "La anidación del timeline no está habilitada en este entorno."
       : "La creación de agrupaciones anidadas está deshabilitada temporalmente.");
   }
 }
@@ -31,7 +32,12 @@ export function assertCompositionGroupingWrite(params: {
   after: CompositionEditorDocument;
   clientVersion: string | null | undefined;
   canCreateNestedGroups: boolean;
+  canNestTimeline?: boolean;
 }) {
+  const priorModes = new Map(params.before.groups?.map(group => [group.id, group.timelineMode]));
+  if (!params.canNestTimeline && params.after.groups?.some(group => group.timelineMode === "NESTED" && priorModes.get(group.id) !== "NESTED")) {
+    throw new CompositionGroupingPolicyError("COMPOSITION_TIMELINE_NESTING_DISABLED");
+  }
   if ((params.before.groupingVersion === 2 || params.after.groupingVersion === 2) && params.clientVersion !== "2") {
     throw new CompositionGroupingPolicyError("COMPOSITION_GROUPING_CLIENT_OUTDATED");
   }

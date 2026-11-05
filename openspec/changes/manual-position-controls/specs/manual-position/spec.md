@@ -8,6 +8,11 @@ El inspector SHALL ofrecer controles X/Y con deslizador horizontal y campo numé
 - **THEN** se actualiza el valor del control complementario y se guarda con clip.layout
 - **AND** se conservan tamaño, rotación, opacidad y el otro eje
 
+#### Scenario: Encontrar el selector horizontal
+- **WHEN** el autor selecciona video, imagen, diapositiva, texto o subtítulos y abre Propiedades
+- **THEN** encuentra una única sección Posición manual antes de los ajustes de tiempo y audio
+- **AND** Horizontal (X) y Vertical (Y) identifican los deslizadores y sus campos numéricos sin controles X/Y duplicados
+
 #### Scenario: Posiciones negativas y cambio de formato
 - **WHEN** se selecciona un clip con posición negativa o se cambia el tamaño del lienzo
 - **THEN** los controles conservan la posición y adaptan su rango sin exceder el esquema

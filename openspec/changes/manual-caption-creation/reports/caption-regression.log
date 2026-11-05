@@ -1,0 +1,31 @@
+✔ la opción requiere booleano, aprobación y respeta un override false (5.1091ms)
+✔ la automatización crea una capa transparente sincronizada y un reintento no vuelve a escribir (32.4153ms)
+✔ los captions automáticos conservan tiempos y fondo transparente en preview y render (22.4676ms)
+✔ la identidad registrada sobrevive a la pérdida temporal de timestamps (4.2783ms)
+✔ sin timestamps actuales no prepara borradores ni invoca persistencia (3.7394ms)
+✔ timestamps parciales y voces sin asociación no generan subtítulos parciales (2.135ms)
+✔ una fuente o timestamps desactualizados en el documento bloquean el append (2.3206ms)
+✔ capas manuales o importadas no se reemplazan (5.5707ms)
+✔ una capa editada, dividida o retirada requiere revisión y no se recrea (9.6683ms)
+✔ un conflicto se informa sin reintentar ni sobrescribir otra edición (1.5602ms)
+✔ un guardado incierto se reconoce por lectura posterior sin duplicar (2.2175ms)
+✔ errores de acceso no alcanzan el append ni filtran detalles internos (1.1343ms)
+✔ sobrescribir requiere una orden estricta con item, clip y hash (1.3841ms)
+✔ ofrece preguntar por una capa editada y solo sobrescribe al recibir confirmación vigente (4.8891ms)
+✔ una capa manual puede regenerarse tras confirmar y el reintento no duplica (2.9698ms)
+✔ confirmación de otra versión o capa no sobrescribe y exige otra decisión (4.6819ms)
+✔ una confirmación obsoleta no recrea una capa retirada (1.0217ms)
+✔ no ofrece sobrescribir pistas bloqueadas ni varias capas (3.2353ms)
+✔ groups transcript words on punctuation, pauses and the five-word readability limit (4.4269ms)
+✔ filters noise and rejects transcripts dominated by music tokens (1.3712ms)
+✔ creates a full-canvas native caption layer and updates it idempotently (26.2478ms)
+✔ does not overwrite a manual caption layer (2.9762ms)
+✔ regeneration preserves layer effects, reports discarded cue overrides and protects split layers (9.5416ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2000.4416
