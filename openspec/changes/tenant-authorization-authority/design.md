@@ -277,3 +277,39 @@ cinco minutos como sustituto sin contrato de propósito/vigencia propio.
 La configuración de automatización hace múltiples escrituras sin transacción.
 Esta unidad no inventa atomicidad: conserva estados parciales y sus errores;
 registrar su evaluación de concurrencia/recuperación con el plan de integridad.
+
+### F1.3.c.3.c.6.b: comprobante standalone y errores HTTP
+
+Se elige un comprobante HMAC SHA-256 de propósito exclusivo, versionado y con
+vigencia absoluta de siete días. Contiene solo organización, ID de vídeo y fecha
+de emisión; no es credencial de HeyGen ni reemplaza identidad/membresía/rol.
+La clave proviene del getter servidor existente para firma; un prefijo exclusivo
+separa este propósito de background y evita intercambio entre protocolos.
+No modificar firmas ni vigencia del worker. Sin nueva variable, tabla o SQL.
+
+POST comprueba disponibilidad de firma antes del cliente privilegiado/proveedor
+y emite standaloneAccessToken únicamente para el ID devuelto por createAvatarVideo.
+GET exige ese comprobante en x-heygen-video-token después de identidad/rol/tenant
+y antes de acceder al cliente privilegiado o credenciales. Ausente, alterado,
+expirado o perteneciente a otra organización/vídeo produce 404 uniforme, sin
+consultar proveedor. Sin clave disponible se responde 503 seguro. Un ID devuelto
+por GET distinto al solicitado produce 502 sin URL/asset. Respuestas de vídeo
+privadas/no-store/Vary Cookie. IDs legacy sin comprobante quedan denegados;
+no inferir pertenencia por cuenta, callback_id ni posesión del ID.
+
+La verificación limita tamaño/formato antes de decodificar y compara HMAC en
+tiempo constante. UUID de organización normalizado, ID de vídeo exacto, tolerancia
+de reloj de 30 segundos y expiración sin renovación por polling. Rotar la clave
+invalida comprobantes anteriores. El token no viaja en URL, logs o cookies nuevas;
+su header y campo contienen token para la redacción operacional existente.
+El studio transporta el header; GET conserva el token validado porque cada
+polling reemplaza CurrentJob. No se añade interfaz nueva ni generación pagada.
+Ambas rutas resuelven tenant antes de revisar rol y pasan ese contexto a
+canReviewContent, anclando permiso, firma y credencial a la misma organización.
+
+Las tres rutas standalone incorporan el mapper de autoridad existente. Mantener
+401/403, validación, errores HeyGen/Retry-After y registro de media verificada.
+El 400 existente de media por tamaño excedido no cambia en este lote. Pruebas
+criptográficas con clave sintética y handlers reales con servicios simulados;
+incluir dos organizaciones que comparten cliente falso, revocación y polling
+repetido. No acreditar generación real, Storage/RLS o idempotencia del proveedor.

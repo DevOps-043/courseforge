@@ -206,8 +206,20 @@ y sin caché. Se conservan filtros de organización, aprobación, configuración
 captions, edición de clips y firma de despacho. Los errores de dominio y el
 callback del worker mantienen sus contratos. Esto no acredita atomicidad de
 las escrituras sucesivas de configuración ni ejecución real del proveedor.
-Standalone sigue pendiente, incluido el vínculo vídeo/organización. Evidencia:
+La integración de automatización se conserva en:
 [F1.3.c.3.c.6.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c6a.md).
+
+Standalone exige comprobante servidor de propósito exclusivo, ligado a vídeo y
+organización y válido siete días, además de identidad/tenant/rol vigentes. Se
+verifica antes de credenciales/proveedor y no se renueva por polling. El studio
+lo transmite por header redactable y conserva el valor validado en cada respuesta;
+todas las respuestas de vídeo son privadas/no-store. Sin comprobante válido se
+deniega, incluidos IDs históricos; no se presume ownership por cuenta de HeyGen.
+La firma se comprueba antes de generar. Un ID distinto del proveedor no expone
+su URL. Media y vídeo proyectan indisponibilidad conocida de autoridad como 503.
+El comprobante no es una bitácora durable ni revoca URLs públicas ya entregadas.
+Compatibilidad, pérdidas de respuesta y aceptación pendiente:
+[F1.3.c.3.c.6.b](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c6b.md).
 
 La biblioteca de plantillas usa únicamente la organización del resolver vigente
 antes de crear el cliente privilegiado y filtra ejecuciones, conversaciones y
@@ -583,6 +595,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: comprobante de consulta standalone ligado a vídeo/organización,
+  transporte en el studio y errores de autoridad en tres operaciones. Vigencia,
+  compatibilidad y límites en evidencia F1.3.c.3.c.6.b de sección 5.
 
 - 2026-11-05: ocho operaciones HTTP de automatización normalizan errores de
   autoridad. Filtros, aprobación y despacho preservados; standalone pendiente.

@@ -1,4 +1,7 @@
 import crypto from "crypto";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
+import { createHeygenStandaloneVideoAccess, HeygenStandaloneVideoAccessUnavailableError } from "@/domains/production/providers/heygen/heygen-standalone-video-access.server";
+import { HEYGEN_STANDALONE_VIDEO_PRIVATE_HEADERS } from "@/domains/production/providers/heygen/heygen-standalone-video-access.contract";
 import { z } from "zod";
 import {
   canReviewContent,
@@ -42,7 +45,7 @@ const standaloneVideoRequestSchema = z
   })
   .strict();
 
-export async function POST(request: Request) {
+async function createVideoResponse(request: Request) {
   const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   const logger = createOperationalLogger("production.heygen.standalone.videos", { correlationId: requestId });
   let requestedResolution: "720p" | "1080p" | "4k" = "1080p";
@@ -68,16 +71,15 @@ export async function POST(request: Request) {
       return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
 
-    const canReview = await canReviewContent(authenticatedUser.userId);
-    if (!canReview) {
-      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para generar videos con HeyGen.", requestId, status: 403 });
-    }
-
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
       return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no valida o no autorizada.", requestId, status: 403 });
     }
+    if (!(await canReviewContent(authenticatedUser.userId, tenant))) {
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para generar videos con HeyGen.", requestId, status: 403 });
+    }
 
+    const videoAccess = createHeygenStandaloneVideoAccess(tenant.organizationId);
     const repository = new HeygenRepository(getServiceRoleClient());
     const avatar = await repository.getAvatarPresetForGeneration({
       organizationId: tenant.organizationId,
@@ -125,14 +127,21 @@ export async function POST(request: Request) {
 
     return apiSuccessResponse({
       data: {
+        standaloneAccessToken: videoAccess.issue(createdVideo.videoId),
         jobId: createdVideo.videoId,
         providerJobId: createdVideo.videoId,
         providerStatus: createdVideo.providerStatus || null,
         standalone: true,
         status: "WAITING_PROVIDER",
       },
-    }, { requestId });
+    }, { requestId, headers: HEYGEN_STANDALONE_VIDEO_PRIVATE_HEADERS });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
+    if (error instanceof HeygenStandaloneVideoAccessUnavailableError) {
+      logger.warn("autorizacion.video_standalone_no_disponible", { codigo: error.code });
+      return heygenServiceErrorResponse({ message: error.message, status: 503 }, requestId, HEYGEN_STANDALONE_VIDEO_PRIVATE_HEADERS);
+    }
     if (error instanceof HeygenRequestValidationError) {
       return heygenServiceErrorResponse(error, requestId);
     }
@@ -153,4 +162,10 @@ export async function POST(request: Request) {
     logger.error("production.heygen.standalone.video_generate_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno del servidor al generar video HeyGen standalone.", requestId, retryable: true, status: 500 });
   }
+}
+
+export async function POST(request: Request) {
+  const response = await createVideoResponse(request);
+  for (const [name, value] of Object.entries(HEYGEN_STANDALONE_VIDEO_PRIVATE_HEADERS)) response.headers.set(name, value);
+  return response;
 }

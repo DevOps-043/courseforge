@@ -1,4 +1,5 @@
 import { getAuthenticatedUser, getAuthorizedMaterialComponentAdmin } from "@/lib/server/artifact-action-auth";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { createClient } from "@/utils/supabase/server";
 import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
@@ -22,6 +23,8 @@ export async function POST(request: Request) {
     await registerStandaloneMedia({ input: parsed.data, supabase: authorized.admin, userId: user.userId });
     return apiSuccessResponse({ assetId: parsed.data.assetId }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof StandaloneMediaValidationError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: error.message, requestId, status: 422 });
     logger.error("standalone.media.registration_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo verificar el archivo. Reintenta o utiliza otro archivo.", requestId, status: 500 });

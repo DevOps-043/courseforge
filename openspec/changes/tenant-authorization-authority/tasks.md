@@ -22,9 +22,10 @@
 | F1.3.c.3.c.5 | TD-26 | Codex | cerrado (local) | d3bd9d4a | reports/context-F1.3c3c5b.md | F1.3.c.3.c.6: automatización/standalone |
 | F1.3.c.3.c.5.a | TD-26, fallback adicional | Codex | cerrado (local) | d3bd9d4a | reports/context-F1.3c3c5a.md | F1.3.c.3.c.5.b |
 | F1.3.c.3.c.5.b | TD-26 y ownership HTML | Codex | cerrado (local) | 157f366f | reports/context-F1.3c3c5b.md | F1.3.c.3.c.6 |
-| F1.3.c.3.c.6 | TD-26 | Codex | en curso | b9ad854e | reports/context-F1.3c3c6a.md | Ownership y errores standalone |
+| F1.3.c.3.c.6 | TD-26 | Codex | cerrado (local) | b9ad854e | reports/context-F1.3c3c6b.md | F1.3.c.3.c.7: soportes HTTP HyperFrames |
 | F1.3.c.3.c.6.a | TD-26 | Codex | cerrado (local) | b9ad854e | reports/context-F1.3c3c6a.md | F1.3.c.3.c.6.b |
-| F1.3.c.3.c.6.b | TD-26 y ownership proveedor | por asignar | planificado | — | reports/context-F1.3c3c6a.md | Vincular vídeo standalone y organización; normalizar tres operaciones |
+| F1.3.c.3.c.6.b | TD-26 y ownership proveedor | Codex | cerrado (local) | 4e585e14 | reports/context-F1.3c3c6b.md | F1.3.c.3.c.7 |
+| F1.3.c.3.c.7 | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c6b.md | Caracterizar soportes HTTP HyperFrames y consumidores |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
 - [x] Definir contrato seguro y compatibilidad legacy.
@@ -50,7 +51,8 @@
 - [x] F1.3.c.3.c.5: slides/open-design (aceptación local).
 - [x] F1.3.c.3.c.5.a: autoridad vigente y error explícito en biblioteca (aceptación local).
 - [x] F1.3.c.3.c.5.b: otros ocho handlers slides/open-design y ownership HTML (aceptación local).
-- [ ] F1.3.c.3.c.6: automatización/standalone.
+- [x] F1.3.c.3.c.6: automatización/standalone (aceptación local).
 - [x] F1.3.c.3.c.6.a: ocho operaciones de automatización (aceptación local).
-- [ ] F1.3.c.3.c.6.b: ownership de vídeos standalone y errores HTTP de tres operaciones.
+- [x] F1.3.c.3.c.6.b: ownership de vídeos standalone y errores HTTP de tres operaciones (aceptación local).
+- [ ] F1.3.c.3.c.7: soportes HTTP HyperFrames y consumidores.
 - [ ] Acreditar permisos reales de escritura de roles, RLS y ambiente antes de cierre TD-26.

@@ -241,3 +241,24 @@ de identidad o tenant como 503 seguro sin continuar efectos tras la frontera.
 - **WHEN** una solicitud válida crea, consulta, reevalúa, configura o despacha producción
 - **THEN** mantiene actor y organización derivados del servidor, filtros de ownership, DTO y firma
 - **AND** errores de validación, denegación y dominio conservan su semántica
+
+### Requirement: Consulta standalone limitada a vídeo y organización
+
+El servidor MUST exigir un comprobante firmado, versionado y vigente que vincule
+vídeo y organización, además de identidad y permisos actuales, antes de consultar HeyGen.
+
+#### Scenario: Vídeo ajeno o comprobante inválido
+- **WHEN** falta comprobante, está alterado/expirado o no coincide con vídeo/organización
+- **THEN** devuelve 404 uniforme sin cliente privilegiado, credenciales o consulta al proveedor
+- **AND** compartir cuenta del proveedor no concede acceso a otro tenant
+
+#### Scenario: Creación y consultas sucesivas
+- **WHEN** el proveedor confirma la creación de un vídeo bajo el tenant vigente
+- **THEN** el servidor emite el comprobante solo para ese ID y organización con vigencia absoluta de siete días
+- **AND** el studio lo envía por header y las consultas sucesivas lo conservan sin renovarlo
+- **AND** la respuesta es privada y no expone otro ID/URL si el proveedor devuelve un vídeo distinto
+
+#### Scenario: Infraestructura o autoridad indisponibles
+- **WHEN** falla autoridad conocida o no está disponible la clave de firma
+- **THEN** devuelve 503 seguro y reintentable sin generación o consulta posterior a la frontera fallida
+- **AND** conserva 401/403 y errores de dominio/proveedor existentes
