@@ -399,3 +399,16 @@ conservar la respuesta original y sus flags de recuperación. Probar extracción
 y fragmento APPLY/RECOVERY, plan read-only, y salida console.error que lanza con
 restauración en finally. Los tests del mismo archivo se ejecutan secuencialmente;
 Node aísla cada archivo de suite. Incorporar las tres suites HTTP al comando real.
+
+### F1.3.c.3.c.7.b.2.b.4.a: composición HTML inline
+
+Separar evidencia de cableado de la de handlers. Interceptar factories en fuentes
+reales de veinte rutas/27 métodos para verificar reenvío exacto, callbacks de
+autoridad, cliente privilegiado suministrado y políticas reales de doce módulos.
+No ejecutar el handler interceptado como si demostrara un DTO o autorización HTTP.
+Los contratos esperados viven en tests y no dependen del archivado de OpenSpec.
+Probar ambos métodos de recuperación/publicación de forma independiente y usar
+ambiente sintético, sin leer configuración local. Canarios de actor forjado y
+rollout abierto, con restauración byte a byte, deben invalidar las expectativas.
+Además ejecutar suites HTTP reales ya existentes, registrando su alcance y
+persistencia simulada. Diez roots compartidos quedan fuera de esta prueba inline.

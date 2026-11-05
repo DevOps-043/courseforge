@@ -354,3 +354,19 @@ fallos síncronos del callback y del logger por defecto sin cambiar la respuesta
 - **WHEN** falla dominio después de aceptar un comando y observabilidad también falla
 - **THEN** mantiene commandId, recoveryRequired y automaticRetryAllowed false
 - **AND** no duplica la operación ni afirma que no hubo escritura
+
+### Requirement: Composición HTML delegada con autoridad actual
+
+Las rutas HTML del corte de composición inline MUST conectar su método a la
+factory prevista y obtener identidad/tenant actuales sin ejecutar dominio al
+componer la ruta. Sus políticas de rollout MUST fallar cerradas por defecto.
+
+#### Scenario: Identidad, tenant y fallos entre solicitudes
+- **WHEN** se invoca authenticate con usuario actual, ausente o error de lookup
+- **THEN** deriva actor del servidor, resuelve tenant solo con usuario presente
+- **AND** propaga el error al handler en vez de devolver autoridad sintética
+
+#### Scenario: Lectura de recuperación con escritura desactivada
+- **WHEN** los flags requeridos de GET están activos y los de escritura ausentes
+- **THEN** mantiene habilitada la lectura prevista sin conceder POST
+- **AND** valores distintos del literal true no activan la funcionalidad

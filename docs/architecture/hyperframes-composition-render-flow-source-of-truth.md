@@ -232,6 +232,14 @@ test:hyperframes. Su cobertura usa repositorios simulados y no acredita commit
 en SQL. Evidencia:
 [F1.3.c.3.c.7.b.2.b.3](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b3.md).
 
+Veinte rutas HTML con authenticate inline tienen pruebas de composición para
+27 métodos: políticas reales con entorno sintético, actor/tenant actuales y
+propagación de errores. Veinte suites HTTP adicionales se ejecutan en HyperFrames.
+Wiring interceptado y handlers con persistencia simulada acreditan fronteras
+distintas; no equivalen a integración real ni cubren diez roots compartidos
+pendientes. Alcance y canarios:
+[F1.3.c.3.c.7.b.2.b.4.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b4.md).
+
 GET/POST de renders proyectan las clases conocidas de autoridad como 503 seguro,
 con revisión anclada al tenant. El fallo de dispatcher conserva failDispatch
 antes de responder; fallar al compensar no acredita reparación durable. Se

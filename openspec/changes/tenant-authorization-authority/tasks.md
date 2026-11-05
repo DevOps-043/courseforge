@@ -35,7 +35,9 @@
 | F1.3.c.3.c.7.b.2.b.1 | TD-26 / QA | Codex | cerrado (local) | dac19f4a | reports/context-F1.3c3c7b2b1.md | Frontera compartida probada; no acredita todos los adaptadores |
 | F1.3.c.3.c.7.b.2.b.2 | TD-26 / observabilidad | Codex | cerrado (local) | c3b101d8 | reports/context-F1.3c3c7b2b2.md | Nueve regresiones; 31 tests snapshot ejecutados también en Node 22 |
 | F1.3.c.3.c.7.b.2.b.3 | TD-26 / observabilidad | Codex | cerrado (local) | 81e12e7a | reports/context-F1.3c3c7b2b3.md | 30 regresiones y 65 tests narrativos activos; continuar .b.4 |
-| F1.3.c.3.c.7.b.2.b.4 | TD-26 / QA | por asignar | planificado | — | reports/context-F1.3c3c7b2b3.md | Contratos/composición de adapters editoriales HTML y preview/capabilities restantes |
+| F1.3.c.3.c.7.b.2.b.4 | TD-26 / QA | Codex | en curso | e22013bd | reports/context-F1.3c3c7b2b4.md | Contratos/composición de adapters editoriales HTML y preview/capabilities restantes |
+| F1.3.c.3.c.7.b.2.b.4.a | TD-26 / QA | Codex | cerrado (local) | e22013bd | reports/context-F1.3c3c7b2b4.md | 20 rutas/27 métodos inline; 20 suites HTTP adicionales ejecutadas |
+| F1.3.c.3.c.7.b.2.b.4.b | TD-26 / QA | por asignar | planificado | — | reports/context-F1.3c3c7b2b4.md | 10 rutas/11 métodos de roots compartidos: narrativa, reconstruction y preview |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
 - [x] Definir contrato seguro y compatibilidad legacy.
