@@ -1,5 +1,24 @@
 ## ADDED Requirements
 
+### Requirement: Errores de autoridad en proveedores de producción
+Los listados e importaciones de Artlist, Google Drive y cloud, y la importación
+externa de vídeo SHALL mapear indisponibilidad de autoridad a 503 seguro, antes
+de sus mappers de proveedor. SHALL conservar errores de validación, conexión,
+cuota, timeout y capacidad del proveedor; no añadir autoridad a sus payloads.
+
+#### Scenario: Autoridad caída antes del proveedor
+- **WHEN** falla identidad, tenant o autorización de componente en estos handlers
+- **THEN** se informa indisponibilidad segura con correlación, retryable y no-store
+- **AND** no se inicia importación, consulta al proveedor ni persistencia después del fallo
+
+#### Scenario: Resolución tardía de autoridad de HeyGen
+- **WHEN** import-external necesita resolver el tenant para consultar un videoId de HeyGen y esa autoridad falla
+- **THEN** devuelve 503 seguro sin consultar HeyGen ni descargar el vídeo
+
+#### Scenario: Proveedor indisponible o entrada inválida
+- **WHEN** el error proviene del proveedor o la solicitud no cumple el contrato
+- **THEN** conserva su código y Retry-After existentes sin reclasificarlo como fallo de identidad
+
 ### Requirement: Firma de thumbnails vinculada a un recurso
 El servidor SHALL autorizar el artefacto contra el tenant vigente antes de firmar
 una miniatura. SHALL generar un objeto nuevo bajo organización y artefacto, con

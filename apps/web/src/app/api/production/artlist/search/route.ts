@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { ArtlistService } from "@/domains/production/providers/artlist.service";
 import { API_ERROR_CODE } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
@@ -38,6 +39,8 @@ export async function GET(request: Request) {
     const results = await new ArtlistService().search(parsedQuery.data.query, parsedQuery.data.type);
     return apiSuccessResponse({ results }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.artlist.search.failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno del servidor al buscar en Artlist", requestId, retryable: true, status: 500 });
   }

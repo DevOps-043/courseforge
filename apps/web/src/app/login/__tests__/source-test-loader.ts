@@ -12,7 +12,7 @@ export function load<T>(relative: string, imports: Record<string, unknown> = {})
   }).outputText;
   const module = { exports: {} };
   const require = createRequire(filename);
-  vm.runInNewContext("(function(require,module,exports){" + source + "\n})", { console, TextEncoder, Headers, URL, File })(
+  vm.runInNewContext("(function(require,module,exports){" + source + "\n})", { console, TextEncoder, Headers, URL, File, Error, DOMException })(
     (name: string) => Object.hasOwn(imports, name) ? imports[name] : require(name), module, module.exports,
   );
   return module.exports as T;

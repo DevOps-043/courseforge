@@ -48,6 +48,15 @@ un flujo global legacy necesita autorización separada explícita y pruebas prop
 
 ## Condiciones pendientes y alcance
 
+F1.3.c.3.c.1 limita la normalización HTTP a siete métodos de listado/importación
+en Artlist, Google Drive, cloud-storage e import-external. El mapper compartido
+se ejecuta antes de mappers externos o clases particulares de HeyGen. No altera
+schemas, roles, generación de paths, contenidos, render ni acceso al proveedor.
+El callback de resolución de videoId en import-external también proyecta una
+caída de autoridad antes de consultar HeyGen. Listados conservan su DTO; errores
+de conexión/cuota/timeout/capacidad y Retry-After conservan su contrato. El catálogo
+global de Artlist mantiene autenticación sin una exigencia tenant nueva.
+
 F1.3.c.3.b.2 protege la firma genérica: thumbnails exige purpose thumbnail,
 artifactId y getAuthorizedArtifactAdminForTenant con el tenant vigente. Solo
 admite JPEG/PNG/WebP/GIF y tamaño declarado positivo hasta 5 MiB (política

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { createClient } from "@/utils/supabase/server";
 import {
   getAuthenticatedUser,
@@ -266,6 +267,8 @@ export async function POST(request: Request) {
       assets: updatedAssets,
     }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.cloud_storage.import.failed", error);
     const mapped = mapExternalImportError(error, "el proveedor cloud");
     return apiErrorResponse({
