@@ -13,7 +13,7 @@
 | F1.3.c.3 | TD-26 | Codex (tramo local) | en curso | a95f8099 | reports/context-F1.3c3a.md | Lotes HTTP pendientes |
 | F1.3.c.3.a | TD-26 | Codex | cerrado | a95f8099 | reports/context-F1.3c3a.md | F1.3.c.3.b: syllabus y almacenamiento |
 | F1.3.c.3.b | TD-26 | Codex | cerrado | 372d891a | reports/context-F1.3c3b.md | F1.3.c.3.b.2: ownership de uploads |
-| F1.3.c.3.b.2 | Riesgo adicional de almacenamiento | por asignar | planificado | — | reports/context-F1.3c3b.md | Caracterizar ownership de paths genéricos de upload |
+| F1.3.c.3.b.2 | Riesgo adicional de almacenamiento | Codex | cerrado (firma local) | d5e3a713 | reports/context-F1.3c3b2.md | F1.3.c.3.c; aceptación Storage pendiente |
 | F1.3.c.3.c | TD-26 | por asignar | planificado | — | — | Producción y contratos HTTP particulares |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
@@ -30,6 +30,7 @@
 - [ ] F1.3.c.3: normalización de errores en consumidores restantes.
 - [x] F1.3.c.3.a: respuesta compartida y rutas de publicación/usuarios (aceptación local).
 - [x] F1.3.c.3.b: syllabus, documentos y errores HTTP de almacenamiento (aceptación local).
-- [ ] F1.3.c.3.b.2: caracterizar y asegurar ownership de paths genéricos de upload.
+- [x] F1.3.c.3.b.2: caracterizar y asegurar ownership de firma genérica de uploads (aceptación local; políticas efectivas de Storage pendientes).
+- [ ] Verificar permisos efectivos de Storage y reparar INSERT amplio de production-videos si está presente en el ambiente autorizado.
 - [ ] F1.3.c.3.c: producción y otros consumidores HTTP del inventario.
 - [ ] Acreditar permisos reales de escritura de roles, RLS y ambiente antes de cierre TD-26.

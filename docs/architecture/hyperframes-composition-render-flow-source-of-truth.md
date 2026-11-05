@@ -328,6 +328,15 @@ o revision huerfanos o una revision parcialmente enlazada.
 
 ## 8. Contrato de entrega a HeyGen/HyperFrames Cloud
 
+La ruta genérica `/api/storage/signed-upload-url` no firma `production-videos`
+ni admite `purpose: production-video`. Los vídeos finales conservan los flujos
+específicos de render/importación y sus comprobaciones de identidad. Las miniaturas
+de publicación se firman para un artefacto autorizado en un path nuevo generado
+por el servidor, con sobrescritura desactivada. No se modifican URLs históricas,
+documentos ni snapshots. Contrato, consumidores y pruebas:
+[F1.3.c.3.b.2](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3b2.md).
+La verificación de políticas efectivas de Storage continúa pendiente.
+
 Courseforge sigue el flujo oficial: comprimir, direct upload, crear render y
 consultar el estado. La documentacion oficial fija un maximo de 200 MB para el
 archivo, recomienda `--dry-run` para inspeccion y exige idempotencia para no
@@ -498,6 +507,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-04: cierre local de firma genérica de vídeos y ownership de thumbnails
+  de publicación; render/importación conservan sus contratos. Evidencia y límites
+  en F1.3.c.3.b.2, enlazada en la sección 8.
 
 - 2026-11-03: acceso «Grupos» desde el timeline y selección explícita de grupos
   completos en el panel. La selección aditiva se procesa una sola vez en click

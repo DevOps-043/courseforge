@@ -56,6 +56,7 @@ function fixture(file: string, stage: string, failure: unknown) {
     "@/shared/config/prompts/prompt-resolver.service": { resolvePromptWithMetadata: downstream },
     "@/lib/server/background-function-client": { dispatchBackgroundFunctionJson: downstream },
     "@/domains/production/media-storage.config": { HYPERFRAMES_PRIVATE_SOURCE_BUCKET: "fuentes-privadas" },
+    "@/domains/publication/thumbnail-upload-policy": load("src/domains/publication/thumbnail-upload-policy.ts"),
   });
   const handlers = load<Record<string, (request: Request) => Promise<Response>>>(file, dependencies);
   return { handlers, effects: () => effects };

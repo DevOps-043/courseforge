@@ -347,6 +347,7 @@ export default function PublicationClientView({
                     />
 
                     <CourseDataForm
+                        artifactId={artifactId}
                         initialData={courseData}
                         onDataChange={setCourseData}
                         lockedEmail={lockedEmail ?? undefined}

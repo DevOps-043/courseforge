@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { BookOpen, Image as ImageIcon, Loader2, Upload } from 'lucide-react';
 import { getErrorMessage } from '@/lib/errors';
 import { uploadWithSignedUrl } from '@/lib/storage-upload';
+import { THUMBNAIL_UPLOAD_MAX_BYTES } from '@/domains/publication/thumbnail-upload-policy';
 import { toast } from 'sonner';
 import {
     formatThumbnailUrl,
@@ -13,12 +14,13 @@ import { EngineSelect } from '@/components/ui/EngineSelect';
 import styles from '../PublicationWorkspace.module.css';
 
 interface CourseDataFormProps {
+    artifactId: string;
     initialData?: PublicationCourseData;
     onDataChange: (data: PublicationCourseData) => void;
     lockedEmail?: string;
 }
 
-export function CourseDataForm({ initialData, onDataChange, lockedEmail }: CourseDataFormProps) {
+export function CourseDataForm({ artifactId, initialData, onDataChange, lockedEmail }: CourseDataFormProps) {
     const [formData, setFormData] = useState<PublicationCourseData>({
         category: initialData?.category || 'ia',
         level: initialData?.level || 'beginner',
@@ -35,7 +37,7 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (file.size > 5 * 1024 * 1024) {
+        if (file.size > THUMBNAIL_UPLOAD_MAX_BYTES) {
             toast.error("La imagen no debe superar los 5MB");
             return;
         }
@@ -43,10 +45,11 @@ export function CourseDataForm({ initialData, onDataChange, lockedEmail }: Cours
         setIsUploading(true);
 
         try {
-            const fileExt = file.name.split('.').pop();
-            const filePath = `thumb-${Date.now()}.${fileExt}`;
-
-            const { publicUrl } = await uploadWithSignedUrl('thumbnails', filePath, file);
+            const { publicUrl } = await uploadWithSignedUrl('thumbnails', '', file, {
+                artifactId,
+                purpose: 'thumbnail',
+                upsert: false,
+            });
 
             handleChange('thumbnail_url', publicUrl);
             toast.success("Imagen subida correctamente");

@@ -1,5 +1,30 @@
 ## ADDED Requirements
 
+### Requirement: Firma de thumbnails vinculada a un recurso
+El servidor SHALL autorizar el artefacto contra el tenant vigente antes de firmar
+una miniatura. SHALL generar un objeto nuevo bajo organización y artefacto, con
+UUID y extensión derivada de MIME permitido, sin sobrescritura ni path del cliente.
+La firma genérica SHALL rechazar production-videos y purpose production-video;
+los flujos específicos de vídeo conservan sus contratos.
+
+#### Scenario: Miniatura propia
+- **WHEN** el actor tiene tenant vigente y acceso al artefacto indicado
+- **THEN** se firma un path nuevo del tenant y artefacto con upsert false
+- **AND** se conservan el DTO de respuesta y las URLs históricas de lectura
+
+#### Scenario: Ruta ajena o purpose adulterado
+- **WHEN** se envía un path ajeno con un artefacto propio
+- **THEN** el path firmado se genera en servidor y no usa el path recibido
+- **AND** cambiar purpose no permite firmar thumbnails sin artefacto ni production-videos
+
+#### Scenario: Recurso ajeno o autoridad caída al autorizar miniatura
+- **WHEN** el artefacto no está autorizado o la autoridad está indisponible
+- **THEN** se responde 404 o 503 seguro respectivamente sin firmar
+
+#### Scenario: Metadata de miniatura inválida
+- **WHEN** falta artifactId, MIME permitido o tamaño positivo de hasta 5 MiB
+- **THEN** se rechaza antes de firmar, incluso si el cliente evita la UI
+
 ### Requirement: Autoridad verificable
 El servidor SHALL comprobar identidad, membresía activa vigente y rol tenant local
 antes de conceder permisos. Cookies y claims históricos no conceden membresía.

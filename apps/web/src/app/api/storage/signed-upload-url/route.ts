@@ -5,6 +5,7 @@ import {
     canReviewContent,
     getAuthenticatedUser,
     getAuthorizedArtifactAdmin,
+    getAuthorizedArtifactAdminForTenant,
     getAuthorizedMaterialComponentAdmin,
     getServiceRoleClient,
 } from '@/lib/server/artifact-action-auth';
@@ -20,8 +21,9 @@ import { HYPERFRAMES_PRIVATE_SOURCE_BUCKET } from '@/domains/production/media-st
 import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract';
 import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response';
 import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger';
+import { getThumbnailUploadExtension, THUMBNAIL_UPLOAD_MAX_BYTES } from '@/domains/publication/thumbnail-upload-policy';
 
-const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-videos', 'production-assets', HYPERFRAMES_PRIVATE_SOURCE_BUCKET, 'curation-sources']);
+const ALLOWED_BUCKETS = new Set(['thumbnails', 'production-assets', HYPERFRAMES_PRIVATE_SOURCE_BUCKET, 'curation-sources']);
 const BUNDLE_AGENT_REFERENCE_MAX_BYTES = 75 * 1024 * 1024;
 const CURATION_SOURCE_PDF_MAX_BYTES = 25 * 1024 * 1024;
 const GENERAL_UPLOAD_MAX_BYTES = 500 * 1024 * 1024;
@@ -117,7 +119,13 @@ export async function POST(request: Request) {
             return invalid('Bucket no permitido.');
         }
 
-        if (!filePath && purpose !== 'assembly-branding') {
+        if (purpose === 'production-video'
+            || (bucket === 'thumbnails' && purpose !== 'thumbnail')
+            || (purpose === 'thumbnail' && bucket !== 'thumbnails')) {
+            return invalid('Propósito de subida no permitido para este bucket.');
+        }
+
+        if (!filePath && purpose !== 'assembly-branding' && purpose !== 'thumbnail') {
             return invalid('Ruta de archivo requerida.');
         }
 
@@ -126,7 +134,6 @@ export async function POST(request: Request) {
         }
 
         const uploadLimit = bucket === 'production-assets'
-            || bucket === 'production-videos'
             || bucket === HYPERFRAMES_PRIVATE_SOURCE_BUCKET
             ? HYPERFRAMES_REMOTE_VIDEO_LIMIT_BYTES
             : GENERAL_UPLOAD_MAX_BYTES;
@@ -164,7 +171,27 @@ export async function POST(request: Request) {
 
         let authorizedFilePath = filePath || '';
 
-        if (purpose === 'assembly-branding') {
+        if (purpose === 'thumbnail') {
+            if (!artifactId) {
+                return invalid('artifactId es requerido para subir una miniatura.');
+            }
+            const extension = getThumbnailUploadExtension(contentType);
+            if (!extension) {
+                return invalid('La miniatura debe ser una imagen JPEG, PNG, WebP o GIF.');
+            }
+            if (typeof fileSizeBytes !== 'number' || fileSizeBytes <= 0 || fileSizeBytes > THUMBNAIL_UPLOAD_MAX_BYTES) {
+                return apiErrorResponse({ code: API_ERROR_CODE.payloadTooLarge, message: 'La miniatura debe pesar entre 1 byte y 5 MiB.', requestId, status: 413 });
+            }
+            const authorizedArtifact = await getAuthorizedArtifactAdminForTenant(artifactId, uploadTenant);
+            if (!authorizedArtifact) {
+                return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: 'Artefacto no encontrado para esta empresa.', requestId, status: 404 });
+            }
+            if (authorizedArtifact.artifact.organization_id !== activeOrgId) {
+                return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'El artefacto no pertenece a la organización activa.', requestId, status: 403 });
+            }
+            // Cada subida crea un objeto nuevo; el path del cliente no concede escritura.
+            authorizedFilePath = `organizations/${activeOrgId}/artifacts/${artifactId}/${randomUUID()}.${extension}`;
+        } else if (purpose === 'assembly-branding') {
             const tenant = await resolveActiveTenantContext();
             if (!tenant || tenant.organizationId !== activeOrgId) {
                 return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'No se encontró una organización activa válida.', requestId, status: 403 });
@@ -264,7 +291,7 @@ export async function POST(request: Request) {
         const { data, error } = await admin.storage
             .from(bucket)
             .createSignedUploadUrl(authorizedFilePath, {
-                upsert: authorizedFilePath.startsWith('media/') || purpose === 'curation-source-pdf' || purpose === 'assembly-branding'
+                upsert: purpose === 'thumbnail' || authorizedFilePath.startsWith('media/') || purpose === 'curation-source-pdf' || purpose === 'assembly-branding'
                     ? false
                     : upsert ?? true,
             });

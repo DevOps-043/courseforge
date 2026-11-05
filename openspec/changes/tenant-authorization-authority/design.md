@@ -48,6 +48,30 @@ un flujo global legacy necesita autorización separada explícita y pruebas prop
 
 ## Condiciones pendientes y alcance
 
+F1.3.c.3.b.2 protege la firma genérica: thumbnails exige purpose thumbnail,
+artifactId y getAuthorizedArtifactAdminForTenant con el tenant vigente. Solo
+admite JPEG/PNG/WebP/GIF y tamaño declarado positivo hasta 5 MiB (política
+compartida con publicación). La ruta se genera como
+organizations/{organizationId}/artifacts/{artifactId}/{UUID}.{extensión MIME},
+con upsert false; el nombre enviado no concede escritura. El único consumidor
+CourseDataForm recibe artifactId de PublicationClientView y usa el path devuelto.
+Las URLs existentes siguen leyéndose y no se migran objetos.
+
+production-videos sale de la allowlist del endpoint genérico y purpose
+production-video se rechaza en cualquier bucket. El inventario no encontró
+consumidores de esa firma genérica; importación y render tienen rutas propias.
+No se aceptan otros purpose para thumbnails ni thumbnail en otros buckets.
+No se cambian credenciales, TTL ni flujos específicos de producción. MIME/tamaño
+declarados no inspeccionan bytes: Storage debe imponer límites efectivos.
+
+La caracterización estática SQL encuentra INSERT amplio para authenticated en
+production-videos (20260228120000). El endurecimiento 20260908121000 retira el
+INSERT amplio de thumbnails pero no ese nombre de política de vídeos. No se
+conoce el estado efectivo remoto ni se acredita explotación allí. La aceptación
+de Storage requiere inventario de políticas/grants y pruebas anon/auth/service
+en entorno descartable; sigue pendiente junto a aceptación RLS de TD-26. Este
+lote no certifica que otras rutas o acceso directo a Storage sean seguros.
+
 La migración 20260621123000_create_organization_user_roles.sql tiene políticas
 INSERT/UPDATE solo por get_active_org_id, sin condición administrativa. Sin estado
 de grants/políticas efectivo no se afirma explotación. Antes de certificar rol
