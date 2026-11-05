@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -49,14 +50,14 @@ export async function GET(request: Request) {
     if (!authenticatedUser) {
       return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
-    if (!(await canReviewContent(authenticatedUser.userId))) {
-      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para consultar renders de HyperFrames.", requestId, status: 403 });
-    }
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
       return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 });
     }
 
+    if (!(await canReviewContent(authenticatedUser.userId, tenant))) {
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para consultar renders de HyperFrames.", requestId, status: 403 });
+    }
     const service = new HyperframesRenderRecoveryService(getServiceRoleClient());
     const result = await service.findLatestForComposition({
       compositionId: compositionId.data,
@@ -64,6 +65,8 @@ export async function GET(request: Request) {
     });
     return apiSuccessResponse({ data: result }, { headers: { "Cache-Control": "private, no-store" }, requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError) {
       const issues = summarizeHyperframesValidationIssues(error);
       logger.warn("production.hyperframes.renders.recovery_data_invalid", { issues });
@@ -87,14 +90,14 @@ export async function POST(request: Request) {
     if (!authenticatedUser) {
       return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
-    if (!(await canReviewContent(authenticatedUser.userId))) {
-      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para enviar renders de HyperFrames.", requestId, status: 403 });
-    }
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
       return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 });
     }
 
+    if (!(await canReviewContent(authenticatedUser.userId, tenant))) {
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para enviar renders de HyperFrames.", requestId, status: 403 });
+    }
     const admin = getServiceRoleClient();
     const service = new HyperframesRenderSubmissionService(admin);
     const result = await service.submit({
@@ -128,6 +131,8 @@ export async function POST(request: Request) {
     }
     return apiSuccessResponse({ data: result }, { requestId, status: result.reused ? 200 : 202 });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof HyperframesRenderSubmissionError) {
       return apiErrorResponse({ code: mapStatusToErrorCode(error.status), message: error.message, requestId, retryable: error.status === 503, status: error.status });
     }

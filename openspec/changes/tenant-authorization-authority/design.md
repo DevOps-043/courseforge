@@ -336,3 +336,19 @@ que no usan estos soportes, más las caídas de autoridad posteriores a resolver
 el contexto en los consumidores si aparecen. No cerrar el lote padre ni TD-26
 con .7.a. Preservar courseforge-composition-v2, motion, hash/ETag, confirmación,
 cancelación, firma, estados durables, CSP y errores de dominio.
+
+### F1.3.c.3.c.7.b.1 — creación y recuperación de render
+
+GET/POST de renders/route.ts usan mapper de autoridad en el catch de frontera
+y anclan revisión al tenant resuelto. GET conserva validación de compositionId,
+datos inválidos 422 y DTO durable. POST conserva schema estricto, actor del
+servidor, deferProcessing, attemptId, estados 200 reutilizado/202 nuevo y payload
+de despacho solo con renderRequestId. El cliente background sigue firmando ese
+payload: no cambiar su protocolo ni ejecutar el worker como test.
+
+La compensación failDispatch permanece dentro del catch interno y precede al
+error de envío 503. Una clase conocida en el dispatcher también se compensa;
+si la compensación falla, el catch externo puede proyectar la clase conocida
+pero no debe afirmar que el estado durable se reparó. Pruebas con servicios y
+worker simulados, sin render pagado; no acreditar idempotencia de DB/proveedor
+porque el doble devuelva reused. Las otras rutas .7.b quedan en .7.b.2.

@@ -27,7 +27,9 @@
 | F1.3.c.3.c.6.b | TD-26 y ownership proveedor | Codex | cerrado (local) | 4e585e14 | reports/context-F1.3c3c6b.md | F1.3.c.3.c.7 |
 | F1.3.c.3.c.7 | TD-26 | Codex | en curso | 00f74465 | reports/context-F1.3c3c7a.md | Rutas independientes y errores posteriores al contexto |
 | F1.3.c.3.c.7.a | TD-26 | Codex | cerrado (local) | 00f74465 | reports/context-F1.3c3c7a.md | F1.3.c.3.c.7.b |
-| F1.3.c.3.c.7.b | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c7a.md | Renders y rutas independientes/restantes |
+| F1.3.c.3.c.7.b | TD-26 | Codex | en curso | 740544a0 | reports/context-F1.3c3c7b1.md | Rutas independientes/restantes |
+| F1.3.c.3.c.7.b.1 | TD-26 | Codex | cerrado (local) | 740544a0 | reports/context-F1.3c3c7b1.md | F1.3.c.3.c.7.b.2 |
+| F1.3.c.3.c.7.b.2 | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c7b1.md | Clasificar 47 candidatas y emisores posteriores al contexto |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
 - [x] Definir contrato seguro y compatibilidad legacy.
@@ -59,4 +61,6 @@
 - [ ] F1.3.c.3.c.7: soportes HTTP HyperFrames y consumidores.
 - [x] F1.3.c.3.c.7.a: tres soportes compartidos y 18 métodos consumidores (aceptación local).
 - [ ] F1.3.c.3.c.7.b: rutas independientes y errores posteriores al contexto.
+- [x] F1.3.c.3.c.7.b.1: creación/recuperación de render y compensación (aceptación local).
+- [ ] F1.3.c.3.c.7.b.2: clasificar y corregir rutas independientes restantes/adaptadores.
 - [ ] Acreditar permisos reales de escritura de roles, RLS y ambiente antes de cierre TD-26.

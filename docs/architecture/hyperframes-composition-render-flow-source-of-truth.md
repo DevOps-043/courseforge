@@ -200,6 +200,13 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 5. Contrato de autorizacion y tenancy
 
+GET/POST de renders proyectan las clases conocidas de autoridad como 503 seguro,
+con revisión anclada al tenant. El fallo de dispatcher conserva failDispatch
+antes de responder; fallar al compensar no acredita reparación durable. Se
+mantienen actor/tenant del servidor, attemptId y no despachar de nuevo un
+resultado reutilizado o con ID de proveedor. Alcance simulado y aceptación:
+[F1.3.c.3.c.7.b.1](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b1.md).
+
 Los soportes compartidos de presets, propuestas del agente y seguimiento de
 render traducen las dos clases conocidas de indisponibilidad de autoridad a
 response 503 segura antes de crear admin. Sus dieciocho métodos consumidores
@@ -604,6 +611,9 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: autoridad HTTP de creación/recuperación de render y compensación
+  preservada; evidencia F1.3.c.3.c.7.b.1 en sección 5. Rutas independientes restantes pendientes.
 
 - 2026-11-05: autoridad segura en tres soportes compartidos HyperFrames y sus
   dieciocho métodos consumidores, sin modificar lógica del editor/render.

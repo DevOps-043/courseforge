@@ -278,3 +278,23 @@ proyectar indisponibilidad conocida como respuesta 503 antes del acceso privileg
 - **THEN** revisión y contexto resueltos corresponden a la misma organización
 - **AND** se mantienen denegaciones 401/403, formas del contexto, versiones y CSP
 - **AND** los errores desconocidos se relanzan al contrato de error del consumidor
+
+### Requirement: Frontera HTTP de envío y recuperación de renders
+
+GET/POST renders MUST proyectar las clases conocidas de autoridad como 503 seguro
+y mantener contexto, validación y recuperación existentes.
+
+#### Scenario: Autoridad no disponible
+- **WHEN** falla identidad, tenant o revisión antes del acceso privilegiado
+- **THEN** devuelve 503 reintentable, correlacionado y sin caché, sin recuperación o envío posteriores
+
+#### Scenario: Despacho fallido
+- **WHEN** falla el dispatcher después de registrar una solicitud
+- **THEN** intenta failDispatch antes de responder al fallo de envío
+- **AND** no omite esa recuperación por clasificar una clase conocida
+- **AND** no afirma reparación durable si la compensación falla
+
+#### Scenario: Reutilización y atribución
+- **WHEN** la solicitud válida crea o recupera un render
+- **THEN** mantiene organización/actor del servidor y attemptId sin aceptar autoridad del payload
+- **AND** un resultado reutilizado o con providerRenderId evita otro despacho
