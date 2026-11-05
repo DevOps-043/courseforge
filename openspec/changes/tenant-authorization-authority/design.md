@@ -48,6 +48,14 @@ un flujo global legacy necesita autorización separada explícita y pruebas prop
 
 ## Condiciones pendientes y alcance
 
+F1.3.c.3.c.2 añade el mapper al catch exterior de diez métodos de medios/audio/SFX.
+Conserva catches internos de auditoría opcional, redirects privados 302/307 y sus
+TTL, filtros tenant de assets/jobs, revisión antes de acceso y errores específicos
+de audio/SFX. No se interceptan errores de auditoría que el contrato existente
+permite registrar sin cancelar la descarga ya autorizada. Los bytes, ventanas de
+audio, documento y creación de jobs no se rediseñan. Los tests usan NextResponse
+real y schemas/clases reales con DB/Storage/dominio simulados.
+
 F1.3.c.3.c.1 limita la normalización HTTP a siete métodos de listado/importación
 en Artlist, Google Drive, cloud-storage e import-external. El mapper compartido
 se ejecuta antes de mappers externos o clases particulares de HeyGen. No altera

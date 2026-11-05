@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
@@ -63,6 +64,8 @@ export async function GET(request: Request, context: RouteContext) {
       status: 307,
     });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de asset inválido.", requestId, status: 400 });
     logger.error("production.asset.download.failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar la descarga.", requestId, retryable: true, status: 500 });

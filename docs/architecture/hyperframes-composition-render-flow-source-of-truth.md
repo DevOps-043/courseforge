@@ -200,6 +200,14 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 5. Contrato de autorizacion y tenancy
 
+Las fronteras HTTP de medios privados, descargas de assets/SFX, preview y biblioteca
+SFX, waveform y jobs de audio distinguen indisponibilidad de autoridad de una
+denegación: las clases internas de identidad/tenant producen 503 seguro con
+correlación, retryable y `private, no-store`, antes de firma, ingestión o jobs.
+Los redirects y TTL existentes, el acceso READY por organización y los errores
+del dominio se conservan. Contrato y pruebas de entrega con NextResponse real:
+[F1.3.c.3.c.2](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c2.md).
+
 Antes de admitir un UUID en el documento se deben comprobar por separado:
 
 1. borrador activo y perteneciente a `organizationId`;
@@ -507,6 +515,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: las rutas de medios, descargas, audio y SFX proyectan caídas de
+  autoridad como 503 seguro; se comprueban redirects/TTL/DTO y permisos sin
+  modificar documento, render ni snapshots. Evidencia F1.3.c.3.c.2 en sección 5.
 
 - 2026-11-04: cierre local de firma genérica de vídeos y ownership de thumbnails
   de publicación; render/importación conservan sus contratos. Evidencia y límites

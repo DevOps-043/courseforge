@@ -16,7 +16,8 @@
 | F1.3.c.3.b.2 | Riesgo adicional de almacenamiento | Codex | cerrado (firma local) | d5e3a713 | reports/context-F1.3c3b2.md | F1.3.c.3.c; aceptación Storage pendiente |
 | F1.3.c.3.c | TD-26 | Codex (tramo local) | en curso | 1d364f89 | reports/context-F1.3c3c1.md | Lotes de producción pendientes |
 | F1.3.c.3.c.1 | TD-26 | Codex | cerrado (local) | 1d364f89 | reports/context-F1.3c3c1.md | F1.3.c.3.c.2: medios y audio |
-| F1.3.c.3.c.2 | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c1.md | Caracterizar medios/descargas/audio/SFX |
+| F1.3.c.3.c.2 | TD-26 | Codex | cerrado (local) | 8b06eb70 | reports/context-F1.3c3c2.md | F1.3.c.3.c.3: conexiones/configuración |
+| F1.3.c.3.c.3 | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c2.md | Caracterizar conexiones y configuración de producción |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
 - [x] Definir contrato seguro y compatibilidad legacy.
@@ -36,5 +37,6 @@
 - [ ] Verificar permisos efectivos de Storage y reparar INSERT amplio de production-videos si está presente en el ambiente autorizado.
 - [ ] F1.3.c.3.c: producción y otros consumidores HTTP del inventario.
 - [x] F1.3.c.3.c.1: Artlist, Google Drive, cloud e importación externa (aceptación local).
-- [ ] F1.3.c.3.c.2: medios/descargas, audio y SFX.
+- [x] F1.3.c.3.c.2: medios/descargas, audio y SFX (aceptación local).
+- [ ] F1.3.c.3.c.3: conexiones/configuración de producción.
 - [ ] Acreditar permisos reales de escritura de roles, RLS y ambiente antes de cierre TD-26.

@@ -1,5 +1,25 @@
 ## ADDED Requirements
 
+### Requirement: Autoridad HTTP en medios y audio
+Los endpoints de media privada, descarga de assets/SFX, preview y biblioteca SFX,
+waveform y jobs de audio SHALL devolver 503 seguro ante indisponibilidad de
+identidad/tenant/rol antes de firma, lectura del recurso, upload o creación de jobs.
+SHALL conservar redirects privados 302/307, TTL, descargas, DTO y errores del dominio.
+
+#### Scenario: Frontera de identidad, tenant, rol o componente caída
+- **WHEN** un método de medios o audio recibe un error interno conocido de autoridad
+- **THEN** devuelve 503 con correlación, retryable y private no-store
+- **AND** no firma, lee el recurso, ingiere bytes ni encola trabajos después del fallo
+
+#### Scenario: Entrega válida de medio privado
+- **WHEN** el actor y el recurso están autorizados
+- **THEN** conserva el redirect privado y TTL específico de media, descarga o preview
+- **AND** conserva el filtro por organización antes de acceder a un asset
+
+#### Scenario: Contratos del dominio y permisos
+- **WHEN** faltan identidad/rol/componente, el path es ajeno o el dominio rechaza una operación
+- **THEN** conserva sus respuestas de denegación, validación y error de audio/SFX
+
 ### Requirement: Errores de autoridad en proveedores de producción
 Los listados e importaciones de Artlist, Google Drive y cloud, y la importación
 externa de vídeo SHALL mapear indisponibilidad de autoridad a 503 seguro, antes
