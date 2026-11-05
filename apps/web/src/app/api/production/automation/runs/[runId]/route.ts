@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -68,6 +69,8 @@ export async function POST(request: Request, context: { params: Promise<{ runId:
 }
 
 function respond(error: unknown, requestId: string, logger: ReturnType<typeof createOperationalLogger>) {
+  const unavailable = authorizationUnavailableResponse(error, requestId);
+  if (unavailable) return unavailable;
   if (error instanceof ProductionAutomationRunError) {
     return apiErrorResponse({
       code: error.status === 404 ? API_ERROR_CODE.resourceNotFound : error.status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest,

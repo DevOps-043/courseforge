@@ -200,6 +200,15 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 5. Contrato de autorizacion y tenancy
 
+Las ocho operaciones HTTP de automation/runs proyectan las clases conocidas
+de indisponibilidad de autoridad como 503 seguro/reintentable, correlacionado
+y sin caché. Se conservan filtros de organización, aprobación, configuración,
+captions, edición de clips y firma de despacho. Los errores de dominio y el
+callback del worker mantienen sus contratos. Esto no acredita atomicidad de
+las escrituras sucesivas de configuración ni ejecución real del proveedor.
+Standalone sigue pendiente, incluido el vínculo vídeo/organización. Evidencia:
+[F1.3.c.3.c.6.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c6a.md).
+
 La biblioteca de plantillas usa únicamente la organización del resolver vigente
 antes de crear el cliente privilegiado y filtra ejecuciones, conversaciones y
 especificaciones por ella. Claims y cookies históricos no conceden acceso.
@@ -574,6 +583,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: ocho operaciones HTTP de automatización normalizan errores de
+  autoridad. Filtros, aprobación y despacho preservados; standalone pendiente.
+  Evidencia F1.3.c.3.c.6.a en sección 5.
 
 - 2026-11-05: ocho handlers de slides/open-design proyectan indisponibilidad de
   autoridad; tres operaciones HTML verifican namespace del componente autorizado.

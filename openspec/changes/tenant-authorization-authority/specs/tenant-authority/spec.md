@@ -226,3 +226,18 @@ autoridad como 503 seguro y conservar los contratos de dominio y recuperación.
 - **THEN** responde 503 seguro, reintentable, correlacionado y sin caché
 - **AND** no continúa con efectos posteriores a esa frontera
 - **AND** conserva los errores de dominio, CSP, firmas, reutilización de trabajos y compensaciones existentes
+
+### Requirement: Errores de autoridad de automatización
+
+Las ocho operaciones HTTP de automation/runs MUST clasificar las caídas conocidas
+de identidad o tenant como 503 seguro sin continuar efectos tras la frontera.
+
+#### Scenario: Caída durante autorización
+- **WHEN** falla identidad, tenant, revisión o acceso al artefacto con una clase interna de autoridad
+- **THEN** se devuelve DEPENDENCY_UNAVAILABLE reintentable, correlacionado y sin caché
+- **AND** no se inicia consulta privilegiada, configuración, construcción de clips o despacho posterior a esa frontera
+
+#### Scenario: Compatibilidad de automatización
+- **WHEN** una solicitud válida crea, consulta, reevalúa, configura o despacha producción
+- **THEN** mantiene actor y organización derivados del servidor, filtros de ownership, DTO y firma
+- **AND** errores de validación, denegación y dominio conservan su semántica

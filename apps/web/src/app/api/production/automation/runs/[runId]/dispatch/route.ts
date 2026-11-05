@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { callBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { signBackgroundPayload } from "@/lib/server/background-payload-signature";
 import { canReviewContent, getAuthenticatedUser } from "@/lib/server/artifact-action-auth";
@@ -40,6 +41,8 @@ export async function POST(request: Request, context: { params: Promise<{ runId:
     );
     return apiSuccessResponse({ submissionStatus: "QUEUED" }, { requestId, status: 202 });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.automation.dispatch.failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, message: "No se pudo iniciar la producción.", requestId, retryable: true, status: 503 });
   }

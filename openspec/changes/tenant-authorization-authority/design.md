@@ -250,3 +250,30 @@ clases en identidad, revisión, componente y contexto según la ruta; DTO/CSP,
 400/401/403/404/409/413/422/500, despacho/reutilización 202, atribución y firma,
 compensación de despacho y persistencia de fallo de preparación. Sin proveedores,
 render, credenciales o SQL reales. No acreditar el pipeline completo con mocks.
+
+## F1.3.c.3.c.6 — automatización/standalone
+
+F1.3.c.3.c.6.a cubre las ocho operaciones de cinco rutas automation/runs:
+raíz GET/POST, [runId] GET/POST, configuration PUT, dispatch POST y
+items/[componentId]/clips POST/PUT. Usar el mapper compartido de autoridad
+antes de formatear errores genéricos/de servicio. En [runId] centralizarlo en
+respond, compartido por ambos métodos. Dispatch ya devuelve 503 para otros
+fallos: conservar esa respuesta, añadiendo solo la clasificación segura conocida.
+No cambiar filtros de organización, permisos, atribución de actor, aprobación,
+firmas, callbacks locales, errores de dominio ni estados de producción.
+Los tests ejecutan handlers/parser/schemas reales con DB/servicios/worker
+simulados; no generan assets, renders ni usan credenciales.
+
+F1.3.c.3.c.6.b conserva las tres operaciones standalone. La inspección detectó
+que GET heygen/standalone/videos/[videoId] consulta un ID arbitrario con la
+credencial del tenant, sin vínculo local vídeo/organización; POST tampoco guarda
+ese vínculo. El contrato de credenciales no garantiza cuentas de proveedor
+distintas por organización. Resolver y probar ese ownership junto con errores
+HTTP antes de cerrar la subunidad: no basta añadir el mapper. Revisar
+HeygenStudioClient (creación y polling) y modelos/repositorios disponibles antes
+de elegir persistencia o comprobante verificable. No usar firmas background de
+cinco minutos como sustituto sin contrato de propósito/vigencia propio.
+
+La configuración de automatización hace múltiples escrituras sin transacción.
+Esta unidad no inventa atomicidad: conserva estados parciales y sus errores;
+registrar su evaluación de concurrencia/recuperación con el plan de integridad.
