@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -33,6 +34,8 @@ export async function GET(request: Request) {
     const status = await service.getStatus(context.tenant.organizationId);
     return apiSuccessResponse({ data: status }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.hyperframes.connection.read_failed", error);
     return unexpected(requestId);
   }
@@ -74,6 +77,8 @@ export async function POST(request: Request) {
     });
     return apiSuccessResponse({ data: status }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof ProductionProviderCredentialError) {
       return apiErrorResponse({ code: error.status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest, details: { providerCode: error.code }, message: error.message, requestId, status: error.status });
     }
@@ -116,6 +121,8 @@ export async function DELETE(request: Request) {
     });
     return apiSuccessResponse({ data: status }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.hyperframes.connection.disconnect_failed", error);
     return unexpected(requestId);
   }

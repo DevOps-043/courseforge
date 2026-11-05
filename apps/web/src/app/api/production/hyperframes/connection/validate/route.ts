@@ -1,4 +1,5 @@
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { HyperframesConnectionService } from "@/domains/production/hyperframes/hyperframes-connection.service";
 import { ProductionProviderCredentialError } from "@/domains/production/providers/credentials/provider-credentials.service";
@@ -21,6 +22,8 @@ export async function POST(request: Request) {
     const status = await service.validateActiveApiKey(tenant.organizationId);
     return apiSuccessResponse({ data: status }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof ProductionProviderCredentialError) return apiErrorResponse({ code: error.status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest, details: { providerCode: error.code }, message: error.message, requestId, status: error.status });
     logger.error("production.hyperframes.connection.validation_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo validar la conexión de HyperFrames Cloud.", requestId, retryable: true, status: 500 });

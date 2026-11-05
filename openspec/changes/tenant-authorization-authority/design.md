@@ -48,6 +48,14 @@ un flujo global legacy necesita autorización separada explícita y pruebas prop
 
 ## Condiciones pendientes y alcance
 
+F1.3.c.3.c.3 cubre dieciséis métodos de conexiones/validaciones HeyGen y
+HyperFrames, settings, assembly-branding y LiveAvatar. Se añaden guards antes
+de log/error genérico; LiveAvatar reutiliza su handleError común. La firma de
+los helpers de autorización se conserva. Role/tenant/identidad deben resolverse
+antes de crear clientes privilegiados o servicios de credenciales. Las clases
+de error de credenciales y LiveAvatar conservan sus códigos/DTO; no se cambia
+la coordinación entre save/revoke y webhooks ni finalización/media cleanup.
+
 F1.3.c.3.c.2 añade el mapper al catch exterior de diez métodos de medios/audio/SFX.
 Conserva catches internos de auditoría opcional, redirects privados 302/307 y sus
 TTL, filtros tenant de assets/jobs, revisión antes de acceso y errores específicos

@@ -17,7 +17,8 @@
 | F1.3.c.3.c | TD-26 | Codex (tramo local) | en curso | 1d364f89 | reports/context-F1.3c3c1.md | Lotes de producción pendientes |
 | F1.3.c.3.c.1 | TD-26 | Codex | cerrado (local) | 1d364f89 | reports/context-F1.3c3c1.md | F1.3.c.3.c.2: medios y audio |
 | F1.3.c.3.c.2 | TD-26 | Codex | cerrado (local) | 8b06eb70 | reports/context-F1.3c3c2.md | F1.3.c.3.c.3: conexiones/configuración |
-| F1.3.c.3.c.3 | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c2.md | Caracterizar conexiones y configuración de producción |
+| F1.3.c.3.c.3 | TD-26 | Codex | cerrado (local) | f2996baa | reports/context-F1.3c3c3.md | F1.3.c.3.c.4: operaciones HeyGen |
+| F1.3.c.3.c.4 | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c3.md | Caracterizar operaciones, clips y jobs HeyGen |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
 - [x] Definir contrato seguro y compatibilidad legacy.
@@ -38,5 +39,6 @@
 - [ ] F1.3.c.3.c: producción y otros consumidores HTTP del inventario.
 - [x] F1.3.c.3.c.1: Artlist, Google Drive, cloud e importación externa (aceptación local).
 - [x] F1.3.c.3.c.2: medios/descargas, audio y SFX (aceptación local).
-- [ ] F1.3.c.3.c.3: conexiones/configuración de producción.
+- [x] F1.3.c.3.c.3: conexiones/configuración de producción (aceptación local).
+- [ ] F1.3.c.3.c.4: operaciones/clips/jobs HeyGen.
 - [ ] Acreditar permisos reales de escritura de roles, RLS y ambiente antes de cierre TD-26.

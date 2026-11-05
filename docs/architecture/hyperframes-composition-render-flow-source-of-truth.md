@@ -200,6 +200,15 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 5. Contrato de autorizacion y tenancy
 
+Las conexiones/validaciones de HyperFrames y HeyGen, settings de generación,
+identidad de ensamble y LiveAvatar usan la misma proyección HTTP de autoridad:
+503 seguro, correlación y `private, no-store` ante clases internas conocidas.
+La firma, credenciales, webhooks y medios solo se alcanzan tras validar identidad,
+rol y tenant. Se conserva el orden existente de los efectos y errores de proveedor;
+esto no acredita atomicidad entre guardar una credencial y configurar su webhook.
+Evidencia y límites:
+[F1.3.c.3.c.3](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c3.md).
+
 Las fronteras HTTP de medios privados, descargas de assets/SFX, preview y biblioteca
 SFX, waveform y jobs de audio distinguen indisponibilidad de autoridad de una
 denegación: las clases internas de identidad/tenant producen 503 seguro con
@@ -515,6 +524,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: normalización de indisponibilidad de autoridad en conexiones,
+  configuración e identidad de ensamble; schemas, DTO y orden de efectos
+  conservados y probados con dobles. Evidencia F1.3.c.3.c.3 en sección 5.
 
 - 2026-11-05: las rutas de medios, descargas, audio y SFX proyectan caídas de
   autoridad como 503 seguro; se comprueban redirects/TTL/DTO y permisos sin

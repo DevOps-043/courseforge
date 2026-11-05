@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -29,6 +30,8 @@ export async function GET(request: Request) {
     });
     return apiSuccessResponse({ data: settings }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.hyperframes.settings.read_failed", error);
     return respondSettingsError(error, requestId);
   }
@@ -51,6 +54,8 @@ export async function PUT(request: Request) {
     });
     return apiSuccessResponse({ data: result }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.hyperframes.settings.save_failed", error);
     return respondSettingsError(error, requestId);
   }

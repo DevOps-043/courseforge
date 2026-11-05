@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -152,6 +153,8 @@ async function authorize(requestId: string) {
 }
 
 function handleError(error: unknown, action: string, requestId: string, logger: ReturnType<typeof createOperationalLogger>) {
+  const unavailable = authorizationUnavailableResponse(error, requestId);
+  if (unavailable) return unavailable;
   if (error instanceof z.ZodError) {
     return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: error.issues[0]?.message || "Solicitud LiveAvatar inválida.", requestId, status: 400 });
   }

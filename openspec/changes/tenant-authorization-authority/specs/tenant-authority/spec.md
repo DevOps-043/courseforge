@@ -1,5 +1,20 @@
 ## ADDED Requirements
 
+### Requirement: Autoridad HTTP en conexiones y configuración
+Las conexiones/validaciones HeyGen y HyperFrames, settings de generación,
+identidad de ensamble y LiveAvatar SHALL distinguir indisponibilidad de autoridad
+de denegación y errores propios del proveedor, sin iniciar efectos posteriores.
+
+#### Scenario: Identidad, rol o tenant indisponible
+- **WHEN** un método recibe una clase interna conocida de fallo de autoridad
+- **THEN** responde 503 seguro con retryable, correlación y private no-store
+- **AND** no accede a credenciales, webhooks, DB ni medios después del fallo
+
+#### Scenario: Contratos propios preservados
+- **WHEN** la autoridad es válida y la solicitud es válida o falla validación/proveedor
+- **THEN** mantiene DTO, filtros tenant y códigos de validación, conflicto, cuota y proveedor
+- **AND** mantiene el orden existente de credenciales, webhooks y finalización de assets
+
 ### Requirement: Autoridad HTTP en medios y audio
 Los endpoints de media privada, descarga de assets/SFX, preview y biblioteca SFX,
 waveform y jobs de audio SHALL devolver 503 seguro ante indisponibilidad de
