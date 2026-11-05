@@ -207,3 +207,21 @@ aplique; exigir 503 seguro/retryable/no-store y cero efectos posteriores. Conser
 401/403/404, validación, 202/DTO, Retry-After y compensación. Sin generación,
 envíos, configuración, credenciales o SQL reales. Standalone dedicado, slides y
 automatización permanecen en lotes siguientes; este lote no cierra TD-26.
+
+## Lote F1.3.c.3.c.5 — slides/open-design
+
+La inspección descubrió un fallback adicional de autoridad en
+slide-template-library.actions.ts: active_organization_id/organization_ids del
+bridge y lista de cookies se usan antes del resolver vigente, cuyo fallo se
+convierte en lista vacía. F1.3.c.3.c.5.a corrige primero esa selección: solo
+resolveActiveTenantContext concede el contexto, antes de crear el cliente
+privilegiado. Sin tenant se deniega y ante fallo conocido se devuelve resultado
+serializable seguro con errorCode, manteniendo el contrato success/error de UI.
+La ruta de biblioteca proyecta 403/503. La página ya distingue success false de
+lista vacía y los demás consumidores manejan ese fallo sin cachearlo; se conserva
+esa UI existente haciendo que la acción deje de ocultar el fallo como éxito vacío.
+
+F1.3.c.3.c.5.b conserva pendiente normalizar los otros ocho handlers de slides y
+open-design, incluidos previews HTML y generación async, con sus fixtures.
+No cerrar el lote padre ni TD-26 por completar solo la biblioteca. No alterar
+schemas, render, firmas, CSP, idempotencia o compensación de efectos secundarios.

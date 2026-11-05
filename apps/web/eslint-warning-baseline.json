@@ -1067,11 +1067,7 @@
         "51f4ebe297cbd0494bdcf9825936775a232bb707c7286a884a1e9cd92c4e5dd9": 1,
         "7be05448f485ca829fd6f87088c4fdc5fc5d8edba724ad5d98b3b6b30c04a1ae": 1,
         "8f5cec189d7f46baff7248829f4ed6f6acf342ac9bf4a262f587b5ed547f256a": 2,
-        "b606ed461149f798271f0158b9e782531c8d12487ab36857c7a452362be0c045": 1,
-        "b9ef169b83f8df5c1478e0728e53923ed30ad9a5cc689d612eb82400ae6ad76d": 1
-      },
-      "@typescript-eslint/no-unused-vars": {
-        "7a9b78c9d21162522e694917a89f05d73292fb75bff89f0cb933a7f3e63a983a": 1
+        "b606ed461149f798271f0158b9e782531c8d12487ab36857c7a452362be0c045": 1
       }
     },
     "src/domains/production/sound-effects/sound-effect-library.service.ts": {

@@ -1,5 +1,22 @@
 ## ADDED Requirements
 
+### Requirement: Biblioteca de plantillas con autoridad vigente
+La biblioteca de slides MUST resolver la organización exclusivamente mediante
+autoridad vigente y no consultar clientes privilegiados desde claims o cookies
+de navegación; sus consumidores deben distinguir indisponibilidad de lista vacía.
+
+#### Scenario: Claims o cookies señalan otra organización
+- **WHEN** existe identidad válida y el resolver devuelve la organización autorizada actual
+- **THEN** todas las consultas de biblioteca se filtran por esa organización, sin usar los claims o cookies como grant
+
+#### Scenario: Tenant ausente o autoridad caída
+- **WHEN** el resolver no concede contexto o arroja una clase interna de lookup
+- **THEN** no se construye cliente privilegiado y se devuelve fallo serializable seguro, proyectado como 403 o 503 en HTTP
+
+#### Scenario: UI distingue error de vacío
+- **WHEN** falla la biblioteca
+- **THEN** la página muestra un aviso de error en lugar de afirmar que no hay plantillas
+
 ### Requirement: Proyección de autoridad en operaciones HeyGen
 Las rutas de operaciones, clips y jobs HeyGen MUST proyectar las clases internas
 de indisponibilidad de autoridad como 503 seguro antes de errores genéricos,

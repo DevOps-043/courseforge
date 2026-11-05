@@ -2,7 +2,10 @@
 
 import { getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
-import { getAuthBridgeUser, getUserOrganizations } from "@/utils/auth/session";
+import { API_ERROR_CODE, type ApiErrorCode } from "@/lib/server/api-contract";
+import { AuthIdentityLookupError } from "@/lib/server/auth-identity-error";
+import { TenantContextLookupError } from "@/lib/server/tenant-context-error";
+import { createOperationalLogger } from "@/lib/server/operational-logger";
 import { createClient } from "@/utils/supabase/server";
 import { importedDesignPreview } from "./import/imported-slide-design.service";
 import { importedSlideDesignSchema } from "./import/imported-slide-design.contract";
@@ -33,13 +36,17 @@ export interface SlideTemplateLibraryItem {
   validation_report: { isValid?: boolean; errors?: string[]; warnings?: string[]; info?: Record<string, unknown> } | null;
 }
 
-export async function getSlideTemplatePackagesAction(): Promise<{ success: boolean; slideTemplates?: SlideTemplateLibraryItem[]; error?: string }> {
+export async function getSlideTemplatePackagesAction(): Promise<{ success: boolean; slideTemplates?: SlideTemplateLibraryItem[]; error?: string; errorCode?: ApiErrorCode }> {
+  const logger = createOperationalLogger("produccion.slides.biblioteca");
+  let etapa = "autoridad";
   try {
     const supabase = await createClient();
     if (!await getAuthenticatedUser(supabase)) return { success: false, error: "Unauthorized" };
-    const organizationId = await resolveOrganizationId();
-    if (!organizationId) return { success: true, slideTemplates: [] };
+    const tenant = await resolveActiveTenantContext();
+    if (!tenant) return { success: false, error: "Empresa no autorizada.", errorCode: API_ERROR_CODE.tenantForbidden };
+    const organizationId = tenant.organizationId;
     const admin = getServiceRoleClient();
+    etapa = "ejecuciones";
     const { data: runs, error } = await admin.from("soflia_bundle_generation_runs")
       .select("id, conversation_id, organization_id, spec_id, status, output_hash, bundle_storage_path, validation_report, error_sanitized, created_at, finished_at")
       .eq("organization_id", organizationId).is("template_id", null).order("created_at", { ascending: false }).limit(80);
@@ -47,6 +54,7 @@ export async function getSlideTemplatePackagesAction(): Promise<{ success: boole
     if (!runs?.length) return { success: true, slideTemplates: [] };
     const conversationIds = [...new Set(runs.map((run: any) => run.conversation_id).filter(Boolean))];
     const specIds = [...new Set(runs.map((run: any) => run.spec_id).filter(Boolean))];
+    etapa = "detalles";
     const [{ data: conversations, error: conversationsError }, { data: specs, error: specsError }] = await Promise.all([
       conversationIds.length ? admin.from("soflia_bundle_conversations").select("id, title").eq("organization_id", organizationId).in("id", conversationIds) : Promise.resolve({ data: [], error: null }),
       specIds.length ? admin.from("soflia_bundle_specs").select("id, spec_json").eq("organization_id", organizationId).in("id", specIds) : Promise.resolve({ data: [], error: null }),
@@ -55,6 +63,7 @@ export async function getSlideTemplatePackagesAction(): Promise<{ success: boole
     if (specsError) throw specsError;
     const conversationsById = new Map((conversations || []).map((row: any) => [row.id, row]));
     const specsById = new Map((specs || []).map((row: any) => [row.id, row]));
+    etapa = "proyeccion";
     return { success: true, slideTemplates: runs.flatMap((run: any) => {
       const specJson = specsById.get(run.spec_id)?.spec_json;
       if (!isSlideTemplateRun(run, specJson)) return [];
@@ -73,27 +82,13 @@ export async function getSlideTemplatePackagesAction(): Promise<{ success: boole
         example_slide_count: imported.success ? imported.data.layouts.length : getExampleCount(specJson),
         preview_design: getPreviewDesign(specJson), preview_slides: getPreviewSlides(specJson), runtime_canvas: getCanvas(specJson), validation_report: asRecord(run.validation_report) }];
     }) };
-  } catch (error: any) {
-    console.error("[SlideTemplateLibrary] Failed to load packages", { message: error instanceof Error ? error.message : "unknown" });
-    return { success: false, error: error?.message || "Error al obtener plantillas de slides" };
-  }
-}
-
-async function resolveOrganizationId(): Promise<string | null> {
-  const bridgeUser = await getAuthBridgeUser();
-  if (bridgeUser?.active_organization_id) return bridgeUser.active_organization_id;
-  if (bridgeUser?.organization_ids?.length) return bridgeUser.organization_ids[0];
-  const cookieOrganization = (await getUserOrganizations())[0]?.id;
-  if (cookieOrganization) return cookieOrganization;
-
-  // This is only a final fallback. The library must not depend on the profile
-  // role lookup, which can be temporarily unavailable while the tenant layout
-  // has already authenticated the current request.
-  try {
-    return (await resolveActiveTenantContext())?.organizationId || null;
-  } catch (error) {
-    console.warn("[SlideTemplateLibrary] Active tenant lookup unavailable; no organization fallback.");
-    return null;
+  } catch (error: unknown) {
+    if (error instanceof AuthIdentityLookupError || error instanceof TenantContextLookupError) {
+      logger.warn("autorizacion.no_disponible", { codigo: error.code });
+      return { success: false, error: "No se pudieron verificar temporalmente tus permisos. Intenta de nuevo.", errorCode: API_ERROR_CODE.dependencyUnavailable };
+    }
+    logger.error("biblioteca.consulta_fallida", new Error("No se pudo cargar la biblioteca de plantillas."), { etapa });
+    return { success: false, error: "No se pudieron cargar las plantillas de slides." };
   }
 }
 function asRecord(value: unknown): Record<string, any> | null { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : null; }

@@ -200,6 +200,16 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 5. Contrato de autorizacion y tenancy
 
+La biblioteca de plantillas usa únicamente la organización del resolver vigente
+antes de crear el cliente privilegiado y filtra ejecuciones, conversaciones y
+especificaciones por ella. Claims y cookies históricos no conceden acceso.
+Sin tenant devuelve un fallo explícito (HTTP 403); ante indisponibilidad conocida
+devuelve fallo seguro y reintentable (HTTP 503), sin presentarlo como lista vacía.
+El Server Action conserva success/error para sus consumidores y añade errorCode;
+la UI existente muestra ese fallo. Evidencia:
+[F1.3.c.3.c.5.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c5a.md).
+Los otros ocho handlers de slides/open-design permanecen pendientes en el lote b.
+
 Las operaciones HTTP de HeyGen (assets, plataforma, presets, escenas, voz,
 vídeos, clips y jobs) proyectan caídas internas conocidas de autoridad como
 503 seguro con correlación y `private, no-store`. Se conservan permisos y errores
@@ -557,6 +567,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: biblioteca de plantillas con autoridad vigente antes del acceso
+  privilegiado, denegación explícita y errores seguros. Evidencia F1.3.c.3.c.5.a
+  en sección 5; los otros ocho handlers siguen pendientes.
 
 - 2026-11-05: normalización de indisponibilidad de autoridad en operaciones,
   clips y jobs HeyGen; diecinueve métodos con contratos y compensación
