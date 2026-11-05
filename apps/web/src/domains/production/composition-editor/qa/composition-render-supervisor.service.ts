@@ -10,13 +10,11 @@ import {RENDER_SUPERVISOR_RECEIPT_POLICY} from "../composition-render-supervisor
 import {createControlledRenderDeadline, CONTROLLED_RENDER_DEADLINE_POLICY} from "./composition-controlled-render-deadline";
 import {CONTROLLED_RENDER_CHECKPOINT_POLICY,parseControlledRenderCheckpoint,type ControlledRenderCheckpoint,type RenderCheckpointScope} from "./composition-render-checkpoint";
 import type {ControlledReferenceSelection} from "./composition-controlled-reference-selection";
+import type {ControlledRenderDescriptor} from "./composition-controlled-render-descriptor";
 
 type IssueInput = Parameters<CompositionRenderAuthorityService["issue"]>[0];
-type Context = Awaited<ReturnType<CompositionRenderAuthorityService["issue"]>>;
-export type ControlledSupervisorRenderer = (descriptor: {
-  organizationId: string; revisionId: string;
-  executionId: string; documentHash: string; projectHash: string; contract: Context["contract"];
-}, signal?: AbortSignal) => Promise<{videoPath: string; artifacts: ControlledSupervisorArtifacts; referenceSelection?: ControlledReferenceSelection}>;
+export type ControlledSupervisorRenderer = (descriptor: ControlledRenderDescriptor,
+  signal?: AbortSignal) => Promise<{videoPath: string; artifacts: ControlledSupervisorArtifacts; referenceSelection?: ControlledReferenceSelection}>;
 
 /** Host coordinator, not an isolated renderer. Caller must supply an operator-owned renderer adapter. */
 export class CompositionRenderSupervisorService {

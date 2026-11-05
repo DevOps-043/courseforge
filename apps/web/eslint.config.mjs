@@ -26,6 +26,8 @@ export default defineConfig([
     ".next/**",
     ".netlify/**",
     ".tmp/**",
+    // Salida de build: las fuentes del worker siguen verificándose bajo src/.
+    "dist/composition-worker/**",
     "coverage/**",
     "public/**",
   ]),

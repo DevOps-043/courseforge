@@ -190,4 +190,27 @@ await test("políticas restrictivas impiden promover configuración legacy desde
     assert.equal((await query("SELECT count(*) AS total FROM system_prompts WHERE code='SYLLABUS'")).rows[0].total, 1);
   } finally { await database.exec("RESET ROLE"); }
 });
+await test("reconciliación registra solo historial, es idempotente y rechaza identidades distintas", async () => {
+  const repair = await readFile(`${reports}/engine-migration-history-repair.sql`, "utf8");
+  await database.exec("CREATE SCHEMA supabase_migrations; CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY,name text,statements text[])");
+  const before = (await query("SELECT document,revision FROM course_delivery_workspaces WHERE artifact_id=$1", [course])).rows[0];
+  await database.exec(repair); await database.exec(repair);
+  assert.deepEqual((await query("SELECT version,name FROM supabase_migrations.schema_migrations")).rows,
+    [{version:"20261026160000",name:"synchronous_course_delivery"}]);
+  assert.deepEqual((await query("SELECT document,revision FROM course_delivery_workspaces WHERE artifact_id=$1", [course])).rows[0], before);
+  await query("UPDATE supabase_migrations.schema_migrations SET name='otra_migracion'");
+  await assert.rejects(database.exec(repair), /DELIVERY_HISTORY_IDENTITY_CONFLICT/);
+  await database.exec("ROLLBACK");
+  assert.equal((await query("SELECT name FROM supabase_migrations.schema_migrations")).rows[0].name, "otra_migracion");
+});
+await test("reconciliación no marca aplicación si se abrió acceso al navegador", async () => {
+  const repair = await readFile(`${reports}/engine-migration-history-repair.sql`, "utf8");
+  await query("DELETE FROM supabase_migrations.schema_migrations");
+  await query("GRANT SELECT ON course_delivery_workspaces TO authenticated");
+  try {
+    await assert.rejects(database.exec(repair), /DELIVERY_HISTORY_SCHEMA_NOT_READY/);
+    await database.exec("ROLLBACK");
+    assert.equal((await query("SELECT count(*) AS total FROM supabase_migrations.schema_migrations")).rows[0].total, 0);
+  } finally { await query("REVOKE SELECT ON course_delivery_workspaces FROM authenticated"); }
+});
 await database.close();

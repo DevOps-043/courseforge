@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CAPTION_EFFECT_LIMITS, compositionCaptionEffectsSchema, compositionCaptionEffectsOverrideSchema, compositionCaptionEmphasisSchema } from "./composition-caption-effects.types";
-import { captionEmphasisIssues } from "./composition-caption-effects.service";
+import { captionEmphasisIssues } from "./composition-caption-text-boundaries";
 
 export const COMPOSITION_TEXT_ALIGNMENTS = ["LEFT", "CENTER", "RIGHT"] as const;
 export const COMPOSITION_TEXT_VERTICAL_ALIGNMENTS = ["TOP", "MIDDLE", "BOTTOM"] as const;

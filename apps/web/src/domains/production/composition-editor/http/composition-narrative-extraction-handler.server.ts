@@ -3,9 +3,9 @@ import { applyNarrativeVoiceExtraction, recoverNarrativeVoiceExtraction,
   type NarrativeExtractionCommandRepository } from "../composition-narrative-extraction-apply.service";
 import type { NarrativeExtractionReadRepository } from "../composition-narrative-extraction-query";
 import { createNarrativeCommandHttpHandler } from "./composition-narrative-command-handler.server";
+import type { NarrativeExtractionHttpAuthorization } from "./composition-narrative-extraction-http-policy";
+export type { NarrativeExtractionHttpAuthorization } from "./composition-narrative-extraction-http-policy";
 
-export type NarrativeExtractionHttpAuthorization = { status: "AUTHORIZED"; organizationId: string; userId: string }
-  | { status: "AUTH_REQUIRED" | "TENANT_FORBIDDEN" | "ROLE_FORBIDDEN" };
 export interface NarrativeExtractionHttpDependencies {
   enabled: () => boolean;
   configuredAppUrl: () => string | null;

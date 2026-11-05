@@ -1,9 +1,9 @@
 import { compositionVisualMaskSchema } from "./composition-visual-mask";
 import { COMPOSITION_MAX_GROUPS, COMPOSITION_MAX_CLIPS, COMPOSITION_GROUP_MAX_DIRECT_MEMBERS, validateCompositionGroupGraph } from "./composition-group-hierarchy";
 import { z } from "zod";
-import { buildCaptionEffectPlan } from "./composition-caption-effects-plan";
+import { buildCaptionEffectPlanForCaptionClips } from "./composition-caption-effects-planner";
 import { compositionVolumeEnvelopeSchema } from "./composition-volume-envelope";
-import { compositionDeckFontReferencesSchema } from "./composition-font-references";
+import { compositionDeckFontReferencesSchema } from "./composition-font-reference.contract";
 import { HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT, htmlEditingReferencesSchema } from "./html-editing/html-editing-reference.contract";
 import { COMPOSITION_VIDEO_PLAYBACK_RATES, videoRateSourceWindowFits } from "./composition-video-rate";
 import { COMPOSITION_VIDEO_FREEZE_TOLERANCE_SECONDS, COMPOSITION_VIDEO_MAX_FREEZE_SECONDS, resolveVideoFreezeTailSeconds } from "./composition-video-freeze";
@@ -392,7 +392,8 @@ export const compositionEditorDocumentSchema = z.object({
   if (document.clips.some(clip => clip.layout.zIndex > COMPOSITION_LAYER_MAX && !registeredLayers.has(clip.layout.zIndex))) {
     context.addIssue({ code: "custom", message: "Registra la capa adicional antes de asignarle elementos." });
   }
-  try { buildCaptionEffectPlan(document); }
+  try { buildCaptionEffectPlanForCaptionClips(document.clips.flatMap(clip => clip.source.type === "NATIVE_CAPTIONS"
+    ? [{id: clip.id, startSeconds: clip.startSeconds, source: clip.source}] : [])); }
   catch { context.addIssue({ code: "custom", message: "La composición excede el presupuesto de efectos de captions. Reduce las frases animadas o divide la composición." }); }
   if (document.sourceInsertionMode !== "MANUAL" && (!document.clips.length || !document.tracks.length)) {
     context.addIssue({ code: "custom", message: "La composición debe conservar al menos un clip y una pista." });

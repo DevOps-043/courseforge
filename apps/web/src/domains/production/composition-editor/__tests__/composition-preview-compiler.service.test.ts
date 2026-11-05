@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Script } from "node:vm";
+import { APP_CONFIG } from "../../../../config/app";
 import { createInitialCompositionDocument } from "../composition-document.factory";
 import { compositionEditorDocumentSchema } from "../composition-document.types";
 import {
@@ -265,10 +266,7 @@ test("compiles HyperFrames media as provider variables instead of ZIP paths", as
   });
 
   assert.match(html, new RegExp(`data-var-src="${variableName}"`));
-  assert.match(
-    html,
-    new RegExp(`<html lang="es" data-color-grading-runtime="not_required" data-composition-variables='\\[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;${variableName}&quot;,&quot;label&quot;:&quot;SofLIA - Engine remote asset&quot;,&quot;type&quot;:&quot;string&quot;}\\]'`),
-  );
+  assert.ok(html.includes(`<html lang="es" data-color-grading-runtime="not_required" data-composition-variables='[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;${variableName}&quot;,&quot;label&quot;:&quot;${APP_CONFIG.name} remote asset&quot;,&quot;type&quot;:&quot;string&quot;}]'`));
   assert.doesNotMatch(html, /src="https:\/\/project\.supabase\.co\/avatar\.mp4"/);
 });
 

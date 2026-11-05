@@ -1,22 +1,10 @@
 import type { CompositionCaptionCue } from "./composition-text-layer.types";
-import { DEFAULT_CAPTION_EFFECTS, type CompositionCaptionEffects, type CompositionCaptionEmphasis } from "./composition-caption-effects.types";
+import { DEFAULT_CAPTION_EFFECTS, type CompositionCaptionEffects } from "./composition-caption-effects.types";
 import { resolveCompositionCaptionWordGaps } from "./composition-text-presentation";
 
-const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+export { isCaptionTextBoundary, captionEmphasisIssues } from "./composition-caption-text-boundaries";
+
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
-
-/** UTF-16 offsets match textarea selections, but boundaries must preserve full graphemes. */
-export function isCaptionTextBoundary(text: string, index: number) {
-  return index === text.length || [...graphemeSegmenter.segment(text)].some((segment) => segment.index === index);
-}
-
-export function captionEmphasisIssues(text: string, ranges: CompositionCaptionEmphasis[]) {
-  const ordered = [...ranges].sort((left, right) => left.start - right.start);
-  const boundaries = new Set([...graphemeSegmenter.segment(text)].map((segment) => segment.index));
-  boundaries.add(text.length);
-  return ordered.some((range, index) => !boundaries.has(range.start) || !boundaries.has(range.end)
-    || (index > 0 && range.start < ordered[index - 1]!.end));
-}
 
 export function resolveCaptionEffects(cue: CompositionCaptionCue, effects?: CompositionCaptionEffects): CompositionCaptionEffects {
   return { ...DEFAULT_CAPTION_EFFECTS, ...effects, ...cue.effects, version: 1 };
