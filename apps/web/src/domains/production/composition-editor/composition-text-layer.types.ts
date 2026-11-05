@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CAPTION_EFFECT_LIMITS, compositionCaptionEffectsSchema, compositionCaptionEffectsOverrideSchema, compositionCaptionEmphasisSchema } from "./composition-caption-effects.types";
-import { captionEmphasisIssues } from "./composition-caption-effects.service";
+import { captionEmphasisIssues } from "./composition-caption-text-validation";
 
 export const MANUAL_CAPTION_DEFAULT_CUE_SECONDS = 2;
 

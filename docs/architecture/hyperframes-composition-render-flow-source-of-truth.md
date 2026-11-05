@@ -279,6 +279,11 @@ service role, SQL manual o un bug del backend.
   Regresión: `qa:composition-video-loop` del workspace web y
   `openspec/changes/fix-extended-video-loop/`.
 
+- La validación de fronteras UTF-16 y rangos de énfasis vive en
+  `composition-caption-text-validation.ts`, sin depender del schema de cues ni
+  del servicio de efectos. El schema consume ese módulo y el servicio conserva
+  sus exports públicos. No cambia texto, rangos, errores, tiempos o formato.
+  Evidencia: [desacoplamiento de captions](../../openspec/changes/decouple-caption-text-validation/reports/context-F3.5a.md).
 - Los presets de animación Educativo, Lectura guiada y Social aplican settings de
   efectos a la capa sin modificar texto, tiempos o personalizaciones por frase.
   Los presets visuales permanecen independientes. Social usa karaoke `BACKGROUND`
@@ -524,6 +529,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: extracción neutral de validación de texto de captions; se elimina
+  su componente circular preservando exports, Unicode y schemas. Evidencia
+  F3.5.a en la sección de subtítulos; TD-12 sigue abierto por los demás grupos.
 
 - 2026-11-05: normalización de indisponibilidad de autoridad en conexiones,
   configuración e identidad de ensamble; schemas, DTO y orden de efectos
