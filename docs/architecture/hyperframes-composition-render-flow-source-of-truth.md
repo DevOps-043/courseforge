@@ -200,6 +200,15 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 5. Contrato de autorizacion y tenancy
 
+Las operaciones HTTP de HeyGen (assets, plataforma, presets, escenas, voz,
+vídeos, clips y jobs) proyectan caídas internas conocidas de autoridad como
+503 seguro con correlación y `private, no-store`. Se conservan permisos y errores
+de proveedor, despacho 202 y compensación de clips. Una reserva de sincronización
+existente conserva su compensación antes de proyectar la caída de autoridad;
+la sincronización opcional del editor mantiene su advertencia de fallo parcial.
+No se certifica idempotencia o ejecución real del proveedor por estas pruebas.
+Evidencia: [F1.3.c.3.c.4](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c4.md).
+
 El descriptor de QA de render controlado vive en un contrato independiente de
 fence, materialización y supervisor. Contiene identidad de ejecución/revisión,
 organización, hashes y el contrato de conformidad existente; no contiene claves,
@@ -548,6 +557,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: normalización de indisponibilidad de autoridad en operaciones,
+  clips y jobs HeyGen; diecinueve métodos con contratos y compensación
+  preservados. Evidencia F1.3.c.3.c.4 en sección 5.
 
 - 2026-11-05: descriptor neutral de QA; desaparece la componente circular
   restante sin cambiar las seis implementaciones emitidas. verify:pr aprueba

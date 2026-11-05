@@ -5,6 +5,7 @@ import {
   getAuthorizedMaterialComponentAdmin,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { HeygenRepository } from "@/domains/production/providers/heygen/heygen.repository";
 import {
   PRODUCTION_ASSET_TYPES,
@@ -116,6 +117,8 @@ export async function GET(request: Request) {
       },
     }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Parametros invalidos para consultar jobs de HeyGen.", requestId, status: 400 });
     }

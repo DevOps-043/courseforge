@@ -189,3 +189,21 @@ con catch genérico pueden devolver 500 seguro: su normalización a 503 y la
 frontera GoTrue legacy se revisarán por lote con consumidores en F1.3. La
 revocación de una membresía detiene el resolver; no corrige todavía el helper
 privilegiado que recupera cf_active_org cuando el contexto es null.
+
+## Lote F1.3.c.3.c.4 — operaciones HeyGen
+
+Normalizar las dos clases internas conocidas de autoridad en assets, platform,
+presets, scenes, speech, sync, videos, clips generate/status/voice y jobs general
+e individual: doce rutas/diecinueve métodos. Conservar schemas, códigos de dominio,
+DTO, correlación y orden de autorización anterior a credenciales/proveedor/jobs.
+Los handlers que comparten formatter incorporan allí el guard. En sync el guard
+va después de la compensación de una reserva existente para no dejarla pendiente.
+La compensación de despacho de clips y la advertencia de sincronización opcional
+del editor conservan sus catches y semántica anteriores.
+
+Pruebas de handlers y schemas reales con credenciales/DB/SDK/workers simulados.
+Inyectar ambas clases en identidad, rol, tenant y ownership del componente cuando
+aplique; exigir 503 seguro/retryable/no-store y cero efectos posteriores. Conservar
+401/403/404, validación, 202/DTO, Retry-After y compensación. Sin generación,
+envíos, configuración, credenciales o SQL reales. Standalone dedicado, slides y
+automatización permanecen en lotes siguientes; este lote no cierra TD-26.

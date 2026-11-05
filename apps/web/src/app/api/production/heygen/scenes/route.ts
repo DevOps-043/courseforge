@@ -5,6 +5,7 @@ import {
   getAuthorizedMaterialComponentAdmin,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { extractHyperframesAnimatedDeck, syncHyperframesSourceAssetsFromProduction } from "@/domains/production/hyperframes/hyperframes-source-asset.service";
 import { buildSceneVisualCatalog, validateSceneVisualPlans } from "@/domains/production/composition-editor/composition-narrative-source.service";
 import { initializeHyperframesDraft } from "@/domains/production/hyperframes/hyperframes-draft.service";
@@ -223,6 +224,8 @@ function handleScenesError(
   requestId: string,
   logger: ReturnType<typeof createOperationalLogger>,
 ) {
+  const unavailable = authorizationUnavailableResponse(error, requestId);
+  if (unavailable) return unavailable;
   if (error instanceof z.ZodError) {
     return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: `Payload invalido para ${action}.`, requestId, status: 400 });
   }

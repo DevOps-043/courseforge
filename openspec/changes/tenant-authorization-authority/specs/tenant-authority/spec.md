@@ -1,5 +1,22 @@
 ## ADDED Requirements
 
+### Requirement: Proyección de autoridad en operaciones HeyGen
+Las rutas de operaciones, clips y jobs HeyGen MUST proyectar las clases internas
+de indisponibilidad de autoridad como 503 seguro antes de errores genéricos,
+sin alterar los códigos del proveedor o la compensación de efectos ya iniciados.
+
+#### Scenario: Autoridad no disponible antes del efecto
+- **WHEN** identidad, rol, tenant u ownership produce una clase interna conocida
+- **THEN** la ruta devuelve 503 correlacionado/retryable/no-store sin efectos posteriores
+
+#### Scenario: Reserva de sincronización existente
+- **WHEN** una excepción de autoridad alcanza el catch después de reservar la sincronización
+- **THEN** se conserva la compensación existente antes de proyectar el error
+
+#### Scenario: Worker de clips no despachado
+- **WHEN** falla el despacho después de encolar clips
+- **THEN** se conservan el marcado de fallo y la respuesta de dominio existentes
+
 ### Requirement: Autoridad HTTP en conexiones y configuración
 Las conexiones/validaciones HeyGen y HyperFrames, settings de generación,
 identidad de ensamble y LiveAvatar SHALL distinguir indisponibilidad de autoridad

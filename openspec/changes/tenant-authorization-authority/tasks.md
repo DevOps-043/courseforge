@@ -18,7 +18,8 @@
 | F1.3.c.3.c.1 | TD-26 | Codex | cerrado (local) | 1d364f89 | reports/context-F1.3c3c1.md | F1.3.c.3.c.2: medios y audio |
 | F1.3.c.3.c.2 | TD-26 | Codex | cerrado (local) | 8b06eb70 | reports/context-F1.3c3c2.md | F1.3.c.3.c.3: conexiones/configuración |
 | F1.3.c.3.c.3 | TD-26 | Codex | cerrado (local) | f2996baa | reports/context-F1.3c3c3.md | F1.3.c.3.c.4: operaciones HeyGen |
-| F1.3.c.3.c.4 | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c3.md | Caracterizar operaciones, clips y jobs HeyGen |
+| F1.3.c.3.c.4 | TD-26 | Codex | cerrado (local) | 96eb6ddd | reports/context-F1.3c3c4.md | F1.3.c.3.c.5: slides/open-design |
+| F1.3.c.3.c.5 | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c4.md | Caracterizar slides/open-design |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
 - [x] Definir contrato seguro y compatibilidad legacy.
@@ -40,5 +41,6 @@
 - [x] F1.3.c.3.c.1: Artlist, Google Drive, cloud e importación externa (aceptación local).
 - [x] F1.3.c.3.c.2: medios/descargas, audio y SFX (aceptación local).
 - [x] F1.3.c.3.c.3: conexiones/configuración de producción (aceptación local).
-- [ ] F1.3.c.3.c.4: operaciones/clips/jobs HeyGen.
+- [x] F1.3.c.3.c.4: operaciones/clips/jobs HeyGen (aceptación local).
+- [ ] F1.3.c.3.c.5: slides/open-design.
 - [ ] Acreditar permisos reales de escritura de roles, RLS y ambiente antes de cierre TD-26.
