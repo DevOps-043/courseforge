@@ -6,7 +6,7 @@ import { NARRATIVE_EXTRACTION_QUERY_TIMEOUT_MS } from "../composition-narrative-
 import { NarrativeExtractionCommitUnconfirmedError } from "../composition-narrative-extraction-apply.service";
 import { acceptsNarrativeExtractionOrigin, resolveNarrativeExtractionTrustedOrigin, parseNarrativeJsonHttpBody,
   narrativeExtractionHttpScopeSchema } from "./composition-narrative-extraction-http-policy";
-import type { NarrativeExtractionHttpAuthorization } from "./composition-narrative-extraction-handler.server";
+import type { NarrativeExtractionHttpAuthorization } from "./composition-narrative-http-authorization.contract";
 
 export interface NarrativeCommandHttpDependencies<C extends { commandId: string }, S> {
   enabled: () => boolean;

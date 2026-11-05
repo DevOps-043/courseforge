@@ -200,6 +200,12 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 5. Contrato de autorizacion y tenancy
 
+Los handlers HTTP de narrativa comparten su tipo de autoridad desde
+`composition-narrative-http-authorization.contract.ts`; el adaptador de voz
+mantiene el export anterior. El contrato no depende de handlers y no concede
+permisos ni cambia estados/respuestas. Evidencia:
+[F3.5.c](../../openspec/changes/decouple-narrative-http-authority/reports/context-F3.5c.md).
+
 Las conexiones/validaciones de HyperFrames y HeyGen, settings de generación,
 identidad de ensamble y LiveAvatar usan la misma proyección HTTP de autoridad:
 503 seguro, correlación y `private, no-store` ante clases internas conocidas.
@@ -535,6 +541,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: contrato neutral de autoridad HTTP narrativa; elimina la
+  dependencia circular entre handler genérico y adaptador de voz con emisión
+  CommonJS idéntica. Evidencia F3.5.c en sección 5.
 
 - 2026-11-05: separación de contratos de clip y referencias tipográficas del
   documento y sus lectores/planes. Serialización, hashes, errores y planes

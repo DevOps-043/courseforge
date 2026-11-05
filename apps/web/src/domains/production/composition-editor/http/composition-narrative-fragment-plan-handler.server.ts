@@ -6,7 +6,7 @@ import { CompositionDocumentError } from "../composition-document.service";
 import { NARRATIVE_EXTRACTION_QUERY_TIMEOUT_MS } from "../composition-narrative-extraction-contract";
 import { narrativeFragmentQuerySchema } from "../composition-narrative-fragment-contract";
 import { queryNarrativeFragment, type NarrativeFragmentReadRepository } from "../composition-narrative-fragment-query.server";
-import type { NarrativeExtractionHttpAuthorization } from "./composition-narrative-extraction-handler.server";
+import type { NarrativeExtractionHttpAuthorization } from "./composition-narrative-http-authorization.contract";
 import { acceptsNarrativeExtractionOrigin, resolveNarrativeExtractionTrustedOrigin, parseNarrativeJsonHttpBody,
   narrativeExtractionHttpScopeSchema } from "./composition-narrative-extraction-http-policy";
 

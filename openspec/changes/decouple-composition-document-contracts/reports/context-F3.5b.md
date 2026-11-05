@@ -71,7 +71,7 @@ Salidas completas locales: .tmp/module-graph.
 | Compilación posterior | 0 | contracts-compile.log |
 | Equivalencia de captura completa | 0 | contracts-after.log/json |
 | Identidad de cuerpos/exports frente a Git | 0; 22 declaraciones y dos módulos | contracts-source-identity.log |
-| HyperFrames completo | 0; incluye identidad de reexports y plan con clips readonly | contracts-hyperframes.log |
+| Script test:hyperframes completo | 0; incluye identidad de reexports en document.factory; no incluye caption-effects ni generated-deck-fonts | contracts-hyperframes.log |
 | verify:pr | 1 por ocho ciclos; arnés 26/26, OpenSpec 45/45, lint cero errores/572 warnings sin diferencias y tipos aprobados | contracts-gate.log |
 | Madge API + Tarjan | 0; 2.286 archivos, ocho recorridos, 582 avisos, dos componentes, ninguna del grupo | contracts-graph.log/json |
 | docs:check final | 0; 308 documentos | contracts-docs.log |
@@ -92,6 +92,13 @@ se excluyeron import type del grafo. La firma mínima del plan sigue exigiendo
 clips completamente tipados y conserva su discriminación de fuentes.
 Las únicas correcciones durante verificación fueron líneas vacías finales;
 no cambió lógica tras las pruebas. Revisión del mismo agente, no independiente.
+
+Corrección de alcance de evidencia durante F3.5.c: el script test:hyperframes
+no incluye caption-effects ni generated-deck-fonts. La prueba readonly agregada
+en F3.5.b se ejecutó por separado después, junto con fuentes y tres suites HTTP,
+59/59 aprobadas en .tmp/module-graph/narrative-targeted.log. Los snapshots de plan
+y hashes y la identidad AST sí se habían comprobado en F3.5.b. No se atribuye
+la ejecución posterior a la suite anterior ni se acredita cobertura CI por ello.
 
 Reversión: revertir el commit local de F3.5.b. No hay efectos externos que
 compensar. Próxima unidad F3.5.c, contrato neutral de autoridad HTTP narrativa;
