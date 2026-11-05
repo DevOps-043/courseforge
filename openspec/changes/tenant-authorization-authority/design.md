@@ -313,3 +313,26 @@ El 400 existente de media por tamaño excedido no cambia en este lote. Pruebas
 criptográficas con clave sintética y handlers reales con servicios simulados;
 incluir dos organizaciones que comparten cliente falso, revocación y polling
 repetido. No acreditar generación real, Storage/RLS o idempotencia del proveedor.
+
+## F1.3.c.3.c.7 — soportes HTTP HyperFrames
+
+Subunidad .7.a: tres soportes compartidos (presets, propuestas y seguimiento de
+render), dieciséis rutas/dieciocho métodos inventariados. Capturar las dos clases
+internas de autoridad en cada resolver, devolver su response 503 antes de crear
+admin y relanzar errores desconocidos al catch existente del consumidor.
+Render debe resolver tenant antes de revisión y pasarle ese contexto, como los
+otros dos soportes. Mantener las formas de retorno existentes, incluidos los
+campos admin/organizationId de render en errores. No modificar negocio de rutas.
+
+Cada consumidor comprueba response antes de operar: probar sus handlers reales
+con los soportes reales y dominios/SDK bloqueados para 503/401/403. Inventariar
+automáticamente consumidores para no reducir cobertura a una lista favorable.
+Probar además contrato positivo de los tres resolvers, error desconocido,
+representantes HTTP válidos y precondiciones/versiones/CSP del soporte de presets.
+Las fronteras de servicios se simulan; no afirmar cobertura del pipeline por ello.
+
+Subunidad .7.b conserva la creación/recuperación de renders y rutas HyperFrames
+que no usan estos soportes, más las caídas de autoridad posteriores a resolver
+el contexto en los consumidores si aparecen. No cerrar el lote padre ni TD-26
+con .7.a. Preservar courseforge-composition-v2, motion, hash/ETag, confirmación,
+cancelación, firma, estados durables, CSP y errores de dominio.

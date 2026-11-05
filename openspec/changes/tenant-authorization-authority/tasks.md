@@ -25,7 +25,9 @@
 | F1.3.c.3.c.6 | TD-26 | Codex | cerrado (local) | b9ad854e | reports/context-F1.3c3c6b.md | F1.3.c.3.c.7: soportes HTTP HyperFrames |
 | F1.3.c.3.c.6.a | TD-26 | Codex | cerrado (local) | b9ad854e | reports/context-F1.3c3c6a.md | F1.3.c.3.c.6.b |
 | F1.3.c.3.c.6.b | TD-26 y ownership proveedor | Codex | cerrado (local) | 4e585e14 | reports/context-F1.3c3c6b.md | F1.3.c.3.c.7 |
-| F1.3.c.3.c.7 | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c6b.md | Caracterizar soportes HTTP HyperFrames y consumidores |
+| F1.3.c.3.c.7 | TD-26 | Codex | en curso | 00f74465 | reports/context-F1.3c3c7a.md | Rutas independientes y errores posteriores al contexto |
+| F1.3.c.3.c.7.a | TD-26 | Codex | cerrado (local) | 00f74465 | reports/context-F1.3c3c7a.md | F1.3.c.3.c.7.b |
+| F1.3.c.3.c.7.b | TD-26 | por asignar | planificado | — | reports/context-F1.3c3c7a.md | Renders y rutas independientes/restantes |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
 - [x] Definir contrato seguro y compatibilidad legacy.
@@ -55,4 +57,6 @@
 - [x] F1.3.c.3.c.6.a: ocho operaciones de automatización (aceptación local).
 - [x] F1.3.c.3.c.6.b: ownership de vídeos standalone y errores HTTP de tres operaciones (aceptación local).
 - [ ] F1.3.c.3.c.7: soportes HTTP HyperFrames y consumidores.
+- [x] F1.3.c.3.c.7.a: tres soportes compartidos y 18 métodos consumidores (aceptación local).
+- [ ] F1.3.c.3.c.7.b: rutas independientes y errores posteriores al contexto.
 - [ ] Acreditar permisos reales de escritura de roles, RLS y ambiente antes de cierre TD-26.

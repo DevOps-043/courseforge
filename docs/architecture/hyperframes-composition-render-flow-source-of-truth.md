@@ -200,6 +200,15 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 5. Contrato de autorizacion y tenancy
 
+Los soportes compartidos de presets, propuestas del agente y seguimiento de
+render traducen las dos clases conocidas de indisponibilidad de autoridad a
+response 503 segura antes de crear admin. Sus dieciocho métodos consumidores
+devuelven response antes de invocar dominio/SDK. Errores desconocidos se relanzan
+al contrato propio de cada ruta; revisión y contexto corresponden al mismo tenant.
+Las rutas de creación/recuperación y otros consumidores independientes siguen
+pendientes. Evidencia y alcance de dobles:
+[F1.3.c.3.c.7.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7a.md).
+
 Las ocho operaciones HTTP de automation/runs proyectan las clases conocidas
 de indisponibilidad de autoridad como 503 seguro/reintentable, correlacionado
 y sin caché. Se conservan filtros de organización, aprobación, configuración,
@@ -595,6 +604,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: autoridad segura en tres soportes compartidos HyperFrames y sus
+  dieciocho métodos consumidores, sin modificar lógica del editor/render.
+  Evidencia F1.3.c.3.c.7.a en sección 5; lote padre pendiente.
 
 - 2026-11-05: comprobante de consulta standalone ligado a vídeo/organización,
   transporte en el studio y errores de autoridad en tres operaciones. Vigencia,

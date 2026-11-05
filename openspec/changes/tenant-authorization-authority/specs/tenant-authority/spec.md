@@ -262,3 +262,19 @@ vídeo y organización, además de identidad y permisos actuales, antes de consu
 - **WHEN** falla autoridad conocida o no está disponible la clave de firma
 - **THEN** devuelve 503 seguro y reintentable sin generación o consulta posterior a la frontera fallida
 - **AND** conserva 401/403 y errores de dominio/proveedor existentes
+
+### Requirement: Soportes HTTP HyperFrames con fallo de autoridad seguro
+
+Los resolvers compartidos de presets, propuestas y seguimiento de render MUST
+proyectar indisponibilidad conocida como respuesta 503 antes del acceso privilegiado.
+
+#### Scenario: Consumidor recibe respuesta de autorización
+- **WHEN** identidad, tenant o revisión arrojan una clase interna de autoridad
+- **THEN** cada handler consumidor devuelve esa respuesta segura/reintentable y sin caché
+- **AND** no inicia persistencia, generación, polling o cancelación posterior a esa frontera
+
+#### Scenario: Contexto y compatibilidad
+- **WHEN** la autoridad está disponible
+- **THEN** revisión y contexto resueltos corresponden a la misma organización
+- **AND** se mantienen denegaciones 401/403, formas del contexto, versiones y CSP
+- **AND** los errores desconocidos se relanzan al contrato de error del consumidor

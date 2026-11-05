@@ -1,4 +1,5 @@
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { CompositionPresetApplicationError } from "@/domains/production/composition-editor/composition-preset-application.service";
 import { CompositionPresetStoreError } from "@/domains/production/composition-editor/composition-preset-store.service";
@@ -12,7 +13,7 @@ import { API_ERROR_CODE } from "@/lib/server/api-contract";
 import { apiErrorResponse } from "@/lib/server/api-response";
 import { createOperationalLogger } from "@/lib/server/operational-logger";
 
-export async function authorizeCompositionPresetRequest(requestId: string) {
+async function resolveCompositionPresetAuthorization(requestId: string) {
   const supabase = await createClient();
   const user = await getAuthenticatedUser(supabase);
   if (!user) return { response: apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 }) } as const;
@@ -22,6 +23,15 @@ export async function authorizeCompositionPresetRequest(requestId: string) {
     return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para editar videos.", requestId, status: 403 }) } as const;
   }
   return { admin: getServiceRoleClient(), organizationId: tenant.organizationId, response: null, userId: user.userId };
+}
+
+export async function authorizeCompositionPresetRequest(requestId: string) {
+  try { return await resolveCompositionPresetAuthorization(requestId); }
+  catch (error) {
+    const response = authorizationUnavailableResponse(error, requestId);
+    if (!response) throw error;
+    return { response } as const;
+  }
 }
 
 export function compositionPresetErrorResponse(error: CompositionPresetApplicationError | CompositionPresetStoreError, requestId: string) {
