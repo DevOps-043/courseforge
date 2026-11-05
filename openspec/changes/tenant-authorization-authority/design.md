@@ -390,3 +390,12 @@ y recuperación. Mantener protocolo de resultado incierto y ausencia de reintent
 no introducir un wrapper transversal ni cambiar host/DB. Reproducir fallos antes
 del cliente privilegiado y después de publish/recover con logger que lanza.
 Ejecutar ambas suites HTTP desde test:hyperframes: compilar tests no los ejecuta.
+
+### F1.3.c.3.c.7.b.2.b.3: observabilidad narrativa
+
+Proteger callback y logger por defecto en el catch de command compartido y
+fragment-plan. Mantener clasificadores de dominio antes de observabilidad y
+conservar la respuesta original y sus flags de recuperación. Probar extracción
+y fragmento APPLY/RECOVERY, plan read-only, y salida console.error que lanza con
+restauración en finally. Los tests del mismo archivo se ejecutan secuencialmente;
+Node aísla cada archivo de suite. Incorporar las tres suites HTTP al comando real.

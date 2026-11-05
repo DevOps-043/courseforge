@@ -91,9 +91,11 @@ export function createNarrativeCommandHttpHandler<C extends { commandId: string 
         mayHaveCommitted = false;
         return fail(409, API_ERROR_CODE.conflict, error.message, error.code);
       }
-      if (dependencies.logFailure) dependencies.logFailure(requestId, error, command?.commandId);
-      else createOperationalLogger(dependencies.logNamespace ?? "production.narrative_extraction.command", { correlationId: requestId })
-        .error("production.narrative_command.command_failed", error, { commandId: command?.commandId, mode });
+      try {
+        if (dependencies.logFailure) dependencies.logFailure(requestId, error, command?.commandId);
+        else createOperationalLogger(dependencies.logNamespace ?? "production.narrative_extraction.command", { correlationId: requestId })
+          .error("production.narrative_command.command_failed", error, { commandId: command?.commandId, mode });
+      } catch { /* Preservar el protocolo de recuperación aunque falle observabilidad. */ }
       const unconfirmed = error instanceof NarrativeExtractionCommitUnconfirmedError;
       return fail(503, API_ERROR_CODE.dependencyUnavailable,
         unconfirmed ? "El guardado no está confirmado. Consulta su recibo; no repitas la extracción."

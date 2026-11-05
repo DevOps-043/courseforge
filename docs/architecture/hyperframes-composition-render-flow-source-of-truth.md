@@ -224,6 +224,14 @@ al cliente privilegiado y posteriores al host simulado. Esto no acredita una
 publicación o recuperación real en DB/Storage. Evidencia:
 [F1.3.c.3.c.7.b.2.b.2](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b2.md).
 
+Los comandos narrativos compartidos y el plan de fragmentos contienen fallos del
+callback y del logger por defecto. La respuesta conserva commandId y flags de
+recuperación según el punto de fallo; un error de observabilidad no autoriza
+repetir una escritura incierta. Las tres suites HTTP narrativas se ejecutan en
+test:hyperframes. Su cobertura usa repositorios simulados y no acredita commit
+en SQL. Evidencia:
+[F1.3.c.3.c.7.b.2.b.3](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b3.md).
+
 GET/POST de renders proyectan las clases conocidas de autoridad como 503 seguro,
 con revisión anclada al tenant. El fallo de dispatcher conserva failDispatch
 antes de responder; fallar al compensar no acredita reparación durable. Se

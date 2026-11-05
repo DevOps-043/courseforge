@@ -339,3 +339,18 @@ excepciones del callback de observabilidad y conservar su respuesta segura.
 - **WHEN** el handler captura un error y logFailure también lanza
 - **THEN** responde 503 neutral con correlación, no-store y retryable false
 - **AND** no repite publicación ni recuperación ni expone detalles internos
+
+### Requirement: Observabilidad narrativa independiente del resultado
+
+Los handlers narrativos de comandos y planificación de fragmentos MUST contener
+fallos síncronos del callback y del logger por defecto sin cambiar la respuesta.
+
+#### Scenario: Autoridad y observabilidad fallan antes de cargar servicios
+- **WHEN** falla autoridad y el callback o salida del logger también lanza
+- **THEN** devuelve 503 neutral con correlación, no-store y sin reintento
+- **AND** conserva requestNotApplied y recoveryRequired según modo y punto de fallo
+
+#### Scenario: Commit o lectura de recibo inciertos
+- **WHEN** falla dominio después de aceptar un comando y observabilidad también falla
+- **THEN** mantiene commandId, recoveryRequired y automaticRetryAllowed false
+- **AND** no duplica la operación ni afirma que no hubo escritura

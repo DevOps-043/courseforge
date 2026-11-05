@@ -7,6 +7,9 @@ import { fingerprintNarrativeExtractionRequest, type NarrativeExtractionReceipt 
 import { narrativeExtractionCommandResultSchema, type NarrativeExtractionApplyRequest } from "../composition-narrative-extraction-contract";
 import { createNarrativeExtractionHttpHandler, type NarrativeExtractionHttpDependencies } from "../http/composition-narrative-extraction-handler.server";
 import { resolveNarrativeExtractionTrustedOrigin, parseNarrativeExtractionHttpBody } from "../http/composition-narrative-extraction-http-policy";
+import { AuthIdentityLookupError } from "../../../../lib/server/auth-identity-error";
+import { TenantContextLookupError } from "../../../../lib/server/tenant-context-error";
+import { loggingModes, withBrokenNarrativeLogger, assertSafeNarrativeFailure } from "./fixtures/narrative-logging-test.fixture";
 
 const origin = "https://courseforge.example";
 const organizationId = "33333333-3333-4333-8333-333333333333";
@@ -57,6 +60,32 @@ async function fixture() {
   };
   return { command, dependencies, calls, failures, commands, reads, expectedReceipt,
     setReceipt: (value: NarrativeExtractionReceipt | null) => { receipt = value; } };
+}
+
+for (const mode of ["APPLY", "RECOVERY"] as const) for (const logging of loggingModes) {
+  for (const createFailure of [() => new AuthIdentityLookupError(), () => new TenantContextLookupError()]) {
+    test(`extracción ${mode} contiene ${createFailure().constructor.name} y logger ${logging}`, async () => {
+      const f = await fixture(); const failure = createFailure(); failure.message = "CANARIO_PRIVADO";
+      f.dependencies.authorize = async () => { f.calls.auth++; throw failure; };
+      const response = await withBrokenNarrativeLogger(f.dependencies, logging,
+        () => createNarrativeExtractionHttpHandler(mode, f.dependencies)(request(f.command), draftId));
+      const body = await assertSafeNarrativeFailure(response);
+      assert.equal(body.details.recoveryRequired, false); assert.equal(body.details.requestNotApplied, mode === "APPLY");
+      assert.equal(body.details.commandId, undefined); assert.equal(body.details.automaticRetryAllowed, false);
+      assert.deepEqual(f.calls, { auth: 1, rate: 0, services: 0, commit: 0, receipt: 0 });
+    });
+  }
+  test(`extracción ${mode} conserva recuperación ante fallo de dominio y logger ${logging}`, async () => {
+    const f = await fixture();
+    if (mode === "APPLY") f.commands.commit = async () => { f.calls.commit++; throw new Error("CANARIO_PRIVADO"); };
+    else f.commands.readReceipt = async () => { f.calls.receipt++; throw new Error("CANARIO_PRIVADO"); };
+    const response = await withBrokenNarrativeLogger(f.dependencies, logging,
+      () => createNarrativeExtractionHttpHandler(mode, f.dependencies)(request(f.command), draftId));
+    const body = await assertSafeNarrativeFailure(response);
+    assert.equal(body.details.recoveryRequired, true); assert.equal(body.details.requestNotApplied, false);
+    assert.equal(body.details.commandId, commandId); assert.equal(body.details.automaticRetryAllowed, false);
+    assert.equal(f.calls.commit, mode === "APPLY" ? 1 : 0); assert.equal(f.calls.receipt, 1);
+  });
 }
 
 test("disabled handler does not invoke authorization, rate limit or persistence", async () => {

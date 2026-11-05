@@ -64,9 +64,11 @@ export function createNarrativeFragmentPlanHttpHandler(dependencies: NarrativeFr
       return Response.json({ success: true, requestId, correlationId: requestId, data: result.summary }, { status: 200, headers });
     } catch (error) {
       if (error instanceof CompositionDocumentError && error.status === 404) return fail(404, API_ERROR_CODE.resourceNotFound, "DRAFT_NOT_FOUND");
-      if (dependencies.logFailure) dependencies.logFailure(requestId, error);
-      else createOperationalLogger("production.narrative_fragment.plan", { correlationId: requestId })
-        .error("production.narrative_fragment.plan_failed", error);
+      try {
+        if (dependencies.logFailure) dependencies.logFailure(requestId, error);
+        else createOperationalLogger("production.narrative_fragment.plan", { correlationId: requestId })
+          .error("production.narrative_fragment.plan_failed", error);
+      } catch { /* Observabilidad no debe reemplazar la respuesta segura. */ }
       return fail(503, API_ERROR_CODE.dependencyUnavailable, "OPERATION_UNAVAILABLE");
     }
   };
