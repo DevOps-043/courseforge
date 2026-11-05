@@ -382,3 +382,11 @@ del mapper: el contrato existente puede contener errores desconocidos sin
 reintento automático. Las pruebas deben detectar bypass de autoridad y owner,
 fallo del logger, contaminación de contexto y cuota antes del dominio. La prueba
 del core compartido no acredita schemas, integridad o composición de cada adapter.
+
+### F1.3.c.3.c.7.b.2.b.2: observabilidad de snapshots
+
+Contener localmente la excepción síncrona del callback logFailure en publicación
+y recuperación. Mantener protocolo de resultado incierto y ausencia de reintento;
+no introducir un wrapper transversal ni cambiar host/DB. Reproducir fallos antes
+del cliente privilegiado y después de publish/recover con logger que lanza.
+Ejecutar ambas suites HTTP desde test:hyperframes: compilar tests no los ejecuta.

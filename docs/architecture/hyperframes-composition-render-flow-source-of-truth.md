@@ -217,6 +217,13 @@ en once adaptadores y mantiene pendientes escrituras, capabilities y narrativa.
 Alcance y canarios:
 [F1.3.c.3.c.7.b.2.b.1](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b1.md).
 
+Los handlers de publicación y recuperación de snapshots contienen fallos del
+callback de observabilidad: mantienen 503 neutral y sin reintento automático.
+Sus suites HTTP se ejecutan desde test:hyperframes, incluidos errores anteriores
+al cliente privilegiado y posteriores al host simulado. Esto no acredita una
+publicación o recuperación real en DB/Storage. Evidencia:
+[F1.3.c.3.c.7.b.2.b.2](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b2.md).
+
 GET/POST de renders proyectan las clases conocidas de autoridad como 503 seguro,
 con revisión anclada al tenant. El fallo de dispatcher conserva failDispatch
 antes de responder; fallar al compensar no acredita reparación durable. Se

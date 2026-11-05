@@ -329,3 +329,13 @@ MUST mantener errores neutrales y aislamiento de caché aunque falle el logger.
 - **WHEN** el mismo handler atiende solicitudes de organizaciones distintas
 - **THEN** deriva cuotas y owner del contexto actual en cada solicitud
 - **AND** rechaza un resultado que no coincide con el owner autorizado
+
+### Requirement: Observabilidad de snapshots sin alterar recuperación
+
+Los handlers de publicación y recuperación de snapshots MUST contener las
+excepciones del callback de observabilidad y conservar su respuesta segura.
+
+#### Scenario: Logger falla durante un error de autoridad o dominio
+- **WHEN** el handler captura un error y logFailure también lanza
+- **THEN** responde 503 neutral con correlación, no-store y retryable false
+- **AND** no repite publicación ni recuperación ni expone detalles internos

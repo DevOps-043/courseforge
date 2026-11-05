@@ -33,7 +33,8 @@
 | F1.3.c.3.c.7.b.2.a | TD-26 | Codex | cerrado (local) | 155a9b83 | reports/context-F1.3c3c7b2a.md | 17 rutas/24 métodos; continuar .7.b.2.b |
 | F1.3.c.3.c.7.b.2.b | TD-26 | Codex | en curso | dac19f4a | reports/context-F1.3c3c7b2b1.md | Adaptadores de las 30 rutas delegadas |
 | F1.3.c.3.c.7.b.2.b.1 | TD-26 / QA | Codex | cerrado (local) | dac19f4a | reports/context-F1.3c3c7b2b1.md | Frontera compartida probada; no acredita todos los adaptadores |
-| F1.3.c.3.c.7.b.2.b.2 | TD-26 / observabilidad | por asignar | planificado | — | reports/context-F1.3c3c7b2b1.md | Contener fallos de logger en publicación/recuperación de snapshots |
+| F1.3.c.3.c.7.b.2.b.2 | TD-26 / observabilidad | Codex | cerrado (local) | c3b101d8 | reports/context-F1.3c3c7b2b2.md | Nueve regresiones; 31 tests snapshot ejecutados también en Node 22 |
+| F1.3.c.3.c.7.b.2.b.3 | TD-26 / observabilidad | por asignar | planificado | — | reports/context-F1.3c3c7b2b2.md | Command narrativo compartido y fragment-plan; logger y commits inciertos |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
 - [x] Definir contrato seguro y compatibilidad legacy.

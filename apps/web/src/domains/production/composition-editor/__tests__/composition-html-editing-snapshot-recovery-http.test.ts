@@ -4,6 +4,8 @@ import { createHtmlSnapshotRecoveryHandler } from "../http/composition-html-snap
 import { htmlSnapshotRecoveryEnabled } from "../composition-html-editing-snapshot-recovery-policy";
 import { htmlEditingFixtureId as uuid,htmlEditingFixtureOtherId as other } from "./composition-html-editing-test-fixtures";
 import type { createHtmlSnapshotRecoveryService } from "../composition-html-editing-snapshot-recovery.server";
+import { AuthIdentityLookupError } from "../../../../lib/server/auth-identity-error";
+import { TenantContextLookupError } from "../../../../lib/server/tenant-context-error";
 
 type RecoveryResult = Awaited<ReturnType<ReturnType<typeof createHtmlSnapshotRecoveryService>>>;
 function fixture() {
@@ -12,9 +14,11 @@ function fixture() {
     {organizationId:string;userId:string;platformRole:string | null} | null,rateAllowed:true,rateError:false,
     rateMalformed:false,draft:{composition_id:other,state:"ACTIVE"} as {composition_id:string;state:string} | null,
     draftError:false,recoveryError:false,recovered:{status:"NO_INTENT",automaticRetryAllowed:false,
-      scope:"DURABLE_IDENTITY_NOT_UPLOAD_OR_COMMIT_CONFIRMATION"} as RecoveryResult,logged:0};
+      scope:"DURABLE_IDENTITY_NOT_UPLOAD_OR_COMMIT_CONFIRMATION"} as RecoveryResult,logged:0,
+    authenticationFailure:null as unknown,loggerThrows:false};
   const handler = createHtmlSnapshotRecoveryHandler({enabled:() => state.enabled,
-    authenticate:async () => {calls.push("auth");return {actorId:state.actorId,tenant:state.tenant};},
+    authenticate:async () => {calls.push("auth");if(state.authenticationFailure) throw state.authenticationFailure;
+      return {actorId:state.actorId,tenant:state.tenant};},
     serviceClient:() => {
       calls.push("client");
       return {rpc:(name:string,args:Record<string,unknown>) => ({abortSignal:async () => {
@@ -29,11 +33,32 @@ function fixture() {
       calls.push("recover"); assert.equal(input.actorId,uuid); assert.equal(input.organizationId,uuid);
       assert.equal(input.compositionId,other); assert.equal(input.draftId,uuid);assert.equal(input.operationId,uuid);
       if (state.recoveryError) throw new Error("private key and SQL details");return state.recovered;
-    },logFailure:() => {state.logged++;}});
+    },logFailure:() => {state.logged++;if(state.loggerThrows) throw new Error("CANARIO_PRIVADO_LOGGER");}});
   const request = (headers?:HeadersInit,method="GET",query="") => new Request(`https://app.example/api/recovery${query}`,{method,headers});
   const params = {draftId:uuid,operationId:uuid};
   return {handler,state,calls,filters,rateKeys,request,params};
 }
+
+for(const createFailure of [() => new AuthIdentityLookupError(), () => new TenantContextLookupError(), () => new Error("CANARIO_PRIVADO")]) {
+  test(`recuperación conserva respuesta segura si fallan ${createFailure().constructor.name} y logger`,async () => {
+    const f=fixture();const failure=createFailure();failure.message="CANARIO_PRIVADO";
+    f.state.authenticationFailure=failure;f.state.loggerThrows=true;
+    const response=await f.handler(f.request(),f.params);const payload=await response.json();
+    assert.equal(response.status,503);assert.equal(payload.retryable,false);
+    assert.equal(response.headers.get("cache-control"),"private, no-store");
+    assert.match(response.headers.get("vary")!,/Cookie/);assert.ok(payload.requestId);
+    assert.equal(payload.correlationId,payload.requestId);assert.doesNotMatch(JSON.stringify(payload),/CANARIO_PRIVADO/);
+    assert.deepEqual(f.calls,["auth"]);assert.equal(f.state.logged,1);
+  });
+}
+
+test("recuperación fallida y logger roto no repiten la consulta ni filtran detalles",async () => {
+  const f=fixture();f.state.recoveryError=true;f.state.loggerThrows=true;
+  const response=await f.handler(f.request(),f.params);const payload=await response.json();
+  assert.equal(response.status,503);assert.equal(payload.retryable,false);
+  assert.doesNotMatch(JSON.stringify(payload),/private key|SQL details|CANARIO_PRIVADO/);
+  assert.equal(f.calls.filter(call => call === "recover").length,1);assert.equal(f.state.logged,1);
+});
 
 test("rollout is off unless literal true and disabled route does no authentication or DB work", async () => {
   for (const value of [undefined,"false","TRUE","1"," true "]) assert.equal(htmlSnapshotRecoveryEnabled(value),false);
