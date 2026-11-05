@@ -53,3 +53,9 @@ antes de conceder permisos. Cookies y claims históricos no conceden membresía.
 - **THEN** el servidor resuelve autoridad antes de la lectura con service-role
 - **AND** la consulta limita el recurso a artifacts.organization_id del tenant verificado
 - **AND** un recurso ausente o sin relación válida no habilita consultas sin filtro
+
+#### Scenario: Cambio de organización seguro
+- **WHEN** una sesión válida solicita cambiar de organización
+- **THEN** la membresía y el rol local del destino se comprueban contra autoridad actual
+- **AND** el JWT reemitido conserva exp original y renueva la lista de membresías
+- **AND** una autoridad caída devuelve 503 sin escribir cookies

@@ -13,6 +13,7 @@ const membershipSchema = z.array(z.object({
     id: z.string().uuid(),
     name: z.string(),
     slug: z.string().trim().min(1),
+    logo_url: z.string().nullable().optional(),
   }),
 }));
 
@@ -21,6 +22,7 @@ export interface VerifiedOrganizationMembership {
   name: string;
   slug: string;
   role: string;
+  logo_url?: string | null;
 }
 
 export async function loadCurrentUserMemberships(userId: string): Promise<VerifiedOrganizationMembership[]> {
@@ -29,7 +31,7 @@ export async function loadCurrentUserMemberships(userId: string): Promise<Verifi
     const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
     const { data, error } = await runTenantLookupWithRetry(async (signal) => {
       const result = await client.from("organization_users")
-        .select("organization_id, role, organizations!inner(id, name, slug)", { count: "exact" })
+        .select("organization_id, role, organizations!inner(id, name, slug, logo_url)", { count: "exact" })
         .eq("user_id", userId)
         .eq("status", "active")
         .limit(MAX_MEMBERSHIPS_PER_LOOKUP)

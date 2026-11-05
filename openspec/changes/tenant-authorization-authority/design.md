@@ -72,6 +72,15 @@ F1.3.b revisará prelecturas de filas/componentes y consumidores por flujo.
 F1.3.c cubrirá switch-organization, GoTrue legacy y proyección HTTP 503.
 Cerrar F1.3.a no cierra F1.3 ni TD-26.
 
+F1.3.c.1 corrige switch-organization con identidad del JWT verificado,
+membresías actuales y rol local del destino. Conserva exp, rechaza sub/email
+ausentes y rol ausente/desconocido. El DTO no depende de cookies de navegación.
+Al reemitir actualiza organization_ids con membresías actuales; una lista
+histórica vacía no impide recuperar membresía comprobada. Sincronización de roles
+no ocurre durante switch. Fallo de autoridad produce 503, sin escribir cookies.
+F1.3.c.2 revisará identidad GoTrue/Auth Bridge y tokens usados por jobs;
+F1.3.c.3 normalizará errores de autoridad por lotes de rutas.
+
 F1.3.b resuelve tenant antes de prelecturas de curation_rows, materials,
 material_lessons y material_components. Las consultas usan relaciones !inner hasta
 artifacts y filtro organization_id. El helper ForTenant de componentes valida el
