@@ -153,45 +153,26 @@ export async function getAuthorizedArtifactAdminForTenant(
 }
 
 export async function getAuthorizedCurationRowAdmin(rowId: string) {
+  const tenant = await resolveActiveTenantContext();
+  if (!tenant) return null;
   const admin = getServiceRoleClient();
-  const { data: row, error: rowError } = await admin
+  const { data: row, error } = await admin
     .from("curation_rows")
-    .select("id, curation_id")
+    .select("id, curation_id, curation!inner(artifact_id, artifacts!inner(organization_id))")
     .eq("id", rowId)
+    .eq("curation.artifacts.organization_id", tenant.organizationId)
     .maybeSingle();
-
-  if (rowError) {
-    console.error("[CurationRowAccess] Error loading row:", rowError);
+  if (error) {
+    console.error("[CurationRowAccess] No se pudo consultar la fila autorizada.");
     return null;
   }
-
-  if (!row?.curation_id) {
-    return null;
-  }
-
-  const { data: curation, error: curationError } = await admin
-    .from("curation")
-    .select("artifact_id")
-    .eq("id", row.curation_id)
-    .maybeSingle();
-
-  if (curationError) {
-    console.error("[CurationRowAccess] Error loading curation:", curationError);
-    return null;
-  }
-
-  if (!curation?.artifact_id) {
-    return null;
-  }
-
-  const authorized = await getAuthorizedArtifactAdmin(curation.artifact_id);
-  if (!authorized) {
-    return null;
-  }
-
+  const curation = Array.isArray(row?.curation) ? row.curation[0] : row?.curation;
+  if (!row?.curation_id || !curation?.artifact_id) return null;
+  const authorized = await getAuthorizedArtifactAdminForTenant(curation.artifact_id, tenant);
+  if (!authorized) return null;
   return {
     admin,
-    row,
+    row: { id: row.id, curation_id: row.curation_id },
     artifactId: curation.artifact_id,
   };
 }
@@ -248,56 +229,24 @@ function getArtifactIdFromComponent(component: MaterialComponentAdminRow) {
 }
 
 export async function getAuthorizedMaterialComponentAdmin(componentId: string) {
-  const admin = getServiceRoleClient();
-  const { data: component, error } = await admin
-    .from("material_components")
-    .select(
-      `
-        id,
-        type,
-        content,
-        assets,
-        material_lesson_id,
-        material_lessons!inner (
-          materials!inner (
-            artifact_id
-          )
-        )
-      `,
-    )
-    .eq("id", componentId)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[MaterialComponentAccess] Error loading component:", error);
-    throw new MaterialComponentLookupUnavailableError();
-  }
-
-  const normalizedComponent = component as MaterialComponentAdminRow | null;
-  if (!normalizedComponent) {
-    return null;
-  }
-
-  const artifactId = getArtifactIdFromComponent(normalizedComponent);
-  if (!artifactId) {
-    return null;
-  }
-
-  const authorized = await getAuthorizedArtifactAdmin(artifactId);
-  if (!authorized) {
-    return null;
-  }
-
-  return {
-    admin,
-    artifactId,
-    component: normalizedComponent,
-  };
+  const tenant = await resolveActiveTenantContext();
+  if (!tenant) return null;
+  return loadAuthorizedMaterialComponent(componentId, tenant.organizationId, true);
 }
 
 export async function getAuthorizedMaterialComponentAdminForTenant(
   componentId: string,
   organizationId: string,
+) {
+  const tenant = await resolveTenantContextByOrganizationId(organizationId);
+  if (!tenant) return null;
+  return loadAuthorizedMaterialComponent(componentId, tenant.organizationId, false);
+}
+
+async function loadAuthorizedMaterialComponent(
+  componentId: string,
+  organizationId: string,
+  throwOnLookupError: boolean,
 ) {
   const admin = getServiceRoleClient();
   const { data: component, error } = await admin
@@ -322,7 +271,10 @@ export async function getAuthorizedMaterialComponentAdminForTenant(
     .maybeSingle();
 
   if (error || !component) {
-    if (error) console.error("[MaterialComponentAccess] Tenant lookup failed:", error);
+    if (error) {
+      console.error("[MaterialComponentAccess] No se pudo consultar el componente autorizado.");
+      if (throwOnLookupError) throw new MaterialComponentLookupUnavailableError();
+    }
     return null;
   }
 
@@ -330,5 +282,7 @@ export async function getAuthorizedMaterialComponentAdminForTenant(
   const artifactId = getArtifactIdFromComponent(normalizedComponent);
   if (!artifactId) return null;
 
+  const authorized = await getAuthorizedArtifactAdminForTenant(artifactId, { organizationId });
+  if (!authorized) return null;
   return { admin, artifactId, component: normalizedComponent };
 }

@@ -47,3 +47,9 @@ antes de conceder permisos. Cookies y claims históricos no conceden membresía.
 #### Scenario: Artefacto global legacy
 - **WHEN** no existe contexto tenant válido o el artefacto carece de organización
 - **THEN** el helper tenant no concede acceso global de respaldo
+
+#### Scenario: Recursos derivados
+- **WHEN** se consulta una fila de curación, materiales, lección o componente
+- **THEN** el servidor resuelve autoridad antes de la lectura con service-role
+- **AND** la consulta limita el recurso a artifacts.organization_id del tenant verificado
+- **AND** un recurso ausente o sin relación válida no habilita consultas sin filtro

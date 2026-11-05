@@ -3,9 +3,10 @@
 import { callBackgroundFunctionJson, dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { generationFailureMessage } from "@/lib/pipeline-generation-policy";
 import {
-  getAuthorizedArtifactAdmin,
+  getAuthorizedArtifactAdminForTenant,
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
+import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import type { Esp05StepState } from "../types/materials.types";
 import { markMaterialsGenerationFailed } from "../services/materials-generation-recovery";
 
@@ -34,15 +35,18 @@ interface MaterialLessonAdminRow {
 }
 
 export async function getAuthorizedMaterialsAdmin(materialsId: string) {
+  const tenant = await resolveActiveTenantContext();
+  if (!tenant) return null;
   const admin = getServiceRoleClient();
   const { data: materials, error } = await admin
     .from("materials")
-    .select("id, artifact_id, state, version")
+    .select("id, artifact_id, state, version, artifacts!inner(organization_id)")
     .eq("id", materialsId)
+    .eq("artifacts.organization_id", tenant.organizationId)
     .maybeSingle();
 
   if (error) {
-    console.error("[MaterialsActions] Error loading materials:", error);
+    console.error("[MaterialsActions] No se pudieron consultar los materiales autorizados.");
     return null;
   }
 
@@ -52,8 +56,9 @@ export async function getAuthorizedMaterialsAdmin(materialsId: string) {
     return null;
   }
 
-  const authorized = await getAuthorizedArtifactAdmin(
+  const authorized = await getAuthorizedArtifactAdminForTenant(
     normalizedMaterials.artifact_id,
+    tenant,
   );
   if (!authorized) {
     return null;
@@ -67,6 +72,8 @@ export async function getAuthorizedMaterialsAdmin(materialsId: string) {
 }
 
 export async function getAuthorizedMaterialLessonAdmin(lessonId: string) {
+  const tenant = await resolveActiveTenantContext();
+  if (!tenant) return null;
   const admin = getServiceRoleClient();
   const { data: lesson, error } = await admin
     .from("material_lessons")
@@ -79,15 +86,17 @@ export async function getAuthorizedMaterialLessonAdmin(lessonId: string) {
         max_iterations,
         state,
         materials!inner (
-          artifact_id
+          artifact_id,
+          artifacts!inner(organization_id)
         )
       `,
     )
     .eq("id", lessonId)
+    .eq("materials.artifacts.organization_id", tenant.organizationId)
     .maybeSingle();
 
   if (error) {
-    console.error("[MaterialsActions] Error loading lesson:", error);
+    console.error("[MaterialsActions] No se pudo consultar la lección autorizada.");
     return null;
   }
 
@@ -101,7 +110,7 @@ export async function getAuthorizedMaterialLessonAdmin(lessonId: string) {
     return null;
   }
 
-  const authorized = await getAuthorizedArtifactAdmin(artifactId);
+  const authorized = await getAuthorizedArtifactAdminForTenant(artifactId, tenant);
   if (!authorized) {
     return null;
   }

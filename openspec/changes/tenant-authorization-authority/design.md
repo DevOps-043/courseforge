@@ -72,6 +72,15 @@ F1.3.b revisará prelecturas de filas/componentes y consumidores por flujo.
 F1.3.c cubrirá switch-organization, GoTrue legacy y proyección HTTP 503.
 Cerrar F1.3.a no cierra F1.3 ni TD-26.
 
+F1.3.b resuelve tenant antes de prelecturas de curation_rows, materials,
+material_lessons y material_components. Las consultas usan relaciones !inner hasta
+artifacts y filtro organization_id. El helper ForTenant de componentes valida el
+selector contra autoridad actual; mantiene su retorno null ante error de recurso,
+mientras el helper general conserva MaterialComponentLookupUnavailableError.
+Curación/materiales conservan null ante fallo de recurso. Errores de autoridad
+se propagan; ninguna denegación habilita una consulta sin filtro. Se conserva
+autorización final del artefacto y el DTO de cada consumidor.
+
 F1.1: retirar solo este OpenSpec. F1.2/F1.3: commits pequeños recuperables;
 ante fallo de autoridad preservar denegación segura, no restaurar cookies como
 fuente de permisos. Sin migración remota automática ni cambios de formato JWT.
