@@ -6,6 +6,8 @@ export default defineConfig([
   ...nextVitals,
   ...nextTypeScript,
   {
+    // Mismo alcance que el preset Next: sus plugins no se registran para CommonJS.
+    files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
     // Existing violations remain visible while the restored lint gate blocks
     // new parser/configuration failures. Tighten these rules incrementally.
     rules: {
@@ -21,6 +23,10 @@ export default defineConfig([
       "react-hooks/set-state-in-effect": "warn",
       "react/no-unescaped-entities": "warn",
     },
+  },
+  {
+    files: ["**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
   },
   globalIgnores([
     ".next/**",

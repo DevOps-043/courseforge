@@ -13,4 +13,3 @@ export const compositionDeckFontReferencesSchema = z.array(compositionFontRefere
   .refine(references => new Set(references.map(reference => reference.fontAssetId)).size === references.length,
     "COMPOSITION_FONT_REFERENCE_DUPLICATE");
 export type CompositionFontReference = z.infer<typeof compositionFontReferenceSchema>;
-

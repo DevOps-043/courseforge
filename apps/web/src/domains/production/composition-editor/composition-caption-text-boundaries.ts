@@ -14,4 +14,3 @@ export function captionEmphasisIssues(text: string, ranges: CompositionCaptionEm
   return ordered.some((range, index) => !boundaries.has(range.start) || !boundaries.has(range.end)
     || (index > 0 && range.start < ordered[index - 1]!.end));
 }
-
