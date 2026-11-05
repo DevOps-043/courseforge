@@ -1,0 +1,12 @@
+✔ baseline compara cada archivo y regla sin compensar incrementos entre archivos (8.5431ms)
+✔ reducciones y archivos eliminados exigen retirar tolerancias obsoletas (0.6689ms)
+✔ configuración efectiva resuelve plugins de overrides en TSX, MJS y CJS (11030.1063ms)
+✔ canarios reales de ESLint rechazan un error y un warning nuevo (1440.0461ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13978.077

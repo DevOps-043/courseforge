@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: baseline compara cada archivo y regla sin compensar incrementos entre archivos
+ok 1 - baseline compara cada archivo y regla sin compensar incrementos entre archivos
+  ---
+  duration_ms: 4.8915
+  type: 'test'
+  ...
+# Subtest: reducciones y archivos eliminados exigen retirar tolerancias obsoletas
+ok 2 - reducciones y archivos eliminados exigen retirar tolerancias obsoletas
+  ---
+  duration_ms: 0.5456
+  type: 'test'
+  ...
+# Subtest: configuración efectiva resuelve plugins de overrides en TSX, MJS y CJS
+ok 3 - configuración efectiva resuelve plugins de overrides en TSX, MJS y CJS
+  ---
+  duration_ms: 7704.1397
+  type: 'test'
+  ...
+# Subtest: canarios reales de ESLint rechazan un error y un warning nuevo
+ok 4 - canarios reales de ESLint rechazan un error y un warning nuevo
+  ---
+  duration_ms: 846.7747
+  type: 'test'
+  ...
+# Subtest: rechaza sustituir un warning por otro aunque el conteo por archivo y regla sea igual
+ok 5 - rechaza sustituir un warning por otro aunque el conteo por archivo y regla sea igual
+  ---
+  duration_ms: 1.4836
+  type: 'test'
+  ...
+# Subtest: excluye artefactos generados y conserva scripts y fuentes
+ok 6 - excluye artefactos generados y conserva scripts y fuentes
+  ---
+  duration_ms: 41.9399
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9605.8134

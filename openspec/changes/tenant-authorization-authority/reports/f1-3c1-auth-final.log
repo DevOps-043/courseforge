@@ -1,0 +1,108 @@
+
+> web@1.0.0 test:auth-bridge
+> tsc -p tsconfig.auth-bridge-test.json && node .tmp/auth-bridge-tests/app/login/__tests__/auth-bridge-contract.test.js && node --test .tmp/auth-bridge-tests/features/auth/__tests__/auth-session.test.js .tmp/auth-bridge-tests/app/login/__tests__/tenant-authority.test.js .tmp/auth-bridge-tests/app/login/__tests__/artifact-authority.test.js .tmp/auth-bridge-tests/app/login/__tests__/derived-resource-authority.test.js .tmp/auth-bridge-tests/app/login/__tests__/switch-organization-authority.test.js
+
+▶ Auth Bridge contract
+  ✔ preserves the session deadline when switching organizations (4.4066ms)
+  ✔ rejects expired or missing session deadlines (0.397ms)
+  ✔ selects the migrated Learning profile contract (0.5157ms)
+  ✔ accepts Learning Supabase Auth when the UUID matches the profile (2.3467ms)
+  ✔ supports username login after the bridge resolves the profile email (0.498ms)
+  ✔ rejects invalid credentials with a safe message (0.4758ms)
+  ✔ rejects mismatched Auth and profile UUIDs (0.5355ms)
+  ✔ maps operational auth failures without exposing internals (0.4937ms)
+  ✔ keeps the bridge source away from removed Learning columns (1.3364ms)
+  ✔ keeps the JWT metadata compatible while promoting platform_role (1.4751ms)
+  ✔ normalizes legacy Learning roles to the Engine contract (0.8813ms)
+  ✔ derives a tenant role from the active organization membership (0.5713ms)
+  ✔ grants global monitoring only to the explicit Learning administrator role (0.5576ms)
+  ✔ routes canonical roles to their corresponding workspace (0.3798ms)
+  ✔ declares the Learning Auth anon key as required runtime config (1.0476ms)
+✔ Auth Bridge contract (20.6521ms)
+ℹ tests 15
+ℹ suites 1
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 51.9358
+▶ frontera privilegiada de artefactos
+  ✔ sin contexto ni con cookie ajena consulta artefactos (283.5441ms)
+  ✔ ForTenant revalida contexto y no acepta un ID ajeno (77.4249ms)
+  ✔ acceso propio filtra un tenant y rechaza resultado ajeno o legacy null (51.4066ms)
+  ✔ rechaza selectores contradictorios antes de leer artefactos (47.8886ms)
+  ✔ caída de autoridad propaga el mismo error sin consulta privilegiada (44.5948ms)
+  ✔ revisión usa rol vigente y actor actual, sin perfil global ni DTO de respaldo (44.2757ms)
+✔ frontera privilegiada de artefactos (554.248ms)
+[CurationRowAccess] No se pudo consultar la fila autorizada.
+[MaterialComponentAccess] No se pudo consultar el componente autorizado.
+[MaterialComponentAccess] No se pudo consultar el componente autorizado.
+[MaterialsActions] No se pudieron consultar los materiales autorizados.
+[MaterialsActions] No se pudo consultar la lección autorizada.
+▶ acceso tenant a recursos derivados
+  ✔ sin contexto no realiza prelecturas privilegiadas (370.612ms)
+  ✔ revalida ForTenant ajeno antes de consultar (89.3845ms)
+  ✔ resuelve recursos propios con filtro tenant y relación objeto o arreglo (168.1964ms)
+  ✔ ausencia o recurso ajeno no pasa a la segunda lectura de artefacto (123.8648ms)
+  ✔ mantiene semántica de errores por helper sin conceder acceso (71.2729ms)
+  ✔ no autoriza ni busca artefactos cuando falta la relación requerida (45.1481ms)
+  ✔ autoridad caída se propaga antes de cualquier prelectura (46.986ms)
+✔ acceso tenant a recursos derivados (920.4218ms)
+▶ cambio de organización con autoridad vigente
+  ✔ usa autoridad y DTO actual sin cookie, renueva IDs y conserva exp (433.848ms)
+  ✔ acepta sesión legacy sin IDs solo con autoridad vigente (48.716ms)
+  ✔ rechaza membresía revocada aunque el JWT la conserve (50.0166ms)
+  ✔ rechaza rol local ausente o desconocido sin emitir token (96.8888ms)
+  ✔ autoridad caída devuelve 503 seguro sin escribir cookies (78.9772ms)
+  ✔ sesión ausente, inválida o sin identidad no consulta autoridad (101.5979ms)
+  ✔ solicitud inválida o destino ajeno no concede acceso (39.1629ms)
+✔ cambio de organización con autoridad vigente (853.5677ms)
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar el rol de la organización.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+▶ autoridad tenant vigente
+  ✔ conserva rol local e ignora cookie y rol global ADMIN (567.859ms)
+  ✔ deniega rol ausente o desconocido sin fallback (161.638ms)
+  ✔ claims vacíos o ausentes no agregan membresía desde cookie (98.6296ms)
+  ✔ recupera sesión legacy con membresía vigente sin depender de cookie (57.642ms)
+  ✔ revocación prevalece sobre claim firmado y rol local (43.4571ms)
+  ✔ resuelve por ID solo membresía vigente y rol local (39.6949ms)
+  ✔ no consulta roles para slug ajeno ni membresías sin identidad (56.8945ms)
+  ✔ propaga caída de membresía y rol incluso con referer (93.4588ms)
+  ✔ rechaza resultados truncados, malformados o inconsistentes (219.1767ms)
+✔ autoridad tenant vigente (1342.9262ms)
+{"timestamp":"2026-11-05T00:45:35.723Z","level":"warn","component":"auth.session","event":"auth.session.unavailable","correlationId":"f610705a-852b-49fa-b714-211864bc56a3"}
+▶ Server-verified client identity
+  ✔ accepts Auth Bridge without requiring a GoTrue session (5.4285ms)
+  ✔ preserves legacy Supabase sessions when no bridge identity exists (0.7564ms)
+  ✔ returns no identity when neither provider has a valid session (0.6348ms)
+  ✔ does not silently fall back when verification fails operationally (1.3621ms)
+  ✔ projects only declared fields and rejects invalid actor identities (2.9992ms)
+✔ Server-verified client identity (14.31ms)
+▶ Session HTTP and client contract
+  ✔ returns a non-cacheable, token-free identity with correlation headers (15.9213ms)
+  ✔ returns non-cacheable 401 for absent or expired sessions (3.0803ms)
+  ✔ returns safe non-cacheable 500 without provider details (9.6278ms)
+  ✔ uses same-origin credentials, no-store and a bounded request (2.5055ms)
+  ✔ treats 401 as unauthenticated, but rejects server errors and malformed identities (5.0541ms)
+✔ Session HTTP and client contract (37.5904ms)
+▶ Client identity lifecycle
+  ✔ deduplicates concurrent initialization and hydrates actorId (1.9845ms)
+  ✔ does not resurrect a user when a lookup finishes after logout (0.8757ms)
+  ✔ clears stale identity on expiration and supports retry after network failure (0.9971ms)
+  ✔ retains the scope guard and shows a recovery action instead of silently hiding (2.1032ms)
+✔ Client identity lifecycle (6.9118ms)
+ℹ tests 43
+ℹ suites 7
+ℹ pass 43
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5930.9632

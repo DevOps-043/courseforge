@@ -1,0 +1,28 @@
+Caracterización confirmada: cookie-owner-sin-rol
+Caracterización confirmada: claims-vacios-cookie-ajena
+Caracterización confirmada: rol-ausente-cookie-member
+Caracterización confirmada: rol-desconocido
+[TenantContext] Error loading organization role: Fallo sintético
+Caracterización confirmada: autoridad-rol-caida
+Caracterización confirmada: usuario-valido-cookie-manipulada
+Caracterización confirmada: sin-identidad
+Caracterización confirmada: fallback service-role incluye org-ajena.
+Aceptación incumplida: 5 escenarios; pendientes de adaptador: 4.
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: La caracterización verde NO acredita seguridad: fuente actual incumple aceptación.
+
+5 !== 0
+
+    at file:///D:/Pulse%20Hub/courseforge/openspec/changes/tenant-authorization-authority/reports/characterize-authority.mjs:68:24 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 5,
+  expected: 0,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.19.0

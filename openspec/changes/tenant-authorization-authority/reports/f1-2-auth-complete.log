@@ -1,0 +1,76 @@
+
+> web@1.0.0 test:auth-bridge
+> tsc -p tsconfig.auth-bridge-test.json && node .tmp/auth-bridge-tests/app/login/__tests__/auth-bridge-contract.test.js && node --test .tmp/auth-bridge-tests/features/auth/__tests__/auth-session.test.js .tmp/auth-bridge-tests/app/login/__tests__/tenant-authority.test.js
+
+▶ Auth Bridge contract
+  ✔ preserves the session deadline when switching organizations (3.4332ms)
+  ✔ rejects expired or missing session deadlines (0.3132ms)
+  ✔ selects the migrated Learning profile contract (0.4377ms)
+  ✔ accepts Learning Supabase Auth when the UUID matches the profile (1.6977ms)
+  ✔ supports username login after the bridge resolves the profile email (0.4142ms)
+  ✔ rejects invalid credentials with a safe message (0.4008ms)
+  ✔ rejects mismatched Auth and profile UUIDs (0.372ms)
+  ✔ maps operational auth failures without exposing internals (0.3137ms)
+  ✔ keeps the bridge source away from removed Learning columns (1.0483ms)
+  ✔ keeps the JWT metadata compatible while promoting platform_role (1.0072ms)
+  ✔ normalizes legacy Learning roles to the Engine contract (0.5828ms)
+  ✔ derives a tenant role from the active organization membership (0.2848ms)
+  ✔ grants global monitoring only to the explicit Learning administrator role (0.4409ms)
+  ✔ routes canonical roles to their corresponding workspace (0.249ms)
+  ✔ declares the Learning Auth anon key as required runtime config (0.897ms)
+✔ Auth Bridge contract (15.2598ms)
+ℹ tests 15
+ℹ suites 1
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 29.1936
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar el rol de la organización.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+▶ autoridad tenant vigente
+  ✔ conserva rol local e ignora cookie y rol global ADMIN (365.3136ms)
+  ✔ deniega rol ausente o desconocido sin fallback (81.1722ms)
+  ✔ claims vacíos o ausentes no agregan membresía desde cookie (64.2069ms)
+  ✔ recupera sesión legacy con membresía vigente sin depender de cookie (30.7037ms)
+  ✔ revocación prevalece sobre claim firmado y rol local (31.581ms)
+  ✔ no consulta roles para slug ajeno ni membresías sin identidad (26.6975ms)
+  ✔ propaga caída de membresía y rol incluso con referer (73.1504ms)
+  ✔ rechaza resultados truncados, malformados o inconsistentes (177.6568ms)
+✔ autoridad tenant vigente (854.3393ms)
+{"timestamp":"2026-11-04T23:19:08.962Z","level":"warn","component":"auth.session","event":"auth.session.unavailable","correlationId":"07060708-4a6a-4829-980c-23b088781f6a"}
+▶ Server-verified client identity
+  ✔ accepts Auth Bridge without requiring a GoTrue session (9.0722ms)
+  ✔ preserves legacy Supabase sessions when no bridge identity exists (1.4846ms)
+  ✔ returns no identity when neither provider has a valid session (0.7807ms)
+  ✔ does not silently fall back when verification fails operationally (3.1103ms)
+  ✔ projects only declared fields and rejects invalid actor identities (8.2265ms)
+✔ Server-verified client identity (29.2843ms)
+▶ Session HTTP and client contract
+  ✔ returns a non-cacheable, token-free identity with correlation headers (16.179ms)
+  ✔ returns non-cacheable 401 for absent or expired sessions (2.7356ms)
+  ✔ returns safe non-cacheable 500 without provider details (9.5245ms)
+  ✔ uses same-origin credentials, no-store and a bounded request (3.511ms)
+  ✔ treats 401 as unauthenticated, but rejects server errors and malformed identities (6.7432ms)
+✔ Session HTTP and client contract (40.0936ms)
+▶ Client identity lifecycle
+  ✔ deduplicates concurrent initialization and hydrates actorId (2.5723ms)
+  ✔ does not resurrect a user when a lookup finishes after logout (0.7495ms)
+  ✔ clears stale identity on expiration and supports retry after network failure (1.4052ms)
+  ✔ retains the scope guard and shows a recovery action instead of silently hiding (2.0996ms)
+✔ Client identity lifecycle (7.7624ms)
+ℹ tests 22
+ℹ suites 4
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1790.4718

@@ -1,0 +1,90 @@
+
+> web@1.0.0 test:materials-generation
+> tsc -p tsconfig.materials-generation-test.json && node .tmp/materials-generation-tests/netlify/functions/shared/__tests__/materials-generation.test.js && node .tmp/materials-generation-tests/src/domains/materials/services/__tests__/materials-generation-recovery.test.js
+
+[dialogue test] Try 1, Model: gpt-5-test
+[dialogue test] Using hardcoded modular prompts for: DIALOGUE
+[dialogue test] Calling gpt-5-test through OpenAI
+[dialogue test] gpt-5-test failed: DIALOGUE_IDENTIFIER_INVALID: hintLadder apunta a un criterio inexistente o ambiguo: unknown_criterion.
+[dialogue test] Try 2, Model: gpt-5-test
+[dialogue test] Using hardcoded modular prompts for: DIALOGUE
+[dialogue test] Calling gpt-5-test through OpenAI
+[test] Triggering next at: https://build--courseforge.netlify.app/.netlify/functions/materials-generation-background
+[test] Trigger response: 202
+[test] Triggering next at: https://build--courseforge.netlify.app/.netlify/functions/materials-generation-background
+[test] Trigger failed: TypeError: fetch failed
+    at globalThis.fetch (D:\Pulse Hub\courseforge\apps\web\.tmp\materials-generation-tests\netlify\functions\shared\__tests__\materials-generation.test.js:258:44)
+    at triggerNextLesson (D:\Pulse Hub\courseforge\apps\web\.tmp\materials-generation-tests\netlify\functions\shared\materials-generation-runtime.js:100:32)
+    at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\materials-generation-tests\netlify\functions\shared\__tests__\materials-generation.test.js:259:89)
+    at async Test.run (node:internal/test_runner/test:1389:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+[test] Triggering next at: https://build--courseforge.netlify.app/.netlify/functions/materials-generation-background
+[test] Trigger response: 503
+[test] Trigger failed: Error: El encadenamiento de materiales respondió HTTP 503.
+    at triggerNextLesson (D:\Pulse Hub\courseforge\apps\web\.tmp\materials-generation-tests\netlify\functions\shared\materials-generation-runtime.js:108:19)
+    at async waitForActual (node:assert:646:5)
+    at async strict.rejects (node:assert:769:25)
+    at async TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\materials-generation-tests\netlify\functions\shared\__tests__\materials-generation.test.js:261:5)
+    at async Test.run (node:internal/test_runner/test:1389:7)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+[resume test] Saved 0 validated component(s)
+[resume test] Generated Lesson
+[resume test] Saved 0 validated component(s)
+[resume test] Generated Lesson
+[manual test] Saved 0 validated component(s)
+[manual test] Failed Lesson: MODEL_SETTING_NOT_CONFIGURED: Materiales no tiene modelos configurados.
+[test] Saved 1 validated component(s)
+[test] Saved 1 validated component(s)
+[test] Failed Lección: VIDEO_DEMO/GENERATION_FAILED
+[test] Saved 0 validated component(s)
+[test] Failed Lesson: Fuentes insuficientes para la lección (0/2). Completa la curaduría antes de generar materiales.
+✔ global resume selects only missing or invalid demo and preserves successful components (13.8097ms)
+✔ 20 lessons retain their mixed-generation components across repeated validation (42.6983ms)
+✔ a successful partial regeneration is complete only when the whole lesson passes validation (2.9228ms)
+✔ quiz option failures are assigned to Control 5 without relying on message capitalization (1.4681ms)
+✔ dialogue generation repairs ID formatting and references before persistence without changing teaching content (18.6316ms)
+✔ criterion normalization resolves only unambiguous equivalent references (2.38ms)
+✔ normalization reserves already valid IDs and rejects absent or duplicated IDs (0.5118ms)
+✔ unrepairable dialogues fail before being accepted as generated (2.22ms)
+✔ all validation boundaries reject duplicate IDs and avoid cascading errors for later valid criteria (0.6838ms)
+✔ bounded model retries receive dialogue contract feedback instead of repeating the same request (49.3523ms)
+✔ los jobs encadenados conservan el deploy y esperan aceptación HTTP sin flags de build (8.7ms)
+✔ resume revalidates formerly rejected narration without replacing components or requiring a model (12.4314ms)
+✔ manual full regeneration still requires generation rather than accepting saved content (1.0998ms)
+✔ component replacement and lesson state are committed atomically with execution ownership (0.6847ms)
+✔ persistence failure never marks the lesson GENERATED (0.3303ms)
+✔ partial failure commits successful materials with NEEDS_FIX (0.3678ms)
+✔ cancelled or replaced executions never report success (0.2856ms)
+✔ Gemini requests are bounded and report termination and usage (0.6438ms)
+✔ OpenAI requests disable hidden retries and reject truncated JSON (0.5605ms)
+✔ courses without external curation keep an empty source list (0.3879ms)
+✔ an exhausted lesson budget prevents non-video provider calls (0.2195ms)
+✔ matching titles never assign another identified lesson's sources (0.5207ms)
+✔ post-generation validation resolves all 20 persisted lesson IDs like generation (8.8975ms)
+✔ source context supports legacy title matching but rejects conflicting IDs (0.5443ms)
+✔ shared source loading scopes approved rows to the artifact and excludes failed reports (0.543ms)
+✔ source-required lessons fail before spending provider tokens when coverage is missing (0.6088ms)
+✔ source-required model output must cite the required validated sources (1.3266ms)
+✔ provider failures are actionable without leaking response bodies (1.0654ms)
+✔ initial generation failures are persisted only for the owning running execution (0.5102ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 189.3736
+✔ expires individual retries without depending on parent GENERATING state (5.568ms)
+✔ does not expire fresh, completed or pending lessons (0.4122ms)
+✔ concurrent newer iteration is neither overwritten nor reported as recovered (0.4026ms)
+✔ database failure is visible instead of reporting an empty course (1.0451ms)
+✔ dispatch failures persist a safe explanation only for the owning running version (2.5997ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21.9369

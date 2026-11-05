@@ -1,0 +1,51 @@
+
+> web@1.0.0 test:syllabus-import-flow
+> node --test ../../scripts/test-provided-syllabus-orchestration.mjs ../../scripts/test-provided-syllabus-http.mjs
+
+✔ anonymous request is rejected before privileged reads (91.5784ms)
+✔ mismatched authentication and tenant sessions never reach privileged reads (3.292ms)
+✔ persistent multipart upload rejects a mismatched session before extraction or writes (30.3059ms)
+✔ persistent multipart upload stores server-scoped provenance and file hash (15.3759ms)
+✔ missing active tenant returns the tenant authorization contract (3.9536ms)
+✔ another organization cannot retrieve private documents (8.9526ms)
+✔ disabled feature remains compatible before migration and avoids new tables (9.8376ms)
+✔ pilot allowlist denies new operations outside the configured organizations (2.8657ms)
+✔ authorized GET scopes documents and import reads and forbids caching private text (7.9332ms)
+✔ foreign import identifier cannot reveal a baseline from another artifact (2.8647ms)
+✔ invalid identifiers and unrecognized command fields are rejected before reads (6.5411ms)
+✔ oversized body uses the payload-too-large contract without privileged reads (6.2048ms)
+✔ confirmation requires explicit acknowledgement and rejects an empty candidate (4.287ms)
+✔ stale revision returns conflict and never overwrites a newer revision (2.7456ms)
+✔ confirmation records the authenticated actor and exact expected revision (4.0878ms)
+✔ local execution and Netlify dispatch carry the reserved revision and organization (14.2966ms)
+✔ failed dispatch releases the reservation while preserving the original (2.6232ms)
+✔ complete supplied syllabus succeeds without model configuration, SDK or support reads (40.5872ms)
+✔ titles-only syllabus completes module and lesson objectives without inventing structure (13.1819ms)
+✔ gpt-5-qa: parsing uses primary document only and assigns identities on the server (12.2809ms)
+✔ gpt-5-qa: missing objectives are completed without changing supplied fields (3.6275ms)
+✔ gemini-3.5-flash: parsing uses primary document only and assigns identities on the server (3.4486ms)
+✔ gemini-3.5-flash: missing objectives are completed without changing supplied fields (7.2687ms)
+✔ ambiguous flat document remains a review candidate rather than inventing modules (2.3957ms)
+✔ invented heading receives a visible provenance issue and requires review (2.8532ms)
+✔ adverse enrichment is rejected and the confirmed syllabus survives: {"modules":[],"lessons":[{"id":"8409b1e8-47e0-4aa9-a793-45ead47ff397","objective_specific":"Validar entradas","title":"Cambiar título"}]} (5.5029ms)
+✔ adverse enrichment is rejected and the confirmed syllabus survives: {"modules":[],"lessons":[{"id":"b333ed83-4133-4616-b2c9-3a7a36521286","objective_specific":"Validar entradas"}]} (3.3443ms)
+✔ adverse enrichment is rejected and the confirmed syllabus survives: {"modules":[{"id":"a333ed83-4133-4616-b2c9-3a7a36521286","objective_general_ref":"Cambiar objetivo explícito"}],"lessons":[{"id":"8409b1e8-47e0-4aa9-a793-45ead47ff397","objective_specific":"Validar entradas"}]} (3.2632ms)
+✔ adverse enrichment is rejected and the confirmed syllabus survives: {"modules":[],"lessons":[]} (5.7214ms)
+✔ provider failure never logs private response text or replaces a confirmed syllabus (2.9744ms)
+✔ gpt-5-qa: truncated output is rejected even if the partial JSON happens to be valid (3.2531ms)
+✔ gemini-3.5-flash: truncated output is rejected even if the partial JSON happens to be valid (2.234ms)
+✔ repeated titles in different modules retain separate server-assigned identities (2.9077ms)
+✔ duration overflow preserves every lesson and saves a draft blocked for approval (8.6527ms)
+✔ invalid proposal anchor is rejected without changing the baseline (4.7844ms)
+✔ valid proposal is stored separately and never materializes automatically (1.5654ms)
+✔ stale revision exits before artifact, provider and persistence work (1.261ms)
+✔ expired lease is recovered before any provider work (1.3878ms)
+✔ losing the revision during model execution cannot overwrite or mark the new owner failed (1.877ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3004.6635

@@ -1,0 +1,133 @@
+
+> courseforge@1.0.0 verify:pr
+> node scripts/quality/run-gate.mjs
+
+Compuerta: npm run adapters:check
+
+> courseforge@1.0.0 adapters:check
+> node scripts/ai/sync-agent-adapters.mjs --check
+
+Adaptadores verificados: 27
+Compuerta: npm run harness:validate
+
+> courseforge@1.0.0 harness:validate
+> node scripts/quality/validate-harness.mjs
+
+Arnés de Coursegen válido.
+Compuerta: npm run docs:check
+
+> courseforge@1.0.0 docs:check
+> node scripts/quality/check-doc-links.mjs
+
+Enlaces locales verificados: 259 documentos; catálogo canónico y enlaces nuevos.
+Compuerta: npm run openspec:validate
+
+> courseforge@1.0.0 openspec:validate
+> openspec validate --all --strict --no-interactive
+
+✓ change/adapt-coursegen-harness
+✓ change/audio-clip-editing
+✓ change/audit-technical-debt-2026-11
+✓ change/automatic-transparent-captions
+✓ change/background-deploy-policy
+✓ change/branding-clip-controls
+✓ change/caption-animation-presets
+✓ change/complete-live-preparation-delivery
+✓ change/custom-reference-guides
+✓ change/diagnose-font-catalog
+✓ change/dynamic-composition-layers
+✓ change/editor-action-autosave
+✓ change/expand-slide-import-size
+✓ change/fix-canvas-resize-format
+✓ change/fix-caption-paragraph-layout
+✓ change/fix-clip-range-export
+✓ change/fix-extended-video-loop
+✓ change/fix-heygen-external-import-v3
+✓ change/fix-heygen-preset-handoff
+✓ change/fix-heygen-scene-save
+✓ change/fix-opendesign-css-compatibility
+✓ change/fix-slide-import-modal-theme
+✓ change/fix-user-actions-menu
+✓ change/global-branding
+✓ change/import-html-slide-templates
+✓ spec/imported-template-bases
+✓ change/manual-caption-creation
+✓ change/manual-position-controls
+✓ change/monitor-space-zoom
+✓ change/nested-composition-groups
+✓ change/netlify-typecheck-memory
+✓ change/prepare-large-html-slide-files
+✓ change/preserve-imported-html-design
+✓ spec/synchronous-hybrid-authoring
+✓ change/timeline-master-volume
+✓ change/timeline-nesting
+✓ change/video-canvas-motion
+✓ change/visual-clip-masks
+Totals: 38 passed, 0 failed (38 items)
+Compuerta: npm run test:harness
+
+> courseforge@1.0.0 test:harness
+> node --test scripts/quality/harness.test.mjs scripts/capture-background-deployment.test.mjs
+
+✔ captura únicamente el origen del deploy concreto sin secretos (10.6878ms)
+✔ build local elimina metadatos antiguos y no depende de variables de producción (5.7144ms)
+✔ build de Netlify falla si no puede capturar un destino seguro (3.9936ms)
+✔ el comando de build captura el manifiesto junto al resolver incluso desde otro cwd (144.6457ms)
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+✔ genera adaptadores deterministas y acepta CRLF equivalente (2458.1501ms)
+✔ rechaza drift y la regeneración lo corrige (1782.142ms)
+✔ rechaza huérfanos y conserva su contenido incluso al sincronizar (1186.5674ms)
+✔ rechaza metadatos que intentan cambiar la ruta de la skill (668.1818ms)
+✔ rechaza destinos enlazados sin escribir fuera del repositorio (692.1593ms)
+✔ detecta una ruta obligatoria ausente (1003.3103ms)
+✔ rechaza skills registradas inexistentes y fuentes fuera de dominio (938.9567ms)
+✔ rechaza exposición de desarrollo al runtime (733.4466ms)
+✔ detecta un área perdida del estándar maestro (1021.4223ms)
+✔ rechaza cambios locales sensibles sin leer su contenido (1007.6916ms)
+✔ verifica enlaces nuevos con espacios y rechaza destinos inexistentes (1254.8026ms)
+✔ no oculta enlaces rotos nuevos tras una línea base histórica (1379.899ms)
+✔ CI detecta enlaces nuevos ya comprometidos frente a la base del PR (1529.2039ms)
+✔ rechaza referencias base inexistentes en vez de omitir la comprobación (495.3299ms)
+✔ CI no puede sustituir la verificación de producto por la del arnés (1024.7076ms)
+✔ la compuerta conserva verify de producto y se detiene con el código real (1.6893ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17400.9411
+Compuerta: npm run verify
+
+> courseforge@1.0.0 verify
+> npm run lint && npm run typecheck && npm run architecture:cycles && npm run db:migrations:check && npm run test:branding && npm run test:security-boundaries && npm run test:audio-processing && npm run test:coverage-gaps -w apps/web && npm run test:course-delivery
+
+
+> courseforge@1.0.0 lint
+> npm run lint -w apps/web
+
+
+> web@1.0.0 lint
+> eslint . --quiet
+
+
+Oops! Something went wrong! :(
+
+ESLint: 9.39.5
+
+A configuration object specifies rule "react-hooks/immutability", but could not find plugin "react-hooks".
+
+Common causes of this problem include:
+
+1. The "react-hooks" plugin is not defined in your configuration file.
+2. The "react-hooks" plugin is not defined within the same configuration object in which the "react-hooks/immutability" rule is applied.
+
+npm error Lifecycle script `lint` failed with error:
+npm error code 2
+npm error path D:\Pulse Hub\courseforge\apps\web
+npm error workspace web@1.0.0
+npm error location D:\Pulse Hub\courseforge\apps\web
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c eslint . --quiet

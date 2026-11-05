@@ -1,0 +1,14 @@
+✔ normalizes required nullable provider fields without widening persisted operations (15.9435ms)
+✔ accepts a finite playback preset that lasts longer than an entrance (0.6894ms)
+✔ rejects a provider partial object that contains only null values (5.5029ms)
+✔ decodes a provider's compact operation envelope before authoritative validation (2.7796ms)
+✔ rejects malformed or type-overriding compact provider arguments (2.5178ms)
+✔ builds strict JSON Schema requests for OpenAI and Gemini (5.2223ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 65.2524

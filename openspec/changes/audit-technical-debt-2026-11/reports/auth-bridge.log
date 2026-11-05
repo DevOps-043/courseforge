@@ -1,0 +1,65 @@
+
+> web@1.0.0 test:auth-bridge
+> tsc -p tsconfig.auth-bridge-test.json && node .tmp/auth-bridge-tests/app/login/__tests__/auth-bridge-contract.test.js && node --test .tmp/auth-bridge-tests/features/auth/__tests__/auth-session.test.js
+
+▶ Auth Bridge contract
+  ✔ preserves the session deadline when switching organizations (3.1173ms)
+  ✔ rejects expired or missing session deadlines (0.3071ms)
+  ✔ selects the migrated Learning profile contract (0.4394ms)
+  ✔ accepts Learning Supabase Auth when the UUID matches the profile (1.6571ms)
+  ✔ supports username login after the bridge resolves the profile email (0.4181ms)
+  ✔ rejects invalid credentials with a safe message (0.3844ms)
+  ✔ rejects mismatched Auth and profile UUIDs (0.3549ms)
+  ✔ maps operational auth failures without exposing internals (0.3324ms)
+  ✔ keeps the bridge source away from removed Learning columns (1.1024ms)
+  ✔ keeps the JWT metadata compatible while promoting platform_role (1.0643ms)
+  ✔ normalizes legacy Learning roles to the Engine contract (0.5835ms)
+  ✔ derives a tenant role from the active organization membership (0.2969ms)
+  ✔ grants global monitoring only to the explicit Learning administrator role (0.4811ms)
+  ✔ routes canonical roles to their corresponding workspace (0.2519ms)
+  ✔ declares the Learning Auth anon key as required runtime config (0.8553ms)
+✔ Auth Bridge contract (14.9957ms)
+ℹ tests 15
+ℹ suites 1
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28.6411
+✖ .tmp\auth-bridge-tests\features\auth\__tests__\auth-session.test.js (7.295ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 24.9693
+
+✖ failing tests:
+
+test at .tmp\auth-bridge-tests\features\auth\__tests__\auth-session.test.js:1:1
+✖ .tmp\auth-bridge-tests\features\auth\__tests__\auth-session.test.js (7.295ms)
+  Error: spawn EPERM
+      at ChildProcess.spawn (node:internal/child_process:458:11)
+      at spawn (node:child_process:813:9)
+      at TestContext.<anonymous> (node:internal/test_runner/runner:517:19)
+      at FileTest.runInAsyncScope (node:async_hooks:227:14)
+      at FileTest.run (node:internal/test_runner/test:1382:25)
+      at FileTest.start (node:internal/test_runner/test:1242:17)
+      at runTestFile (node:internal/test_runner/runner:599:32)
+      at node:internal/test_runner/runner:1013:25
+      at node:internal/per_context/primordials:599:37
+      at new Promise (<anonymous>) {
+    errno: -4048,
+    code: 'EPERM',
+    syscall: 'spawn'
+  }
+npm error Lifecycle script `test:auth-bridge` failed with error:
+npm error code 1
+npm error path D:\Pulse Hub\courseforge\apps\web
+npm error workspace web@1.0.0
+npm error location D:\Pulse Hub\courseforge\apps\web
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c tsc -p tsconfig.auth-bridge-test.json && node .tmp/auth-bridge-tests/app/login/__tests__/auth-bridge-contract.test.js && node --test .tmp/auth-bridge-tests/features/auth/__tests__/auth-session.test.js

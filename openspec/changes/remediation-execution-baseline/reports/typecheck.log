@@ -1,0 +1,5 @@
+
+> courseforge@1.0.0 typecheck
+> tsc -p apps/web/tsconfig.json --noEmit --pretty false
+
+EXIT=0

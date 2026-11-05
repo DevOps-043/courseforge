@@ -1,0 +1,202 @@
+▶ autoridad HTTP en medios, descargas, audio y SFX
+  ✖ GET storage/media: caída de autoridad detiene efectos (54.3687ms)
+  ✖ GET production/assets/[assetId]/download: caída de autoridad detiene efectos (38.1971ms)
+  ✖ GET production/audio-analysis/assets/[assetId]/waveform: caída de autoridad detiene efectos (43.7518ms)
+  ✖ POST production/audio-analysis/assets/[assetId]/waveform: caída de autoridad detiene efectos (45.2987ms)
+  ✖ GET production/audio-processing/jobs: caída de autoridad detiene efectos (58.9916ms)
+  ✖ POST production/audio-processing/jobs: caída de autoridad detiene efectos (35.9629ms)
+  ✖ GET production/sound-effects: caída de autoridad detiene efectos (31.4918ms)
+  ✖ POST production/sound-effects: caída de autoridad detiene efectos (31.7854ms)
+  ✖ GET production/sound-effects/[soundEffectId]/preview: caída de autoridad detiene efectos (31.0292ms)
+  ✖ GET production/sound-effects/[soundEffectId]/download: caída de autoridad detiene efectos (27.5705ms)
+  ✔ conserva denegaciones de identidad, tenant, revisión y componente (787.6732ms)
+  ✔ conserva redirects privados, TTL, download y auditoría (72.7009ms)
+  ✔ un fallo de auditoría no altera la entrega autorizada existente (40.3546ms)
+  ✔ media rechaza paths ajenos o inválidos sin firmar (171.014ms)
+  ✔ conserva consulta waveform y estados de análisis sin audio o pendientes (205.1923ms)
+  ✔ conserva los 202 de creación y la consulta sin trabajo solicitado (130.8716ms)
+  ✔ preserva biblioteca, enlace JSON y multipart SFX (268.3525ms)
+  ✔ mantiene errores propios de audio y SFX (251.0718ms)
+✖ autoridad HTTP en medios, descargas, audio y SFX (2330.4043ms)
+ℹ tests 18
+ℹ suites 1
+ℹ pass 8
+ℹ fail 10
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4327.6958
+
+✖ failing tests:
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:12:28
+✖ GET storage/media: caída de autoridad detiene efectos (54.3687ms)
+  AssertionError [ERR_ASSERTION]: storage/media/GET/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:19:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1869:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:12:28
+✖ GET production/assets/[assetId]/download: caída de autoridad detiene efectos (38.1971ms)
+  AssertionError [ERR_ASSERTION]: production/assets/[assetId]/download/GET/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:19:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:12:28
+✖ GET production/audio-analysis/assets/[assetId]/waveform: caída de autoridad detiene efectos (43.7518ms)
+  AssertionError [ERR_ASSERTION]: production/audio-analysis/assets/[assetId]/waveform/GET/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:19:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:12:28
+✖ POST production/audio-analysis/assets/[assetId]/waveform: caída de autoridad detiene efectos (45.2987ms)
+  AssertionError [ERR_ASSERTION]: production/audio-analysis/assets/[assetId]/waveform/POST/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:19:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:12:28
+✖ GET production/audio-processing/jobs: caída de autoridad detiene efectos (58.9916ms)
+  AssertionError [ERR_ASSERTION]: production/audio-processing/jobs/GET/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:19:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:12:28
+✖ POST production/audio-processing/jobs: caída de autoridad detiene efectos (35.9629ms)
+  AssertionError [ERR_ASSERTION]: production/audio-processing/jobs/POST/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:19:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:12:28
+✖ GET production/sound-effects: caída de autoridad detiene efectos (31.4918ms)
+  AssertionError [ERR_ASSERTION]: production/sound-effects/GET/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:19:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:12:28
+✖ POST production/sound-effects: caída de autoridad detiene efectos (31.7854ms)
+  AssertionError [ERR_ASSERTION]: production/sound-effects/POST/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:19:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:12:28
+✖ GET production/sound-effects/[soundEffectId]/preview: caída de autoridad detiene efectos (31.0292ms)
+  AssertionError [ERR_ASSERTION]: production/sound-effects/[soundEffectId]/preview/GET/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:19:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:12:28
+✖ GET production/sound-effects/[soundEffectId]/download: caída de autoridad detiene efectos (27.5705ms)
+  AssertionError [ERR_ASSERTION]: production/sound-effects/[soundEffectId]/download/GET/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\media-authority-http.test.js:19:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

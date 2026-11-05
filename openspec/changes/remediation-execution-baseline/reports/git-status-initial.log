@@ -1,0 +1,8 @@
+ M README.md
+ M TECHNICAL_DEBT_AUDIT.md
+ M docs/README.md
+ M docs/TECHNICAL_DEBT_ANALYSIS.md
+ M docs/architecture/system-context.md
+?? docs/technical-debt/
+?? openspec/changes/audit-technical-debt-2026-11/
+?? openspec/changes/remediation-execution-baseline/

@@ -1,0 +1,5 @@
+
+> courseforge@1.0.0 docs:audit
+> powershell -ExecutionPolicy Bypass -File scripts/audit-documentation.ps1
+
+Auditoria creada en docs/documentation-audit.md

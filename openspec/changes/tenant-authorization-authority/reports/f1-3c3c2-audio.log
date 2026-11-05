@@ -1,0 +1,216 @@
+
+> courseforge@1.0.0 test:audio-processing
+> npm run test:audio-processing -w apps/web && npm run test:audio-processing -w apps/api
+
+
+> web@1.0.0 test:audio-processing
+> tsc -p tsconfig.audio-processing-test.json && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-waveform-status.client.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-analysis.service.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-waveform-read.service.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-waveform-projection.service.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-waveform-v2.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-waveform-window.client.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/ffmpeg-command.service.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-processing-worker-contracts.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-processing-job.service.test.js && node .tmp/audio-processing-tests/domains/production/audio-processing/__tests__/audio-source-correction.test.js
+
+✔ pending and running jobs have distinct messages even though both HTTP reads succeed (3.0001ms)
+✔ polling deadline preserves the distinction between an unclaimed job and ongoing processing (0.641ms)
+✔ only backend terminal failure is presented as processing failure (0.4191ms)
+✔ finished waves and sources without audio do not retain a pending or failure notice (1.6715ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23.5397
+✔ estimates the clip peak with logarithmic gain without changing source measurements (1.864ms)
+✔ distinguishes muted, unmeasured and silent sources without inventing zero peaks (1.4586ms)
+✔ warns above the source peak target and retains a failed source diagnosis after attenuation (0.2771ms)
+✔ rejects invalid gains instead of presenting misleading diagnostic levels (0.8238ms)
+✔ parses bounded loudness and content-addressed waveform metadata (7.1115ms)
+✔ rejects malformed or non-content-addressed metadata (2.0816ms)
+✔ validates the LOD chain and selects a bounded rendering level (3.4656ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 30.9359
+✔ reads a checksum-verified waveform through tenant, component and asset filters (11.8593ms)
+✔ rejects a derivative from another tenant before storage access (2.103ms)
+✔ rejects derivative bytes whose checksum differs from the manifest (1.5393ms)
+✔ reuses a verified derivative but still checks authorization on every read (2.2987ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 30.5307
+✔ trimmed waveform projects the correct source interval and preserves peak extrema (2.8196ms)
+✔ zoomed out waveform keeps a short peak visible within one column (0.7019ms)
+✔ invalid or out-of-range intervals produce no path (0.6864ms)
+✔ an audio tail beyond measured source duration stays visually empty (0.6459ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23.4867
+✔ reads a stereo original without voice processing metadata and projects a zoomed source window (10.9362ms)
+✔ rejects stale source fingerprints before accessing storage (1.5645ms)
+✔ rejects invalid manifests and mismatched channel pyramids (1.2347ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 32.1346
+✔ limits parallel window reads and cancels a queued request before network access (84.9171ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 98.1166
+✔ builds a deterministic FFmpeg command without shell interpolation (5.5526ms)
+✔ keeps the approved voice chain explicit and free of denoise until calibrated (1.1431ms)
+✔ rejects URL, NUL and conflicting worker paths (1.7763ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 29.3115
+✔ resolves only an allowlisted profile instead of trusting snapshot filters (7.8005ms)
+✔ rejects non-claimed jobs and malformed source identities (3.2898ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26.4574
+✔ creates a canonical worker input from a verified voice asset (3.1649ms)
+✔ rejects an asset that is not an eligible voice source (1.2057ms)
+✔ rejects sources exceeding the worker input limit (0.7092ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19.9955
+✔ accepts HeyGen and synchronized/detached voice without reclassifying the registry (3.7842ms)
+✔ rejects music, unclassified media, archived assets, bad checksum and oversized audio (0.5662ms)
+✔ canonical storage and MIME give equivalent idempotency inputs (2.674ms)
+✔ rejects unsafe storage identities without broadening bucket access (1.0421ms)
+✔ detects binary HeyGen formats and rejects disguised/non-audio payloads (1.572ms)
+✔ paired-scene replacement requires a passing derivative of the exact original component (0.7827ms)
+✔ web and separately deployed API worker use the same source contract (12.2489ms)
+✔ resolves originals through tenant and component filters and rejects foreign or cyclic derivatives (5.308ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 45.7921
+
+> api@1.0.0 test:audio-processing
+> tsc -p tsconfig.audio-processing-test.json && node .tmp/audio-processing-tests/features/audio-processing/__tests__/audio-batch-runner.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/audio-analysis.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/audio-waveform.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/audio-waveform-stream.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/deepfilter-runtime-config.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/worker-capabilities.test.js && node .tmp/audio-processing-tests/features/audio-processing/__tests__/audio-source-probe.test.js
+
+✔ empty queue exits immediately instead of keeping a runner polling (7.0703ms)
+✔ job cap stops new claims and aggregates failures without abandoning claimed work (0.6769ms)
+✔ time budget is checked after an in-flight batch finishes (0.7544ms)
+✔ termination signal stops before claiming another lease (0.8374ms)
+✔ claim errors fail the run rather than reporting an empty queue (2.1582ms)
+✔ invalid limits cannot claim jobs (3.9006ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 65.7136
+✔ builds a shell-free loudness measurement command (7.8629ms)
+✔ parses measured values and applies the phase-two QA thresholds (5.9321ms)
+✔ marks out-of-tolerance loudness or clipping risk without hiding measurements (2.3497ms)
+✔ represents digital silence as an explicit failed measurement (2.3123ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 41.6659
+✔ builds a bounded mono PCM extraction command without shell interpolation (3.3591ms)
+✔ creates a deterministic extrema pyramid that preserves peaks (1.2509ms)
+✔ rejects empty, odd-length and invalid-duration PCM (0.7529ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25.5741
+✔ retains 1 kHz peaks and opposite-phase channels across unaligned stream chunks (74.5135ms)
+✔ rejects unsupported/unbounded formats, nonfinite samples and incomplete frames (1.3124ms)
+✔ decoder preserves source rate/channels and excludes network and playlist demuxers (1.0308ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 99.0198
+✔ does nothing when neural enhancement is disabled (3.5198ms)
+✔ derives immutable runtime values from the approved manifest (21.8875ms)
+✔ rejects deployment values that disagree with the approved manifest (10.7831ms)
+✔ rejects a manifest that changes the fixed model filename (12.8182ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 65.1924
+✔ base image claims baseline and analysis-only profiles (7.2257ms)
+✔ managed neural image claims baseline and DeepFilterNet profiles (0.5132ms)
+✔ batch sends its capabilities to the atomic claim RPC (1.4806ms)
+✔ empty capability list fails before claiming a job (1.6468ms)
+✔ worker rejects an unsupported claimed profile before downloading audio (6.5549ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 43.6604
+✔ accepts a real audio container without rounding its fractional duration (3.072ms)
+✔ rejects silent video, unsupported codec/container and unbounded duration (3.0957ms)
+✔ legacy worker snapshots resolve the object path rather than duplicating the bucket (3.2488ms)
+✔ caps automatic retries and records malformed claimed inputs as terminal failures (29.7568ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 51.9769

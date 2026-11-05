@@ -1,0 +1,293 @@
+
+> courseforge@1.0.0 test:security-boundaries
+> npm run test:security-boundaries -w apps/web
+
+
+> web@1.0.0 test:security-boundaries
+> tsc -p tsconfig.security-boundaries-test.json && node .tmp/security-boundaries-tests/domains/production/__tests__/external-media-import-policy.test.js && node .tmp/security-boundaries-tests/domains/production/providers/__tests__/artlist-types.test.js && node .tmp/security-boundaries-tests/domains/production/providers/__tests__/google-picker-runtime.test.js && node .tmp/security-boundaries-tests/domains/production/providers/__tests__/provider-json-contracts.test.js && node .tmp/security-boundaries-tests/domains/production/assembly-branding/__tests__/assembly-branding-upload.test.js && node .tmp/security-boundaries-tests/domains/production/bundle-agent/__tests__/bundle-agent-route-contract.test.js && node .tmp/security-boundaries-tests/domains/materials/validators/__tests__/material-assets-contract.test.js && node .tmp/security-boundaries-tests/domains/scorm/services/__tests__/scorm-parser-security.test.js && node .tmp/security-boundaries-tests/domains/scorm/__tests__/scorm-job-contracts.test.js && node .tmp/security-boundaries-tests/domains/publication/__tests__/publication-outbox.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/background-payload-signature.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/background-request-environment.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/outbound-http.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/tenant-lookup-retry.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/video-metadata.service.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/api-contract.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/external-import-concurrency.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/external-import-error.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/operational-logger.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/desktop-worker-job-contracts.test.js && node .tmp/security-boundaries-tests/lib/server/__tests__/privileged-background-inventory.test.js
+
+✔ rejects loopback, private networks, credentials and non-HTTPS URLs (25.4866ms)
+✔ reads a response only while it remains within the byte budget (110.1755ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 152.6571
+✔ Artlist result guards discriminate tracks and videos (3.7602ms)
+✔ Artlist parsing drops malformed provider payloads (5.1137ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 36.9381
+✔ Google Picker extracts only a non-empty string file ID (4.027ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28.3008
+✔ provider token contracts require a usable token and optional positive expiry (9.4263ms)
+✔ OAuth account profiles require a non-empty provider email (3.1052ms)
+✔ provider metadata contracts sanitize optional values and reject invalid containers (1.4224ms)
+✔ provider listings drop malformed entries but require the collection contract (1.9242ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 43.767
+✔ assembly branding accepts only bounded MP4 or WebM files (5.4489ms)
+✔ assembly branding selections reject unknown fields and invalid IDs (6.3858ms)
+✔ assembly branding storage paths are bound to tenant and kind (0.9444ms)
+✔ direct upload finalization has an exact bounded contract (2.9769ms)
+✔ cleanup removes only unregistered uploads older than the retention window (6.8414ms)
+✔ cleanup rotates bounded organization pages without exceeding the total (0.8928ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 49.135
+✔ bundle agent conversation creation has a strict bounded contract (6.8778ms)
+✔ bundle agent messages reject empty, excessive and unknown input (1.8866ms)
+✔ bundle agent specs allow nested overrides but reject unknown boundary fields (1.7837ms)
+✔ bundle generation accepts only valid optional spec identifiers (1.4838ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 30.7085
+✔ material assets accept explicit nullable removals (9.6272ms)
+✔ material assets preserve current production contracts (4.9176ms)
+✔ material assets reject impossible persisted statuses (3.0105ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 34.2105
+✔ parses a small valid SCORM manifest (83.3516ms)
+✔ rejects an entry with an excessive compression ratio before extraction (186.6577ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 294.0408
+✔ SCORM process requests require an exact UUID contract (6.9113ms)
+✔ SCORM transformation states distinguish ready, active and terminal imports (0.5742ms)
+✔ only the reserved queued step can be claimed by a background transformation (0.542ms)
+✔ SCORM leases are recoverable only after a valid deadline expires (0.4844ms)
+✔ SCORM queued jobs become recoverable when dispatch remains stale (0.5263ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28.6729
+✔ publication outbox hashes equivalent payloads deterministically (51.8755ms)
+✔ publication outbox validates its signed request and payload boundaries (12.956ms)
+✔ publication reconciliation distinguishes stale queues and expired leases (0.7638ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 95.9002
+✔ derives a stable background secret only for local development (626.5072ms)
+✔ round-trips a signed background payload and rejects tampering (44.7168ms)
+✔ rejects expired signed payloads (1.4786ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 694.9929
+✔ staging y previews conservan el despliegue aunque la URL pública apunte a producción (8.1528ms)
+✔ el metadato del build funciona cuando Netlify no expone DEPLOY_URL en ejecución (0.6609ms)
+✔ sin captura usa DEPLOY_URL explícito y nunca la dirección pública ni el origen de un request (2.2817ms)
+✔ rechaza destinos inválidos sin recurrir a otro entorno (5.4259ms)
+✔ desarrollo directo conserva destino local y Netlify nunca cae a localhost (1.0422ms)
+✔ builds direct-handler URLs independently from the configured public app URL (1.5538ms)
+✔ recognizes only development loopback background invocations (1.3019ms)
+✔ always requires persistent replay protection when deployed (0.8552ms)
+✔ keeps chained handlers in-process only during direct Next development (1.3472ms)
+✔ missing build flags never imply local execution or bypass replay protection (1.0973ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 56.6082
+✔ fetchWithDeadline aborts a stalled outbound request (14.5056ms)
+✔ fetchWithDeadline preserves an earlier caller cancellation (4.2901ms)
+✔ idempotent retries recover from 429 and transient 5xx responses (146.9523ms)
+✔ idempotent retries return the last response after the bounded attempts (10.6859ms)
+✔ idempotent retries do not violate a Retry-After beyond the wait budget (1.7215ms)
+✔ idempotent retries reject mutating methods before issuing a request (1.1938ms)
+✔ idempotent retries share one total deadline across all attempts (7.8729ms)
+✔ circuit breaker opens after complete logical requests keep failing (4.1037ms)
+✔ circuit breaker admits one recovery probe and closes after success (4.366ms)
+✔ bounded response reads reject an excessive declared body (8.4532ms)
+✔ bounded response reads enforce streamed bytes without a content length (29.8986ms)
+✔ bounded JSON reads parse valid provider responses (4.6931ms)
+✔ bounded binary reads preserve bytes inside the budget (1.442ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 267.8079
+✔ recognizes Supabase fetch failures as transient (4.9618ms)
+✔ retries a transient tenant lookup and returns the successful result (4.3135ms)
+✔ does not retry non-transient database errors (1.0421ms)
+✔ bounds stalled lookups and aborts each database request (39.3241ms)
+✔ recovers after a timeout with a fresh signal and clears the success timer (45.1646ms)
+✔ rejects unbounded or empty retry configurations (2.4136ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 112.2902
+✔ extracts bounded YouTube metadata from supported duration fields (4.0057ms)
+✔ falls back safely when YouTube omits duration metadata (0.7033ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23.109
+✔ API errors expose a stable contract and preserve the legacy error alias (3.4872ms)
+✔ API error extensions preserve compatibility without overriding the shared contract (12.2878ms)
+✔ JSON parsing distinguishes malformed and oversized requests (5.3375ms)
+✔ JSON parsing returns schema-validated data (3.914ms)
+✔ optional JSON parsing accepts an empty body without removing byte limits (1.8012ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 41.9848
+✔ external import capacity never exceeds its active or queued bounds (8.4535ms)
+✔ external import capacity rejects work beyond the queue budget (2.7655ms)
+✔ external import capacity times out queued work and releases failed slots (15.5727ms)
+✔ external import capacity removes cancelled callers from the queue (1.446ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 40.94
+✔ external import errors expose only allowlisted operational messages (12.106ms)
+✔ external import errors preserve safe recovery semantics (3.2804ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 42.2198
+✔ operational logging preserves valid correlation IDs and replaces invalid input (5.7602ms)
+✔ operational logging redacts credentials, emails and bearer tokens (4.325ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 31.5781
+✔ worker assignment staleness handles fresh, missing and malformed heartbeats (2.4347ms)
+✔ duration contracts accept only positive finite frames and fps (2.0468ms)
+✔ worker authorization enforces tenant, provider, status and assignment (2.1013ms)
+✔ render input resolution validates the snapshot and builds a stable hash (4.9178ms)
+✔ database boundary readers reject non-row values before control-plane mapping (0.7174ms)
+✔ desktop render assets are validated before reaching the assembly normalizer (10.9344ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 41.8935
+✔ production Server Actions trust only exact HTTPS deployment hosts (5.8786ms)
+✔ invalid and insecure production origins are ignored (0.6712ms)
+✔ development policy keeps local tooling without weakening production (1.1234ms)
+✔ production CSP is enforced and limits executable/network origins (0.9388ms)
+▶ HyperFrames Cloud client
+  ✔ uploads directly, finalizes and submits without a webhook (59.4345ms)
+  ✔ fails before network use when the idempotency key is unsafe (2.5898ms)
+  ✔ includes the durable callback correlation when configured (1.7938ms)
+  ✔ rejects oversized provider JSON before parsing it (1.9037ms)
+✔ HyperFrames Cloud client (66.9257ms)
+✔ LiveAvatar parses JSON only inside the response budget (2.1501ms)
+✔ LiveAvatar bounds provider errors and preserves a safe fallback (1.363ms)
+✔ privileged Netlify handlers verify the internal signed envelope (13.727ms)
+✔ application code does not replace the complete material assets document (14713.3451ms)
+✔ the legacy Express application cannot expose mock authentication (25.0296ms)
+✔ audited outbound integrations keep explicit deadlines and download budgets (11.0074ms)
+✔ curation validates every redirect target and bounds remote HTML (3.1725ms)
+✔ remaining production provider JSON is bounded at the response boundary (3.0157ms)
+✔ la importación externa delega HeyGen al cliente acotado v3 con credenciales tenant (1.2279ms)
+✔ the central HeyGen client bounds successful and error response bodies (1.1556ms)
+✔ the composition studio keeps cohesive panels and its API boundary outside the god component (16.4461ms)
+✔ obsolete diagnostic and publication-preview APIs stay retired (1.7066ms)
+✔ publication delivery uses a durable signed outbox instead of the request lifecycle (3.0579ms)
+✔ durable SCORM and publication paths use structured operational events (11.0098ms)
+✔ Lia does not log prompts, model responses, actions or credential state (1.9085ms)
+✔ critical public APIs preserve the shared response and request-boundary contract (104.2191ms)
+✔ critical AI provider calls keep deadlines and bounded response parsing (3.5325ms)
+✔ render control-plane responses and template bundle downloads stay bounded (3.2267ms)
+✔ critical material asset boundaries do not regress to any (11.1533ms)
+✔ desktop worker persistence rows do not regress to unsafe any (4.1658ms)
+✔ SCORM parsing and transformation stay outside requests and behind signed background boundaries (4.2333ms)
+✔ HeyGen catalog reconciliation stays durable and behind signed background boundaries (2.5431ms)
+ℹ tests 30
+ℹ suites 1
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15531.4658

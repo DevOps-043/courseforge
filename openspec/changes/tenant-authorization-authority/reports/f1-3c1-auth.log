@@ -1,0 +1,99 @@
+
+> web@1.0.0 test:auth-bridge
+> tsc -p tsconfig.auth-bridge-test.json && node .tmp/auth-bridge-tests/app/login/__tests__/auth-bridge-contract.test.js && node --test .tmp/auth-bridge-tests/features/auth/__tests__/auth-session.test.js .tmp/auth-bridge-tests/app/login/__tests__/tenant-authority.test.js .tmp/auth-bridge-tests/app/login/__tests__/artifact-authority.test.js .tmp/auth-bridge-tests/app/login/__tests__/derived-resource-authority.test.js
+
+▶ Auth Bridge contract
+  ✔ preserves the session deadline when switching organizations (4.4653ms)
+  ✔ rejects expired or missing session deadlines (0.5395ms)
+  ✔ selects the migrated Learning profile contract (1.3168ms)
+  ✔ accepts Learning Supabase Auth when the UUID matches the profile (4.9913ms)
+  ✔ supports username login after the bridge resolves the profile email (0.7009ms)
+  ✔ rejects invalid credentials with a safe message (0.9196ms)
+  ✔ rejects mismatched Auth and profile UUIDs (0.8237ms)
+  ✔ maps operational auth failures without exposing internals (0.6584ms)
+  ✔ keeps the bridge source away from removed Learning columns (21.4047ms)
+  ✔ keeps the JWT metadata compatible while promoting platform_role (25.8638ms)
+  ✔ normalizes legacy Learning roles to the Engine contract (1.1798ms)
+  ✔ derives a tenant role from the active organization membership (0.662ms)
+  ✔ grants global monitoring only to the explicit Learning administrator role (0.7742ms)
+  ✔ routes canonical roles to their corresponding workspace (0.5677ms)
+  ✔ declares the Learning Auth anon key as required runtime config (1.2623ms)
+✔ Auth Bridge contract (71.5898ms)
+ℹ tests 15
+ℹ suites 1
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 95.8272
+▶ frontera privilegiada de artefactos
+  ✔ sin contexto ni con cookie ajena consulta artefactos (568.752ms)
+  ✔ ForTenant revalida contexto y no acepta un ID ajeno (130.1334ms)
+  ✔ acceso propio filtra un tenant y rechaza resultado ajeno o legacy null (65.9584ms)
+  ✔ rechaza selectores contradictorios antes de leer artefactos (80.9087ms)
+  ✔ caída de autoridad propaga el mismo error sin consulta privilegiada (51.2716ms)
+  ✔ revisión usa rol vigente y actor actual, sin perfil global ni DTO de respaldo (47.5838ms)
+✔ frontera privilegiada de artefactos (950.1703ms)
+[CurationRowAccess] No se pudo consultar la fila autorizada.
+[MaterialComponentAccess] No se pudo consultar el componente autorizado.
+[MaterialComponentAccess] No se pudo consultar el componente autorizado.
+[MaterialsActions] No se pudieron consultar los materiales autorizados.
+[MaterialsActions] No se pudo consultar la lección autorizada.
+▶ acceso tenant a recursos derivados
+  ✔ sin contexto no realiza prelecturas privilegiadas (609.9437ms)
+  ✔ revalida ForTenant ajeno antes de consultar (129.9328ms)
+  ✔ resuelve recursos propios con filtro tenant y relación objeto o arreglo (182.3129ms)
+  ✔ ausencia o recurso ajeno no pasa a la segunda lectura de artefacto (147.9825ms)
+  ✔ mantiene semántica de errores por helper sin conceder acceso (92.0828ms)
+  ✔ no autoriza ni busca artefactos cuando falta la relación requerida (66.284ms)
+  ✔ autoridad caída se propaga antes de cualquier prelectura (66.4691ms)
+✔ acceso tenant a recursos derivados (1300.7379ms)
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar el rol de la organización.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+▶ autoridad tenant vigente
+  ✔ conserva rol local e ignora cookie y rol global ADMIN (944.979ms)
+  ✔ deniega rol ausente o desconocido sin fallback (215.2807ms)
+  ✔ claims vacíos o ausentes no agregan membresía desde cookie (134.4699ms)
+  ✔ recupera sesión legacy con membresía vigente sin depender de cookie (61.0992ms)
+  ✔ revocación prevalece sobre claim firmado y rol local (55.4132ms)
+  ✔ resuelve por ID solo membresía vigente y rol local (61.1444ms)
+  ✔ no consulta roles para slug ajeno ni membresías sin identidad (51.1352ms)
+  ✔ propaga caída de membresía y rol incluso con referer (95.3251ms)
+  ✔ rechaza resultados truncados, malformados o inconsistentes (298.7181ms)
+✔ autoridad tenant vigente (1923.6826ms)
+{"timestamp":"2026-11-05T00:45:21.349Z","level":"warn","component":"auth.session","event":"auth.session.unavailable","correlationId":"4a7173e8-0ec3-4ae5-a80f-4f2459a31f3e"}
+▶ Server-verified client identity
+  ✔ accepts Auth Bridge without requiring a GoTrue session (29.8421ms)
+  ✔ preserves legacy Supabase sessions when no bridge identity exists (1.3354ms)
+  ✔ returns no identity when neither provider has a valid session (1.1433ms)
+  ✔ does not silently fall back when verification fails operationally (2.4607ms)
+  ✔ projects only declared fields and rejects invalid actor identities (6.1939ms)
+✔ Server-verified client identity (49.9827ms)
+▶ Session HTTP and client contract
+  ✔ returns a non-cacheable, token-free identity with correlation headers (48.4928ms)
+  ✔ returns non-cacheable 401 for absent or expired sessions (3.1572ms)
+  ✔ returns safe non-cacheable 500 without provider details (9.7473ms)
+  ✔ uses same-origin credentials, no-store and a bounded request (3.972ms)
+  ✔ treats 401 as unauthenticated, but rejects server errors and malformed identities (23.5091ms)
+✔ Session HTTP and client contract (90.579ms)
+▶ Client identity lifecycle
+  ✔ deduplicates concurrent initialization and hydrates actorId (2.1779ms)
+  ✔ does not resurrect a user when a lookup finishes after logout (0.9359ms)
+  ✔ clears stale identity on expiration and supports retry after network failure (1.6588ms)
+  ✔ retains the scope guard and shows a recovery action instead of silently hiding (74.1269ms)
+✔ Client identity lifecycle (80.0169ms)
+ℹ tests 36
+ℹ suites 6
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7376.7276

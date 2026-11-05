@@ -1,0 +1,73 @@
+apps/web/src\app\api\storage\signed-upload-url\route.ts:7:    getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\storage\signed-upload-url\route.ts:265:            const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\storage\media\route.ts:5:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\storage\media\route.ts:39:    const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\production\standalone\media\route.ts:1:import { getAuthenticatedUser, getAuthorizedMaterialComponentAdmin } from "@/lib/server/artifact-action-auth";
+apps/web/src\app\api\production\standalone\media\route.ts:20:    const authorized = await getAuthorizedMaterialComponentAdmin(parsed.data.componentId);
+apps/web/src\app\api\production\import-external\route.ts:5:    getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\import-external\route.ts:56:        const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\production\open-design\html-to-png\route.ts:5:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\open-design\html-to-png\route.ts:46:    const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\production\cloud-storage\import\route.ts:5:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\cloud-storage\import\route.ts:82:    const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\production\open-design\export\route.ts:7:    getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\open-design\export\route.ts:205:        const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\production\artlist\import\route.ts:5:    getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\artlist\import\route.ts:43:        const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\production\slides\animated-deck\prepare\route.ts:5:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\slides\animated-deck\prepare\route.ts:38:  Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>
+apps/web/src\app\api\production\slides\animated-deck\prepare\route.ts:299:  const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\production\slides\generate\route.ts:12:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\slides\generate\route.ts:166:  admin: NonNullable<Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>>["admin"];
+apps/web/src\app\api\production\slides\generate\route.ts:247:  admin: NonNullable<Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>>["admin"];
+apps/web/src\app\api\production\slides\generate\route.ts:277:  admin: NonNullable<Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>>["admin"];
+apps/web/src\app\api\production\slides\generate\route.ts:340:      : await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\production\slides\generate\route.ts:454:  authorizedComponent: NonNullable<Awaited<ReturnType<typeof getAuthorizedMaterialComponentAdmin>>>;
+apps/web/src\app\api\production\slides\appearance\route.ts:5:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\slides\appearance\route.ts:66:    const authorized = await getAuthorizedMaterialComponentAdmin(payload.componentId);
+apps/web/src\lib\server\artifact-action-auth.ts:155:export async function getAuthorizedCurationRowAdmin(rowId: string) {
+apps/web/src\lib\server\artifact-action-auth.ts:250:export async function getAuthorizedMaterialComponentAdmin(componentId: string) {
+apps/web/src\lib\server\artifact-action-auth.ts:298:export async function getAuthorizedMaterialComponentAdminForTenant(
+apps/web/src\app\api\materials\components\[componentId]\export\route.ts:5:import { getAuthenticatedUser, getAuthorizedMaterialComponentAdmin } from "@/lib/server/artifact-action-auth";
+apps/web/src\app\api\materials\components\[componentId]\export\route.ts:30:    const authorized = await getAuthorizedMaterialComponentAdmin(parsedComponentId);
+apps/web/src\app\api\production\slides\jobs\route.ts:4:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\slides\jobs\route.ts:35:  const authorized = await getAuthorizedMaterialComponentAdmin(parsed.data.componentId);
+apps/web/src\app\api\materials\components\[componentId]\downloads\route.ts:4:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\materials\components\[componentId]\downloads\route.ts:32:    const authorized = await getAuthorizedMaterialComponentAdmin(parsedComponentId);
+apps/web/src\app\api\production\slides\html-preview\route.ts:4:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\slides\html-preview\route.ts:46:  const authorized = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\production\audio-processing\jobs\route.ts:2:import { canReviewContent, getAuthenticatedUser, getAuthorizedMaterialComponentAdmin } from "@/lib/server/artifact-action-auth";
+apps/web/src\app\api\production\audio-processing\jobs\route.ts:36:    const authorized = await getAuthorizedMaterialComponentAdmin(parsed.data.componentId);
+apps/web/src\app\api\production\audio-processing\jobs\route.ts:67:    const authorized = await getAuthorizedMaterialComponentAdmin(parsed.data.componentId);
+apps/web/src\app\api\production\audio-analysis\assets\[assetId]\waveform\route.ts:2:import { canReviewContent, getAuthenticatedUser, getAuthorizedMaterialComponentAdmin } from "@/lib/server/artifact-action-auth";
+apps/web/src\app\api\production\audio-analysis\assets\[assetId]\waveform\route.ts:25:    const authorized = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\production\audio-analysis\assets\[assetId]\waveform\route.ts:87:    const authorized = await getAuthorizedMaterialComponentAdmin(parsed.data.componentId);
+apps/web/src\app\api\production\heygen\videos\route.ts:6:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\heygen\videos\route.ts:60:    const authorizedComponent = await getAuthorizedMaterialComponentAdmin(
+apps/web/src\app\api\production\heygen\jobs\route.ts:5:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\heygen\jobs\route.ts:46:    const authorizedComponent = await getAuthorizedMaterialComponentAdmin(
+apps/web/src\app\api\production\heygen\speech\route.ts:5:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\heygen\speech\route.ts:61:      const authorized = await getAuthorizedMaterialComponentAdmin(payload.componentId);
+apps/web/src\app\api\production\heygen\scenes\route.ts:5:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\heygen\scenes\route.ts:210:  const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\production\heygen\clips\voice\route.ts:4:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\heygen\clips\voice\route.ts:49:    const authorized = await getAuthorizedMaterialComponentAdmin(payload.componentId);
+apps/web/src\app\api\production\heygen\clips\status\route.ts:5:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\heygen\clips\status\route.ts:47:    const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\app\api\production\heygen\clips\generate\route.ts:7:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\heygen\clips\generate\route.ts:58:    const authorizedComponent = await getAuthorizedMaterialComponentAdmin(payload.componentId);
+apps/web/src\app\api\production\google-drive\import\route.ts:5:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\app\api\production\google-drive\import\route.ts:76:    const authorizedComponent = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\domains\curation\actions\curation-action-context.ts:7:  getAuthorizedCurationRowAdmin,
+apps/web/src\domains\curation\actions\curation-action-context.ts:94:  const authorized = await getAuthorizedCurationRowAdmin(rowId);
+apps/web/src\domains\materials\actions\production.actions.ts:9:  getAuthorizedMaterialComponentAdmin,
+apps/web/src\domains\materials\actions\production.actions.ts:961:  const authorized = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\domains\materials\actions\production.actions.ts:1055:  const authorized = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\domains\materials\actions\materials.actions.ts:4:import { getAuthorizedMaterialComponentAdmin } from "@/lib/server/artifact-action-auth";
+apps/web/src\domains\materials\actions\materials.actions.ts:253:    const authorized = await getAuthorizedMaterialComponentAdmin(componentId);
+apps/web/src\domains\materials\actions\materials-action-helpers.ts:36:export async function getAuthorizedMaterialsAdmin(materialsId: string) {
+apps/web/src\domains\materials\actions\materials-action-helpers.ts:69:export async function getAuthorizedMaterialLessonAdmin(lessonId: string) {
+apps/web/src\domains\materials\actions\materials-action-context.ts:8:  getAuthorizedMaterialLessonAdmin,
+apps/web/src\domains\materials\actions\materials-action-context.ts:9:  getAuthorizedMaterialsAdmin,
+apps/web/src\domains\materials\actions\materials-action-context.ts:69:  const authorizedLesson = await getAuthorizedMaterialLessonAdmin(lessonId);
+apps/web/src\domains\materials\actions\materials-action-context.ts:103:  const authorizedMaterials = await getAuthorizedMaterialsAdmin(materialsId);

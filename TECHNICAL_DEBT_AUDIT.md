@@ -1,4 +1,55 @@
-# Auditoría integral de deuda técnica y mantenibilidad
+# Auditoría de deuda técnica — corte vigente 2026-11-04
+
+**Producto:** SofLIA Architect. **Estado:** línea base estática documentada;
+auditoría integral abierta. **Alcance de esta fase:** auditoría y documentación,
+sin implementar correcciones. HEAD inicial `37dcf7dcfb89d6289369b4c962423a02097b5293`,
+checkout principal limpio antes del trabajo.
+
+## Informe ejecutivo vigente
+
+Se inventariaron 2.586 archivos en prefijos explícitos, incluidas 158 rutas HTTP
+y 214 SQL. Se revisaron muestras de los 12 dominios y fronteras transversales;
+el detalle de profundidad y exclusiones está en la matriz. No se certifican todas
+las rutas, migraciones ni subdominios de producción multimedia.
+
+La línea base de noviembre contiene **12 hallazgos planificados: 4 P1 y 8 P2**,
+de los cuales 6 conservan IDs históricos y 6 son nuevos (TD-26–31). No hay
+correcciones de producto ni cierres acreditados en este corte. No se heredan
+porcentajes de marzo o septiembre ni se mide deuda como porcentaje del código.
+
+Riesgos principales: autoridad de fallback basada en cookie editable bajo
+precondiciones concretas (TD-26); guardado de publicación sin escritura atómica
+respecto de la reserva outbox (TD-28); historial SQL ambiguo (TD-06); compuerta
+local bloqueada por ESLint (TD-08). La reproducción de TD-26 usa dependencias
+simuladas: demuestra la lógica, no explotación en un despliegue.
+
+También se comprobaron límites JSON posteriores a la lectura completa, consultas
+de dashboard con resultados potencialmente truncados y errores ocultos como cero,
+cobertura parcial de CI, 11 ciclos informados por Madge y concentración de ciclos
+de vida en UI. Se observaron defensas existentes: firma/nonce de jobs, outbox,
+leases, schemas, presupuestos de descargas y logger seguro. No se presentan como
+efectivas en producción sin evidencia de ambiente.
+
+Los resultados y códigos reales se conservan en verificaciones. No se consultó
+producción, secretos, datos personales ni servicios externos; no se aplicó SQL,
+no se publicó ni se desplegó. Faltan RLS/esquema efectivo, concurrencia PostgreSQL,
+E2E/render, carga/telemetría y revisión exhaustiva de las superficies pendientes.
+La ausencia de P0 demostrado no certifica ausencia de riesgos críticos.
+
+- [Inventario, cobertura por módulo/flujo y pendientes](docs/technical-debt/coverage.md)
+- [Registro priorizado con evidencia y aceptación](docs/technical-debt/findings.md)
+- [Corrección por etapas, dependencias, métricas y reversión](docs/technical-debt/remediation-plan.md)
+- [Verificaciones, línea base y evolución](docs/technical-debt/verification.md)
+- [Cambio OpenSpec y evidencia reproducible](openspec/changes/audit-technical-debt-2026-11/proposal.md)
+
+## Historial preservado — corte septiembre de 2026
+
+Todo el contenido inferior conserva afirmaciones y estados de su fecha original.
+Sus «implementado», porcentajes, conteos y pruebas **no son el estado vigente**
+ni acreditan cierre en noviembre. Las secciones que dicen «estado vigente» dentro
+de este historial solo prevalecen dentro del corte histórico correspondiente.
+
+# Auditoría integral de deuda técnica y mantenibilidad (histórica)
 
 **Sistema:** Courseforge / SofLIA Engine  
 **Fecha de corte:** 2026-09-14

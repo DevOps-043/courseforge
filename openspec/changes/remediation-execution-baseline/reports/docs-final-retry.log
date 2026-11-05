@@ -1,0 +1,6 @@
+
+> courseforge@1.0.0 docs:check
+> node scripts/quality/check-doc-links.mjs
+
+Enlaces locales verificados: 265 documentos; catálogo canónico y enlaces nuevos.
+EXIT=0

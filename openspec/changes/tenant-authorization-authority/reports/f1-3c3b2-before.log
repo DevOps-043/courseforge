@@ -1,0 +1,104 @@
+▶ ownership de firma genérica de uploads
+  ✖ miniatura autorizada genera path nuevo del recurso sin sobrescritura (1833.9945ms)
+  ✖ rechaza artefacto ajeno y discordancia de tenant sin abrir Storage (78.5454ms)
+  ✖ falla cerrado sin identidad, tenant o autoridad del artefacto (160.4771ms)
+  ✖ no permite omitir recurso, MIME o tamaño ni exceder 5 MiB (101.2251ms)
+  ✖ propósitos alternativos no evaden ownership ni habilitan firma de vídeos (47.1082ms)
+✖ ownership de firma genérica de uploads (2225.7401ms)
+ℹ tests 5
+ℹ suites 1
+ℹ pass 0
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4051.2598
+
+✖ failing tests:
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\storage-upload-ownership.test.js:64:24
+✖ miniatura autorizada genera path nuevo del recurso sin sobrescritura (1833.9945ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /^organizations\/123e4567-e89b-42d3-a456-426614174000\/artifacts\/123e4567-e89b-42d3-a456-426614174001\/[0-9a-f-]{36}\.png$/. Input:
+  
+  'organizations/123e4567-e89b-42d3-a456-426614174002/ajena.png'
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\storage-upload-ownership.test.js:70:30)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1869:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'organizations/123e4567-e89b-42d3-a456-426614174002/ajena.png',
+    expected: /^organizations\/123e4567-e89b-42d3-a456-426614174000\/artifacts\/123e4567-e89b-42d3-a456-426614174001\/[0-9a-f-]{36}\.png$/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\storage-upload-ownership.test.js:78:24
+✖ rechaza artefacto ajeno y discordancia de tenant sin abrir Storage (78.5454ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  200 !== 404
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\storage-upload-ownership.test.js:84:30)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 404,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\storage-upload-ownership.test.js:89:24
+✖ falla cerrado sin identidad, tenant o autoridad del artefacto (160.4771ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  200 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\storage-upload-ownership.test.js:96:30)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\storage-upload-ownership.test.js:104:24
+✖ no permite omitir recurso, MIME o tamaño ni exceder 5 MiB (101.2251ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    ok([400, 413].includes(response.status))
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\storage-upload-ownership.test.js:108:30)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\storage-upload-ownership.test.js:114:24
+✖ propósitos alternativos no evaden ownership ni habilitan firma de vídeos (47.1082ms)
+  AssertionError [ERR_ASSERTION]: thumbnails/undefined
+  
+  200 !== 400
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\storage-upload-ownership.test.js:121:34)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 400,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -4,6 +4,7 @@
 - [Identidad global del producto](architecture/product-branding.md)
 - [Router de desarrollo](../AGENTS.md)
 - [Estándar maestro](standards/engineering-practices.md)
+- [Auditoría de deuda técnica: línea base, cobertura y seguimiento](../TECHNICAL_DEBT_AUDIT.md)
 - [Arquitectura del arnés](architecture/development-harness.md)
 - [Guía operativa del arnés](operations/harness-quickstart.md)
 - [Procedencia](references/harness-sources.md)

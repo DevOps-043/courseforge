@@ -1,0 +1,44 @@
+
+> courseforge@1.0.0 test:course-delivery
+> npm run test:course-delivery --workspace=apps/web
+
+
+> web@1.0.0 test:course-delivery
+> tsc -p tsconfig.course-delivery-test.json && node --test .tmp/course-delivery-tests/src/domains/course-delivery/__tests__/*.test.js
+
+{"timestamp":"2026-11-04T23:31:49.612Z","level":"info","component":"imparticion.generacion","event":"unidad_guardada","runId":"run","artifactId":"course","unitId":"10000000-0000-4000-8000-000000000001","operation":"PLAN","model":"gpt-4o"}
+{"timestamp":"2026-11-04T23:31:49.617Z","level":"error","component":"imparticion.generacion","event":"generacion_fallida","runId":"run","error":{"name":"Error"}}
+{"timestamp":"2026-11-04T23:31:49.619Z","level":"info","component":"imparticion.generacion","event":"unidad_guardada","runId":"run","artifactId":"course","unitId":"10000000-0000-4000-8000-000000000002","operation":"PLAN","model":"gpt-4o"}
+✔ worker conserva unidades guardadas y reanuda solo pendientes con la configuración fijada (45.2352ms)
+✔ entrega identidad y revisión estables sin notas ni respuestas privadas (11.6394ms)
+✔ rechaza sesión ajena y exceso de límites sin truncar la preparación (3.2178ms)
+✔ cambiar a Nexus no permite entregar materiales síncronos anteriores (0.4431ms)
+✔ legacy conserva Nexus y sincrónico no exige ensamble (4.9244ms)
+✔ habilitación global exige activación explícita e ignora la antigua lista de organizaciones (0.3502ms)
+✔ coordinación híbrida reutiliza Nexus listo o en proceso y no inicia esa rama en sincrónico (0.348ms)
+✔ normaliza identidad curricular con el fallback existente (0.451ms)
+✔ rechaza referencias ajenas, cobertura solo de repaso y cantidad incompatible (26.3334ms)
+✔ agenda permite dividir alcance sin duplicar identidad dentro de una sesión (3.6385ms)
+✔ plan comprueba tiempo e identidad de bloques y coordinación híbrida (0.6749ms)
+✔ no aprueba un conjunto con sesiones pendientes (1.4352ms)
+✔ fuentes ajenas y actividades sin correspondencia se rechazan (0.5743ms)
+✔ una fuente aprobada para otra lección no se concede a la sesión (0.4641ms)
+✔ aprobación depende del currículo, plan, fuentes y contenido vigentes (3.4394ms)
+✔ cambiar una consigna invalida su aprobación sin borrar contenidos (1.0061ms)
+✔ marca pendiente de actualización conserva contenido y bloquea aprobación vigente (0.735ms)
+✔ proyección de participante excluye campos privados desde el servidor (0.4701ms)
+✔ exportaciones coherentes, escapadas y distintas por audiencia (2.3219ms)
+✔ hash canónico es independiente del orden de claves (0.4401ms)
+✔ configuración hereda etapa y nunca lee organizaciones ajenas (2.2947ms)
+✔ configuración propia global precede a herencia; prompt de organización precede global (0.5734ms)
+✔ error de lectura no permite fallback silencioso ni defaults de modelo (1.0609ms)
+✔ configuración rechaza proveedor no implementado y respaldo idéntico (1.2992ms)
+✔ instantánea de configuración conserva prompt y hash aunque se cambie el registro (0.7597ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9736.8203
