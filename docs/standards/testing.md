@@ -17,6 +17,16 @@ Estado: vigente. Actualizado: 2026-10-15.
   su identidad. Los errores siempre bloquean.
   test:harness incluye canarios de configuración y reglas. El baseline no acredita
   ausencia de deuda ni autoriza aumentar warnings para pasar la compuerta.
+- Grafo: npm run architecture:cycles usa scripts/quality/check-module-graph.mjs.
+  Conserva las opciones parseadas de TypeScript y su base absoluta para resolver
+  alias, incluyendo dependencias de tipos. Los ciclos y referencias desconocidas
+  bloquean; Tailwind CSS y server-only solo se clasifican cuando sus recursos del
+  bundler instalado existen. El reporte completo queda en .tmp/module-graph/latest.json
+  con versiones, hashes, estado Git, grafo y clasificación. test:harness incluye
+  canarios reales de alias, ciclos de tipos, imports ausentes y recursos de bundler.
+  Sin argumentos analiza las dos entradas canónicas; --entry/--tsconfig juntos
+  permiten diagnósticos acotados y --report separa sus salidas. Esos reportes
+  registran su alcance y no sustituyen la verificación completa del proyecto.
 - APIs/tenancy: npm run test:security-boundaries; login:
   npm run test:auth-bridge --workspace=apps/web.
 - Remotion: npm run test:remotion --workspace=apps/web. Verificar que un script
