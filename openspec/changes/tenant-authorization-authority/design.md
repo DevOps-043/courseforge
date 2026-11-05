@@ -434,3 +434,18 @@ Reproducir ambos caminos desde resolveTenantContext con fuentes y clases reales,
 dobles de DB y console de VM aislada. Inventariar fuentes versionadas mediante
 AST y hashes; imports, llamadas y catches son candidatos y no acreditan captura
 efectiva o cobertura transitiva de acciones. Continuar la revisión manual.
+
+### F1.3.c.3.c.7.b.2.c.2: cierre funcional de ajustes
+
+Extraer únicamente autorización a settings-access.server: identidad uniforme,
+tenant ligado al actor, UUID válidos y revisión local para escribir. Conservar
+lectura de miembro válido y overlay de defaults globales. Siete acciones reciben
+el mismo contexto para filtros, autor de versión y revalidación, sin releer cookie
+o rol global. Los modelos actualizados por ID incluyen también organización/tipo.
+Retirar ramas globales que quedan inalcanzables. Clases conocidas se convierten
+en fallo serializable; errores desconocidos conservan control del framework.
+
+Por solicitud posterior del usuario, esta entrega se limita al funcionamiento
+y al arreglo de seguridad ya iniciado. No continúa la auditoría exhaustiva ni
+abre nuevas extracciones. El objetivo completo está pausado; las unidades
+restantes conservan estado pendiente, sin dar por resueltas sus evidencias.

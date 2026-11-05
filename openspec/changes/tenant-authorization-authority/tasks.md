@@ -1,5 +1,10 @@
 # Tablero
 
+El usuario pausó el objetivo exhaustivo y pidió una entrega funcional sin corregir
+la deuda al 100 %. El corte .7.b.2.c.2 termina el arreglo de ajustes ya iniciado;
+las demás unidades conservan su deuda pendiente y no continúan automáticamente.
+Los cierres locales no equivalen a aceptación productiva ni cierre de TD-26.
+
 | Unidad | Hallazgo | Responsable | Estado | HEAD base | Evidencia | Siguiente paso |
 |---|---|---|---|---|---|---|
 | F1.1 | TD-26 | Codex | cerrado | 37dcf7dc | reports/context-F1.1.md | F1.2: implementar resolver |
@@ -40,7 +45,7 @@
 | F1.3.c.3.c.7.b.2.b.4.b | TD-26 / QA | Codex | cerrado (local) | 1cbbf559 | reports/context-F1.3c3c7b2b4b.md | 51 tests nuevos y suite resource-link activada; seguir .7.b.2.c |
 | F1.3.c.3.c.7.b.2.c | TD-26 | Codex | en curso | 8f8fb474 | reports/context-F1.3c3c7b2c1.md | Emisores y consumidores posteriores al contexto; catches y acciones restantes |
 | F1.3.c.3.c.7.b.2.c.1 | TD-26 / observabilidad | Codex | cerrado (local) | 8f8fb474 | reports/context-F1.3c3c7b2c1.md | Inventario y dos regresiones de emisores; seguir ajustes |
-| F1.3.c.3.c.7.b.2.c.2 | TD-26 / seguridad | por asignar | planificado (prioritario) | — | reports/context-F1.3c3c7b2c1.md | Eliminar fallback de rol global/cookie en lecturas y escrituras de ajustes |
+| F1.3.c.3.c.7.b.2.c.2 | TD-26 / seguridad | Codex | cerrado (local) | 6a4698b7 | reports/context-F1.3c3c7b2c2.md | Entrega funcional verificada; resto del objetivo pausado |
 
 - [x] Contrastar emisores, lectores, roles, membresías y revocación.
 - [x] Definir contrato seguro y compatibilidad legacy.

@@ -396,3 +396,20 @@ TenantContextLookupError aunque falle la escritura síncrona del log seguro.
 - **WHEN** falla la consulta de membresía o rol y console.error también lanza
 - **THEN** el resolver rechaza con código TENANT_LOOKUP_UNAVAILABLE y mensaje neutral
 - **AND** no concede tenant por fallback ni ejecuta lecturas posteriores
+
+### Requirement: Ajustes ligados a organización vigente
+
+Las siete acciones de ajustes MUST validar identidad y tenant correspondientes
+antes de crear el cliente privilegiado. Cookie y rol global MUST NOT conceder
+lectura o escritura cuando falta el tenant vigente.
+
+#### Scenario: Lectura y edición autorizadas
+- **WHEN** un miembro vigente consulta ajustes o un revisor local los modifica
+- **THEN** usa una sola resolución de autoridad y organización del servidor
+- **AND** conserva defaults globales como baseline de lectura sin permitir escrituras globales
+- **AND** filtros y payloads de escritura se limitan a esa organización
+
+#### Scenario: Autoridad ausente o temporalmente indisponible
+- **WHEN** falta tenant, corresponde a otro actor o falla lookup conocido
+- **THEN** devuelve fallo seguro serializable sin acceso privilegiado ni fallback
+- **AND** indisponibilidad conocida se distingue de denegación y conserva retryable

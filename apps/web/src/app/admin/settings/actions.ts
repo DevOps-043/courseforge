@@ -3,20 +3,9 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { SystemPrompt, UpdateSystemPromptDTO } from '@/domains/prompts/types';
 import { revalidatePath } from 'next/cache';
-import { getActiveOrganizationId, getAuthBridgeUser } from '@/utils/auth/session';
+import { resolveSettingsAccess } from '@/domains/prompts/server/settings-access.server';
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
-import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
 import { isSupportedMaterialsModel } from '@/shared/ai/materials-model-provider';
-import { REVIEWER_ROLE_SET } from '@/lib/pipeline-constants';
-
-async function getSettingsEditor() {
-  const user = await getAuthBridgeUser();
-  if (!user) return null;
-  const tenant = await resolveActiveTenantContext();
-  if (tenant) return tenant.userId === user.id && REVIEWER_ROLE_SET.has(tenant.platformRole || '') ? user : null;
-  const { data, error } = await getAdminClient().from('profiles').select('platform_role').eq('id', user.id).maybeSingle();
-  return !error && ['ADMIN', 'SUPERADMIN'].includes(data?.platform_role || '') ? user : null;
-}
 
 interface ModelSettingsUpdateInput {
   fallback_model?: string | null;
@@ -367,17 +356,9 @@ async function insertPromptVersion(params: {
   return data as SystemPrompt;
 }
 
-async function getResolvedActiveOrgId() {
-  const tenant = await resolveActiveTenantContext();
-  return tenant?.organizationId ?? (await getActiveOrganizationId());
-}
-
-async function revalidateSettingsPaths() {
+async function revalidateSettingsPaths(organizationSlug: string) {
   revalidatePath('/admin/settings');
-  const tenant = await resolveActiveTenantContext();
-  if (tenant?.organizationSlug) {
-    revalidatePath(`/${tenant.organizationSlug}/admin/settings`);
-  }
+  revalidatePath(`/${organizationSlug}/admin/settings`);
 }
 
 function getPreferredModelSetting(candidate: ModelSettingsRecord, current?: ModelSettingsRecord) {
@@ -400,12 +381,9 @@ function mapSettingsByType(settings: ModelSettingsRecord[]) {
 }
 
 export async function getSystemPromptsAction() {
-  const user = await getAuthBridgeUser();
-
-  if (!user) {
-    return { success: false, error: 'Unauthorized' };
-  }
-  const activeOrgId = await getResolvedActiveOrgId();
+  const access = await resolveSettingsAccess('READ');
+  if (!access.authorized) return access.response;
+  const activeOrgId = access.tenant.organizationId;
   const supabaseAdmin = getAdminClient();
 
   // Always fetch globals first
@@ -423,11 +401,6 @@ export async function getSystemPromptsAction() {
   }
 
   const globalPrompts = dedupeActiveSystemPromptsByCode((globalData || []) as SystemPrompt[]);
-
-  // If no active org, return globals only
-  if (!activeOrgId) {
-    return { success: true, prompts: globalPrompts };
-  }
 
   // Fetch org-specific prompts and overlay them over globals by code
   const { data: orgData, error: orgError } = await supabaseAdmin
@@ -481,13 +454,10 @@ export async function getSystemPromptsAction() {
 }
 
 export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
-    const user = await getSettingsEditor();
+    const access = await resolveSettingsAccess('WRITE');
+  if (!access.authorized) return access.response;
 
-    if (!user) {
-      return { success: false, error: 'Unauthorized' };
-    }
-
-    const activeOrgId = await getResolvedActiveOrgId();
+    const activeOrgId = access.tenant.organizationId;
     const supabaseAdmin = getAdminClient();
 
     let promptQuery = supabaseAdmin
@@ -519,7 +489,7 @@ export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
       };
     }
 
-    const targetOrganizationId = activeOrgId || existingPrompt.organization_id || null;
+    const targetOrganizationId = activeOrgId;
 
     try {
       const data = await insertPromptVersion({
@@ -527,13 +497,13 @@ export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
         content: prompt.content,
         description: prompt.description,
         organizationId: targetOrganizationId,
-        source: targetOrganizationId ? 'ORG_EDIT' : 'GLOBAL_EDIT',
+        source: 'ORG_EDIT',
         changeSummary: prompt.change_summary || null,
-        createdBy: user.id,
+        createdBy: access.userId,
         supabaseAdmin,
       });
 
-      await revalidateSettingsPaths();
+      await revalidateSettingsPaths(access.tenant.organizationSlug);
       return {
         success: true,
         prompt: {
@@ -553,12 +523,9 @@ export async function updateSystemPromptAction(prompt: UpdateSystemPromptDTO) {
 }
 
 export async function getModelSettingsAction() {
-  const user = await getAuthBridgeUser();
-
-  if (!user) {
-    return { success: false, error: 'Unauthorized' };
-  }
-  const activeOrgId = await getResolvedActiveOrgId();
+  const access = await resolveSettingsAccess('READ');
+  if (!access.authorized) return access.response;
+  const activeOrgId = access.tenant.organizationId;
   const supabaseAdmin = getAdminClient();
 
   // Fetch globals as baseline
@@ -583,10 +550,6 @@ export async function getModelSettingsAction() {
     };
   });
 
-  if (!activeOrgId) {
-    return { success: true, settings: baselineSettings };
-  }
-
   // Fetch org-specific overrides
   const { data: orgData } = await supabaseAdmin
     .from('model_settings')
@@ -608,17 +571,10 @@ export async function getModelSettingsAction() {
  */
 export async function resetPromptToDefaultAction(promptCode: string) {
   if (promptCode.startsWith('SYNCHRONOUS_')) return { success: false, error: 'Usa la configuración sincrónica para este prompt.' };
-  const user = await getSettingsEditor();
+  const access = await resolveSettingsAccess('WRITE');
+  if (!access.authorized) return access.response;
 
-  if (!user) {
-    return { success: false, error: 'Unauthorized' };
-  }
-
-  const activeOrgId = await getResolvedActiveOrgId();
-
-  if (!activeOrgId) {
-    return { success: false, error: 'No hay organización activa' };
-  }
+  const activeOrgId = access.tenant.organizationId;
 
   const supabaseAdmin = getAdminClient();
 
@@ -665,11 +621,11 @@ export async function resetPromptToDefaultAction(promptCode: string) {
       organizationId: activeOrgId,
       source: 'RESTORE_DEFAULT',
       changeSummary: `Restaurado desde default global ${defaultPrompt.version}`,
-      createdBy: user.id,
+      createdBy: access.userId,
       supabaseAdmin,
     });
 
-    await revalidateSettingsPaths();
+    await revalidateSettingsPaths(access.tenant.organizationSlug);
     return {
       success: true,
       prompt: {
@@ -688,13 +644,10 @@ export async function resetPromptToDefaultAction(promptCode: string) {
 }
 
 export async function getSystemPromptHistoryAction(promptCode: string) {
-  const user = await getAuthBridgeUser();
+  const access = await resolveSettingsAccess('READ');
+  if (!access.authorized) return access.response;
 
-  if (!user) {
-    return { success: false, error: 'Unauthorized' };
-  }
-
-  const activeOrgId = await getResolvedActiveOrgId();
+  const activeOrgId = access.tenant.organizationId;
   const supabaseAdmin = getAdminClient();
 
   const { data: globalRows, error: globalError } = await supabaseAdmin
@@ -709,14 +662,12 @@ export async function getSystemPromptHistoryAction(promptCode: string) {
     return { success: false, error: globalError.message };
   }
 
-  const orgRowsPromise = activeOrgId
-    ? supabaseAdmin
+  const orgRowsPromise = supabaseAdmin
         .from('system_prompts')
         .select(SYSTEM_PROMPT_SELECT_FIELDS)
         .eq('code', promptCode)
         .eq('organization_id', activeOrgId)
-        .order('created_at', { ascending: false })
-    : Promise.resolve({ data: [], error: null });
+        .order('created_at', { ascending: false });
 
   const { data: orgRows, error: orgError } = await orgRowsPromise;
 
@@ -747,17 +698,10 @@ export async function getSystemPromptHistoryAction(promptCode: string) {
 }
 
 export async function restorePromptVersionAction(promptId: string) {
-  const user = await getSettingsEditor();
+  const access = await resolveSettingsAccess('WRITE');
+  if (!access.authorized) return access.response;
 
-  if (!user) {
-    return { success: false, error: 'Unauthorized' };
-  }
-
-  const activeOrgId = await getResolvedActiveOrgId();
-
-  if (!activeOrgId) {
-    return { success: false, error: 'No hay organizacion activa' };
-  }
+  const activeOrgId = access.tenant.organizationId;
 
   const supabaseAdmin = getAdminClient();
   const { data: selected, error: selectedError } = await supabaseAdmin
@@ -788,11 +732,11 @@ export async function restorePromptVersionAction(promptId: string) {
       organizationId: activeOrgId,
       source: selectedPrompt.organization_id ? 'RESTORE_VERSION' : 'RESTORE_DEFAULT',
       changeSummary: `Restaurado desde ${selectedPrompt.code} v${selectedPrompt.version}`,
-      createdBy: user.id,
+      createdBy: access.userId,
       supabaseAdmin,
     });
 
-    await revalidateSettingsPaths();
+    await revalidateSettingsPaths(access.tenant.organizationSlug);
     return {
       success: true,
       prompt: {
@@ -813,13 +757,10 @@ export async function restorePromptVersionAction(promptId: string) {
 // Actualiza un batch completo de configuraciones de modelo
 export async function updateModelSettingsAction(settings: ModelSettingsUpdateInput[]) {
   if (settings.some(setting => setting.setting_type.startsWith('SYNCHRONOUS_'))) return { success: false, error: 'Usa la configuración sincrónica para estos modelos.' };
-  const user = await getSettingsEditor();
+  const access = await resolveSettingsAccess('WRITE');
+  if (!access.authorized) return access.response;
 
-  if (!user) {
-    return { success: false, error: 'Unauthorized' };
-  }
-
-  const activeOrgId = await getResolvedActiveOrgId();
+  const activeOrgId = access.tenant.organizationId;
   const supabaseAdmin = getAdminClient();
 
   const invalidMaterialsSetting = settings.find(
@@ -862,12 +803,8 @@ export async function updateModelSettingsAction(settings: ModelSettingsUpdateInp
         scope: setting.scope || DEFAULT_MODEL_SETTINGS_BY_TYPE[setting.setting_type as keyof typeof DEFAULT_MODEL_SETTINGS_BY_TYPE]?.scope || 'Cursos',
         is_active: true,
         setting_type: setting.setting_type,
-        organization_id: activeOrgId || null,
+        organization_id: activeOrgId,
     };
-
-    if (!activeOrgId && setting.id > 0) {
-      return supabaseAdmin.from('model_settings').update(payload).eq('id', setting.id).is('organization_id', null).eq('setting_type', setting.setting_type);
-    }
 
     if (activeOrgId) {
       const { data: existing, error: existingError } = await supabaseAdmin
@@ -885,7 +822,7 @@ export async function updateModelSettingsAction(settings: ModelSettingsUpdateInp
       }
 
       if (existing?.id) {
-        return supabaseAdmin.from('model_settings').update(payload).eq('id', existing.id);
+        return supabaseAdmin.from('model_settings').update(payload).eq('id', existing.id).eq('organization_id', activeOrgId).eq('setting_type', setting.setting_type);
       }
     }
 
@@ -900,6 +837,6 @@ export async function updateModelSettingsAction(settings: ModelSettingsUpdateInp
     return { success: false, error: 'Algunas configuraciones fallaron al guardarse' };
   }
 
-  await revalidateSettingsPaths();
+  await revalidateSettingsPaths(access.tenant.organizationSlug);
   return { success: true };
 }
