@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
@@ -50,6 +51,8 @@ export async function GET(request: Request, context: RouteContext) {
       status: 302,
     });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de asset inválido.", requestId, status: 400 });
     logger.error("production.hyperframes.draft.asset_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar el asset para el preview.", requestId, retryable: true, status: 500 });
@@ -60,9 +63,10 @@ async function authorize(requestId: string) {
   const supabase = await createClient();
   const user = await getAuthenticatedUser(supabase);
   if (!user) return { response: apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 }) } as const;
-  if (!(await canReviewContent(user.userId))) return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para editar videos.", requestId, status: 403 }) } as const;
+
   const tenant = await resolveActiveTenantContext();
   if (!tenant) return { response: apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 }) } as const;
+  if (!(await canReviewContent(user.userId, tenant))) return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para editar videos.", requestId, status: 403 }) } as const;
   return { admin: getServiceRoleClient(), organizationId: tenant.organizationId, response: null };
 }
 

@@ -1,0 +1,107 @@
+{
+  "mode": "VERIFY",
+  "records": [
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/assets/route.ts",
+      "guards": 1,
+      "roles": 1,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/assets/sync/route.ts",
+      "guards": 1,
+      "roles": 1,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/compositions/[compositionId]/approve/route.ts",
+      "guards": 1,
+      "roles": 1,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/compositions/[compositionId]/draft/route.ts",
+      "guards": 2,
+      "roles": 0,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/compositions/[compositionId]/final-video/route.ts",
+      "guards": 1,
+      "roles": 0,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/compositions/[compositionId]/revisions/route.ts",
+      "guards": 3,
+      "roles": 1,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/compositions/[compositionId]/snapshot/route.ts",
+      "guards": 1,
+      "roles": 0,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/compositions/route.ts",
+      "guards": 2,
+      "roles": 1,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/assets/[assetId]/route.ts",
+      "guards": 1,
+      "roles": 1,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/branding/route.ts",
+      "guards": 2,
+      "roles": 0,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/detach-audio/route.ts",
+      "guards": 1,
+      "roles": 1,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/document/route.ts",
+      "guards": 3,
+      "roles": 0,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/files/[...path]/route.ts",
+      "guards": 2,
+      "roles": 1,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/narrative-extraction/plan/route.ts",
+      "guards": 1,
+      "roles": 0,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/preview-metrics/route.ts",
+      "guards": 1,
+      "roles": 0,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/preview/route.ts",
+      "guards": 1,
+      "roles": 0,
+      "remainingRoleCalls": []
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/revisions/[revisionId]/preview/route.ts",
+      "guards": 1,
+      "roles": 1,
+      "remainingRoleCalls": []
+    }
+  ]
+}

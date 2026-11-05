@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { getCompositionGroupingCapabilities } from "@/domains/production/composition-editor/composition-group-capabilities.server";
 import { COMPOSITION_GROUPING_CLIENT_HEADER, CompositionGroupingPolicyError } from "@/domains/production/composition-editor/composition-group-policy";
 import { z } from "zod";
@@ -50,6 +51,8 @@ export async function POST(request: Request, context: RouteContext) {
     const data = await getCurrentCompositionDocument({ draftId, organizationId: authorization.organizationId, supabase: authorization.admin });
     return apiSuccessResponse({ data }, { headers: { "Cache-Control": "private, no-store", ETag: formatCompositionDocumentEtag(data.documentHash) }, requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof CompositionDocumentConflictError) return apiErrorResponse({ code: API_ERROR_CODE.conflict, extensions: { data: error.current }, message: error.message, requestId, retryable: true, status: 409 });
     if (error instanceof HyperframesDraftError || error instanceof CompositionDocumentError) return apiErrorResponse({ code: mapStatusToErrorCode(error.status), message: error.message, requestId, status: error.status });
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "El plan no cabe en los tiempos actuales. Revisa sus animaciones y duraciones.", requestId, status: 422 });
@@ -82,8 +85,10 @@ export async function GET(request: Request, context: RouteContext) {
     });
     return apiSuccessResponse({ data: { ...data, capabilities: await getCompositionGroupingCapabilities(authorization.admin) } }, { headers: { ETag: formatCompositionDocumentEtag(data.documentHash), "Cache-Control": "private, no-store" }, requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId, error instanceof TenantContextLookupError ? { details: { reason: error.code } } : undefined);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof CompositionGroupingPolicyError) return apiErrorResponse({ code: API_ERROR_CODE.conflict, details: { reason: error.code }, message: error.message, requestId, status: error.status });
-    if (error instanceof TenantContextLookupError) return tenantUnavailableResponse(error, requestId);
+
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de borrador inválido.", requestId, status: 400 });
     if (error instanceof CompositionDocumentPersistenceError) return compositionErrorResponse(error, requestId);
     if (error instanceof CompositionDocumentError) return apiErrorResponse({ code: mapStatusToErrorCode(error.status), details: { reason: "COMPOSITION_DOCUMENT_ERROR" }, message: error.message, requestId, status: error.status });
@@ -161,8 +166,10 @@ export async function PUT(request: Request, context: RouteContext) {
     });
     return apiSuccessResponse({ data: { ...data, capabilities: await getCompositionGroupingCapabilities(authorization.admin) } }, { headers: { ETag: formatCompositionDocumentEtag(data.documentHash), "Cache-Control": "private, no-store" }, requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId, error instanceof TenantContextLookupError ? { details: { reason: error.code } } : undefined);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof CompositionGroupingPolicyError) return apiErrorResponse({ code: API_ERROR_CODE.conflict, details: { reason: error.code }, message: error.message, requestId, status: error.status });
-    if (error instanceof TenantContextLookupError) return tenantUnavailableResponse(error, requestId);
+
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, details: { reason: "COMPOSITION_PATCH_INVALID" }, message: error.issues[0]?.message || "La edición solicitada no es válida.", requestId, status: 400 });
     }
@@ -189,10 +196,6 @@ export async function PUT(request: Request, context: RouteContext) {
 
 function compositionErrorResponse(error: CompositionDocumentPersistenceError, requestId: string) {
   return apiErrorResponse({ code: mapStatusToErrorCode(error.status), details: { reason: error.code, ...(error.diagnosticId ? { diagnosticId: error.diagnosticId } : {}) }, message: error.message, requestId, retryable: error.retryable, status: error.status });
-}
-
-function tenantUnavailableResponse(error: TenantContextLookupError, requestId: string) {
-  return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, details: { reason: error.code }, message: error.message, requestId, retryable: true, status: 503 });
 }
 
 function storageUnavailableResponse(requestId: string) {

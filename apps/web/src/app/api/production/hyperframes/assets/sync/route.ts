@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import {
   canReviewContent,
@@ -31,11 +32,12 @@ export async function POST(request: Request) {
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);
     if (!user) return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
-    if (!(await canReviewContent(user.userId))) {
-      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para preparar assets de video.", requestId, status: 403 });
-    }
+
     const tenant = await resolveActiveTenantContext();
     if (!tenant) return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 });
+    if (!(await canReviewContent(user.userId, tenant))) {
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para preparar assets de video.", requestId, status: 403 });
+    }
     const admin = getServiceRoleClient();
     const heygenPendingClipCount = await refreshPendingHeygenClips({
       admin,
@@ -52,6 +54,8 @@ export async function POST(request: Request) {
     });
     return apiSuccessResponse({ data: { ...synchronizedAssets, heygenPendingClipCount } }, { requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof HyperframesSourceAssetError) {
       return apiErrorResponse({ code: mapStatusToErrorCode(error.status), message: error.message, requestId, status: error.status });
     }

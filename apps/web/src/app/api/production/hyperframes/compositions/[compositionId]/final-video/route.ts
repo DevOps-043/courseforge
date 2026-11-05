@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import {
   canReviewContent,
@@ -65,9 +66,9 @@ export async function DELETE(request: Request, context: RouteContext) {
 
     return apiSuccessResponse({ data: result }, { requestId });
   } catch (error: unknown) {
-    if (error instanceof TenantContextLookupError) {
-      return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, details: { reason: error.code }, message: error.message, requestId, retryable: true, status: 503 });
-    }
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId, error instanceof TenantContextLookupError ? { details: { reason: error.code } } : undefined);
+    if (authorityUnavailable) return authorityUnavailable;
+
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "La solicitud para eliminar el video no es válida.", requestId, status: 400 });
     }

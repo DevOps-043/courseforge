@@ -200,6 +200,15 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 5. Contrato de autorizacion y tenancy
 
+Las 17 rutas HTTP directas del corte .7.b.2 (24 métodos) usan indisponibilidad de
+autoridad segura y revisión anclada al tenant. Se conservan reasons legacy de
+tenant y clasificadores de dominio. El preview nativo sigue devolviendo failure
+bridge HTML para sync v2 válido y JSON en los otros casos, con CSP y generación
+originales; un fallo de autoridad produce DEPENDENCY_FAILED sin detalles internos.
+Los 30 adaptadores delegados requieren su inspección independiente. Inventario,
+transformación reproducible y alcance de pruebas:
+[F1.3.c.3.c.7.b.2.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2a.md).
+
 GET/POST de renders proyectan las clases conocidas de autoridad como 503 seguro,
 con revisión anclada al tenant. El fallo de dispatcher conserva failDispatch
 antes de responder; fallar al compensar no acredita reparación durable. Se
@@ -611,6 +620,9 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: clasificación de 47 candidatas HyperFrames y normalización de 17
+  rutas directas, preservando contratos legacy/iframe. Evidencia .7.b.2.a en sección 5.
 
 - 2026-11-05: autoridad HTTP de creación/recuperación de render y compensación
   preservada; evidencia F1.3.c.3.c.7.b.1 en sección 5. Rutas independientes restantes pendientes.

@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
@@ -25,6 +26,8 @@ export async function GET(request: Request, context: RouteContext) {
     if (error) throw error;
     return apiSuccessResponse({ content: await data.text(), path: file.relative_path, version: file.content_version }, { requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     logger.error("production.hyperframes.draft.file_read_failed", error);
     return respondFileError(error, "No se pudo leer el archivo de edición.", requestId);
   }
@@ -59,6 +62,8 @@ export async function PUT(request: Request, context: RouteContext) {
     if (updateError) throw updateError;
     return apiSuccessResponse({ path: file.relative_path, version: nextVersion }, { requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     logger.error("production.hyperframes.draft.file_write_failed", error);
     return respondFileError(error, "No se pudo guardar el archivo de edición.", requestId);
   }
@@ -86,9 +91,10 @@ async function authorize(requestId: string) {
   const supabase = await createClient();
   const user = await getAuthenticatedUser(supabase);
   if (!user) return { response: apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 }) } as const;
-  if (!(await canReviewContent(user.userId))) return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para editar videos.", requestId, status: 403 }) } as const;
+
   const tenant = await resolveActiveTenantContext();
   if (!tenant) return { response: apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 }) } as const;
+  if (!(await canReviewContent(user.userId, tenant))) return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para editar videos.", requestId, status: 403 }) } as const;
   return { admin: getServiceRoleClient(), organizationId: tenant.organizationId, response: null };
 }
 

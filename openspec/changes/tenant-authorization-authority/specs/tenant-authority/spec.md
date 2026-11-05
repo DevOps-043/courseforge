@@ -298,3 +298,18 @@ y mantener contexto, validación y recuperación existentes.
 - **WHEN** la solicitud válida crea o recupera un render
 - **THEN** mantiene organización/actor del servidor y attemptId sin aceptar autoridad del payload
 - **AND** un resultado reutilizado o con providerRenderId evita otro despacho
+
+### Requirement: Rutas directas HyperFrames con compatibilidad de autoridad
+
+Las rutas directas del inventario .7.b.2 MUST proyectar las clases conocidas de
+autoridad como 503 seguro, con revisión ligada al tenant y sin efectos posteriores.
+
+#### Scenario: Respuesta JSON y detalles legacy
+- **WHEN** falla identidad o tenant en una ruta directa
+- **THEN** devuelve mensaje neutral, correlación, retryable y private/no-store/Vary Cookie
+- **AND** conserva details.reason de tenant donde ya formaba parte del contrato
+
+#### Scenario: Preview nativo sincronizado
+- **WHEN** falla autoridad con un hash y generación válidos de sync v2
+- **THEN** conserva respuesta HTML, bridge DEPENDENCY_FAILED y CSP del protocolo
+- **AND** no refleja detalles internos; sin sync v2 conserva JSON de error

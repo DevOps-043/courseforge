@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
@@ -23,11 +24,12 @@ export async function GET(request: Request, context: RouteContext) {
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);
     if (!user) return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
-    if (!(await canReviewContent(user.userId))) {
-      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para previsualizar el video.", requestId, status: 403 });
-    }
+
     const tenant = await resolveActiveTenantContext();
     if (!tenant) return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 });
+    if (!(await canReviewContent(user.userId, tenant))) {
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para previsualizar el video.", requestId, status: 403 });
+    }
     const { data, error } = await getServiceRoleClient()
       .from("video_composition_revisions")
       // The revision already carries organization_id. Joining the composition
@@ -55,6 +57,8 @@ export async function GET(request: Request, context: RouteContext) {
       },
     });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Revision ID inválido.", requestId, status: 400 });
     }

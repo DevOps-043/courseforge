@@ -1,0 +1,727 @@
+{
+  "base": "155a9b8386e90cc77fb5559d17469020a78ea373",
+  "criterion": "Clasificación léxica/AST; no acredita seguridad o comportamiento.",
+  "records": [
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/assets/route.ts",
+      "category": "DIRECTA",
+      "sha256": "eb71a369e58708a26ab02fa4c04681de602aad4533a4f682a4f21c1dc7526a9f",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": [
+            {
+              "line": 44,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/assets/sync/route.ts",
+      "category": "DIRECTA",
+      "sha256": "869f0873841c55d3a6eafba9020ec40d5cdbbf25b5a277f3e36a08f18d121370",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": [
+            {
+              "line": 54,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/compositions/[compositionId]/approve/route.ts",
+      "category": "DIRECTA",
+      "sha256": "4a8c275d3cf4c805f67b40bc1acc3a27c93e19c1fcaf48ef6c59e2f802a8052e",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": [
+            {
+              "line": 48,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/compositions/[compositionId]/draft/route.ts",
+      "category": "DIRECTA",
+      "sha256": "4985f0c9556bcce67cce532329b0bfd2219f3575d17a77a1fb401a0df7cecad0",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": [
+            {
+              "line": 37,
+              "legacyTenant": true,
+              "legacyReason": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/compositions/[compositionId]/final-video/route.ts",
+      "category": "DIRECTA",
+      "sha256": "c763121a14f9df7e713f285974b7ac79fc19217d88e42b1f66ba44af095c0632",
+      "methods": [
+        {
+          "method": "DELETE",
+          "catches": [
+            {
+              "line": 67,
+              "legacyTenant": true,
+              "legacyReason": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/compositions/[compositionId]/revisions/route.ts",
+      "category": "DIRECTA",
+      "sha256": "87fc0b9fc06a326f76e1cf157f5596d918c8c6cd1c4ae3fdd1a30aaab5d27ebc",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": [
+            {
+              "line": 55,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        },
+        {
+          "method": "PUT",
+          "catches": [
+            {
+              "line": 95,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "catches": [
+            {
+              "line": 118,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/compositions/[compositionId]/snapshot/route.ts",
+      "category": "DIRECTA",
+      "sha256": "78786ec0c2cff87260ad79c03e3b3e88bb4d2d349ab4bf9297539c4b7a7b68b5",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": [
+            {
+              "line": 41,
+              "legacyTenant": true,
+              "legacyReason": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/compositions/route.ts",
+      "category": "DIRECTA",
+      "sha256": "5415077bb332f25eea393ebeee49c417968623eff8a48292f18e8af05f2c1531",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": [
+            {
+              "line": 42,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "catches": [
+            {
+              "line": 65,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/assets/[assetId]/route.ts",
+      "category": "DIRECTA",
+      "sha256": "f2ed89bc9c2fa793a0144623926e30e695e62b002271c4ba7d02930e3aa1c555",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": [
+            {
+              "line": 52,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/branding/route.ts",
+      "category": "DIRECTA",
+      "sha256": "0a2cd058432cb90bfc0360803e4f5b3137c8eb1b6486fa132593b35e216a092a",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": [
+            {
+              "line": 42,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        },
+        {
+          "method": "POST",
+          "catches": [
+            {
+              "line": 113,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/detach-audio/route.ts",
+      "category": "DIRECTA",
+      "sha256": "4e4d5db6bf9633f4b25d44224543a9e9355aed7fdf7d1ed1352d94238bedd671",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": [
+            {
+              "line": 141,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/document/route.ts",
+      "category": "DIRECTA",
+      "sha256": "709a0777da8aa40a2e4dc6d64e39e5652336e287ec39004917052ae898555716",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": [
+            {
+              "line": 52,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        },
+        {
+          "method": "GET",
+          "catches": [
+            {
+              "line": 84,
+              "legacyTenant": true,
+              "legacyReason": true
+            }
+          ]
+        },
+        {
+          "method": "PUT",
+          "catches": [
+            {
+              "line": 163,
+              "legacyTenant": true,
+              "legacyReason": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/files/[...path]/route.ts",
+      "category": "DIRECTA",
+      "sha256": "10e6f528996bff671c15ed67e1b38dfb03c5dcff98330f4e5ecde99525c8d567",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": [
+            {
+              "line": 27,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        },
+        {
+          "method": "PUT",
+          "catches": [
+            {
+              "line": 61,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/generated-deck-initialization/current/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "7ff62db2fc3961779a481665948a73a4e1bf2cb1891801f1a8bc5e0ab4ac24c9",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/generated-deck-initialization/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "accc4139036f2240b5bbb3c868b5a5c9b4702821a11c3bafbd9393710804c337",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        },
+        {
+          "method": "POST",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-editing-initial-anchor/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "31ff8be0d27b79a38874d6e499a4e0b7e50b33d24c9abf9df61a7c2ea4aa86da",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        },
+        {
+          "method": "POST",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-editing/[clipId]/adopt/candidates/[candidateId]/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "dc19d80462626f101f4d0f71cc2fd73570595dad60c4afd4c2bddc6789cb4fb4",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-editing/[clipId]/adopt/operations/[operationId]/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "e26bdc6d24e6e0a5883dab05daa1f3553408d482e2159bfc9d3a86dde69b7032",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": []
+        },
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-editing/[clipId]/initialize/operations/[operationId]/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "0f7718339b9534b64bbf8eb87ba89f179b04d569ed490361245e641f652a2424",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": []
+        },
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-editing/[clipId]/initialize/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "13030fce4a9333e5233b70f91c8673210eee64fd60056c413c2ac2e4c1d9f137",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-editing/[clipId]/operations/[operationId]/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "12cadee576a75ad89c6df81b03f76a67abff7b250b74eeca267cccc8979b54a5",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        },
+        {
+          "method": "POST",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-editing/[clipId]/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "b45338f639d67b33647072b09a30bb763d0b29f4f05de9add33f19d7b3187237",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        },
+        {
+          "method": "POST",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-editing/[clipId]/templates/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "061d2eb42ed1100290ff4b29d3c5e0a6c4f23957099b6ebacea865b600f6fe1a",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-historical-candidates/[candidateId]/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "046e20e21c5617d25e44e376bd4c92a76bf347b089552ae0ba5b3dc1c5705257",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-historical-publications/[operationId]/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "6dcebe0e4160d8272d6e4e1dd48ad364684e768a50bb7c0e8dcd54a5c7840bde",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": []
+        },
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-legacy-inventory/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "91a3950d0c3b0fe7f11616605f324b99e92e7be5f74ab4530aec0ceb06f119c9",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-preview/renew/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "45b2d1a3e7ac8d765faccee5a9c51ed325b8f9d9a7ab85392d5c3521c66f2a30",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-preview/resources/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "88169034ddf93fddf15eb81766cebacc33ae70d4815ad3318a120f25325f6394",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-preview/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "3f5a14858c924d4d321fd99447177256130508d1a68720421f0b05f1db869610",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-reconstruction-library/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "ab3852aa19ef6cb50ebdbf72754e5e81044a4e71fe36f7269822caf65a262383",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-reconstruction-opening/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "dfe40c0ef8da8f59719827b92e8c0cf087f2805f439fdd7dd0879e334a7e9a51",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-reconstruction-resource-links/[operationId]/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "1c265a56b9c38e3a425b91487259d2751f21d88ad83526564c21443949bf3c41",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        },
+        {
+          "method": "POST",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-reconstruction-resources/[assetId]/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "e05da44d56e1c6f5f47db534cbe034a902f8ec14dfc6242790de9020143e90bd",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-snapshot-history/[revisionId]/inspection/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "6075ef49af623d7d978bfa84a19a01e1a43f0143ea8c5a6683d8f4365acb7e78",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-snapshot-history/[revisionId]/review/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "c2f21e01095f07a407e8c095c8b226a872929a0d38901578425f51082b6b9882",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-snapshot-history/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "20ec9aed8a9086ef3abbd635ebfb7296b8cae5ec14b3bb6501f2aa43d9e14eb9",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-snapshots/[operationId]/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "ebe96b5cc34bcd841dcf4041fe26667fa91cf745c9edcccdb6575926fbeb4453",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/html-snapshots/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "a4fdc608425b6b31529ffc2ab66196b91b0de542ccbd3cb698ee7b53d6b55d4f",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/narrative-extraction/apply/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "a4ae96b674f1f591c9475d690b162cfaaa7539cc2ded41391f469020a7322a46",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/narrative-extraction/plan/route.ts",
+      "category": "DIRECTA",
+      "sha256": "f5e3b86987257ec39cf02d8adfcb7ab02d12898e7742c6c5b017f8a8a4ebb606",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": [
+            {
+              "line": 49,
+              "legacyTenant": true,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/narrative-extraction/receipt/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "3a8d4e72ac882c5166af8d0bb19a93f32def0eae1601f7fdd9044ef012d2dc71",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/narrative-fragment/apply/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "04248798d45e2430ac7125df79a8dc2c7482707f07f175945ad88319fe56d1c7",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/narrative-fragment/plan/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "972ac499e35d42817bb61422dd0b0155cb0e888ba086db3ec4f319625b62352a",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/narrative-fragment/receipt/route.ts",
+      "category": "DELEGADA_POR_INSPECCIONAR",
+      "sha256": "d224f99549efe360ab9e8da4ae659758c06b8380f267d636a0804cdf1bf09a65",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": []
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/preview-metrics/route.ts",
+      "category": "DIRECTA",
+      "sha256": "852131a38d48062e6f30bd6c53ba8354ed9c9e025de141535d7bb3e876040985",
+      "methods": [
+        {
+          "method": "POST",
+          "catches": [
+            {
+              "line": 60,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/drafts/[draftId]/preview/route.ts",
+      "category": "DIRECTA",
+      "sha256": "7a6045185556079cd5f4aeff054c4c8bb6fd23a6fd4acf35b1ccee936e8768f9",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": [
+            {
+              "line": 137,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "apps/web/src/app/api/production/hyperframes/revisions/[revisionId]/preview/route.ts",
+      "category": "DIRECTA",
+      "sha256": "a77db0f45a9d85a3bfbf215a3853a3346ae30476b65d3d24fdc371da7ef88433",
+      "methods": [
+        {
+          "method": "GET",
+          "catches": [
+            {
+              "line": 57,
+              "legacyTenant": false,
+              "legacyReason": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

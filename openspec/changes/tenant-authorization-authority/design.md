@@ -352,3 +352,24 @@ si la compensación falla, el catch externo puede proyectar la clase conocida
 pero no debe afirmar que el estado durable se reparó. Pruebas con servicios y
 worker simulados, sin render pagado; no acreditar idempotencia de DB/proveedor
 porque el doble devuelva reused. Las otras rutas .7.b quedan en .7.b.2.
+
+### F1.3.c.3.c.7.b.2 — clasificación y rutas directas
+
+El inventario léxico inicial contiene 47 candidatas. La clasificación distingue
+17 rutas HTTP directas y 30 delegadas a factories/adaptadores; esas categorías
+no acreditan seguridad por sí mismas. .7.b.2.a normaliza las 17 directas en un
+lote coherente y conserva .7.b.2.b para los adaptadores reales y sus factories.
+
+Mantener las respuestas legacy de tenant con details.reason cuando ya existan;
+el mapper acepta detalles opcionales suministrados por servidor, pero conserva
+clasificación por instanceof, mensaje neutral y no-store/Vary Cookie. Retirar
+ramas/formatters redundantes. Las revisiones de rol reciben el tenant resuelto.
+El preview nativo conserva HTML/bridge para sync v2 y JSON en los demás casos,
+con DEPENDENCY_FAILED seguro, hash/generación y CSP originales. No sustituir el
+iframe por JSON ni emitir datos internos. Refresh opcional de assets sigue
+siendo un fallo parcial y no debe saltarse su compensación/semántica existente.
+
+Inventario y transformación AST limitan las ediciones a catches HTTP, contexto
+de revisión y formato de indisponibilidad. Verificar handlers con parser real,
+validación previa cuando exista, dependencias bloqueadas y pruebas explícitas
+de bridge/legacy. Los dobles no acreditan contratos completos de dominio o RLS.

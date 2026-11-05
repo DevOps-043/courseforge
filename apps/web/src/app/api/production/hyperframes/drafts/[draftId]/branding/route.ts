@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
@@ -40,6 +41,8 @@ export async function GET(request: Request, context: RouteContext) {
       },
     }, { headers: { "Cache-Control": "private, no-store" }, requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de borrador inválido.", requestId, status: 400 });
     logger.error("production.hyperframes.draft.branding_read_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo consultar la configuración de intro y outro.", requestId, retryable: true, status: 500 });
@@ -111,6 +114,8 @@ export async function POST(request: Request, context: RouteContext) {
     });
     return apiSuccessResponse({ data: { branding, ...updated } }, { requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de borrador inválido.", requestId, status: 400 });
     if (error instanceof CompositionDocumentError) return apiErrorResponse({ code: error.status === 404 ? API_ERROR_CODE.resourceNotFound : error.status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest, message: error.message, requestId, status: error.status });
     logger.error("production.hyperframes.draft.branding_update_failed", error);
