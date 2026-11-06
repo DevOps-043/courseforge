@@ -93,6 +93,22 @@ El sistema SHALL evaluar cobertura documental por objetivos y temas de lección 
 - **WHEN** se autoriza complementar documentos con web
 - **THEN** la cobertura distingue ambas procedencias y expone vacíos y contradicciones para revisión
 
+#### Scenario: Propuesta todavía no revisada
+- **WHEN** el sistema propone fragmentos coincidentes con un objetivo o tema
+- **THEN** se conservan como sugerencias sin suficiencia confirmada y no permiten aprobar hasta su revisión
+
+#### Scenario: URL sin identidad curricular
+- **WHEN** una URL heredada no identifica la lección a la que pertenece
+- **THEN** no se considera evidencia general ni puede cubrir otras lecciones implícitamente
+
+#### Scenario: Revisión anterior al cambio de configuración
+- **WHEN** un usuario guarda o aprueba con revisión o token curricular anteriores
+- **THEN** se rechaza el comando sin sobrescribir la nueva configuración
+
+#### Scenario: Fallo al invalidar dependencias
+- **WHEN** falla una escritura de invalidación durante un cambio de política o asociaciones
+- **THEN** se revierte también la revisión, política y demás modificaciones de esa transacción
+
 ### Requirement: Contexto completo dentro de límites explícitos
 El sistema SHALL conservar el texto extraído válido y recuperar los fragmentos aprobados relevantes para cada consumidor, sin limitarse al extracto inicial de validación.
 

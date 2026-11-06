@@ -134,8 +134,11 @@ F2 solicita `course-source-extraction-background` firmado y persiste fragmentos
 con lease y confirmación atómica mediante la migración `20261106010000`.
 `READY` acredita extracción, no cobertura curricular. La migración `20261106020000`
 añade sustitución con historial y conciliación/purga puntual de reservas abandonadas.
-Las tres migraciones permanecen sin aplicación remota en este cambio. Conservar
-los consumidores históricos de generación hasta implementar F3/F4.
+La migración `20261106030000` añade política, revisión por objetivo/tema y
+aprobación versionada mediante `/sources/review`; la curación documental busca
+solo vacíos en mixto y no navega en modo exclusivo. Las cuatro migraciones
+permanecen sin aplicación remota. Las guardas F3 bloquean generación documental
+sin contexto hasta F4; el flujo histórico sin configuración y WEB_ONLY continúa.
 Contratos, cuotas y operación:
 [fuentes propias](course-owned-document-sources.md).
 

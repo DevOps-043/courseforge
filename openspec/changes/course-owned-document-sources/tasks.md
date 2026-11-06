@@ -1,6 +1,6 @@
 # Etapas de implementación
 
-Estado: fases 1 y 2 implementadas y verificadas localmente; migraciones remotas, despliegue y fases 3–6 pendientes. Evidencia de F2 en `reports/phase-2-close.md`. Completar en orden, con cambios pequeños y recuperables en el checkout principal. No crear worktrees.
+Estado: fases 1–3 implementadas y verificadas localmente; migraciones remotas, despliegue y fases 4–6 pendientes. Evidencia de F3 en `reports/phase-3.md`. Completar en orden, con cambios pequeños y recuperables en el checkout principal. No crear worktrees.
 
 ## F0. Alcance y línea base
 - [x] Contrastar cargador de Temario, registro PDF, filtros de curación y consumo de Materiales con código vigente.
@@ -31,17 +31,18 @@ Salida: contratos y aislamiento probados; ningún consumidor de generación requ
 Salida: cuatro formatos recuperables tras recarga; archivos inválidos o excesivos rechazados; fuentes nunca públicas.
 
 ## F3. Política y cobertura curricular
-- [ ] Implementar resolver de política compartido y adaptación explícita de cursos históricos.
-- [ ] Mostrar ambas opciones sin preselección en cursos documentales nuevos; bloquear generación sin elección, persistirla y recuperarla al reabrir el curso.
-- [ ] Proponer asociaciones por objetivo/tema con evidencia; permitir corrección y aprobación versionada por revisor.
-- [ ] Sustituir exclusiones incondicionales de manual/PDF por reglas según política en UI, API y workers.
-- [ ] Mantener cuota web histórica; permitir un manual suficiente para muchas lecciones y bloquear vacíos documentales sin exigir duplicados.
-- [ ] Implementar modo mixto con vacíos/conflictos visibles y procedencia separada.
-- [ ] Hacer atómicos los cambios de política/fuentes/asociaciones y la invalidación de dependencias.
+- [x] Implementar resolver de política compartido y adaptación explícita de cursos históricos.
+- [x] Mostrar ambas opciones sin preselección en cursos documentales nuevos; bloquear generación sin elección, persistirla y recuperarla al reabrir el curso.
+- [x] Proponer asociaciones por objetivo/tema con evidencia; permitir corrección y aprobación versionada por revisor.
+- [x] Sustituir exclusiones incondicionales de manual/PDF por reglas según política en UI, API y workers. La rama documental usa evidencia de biblioteca y URL revisada; el adaptador de PDF legados continúa en F4.
+- [x] Mantener cuota web histórica; permitir un manual suficiente para muchas lecciones y bloquear vacíos documentales sin exigir duplicados.
+- [x] Implementar modo mixto con vacíos/conflictos visibles y procedencia separada.
+- [x] Hacer atómicos los cambios de política/fuentes/asociaciones y la invalidación de dependencias.
 
 Salida: un solo criterio de cobertura decide en todos los consumidores, sin saltarse aprobaciones.
 
 ## F4. Integración de generación de extremo a extremo
+- [ ] Sustituir las guardas temporales F3 que bloquean generación documental por validación de snapshot/contexto vigente, sin habilitar motores antiguos sin sus fuentes.
 - [ ] Consumir documentos aprobados desde Base, Temario y Plan; desactivar investigación y herramientas web en modo exclusivo.
 - [ ] Sustituir contexto basado solo en extractos por fragmentos aprobados seleccionados para Materiales, con presupuesto y snapshot reproducible.
 - [ ] Aplicar política/contexto a todos los proveedores y fallback, jobs, reanudaciones, regeneración parcial, videos y variantes de entrega activas.

@@ -101,7 +101,7 @@ function workflowDatabase(options: { lessonCount?: number; rows?: Record<string,
       const result = () => ({ error: null, data: table === "instructional_plans"
         ? { syllabus_content_version: options.planVersion ?? 2, lesson_plans: Array.from({ length: options.lessonCount || 1 }, (_, index) => ({ lesson_id: `lesson-${index + 1}`, lesson_title: `Lesson ${index + 1}`, module_title: "Module", oa_text: "Apply", components: [{ type: "READING" }] })) }
         : table === "artifacts" ? { idea_central: "Course", nombres: [], objetivos: [], descripcion: {} }
-        : table === "syllabus" ? { input_mode: options.imported ? "PROVIDED_SYLLABUS" : "IDEA", content_version: 2, state: "STEP_APPROVED", modules: options.imported ? [{ title: "Module", lessons: [{ id: "lesson-1", topics: ["Tipos", "Límites"] }] }] : [] } : saved });
+        : table === "syllabus" ? { input_mode: options.imported ? "PROVIDED_SYLLABUS" : "IDEA", content_version: 2, state: "STEP_APPROVED", modules: options.imported ? [{ title: "Module", lessons: [{ id: "lesson-1", topics: ["Tipos", "Límites"] }] }] : [] } : table === "course_source_settings" ? null : saved });
       const query = { select: () => query, eq: () => query, single: async () => result(), maybeSingle: async () => result(),
         then: (resolve: (value: unknown) => unknown) => Promise.resolve(result()).then(resolve) };
       return query;

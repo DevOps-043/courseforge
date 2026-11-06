@@ -4,6 +4,7 @@ import { COURSE_SOURCE_FORMATS } from "./course-source-policy";
 import { reserveSourceUploadSchema } from "./course-source.schema";
 import { sourceJsonRequest as jsonRequest, uploadSourceBytes } from "./course-source.client";
 import { CourseSourceReconciliation } from "./CourseSourceReconciliation";
+import { CourseSourceReviewPanel } from "./CourseSourceReviewPanel";
 
 type DocumentSummary = { id: string; filename: string; status: string; supersedesId?: string | null };
 const STATUS_LABELS: Record<string, string> = { RESERVED: "Carga pendiente", UPLOADED: "Recibido", PROCESSING: "Procesando", READY: "Texto disponible", FAILED: "Extracción fallida: revisa el archivo o aplica OCR", RETIRED: "Retirado" };
@@ -66,7 +67,8 @@ export function CourseSourceLibrary({ artifactId }: { artifactId: string }) {
   }
   return <details aria-busy={busy} className="mb-5 rounded-xl border border-gray-300 bg-[var(--engine-surface)] p-4 font-sans dark:border-white/20 [&_button]:min-h-10 [&_button]:rounded-md [&_button]:border [&_button]:border-gray-300 [&_button]:px-3 [&_button]:py-2 [&_button]:text-sm [&_button]:font-medium [&_button]:disabled:opacity-50 [&_button]:hover:bg-gray-100 dark:[&_button]:border-white/20 dark:[&_button]:hover:bg-white/10">
     <summary className="cursor-pointer font-semibold">Mis documentos del curso</summary>
-    <p className="my-3 text-sm">PDF, DOCX, PPTX o TXT · 15 MB por archivo. Se extrae texto sin OCR. La integración con generación se habilitará en las siguientes fases.</p>
+    <CourseSourceReviewPanel artifactId={artifactId} policyOnly />
+    <p className="my-3 text-sm">PDF, DOCX, PPTX o TXT · 15 MB por archivo. Se extrae texto sin OCR. Tus archivos se guardan como fuentes privadas; la generación desde esta biblioteca todavía no está habilitada.</p>
     {replacement && <p role="status">Sustituyendo: {replacement.filename}. El original se conserva hasta que termine la extracción. <button type="button" disabled={busy} onClick={() => setReplacement(null)}>Cancelar sustitución</button></p>}
     <label className="block rounded border border-dashed p-4" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (!busy) void upload(Array.from(event.dataTransfer.files)); }}>
       <span className="mb-2 block">Selecciona o arrastra tus archivos</span>

@@ -5,7 +5,7 @@ import { load } from "../../../app/login/__tests__/source-test-loader";
 test("transferencia informa porcentaje y cancelar interrumpe XHR sin confirmar recepción", async () => {
   let aborted=false; let sent=false;
   class FakeXHR {
-    upload={onprogress: (_event: {lengthComputable:boolean;loaded:number;total:number})=>{}};
+    upload:{onprogress:(event:{lengthComputable:boolean;loaded:number;total:number})=>void}={onprogress:()=>{}};
     onabort=()=>{}; status=200; onload=()=>{}; onerror=()=>{}; timeout=0; ontimeout=()=>{};
     open(method:string,url:string){assert.equal(method,"PUT");assert.equal(url,"/privado");}
     setRequestHeader(name:string,type:string){assert.equal(name,"Content-Type");assert.equal(type,"text/plain");}

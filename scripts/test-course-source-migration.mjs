@@ -22,7 +22,14 @@ async function database() {
     create schema storage;
     create table profiles(id uuid primary key);
     create table artifacts(id uuid primary key, organization_id uuid not null, created_by uuid references profiles(id),
-      idea_central text not null, course_id text, state text not null default 'DRAFT');
+      idea_central text not null, course_id text, state text not null default 'DRAFT',production_complete boolean default false,generation_metadata jsonb default '{}');
+    create table syllabus(artifact_id uuid primary key references artifacts(id),modules jsonb default '[]',state text default 'STEP_DRAFT',upstream_dirty boolean default false,upstream_dirty_source text);
+    create table instructional_plans(artifact_id uuid primary key references artifacts(id),lesson_plans jsonb default '[]',state text default 'STEP_DRAFT',upstream_dirty boolean default false,upstream_dirty_source text);
+    create table curation(id uuid primary key default gen_random_uuid(),artifact_id uuid unique references artifacts(id),state text default 'PHASE2_DRAFT',attempt_number integer default 1,qa_decision jsonb,upstream_dirty boolean default false,upstream_dirty_source text);
+    create table curation_rows(id uuid primary key default gen_random_uuid(),curation_id uuid references curation(id),lesson_id text,apta boolean,source_ref text,validation_report jsonb);
+    create table materials(id uuid primary key default gen_random_uuid(),artifact_id uuid unique references artifacts(id),state text default 'PHASE3_DRAFT',version integer default 1,upstream_dirty boolean default false,upstream_dirty_source text);
+    create table publication_requests(artifact_id uuid primary key references artifacts(id),upstream_dirty boolean default false,upstream_dirty_source text);
+    grant select,insert,update on artifacts,syllabus,instructional_plans,curation,curation_rows,materials,publication_requests to service_role;
     create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
     create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);
     alter table storage.objects enable row level security;
@@ -35,6 +42,7 @@ async function database() {
   await db.exec(migration);
   await db.exec(await readFile('supabase/migrations/20261106010000_course_source_extraction.sql', 'utf8'));
   await db.exec(await readFile('supabase/migrations/20261106020000_course_source_lifecycle.sql', 'utf8'));
+  await db.exec(await readFile('supabase/migrations/20261106030000_course_source_policy_review.sql', 'utf8'));
   await db.exec('set role service_role');
   return db;
 }
@@ -130,7 +138,8 @@ test('RLS y grants deniegan tablas y RPC a navegador; snapshots son inmutables p
   const db = await database();
   try {
     const tables = ['course_source_settings', 'course_source_drafts', 'course_source_documents', 'course_source_fragments',
-      'course_source_assignments', 'course_source_snapshots', 'course_source_snapshot_items'];
+      'course_source_assignments', 'course_source_snapshots', 'course_source_snapshot_items',
+      'course_source_upload_reconciliation','course_source_review_versions','course_source_review_approvals','course_source_policy_changes'];
     for (const role of ['anon', 'authenticated']) {
       await db.exec(`set role ${role}`);
       for (const table of tables) {
@@ -226,4 +235,51 @@ test('sustitución conserva original hasta READY, serializa sucesores y conserva
     await assert.rejects(db.query('select * from course_source_upload_reconciliation'), /permission denied/);
     await assert.rejects(replace(), /permission denied/);
   } finally { await db.close(); }
+});
+
+test('política, asociaciones y aprobación tienen CAS y datos viejos se invalidan en la misma transacción',async()=>{
+  const db=await database();
+  try{
+    const course=await draft(db);
+    await assert.rejects(db.query("update artifacts set state='GENERATING' where id=$1",[course]),/SOURCE_CONTEXT_INTEGRATION_REQUIRED/);
+    const hash=async()=>(await db.query('select course_source_curriculum($1) as context',[course])).rows[0].context.hash;
+    const change=async(revision,action,payload={},curriculum)=>
+      (await db.query('select change_course_source_review($1,$2,$3,$4,$5,$6,$7::jsonb) as revision',[course,organization,actor,revision,curriculum||await hash(),action,JSON.stringify(payload)])).rows[0].revision;
+    assert.equal(await change(0,'policy',{policy:'DOCUMENTS_ONLY'}),1);
+    await assert.rejects(change(0,'policy',{policy:'WEB_ONLY'}),/SOURCE_CONFLICT/);
+    const document=await reserve(db,course);await confirm(db,document);
+    const fragment=identifier();await db.query(`insert into course_source_fragments(id,artifact_id,document_id,ordinal,text_content,content_sha256,locator)
+      values($1,$2,$3,0,'Manual de seguridad',$4,'{}')`,[fragment,course,document.id,'a'.repeat(64)]);
+    await db.query("update course_source_documents set status='READY' where id=$1",[document.id]);
+    assert.equal((await db.query('select revision from course_source_settings')).rows[0].revision,2);
+    const associations=[{lessonId:'lesson-1',evidenceType:'DOCUMENT',evidenceId:fragment,requirementIds:['objective'],verified:true,conflict:false,resolution:''}];
+    assert.equal(await change(2,'save',{associations}),3);
+    await change(3,'approve');
+    assert.equal((await db.query('select state from curation')).rows[0].state,'PHASE2_APPROVED');
+    await assert.rejects(db.query("insert into materials(artifact_id,state) values($1,'PHASE3_GENERATING')",[course]),/SOURCE_CONTEXT_INTEGRATION_REQUIRED/);
+    const oldHash=await hash();await db.query("insert into syllabus(artifact_id,modules) values($1,'[{\"lessons\":[]}]')",[course]);
+    await assert.rejects(change(3,'approve',{},oldHash),/SOURCE_CONFLICT/);
+    await db.query("update course_source_documents set status='RETIRED' where id=$1",[document.id]);
+    assert.equal((await db.query('select approved_revision from course_source_settings')).rows[0].approved_revision,null);
+    assert.equal((await db.query('select state from curation')).rows[0].state,'PHASE2_BLOCKED');
+    await assert.rejects(db.query("update curation set state='PHASE2_APPROVED'"),/SOURCE_REVIEW_REQUIRED/);
+    await db.exec('set role authenticated');await assert.rejects(db.query('select * from course_source_review_versions'),/permission denied/);
+  }finally{await db.close();}
+});
+
+test('fallo de invalidación revierte política, revisión y metadata; WEB_ONLY conserva generación',async()=>{
+  const db=await database();
+  try{
+    const course=await draft(db);await db.query('insert into materials(artifact_id) values($1)',[course]);
+    await db.exec('reset role;alter table materials add constraint test_fail_invalidation check(upstream_dirty=false) not valid;set role service_role');
+    const hash=(await db.query('select course_source_curriculum($1) as context',[course])).rows[0].context.hash;
+    const change=(policy)=>db.query('select change_course_source_review($1,$2,$3,0,$4,\'policy\',$5::jsonb)',[course,organization,actor,hash,JSON.stringify({policy})]);
+    await assert.rejects(change('DOCUMENTS_ONLY'),/test_fail_invalidation/);
+    assert.deepEqual((await db.query('select policy,revision from course_source_settings')).rows,[{policy:null,revision:0}]);
+    assert.deepEqual((await db.query('select generation_metadata from artifacts')).rows[0].generation_metadata,{});
+    await db.exec('reset role;alter table materials drop constraint test_fail_invalidation;set role service_role');
+    await change('WEB_ONLY');await db.query("update materials set state='PHASE3_GENERATING' where artifact_id=$1",[course]);
+    await db.query("update artifacts set state='GENERATING' where id=$1",[course]);
+    assert.equal((await db.query('select state from materials')).rows[0].state,'PHASE3_GENERATING');
+  }finally{await db.close();}
 });

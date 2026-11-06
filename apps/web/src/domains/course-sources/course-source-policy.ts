@@ -6,6 +6,8 @@ export const COURSE_SOURCE_LIMITS = {
   organizationDocuments: 500,
   organizationBytes: 2 * 1024 * 1024 * 1024,
   requestBytes: 4096,
+  reviewRequestBytes: 512 * 1024,
+  reviewEvidenceBytes: 2 * 1024 * 1024,
   pageSize: 20,
   maxPageSize: 50,
   officeEntries: 2000,

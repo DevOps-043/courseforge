@@ -1,6 +1,7 @@
 "use server";
 
 import { getErrorMessage } from "@/lib/errors";
+import { readCourseSourcePolicy } from "@/domains/course-sources/course-source-review.service";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import {
   extractPlanComponents,
@@ -219,6 +220,9 @@ export async function startCurationAction(
     const { admin, accessToken } = await getArtifactAdminContext(artifactId, {
       requireAccessToken: true,
     });
+    const sourcePolicy = await readCourseSourcePolicy(admin, artifactId);
+    if (sourcePolicy && !sourcePolicy.policy) throw new Error("Elige la política de fuentes antes de continuar.");
+    if (sourcePolicy?.policy === "DOCUMENTS_ONLY") throw new Error("Este curso utiliza solo archivos. Revisa su cobertura documental sin iniciar búsqueda web.");
     const { artifact, plan } = await fetchArtifactAndPlanForCuration(
       admin,
       artifactId,

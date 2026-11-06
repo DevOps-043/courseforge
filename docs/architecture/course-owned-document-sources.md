@@ -2,6 +2,31 @@
 
 Estado: base y biblioteca/extracción implementadas localmente; migraciones no aplicadas remotamente y despliegue no realizado. La biblioteca está en preparación de borrador, Base, Temario y Fuentes. El pipeline de generación conserva sus consumidores históricos; no anunciar generación documental completa como operativa.
 
+## Política y revisión de cobertura — fase 3
+
+Migración aditiva `20261106030000_course_source_policy_review.sql`. La biblioteca ofrece «Solo mis archivos» y «Mis archivos + fuentes web» sin preselección. El modo `WEB_ONLY` queda como compatibilidad del flujo histórico; no se reinterpreta `A_WITH_SOURCE`/`B_NO_SOURCE` como autorización para navegar. Cursos sin configuración documental conservan consumidores y cuotas web anteriores. La elección puede guardarse antes de Base sin requerir un plan ni ejecutar IA; cambiar una elección existente pide confirmar la invalidación.
+
+API `GET /api/artifacts/:artifactId/sources/review` devuelve política, revisión, token curricular, evidencia vigente, asociaciones y cobertura. `?policyOnly=1` evita cargar la revisión curricular completa cuando solo se necesita configurar el modo. El rol de aprobación se proyecta desde el tenant resuelto en servidor. `POST` admite comandos estrictos:
+
+- `policy`: `expectedRevision`, `curriculumHash`, `policy`.
+- `propose`: sugerencias deterministas por coincidencias entre objetivo/tema y texto; no llama IA, no guarda ni verifica automáticamente.
+- `save`: versión y hash esperados, más `associations` con `lessonId`, `evidenceType` (DOCUMENT/WEB), `evidenceId`, `requirementIds`, confirmación de suficiencia (`verified`), contradicción (`conflict`) y resolución. Servidor valida pertenencia y vigencia; el cliente no suministra requisitos, actor, organización o autoridad de revisor.
+- `approve`: versión y hash esperados; solo un revisor vigente puede aprobar el conjunto guardado, con plan aprobado, evidencia para cada requisito y contradicciones resueltas. Se conserva el actor de creación y aprobación.
+
+El objetivo usa ref `objective`; temas, `topic:<índice>` bajo el token curricular. El token representa módulos, plan/estado y las partes curriculares de entrega sincrónica/híbrida; cambios de materiales o render no se incluyen. Es un mecanismo de concurrencia, no una credencial ni una afirmación de autenticidad. Máximo 1000 requisitos, 1000 evidencias por procedencia y 1000 asociaciones; excesos producen error, no truncamiento silencioso. El comando de revisión admite hasta 512 KiB y la evidencia textual hasta 2 MiB por revisión. Propuestas indexan términos una vez y la UI monta una lección de revisión a la vez para limitar DOM.
+
+`sourceCoverage` es el criterio compartido de UI, API y worker documental. Cuenta requisitos respaldados y confirmados, no archivos. Un manual puede cubrir todo el curso. En mixto se distingue evidencia documental de URLs revisadas; la búsqueda pide solo los requisitos faltantes y un presupuesto proporcional a vacíos. Las URLs técnicamente válidas siguen pendientes de suficiencia humana; no aprueban el curso automáticamente. La rama histórica conserva el mínimo web y su aprobación previa. PDF manual legado no se convierte implícitamente en URL pública: su adaptador documental pertenece a F4.
+
+Persistencia: `course_source_review_versions`, `course_source_review_approvals` y `course_source_policy_changes` son historiales inmutables para el rol backend, con RLS y sin permisos para navegador. Las versiones guardan referencias sin duplicar texto. La RPC compara revisión y token bajo bloqueo, revalida IDs y estados, y registra actor. La evaluación semántica queda en revisión humana, no se acredita por un hash o cita válida.
+
+Decisión de implementación: las asociaciones vigentes son el conjunto de referencias de `course_source_review_versions` para la revisión actual. El contrato normalizado `course_source_assignments` preparado en F1 no se rellena en paralelo ni se interpreta como cobertura real; F4 debe consumir las revisiones aprobadas o derivar una proyección explícita, sin crear dos fuentes de verdad.
+
+Cambiar política, asociaciones o disponibilidad de documentos invalida dependencias en la misma transacción; un fallo revierte también el cambio. Los workers de curación documental confirman progreso con revisión/token/attempt vigentes. La validación de URLs existentes invalida una revisión si cambia su contenido o aptitud. La aprobación histórica por contar URLs no puede saltarse la revisión documental. Un cambio curricular vuelve obsoleto el token; actualizar y revisar de nuevo antes de aprobar.
+
+**Límite temporal de F3:** las guardas bloquean Base/Temario/Plan/Materiales documentales, incluido modo aún sin elegir, hasta integrar los contextos en F4. No se permite ejecutar el motor anterior como si hubiera leído la biblioteca. La revisión documental y su curación sí están implementadas; no se anuncia todavía generación completa desde documentos. Los cursos históricos sin configuración y `WEB_ONLY` conservan generación. No se regeneran cursos por cambiar una política.
+
+Verificación y cierre: [fase 3](../../openspec/changes/course-owned-document-sources/reports/phase-3.md). QA visual reproducible: `npm run qa:course-source-policy` con componentes/CSS reales y API sintética local; no acredita el piloto de producción.
+
 Actualización F2: `POST /api/artifacts/:artifactId/sources/documents/:documentId` solicita extracción firmada; `GET` devuelve fragmentos autorizados y `?download=1` una descarga privada de 60 segundos. `POST ?action=retire` retira lógicamente sin borrar original. Migración `20261106010000_course_source_extraction.sql`: lease de diez minutos, tres intentos máximos, persistencia atómica y recuperación explícita. Parser con límite 40,000 caracteres, fragmentos con posiciones en texto normalizado. `READY` acredita extracción, no cobertura curricular. La migración aditiva `20261106020000_course_source_lifecycle.sql` completa sustitución e inspección/purga separada; ver [cierre F2](../../openspec/changes/course-owned-document-sources/reports/phase-2-close.md). Las secciones siguientes conservan el contrato base F1; las ampliaciones F2 sustituyen sus límites temporales de disponibilidad.
 
 ## Sustitución e historial

@@ -37,6 +37,7 @@ async function main() {
         if (failList) { response.statusCode=503; response.end(JSON.stringify({message:'Indisponibilidad simulada'})); return; }
         response.end(JSON.stringify({ documents })); return;
       }
+      if(url.pathname.endsWith('/review')) {response.end(JSON.stringify({configured:true,policy:null,revision:0,approved:false,curriculumHash:'a'.repeat(32),planReady:false,lessons:[],evidence:[],associations:[]}));return;}
       if (url.pathname.endsWith('/uploads')) {
         assert.equal(body.supersedesId,original);
         documents.push({id:successor,filename:body.filename,status:'RESERVED',supersedesId:body.supersedesId});
@@ -62,19 +63,19 @@ async function main() {
     await page.setRequestInterception(true);page.on('request',request=>new URL(request.url()).hostname==='127.0.0.1'?request.continue():request.abort());
     const url=`http://127.0.0.1:${server.address().port}`;
     await page.setViewport({width:1440,height:1000});await page.goto(url);
-    await page.click('summary');await page.waitForFunction(()=>document.body.textContent.includes('Sustituir archivo'));
+    await page.waitForSelector('summary');await page.click('summary');await page.waitForFunction(()=>document.body.textContent.includes('Sustituir archivo'));
     const clickText=async text=>page.evaluate(label=>[...document.querySelectorAll('button')].find(button=>button.textContent===label).click(),text);
     await clickText('Ver texto');await page.waitForSelector('pre');assert.equal(await page.$eval('pre',element=>element.textContent.includes('<script>')),true);
     await clickText('Cerrar texto');await clickText('Sustituir archivo');
     const file=await page.$('input[type=file]');
     await file.uploadFile(resolve('apps/web/src/domains/course-sources/course-source-policy.ts'));
     // El formato rechazado no llega a reservas.
-    await page.waitForFunction(()=>document.querySelector('[role=status]').textContent!=='' && !document.querySelector('input[type=file]').disabled);
+    await page.waitForFunction(()=>document.body.textContent.includes('Archivo no compatible') && !document.querySelector('input[type=file]').disabled);
     assert.equal(requests.some(request=>request.path.endsWith('/uploads')),false);
     const { writeFileSync }=require('node:fs');const fixture=resolve('.tmp/course-source-qa.txt');writeFileSync(fixture,'Procedimiento interno de seguridad. '.repeat(20));
     await file.uploadFile(fixture);
     await page.waitForFunction(()=>document.body.textContent.includes('sustituye'));
-    await page.reload();await page.click('summary');await page.waitForFunction(()=>document.body.textContent.includes('sustituye'));
+    await page.reload();await page.waitForSelector('summary');await page.click('summary');await page.waitForFunction(()=>document.body.textContent.includes('sustituye'));
     assert.equal(await page.$$eval('[aria-label="Versiones documentales"] li',items=>items.length),2);
     await page.screenshot({path:resolve(output,'desktop.png'),fullPage:true});
     await page.setViewport({width:375,height:900});await page.evaluate(()=>document.documentElement.classList.add('dark'));
@@ -85,7 +86,7 @@ async function main() {
     page.once('dialog',dialog=>dialog.accept(orphan));await clickText('Autorizar purga de esta carga');
     await page.waitForFunction(()=>document.body.textContent.includes('Purga confirmada'));
     assert.ok(requests.some(request=>request.body?.action==='purge'));
-    failList=true;await page.reload();await page.click('summary');await page.waitForFunction(()=>document.body.textContent.includes('Biblioteca no disponible'));
+    failList=true;await page.reload();await page.waitForSelector('summary');await page.click('summary');await page.waitForFunction(()=>document.body.textContent.includes('Biblioteca no disponible'));
     assert.deepEqual(errors,[]);
     console.log(JSON.stringify({replacement:true,reloadHistory:true,textEscaped:true,rejectedFormat:true,reconciliation:true,explicitPurgeConfirmation:true,mobileNoOverflow:true,externalRequests:false,screenshots:output}));
   } finally {if(browser)await browser.close();await new Promise(done=>server.close(done));}

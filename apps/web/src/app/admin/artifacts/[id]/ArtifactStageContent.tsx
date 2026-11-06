@@ -17,6 +17,7 @@ import type {
 import PublicationClientView from "./publish/PublicationClientView";
 import { ArtifactBaseStage } from "./ArtifactBaseStage";
 import { CourseSourceLibrary } from "@/domains/course-sources/CourseSourceLibrary";
+import { CourseSourceCuration } from "@/domains/course-sources/CourseSourceCuration";
 import type {
   ArtifactEditedContent,
   ArtifactEditingSection,
@@ -149,14 +150,14 @@ export function ArtifactStageContent({
     return (
       <div className={STAGE_WRAPPER}>
         <CourseSourceLibrary artifactId={artifact.id} />
-        <SourcesCurationGenerationContainer
+        <CourseSourceCuration artifactId={artifact.id}><SourcesCurationGenerationContainer
           artifactId={artifact.id}
           courseId={artifact.courseId || artifact.course_id || undefined}
           temario={artifact.temario?.modules ?? undefined}
           ideaCentral={artifact.idea_central || undefined}
           profile={profile}
           onNext={() => setCurrentStep(5)}
-        />
+        /></CourseSourceCuration>
       </div>
     );
   }

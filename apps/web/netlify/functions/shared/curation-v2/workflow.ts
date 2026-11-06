@@ -1,4 +1,6 @@
 import OpenAI from "openai";
+import { readCourseSourcePolicy } from "../../../../src/domains/course-sources/course-source-review.service";
+import { runDocumentCuration } from "./document-workflow";
 import { readSyllabusWithOrigin } from "../../../../src/domains/syllabus/services/syllabus-workflow-read";
 import { PIPELINE_GENERATION_LIMITS, isPermanentProviderFailure } from "../../../../src/lib/pipeline-generation-policy";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -86,6 +88,8 @@ export async function runCurationWorkflowV2(params: {
   search?: typeof searchLessonCandidates;
   validate?: typeof validateUrlSource;
 }) {
+  const sourcePolicy = await readCourseSourcePolicy(params.supabase, params.artifactId);
+  if (sourcePolicy && sourcePolicy.policy !== "WEB_ONLY") return runDocumentCuration(params);
   const {
     artifactId,
     curationId,

@@ -45,6 +45,8 @@ RLS y grants de mínimo privilegio; ninguna lectura de archivos privados por URL
 Límites iniciales propuestos: 8 documentos seleccionados, 15 MB por archivo, 40 MB por lote, 40,000 caracteres por documento y 120,000 por selección, reutilizando el contrato del temario. Rechazar excesos, no truncar. Mantener lectura de PDF históricos de hasta 25 MB sin ampliar automáticamente el límite de cargas nuevas. Cuotas acumuladas por curso y organización, concurrencia y presupuesto de extracción deben fijarse y probarse antes del piloto; una cantidad de archivos no equivale a presupuesto de tokens.
 
 ### 5. Biblioteca y revisión de cobertura
+
+Decisión F3 implementada: las referencias de evidencia se guardan como conjuntos inmutables acotados en `course_source_review_versions`, con aprobaciones separadas y CAS. Se evita sobrescribir asociaciones revisadas y duplicar texto. `course_source_assignments`, preparado en F1, no es una segunda fuente activa; cualquier proyección futura debe derivarse de la revisión aprobada. El resolver compartido es `sourceCoverage`; la propuesta es determinista y siempre no verificada, sin ejecutar IA.
 Entradas visibles desde preparación de Base, Temario y Fuentes: seleccionar/arrastrar, progreso, error por archivo, vista del texto interpretado, original autorizado, reutilización, sustitución y retirada lógica. Mostrar política, límites y procesamiento por proveedor IA. No exigir volver a subir en cada etapa.
 
 Proponer asociaciones a partir de fragmentos con IDs servidor; el autor puede corregirlas y el revisor aprobarlas. Algoritmo de cobertura compartido entre UI, API y workers:

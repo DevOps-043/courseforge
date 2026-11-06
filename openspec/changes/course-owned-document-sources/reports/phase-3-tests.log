@@ -1,0 +1,76 @@
+
+> courseforge@1.0.0 test:course-sources
+> npm run test:course-sources --workspace=apps/web && node --test scripts/test-course-source-migration.mjs
+
+
+> web@1.0.0 test:course-sources
+> tsc -p tsconfig.course-sources-test.json && node --test .tmp/course-sources-tests/domains/course-sources/__tests__/*.test.js
+
+✔ un manual cubre varias lecciones sin exigir dos archivos (6.226ms)
+✔ propuestas, conflictos sin resolver y evidencia ajena no acreditan cobertura (1.0025ms)
+✔ mixto busca solo vacíos y una URL revisada complementa sin desplazar el manual (0.9269ms)
+✔ sugerencias deterministas nunca se marcan verificadas y no inventan coincidencias (46.658ms)
+✔ comandos rechazan autoridad y aprobación sin versión (6.99ms)
+✔ una URL sin identidad de lección no se convierte en evidencia general (0.7046ms)
+✔ solo archivos no crea cliente ni busca web y los vacíos quedan bloqueados (344.9372ms)
+✔ documentación completa aprobada no busca complementos en modo mixto (53.7801ms)
+✔ mixto busca solo el tema faltante pero exige revisar la nueva URL (50.7476ms)
+✔ cancelación durante búsqueda no confirma filas ni aprobación (44.722ms)
+✔ fragmentación preserva todo el texto y localizadores posteriores al extracto histórico (5.0919ms)
+✔ PDF textual real se extrae y un documento sin texto suficiente se rechaza (1121.8117ms)
+✔ sin sesión o rol permitido no hay cliente privilegiado, repositorio ni firma (686.4146ms)
+✔ curso ajeno se rechaza antes de construir repositorio o Storage (40.2786ms)
+✔ caída de autoridad mantiene 503 sin efectos ni detalles privados (46.321ms)
+✔ borrador devuelve DRAFT y no construye servicio de carga ni generador (36.0413ms)
+✔ UUID inválido, autoridad enviada en payload y paginación excesiva fallan sin escritura (97.7319ms)
+✔ listado autorizado conserva paginación y no firma descargas (25.9541ms)
+✔ mutaciones rechazan formularios y origen cruzado antes de consultar autoridad (81.4387ms)
+✔ purga exige revisor, autorización del curso y confirmación exacta antes de Storage (722.1294ms)
+✔ inspección no implica purga y el origen cruzado no tiene efectos (69.651ms)
+✔ purga vuelve a comprobar objeto y registra ausencia confirmada sin borrar historial (11.3728ms)
+✔ incertidumbre, objeto cambiado, referencias y retención impiden el borrado (4.4237ms)
+✔ un resultado incierto al borrar no acredita purga exitosa (1.0071ms)
+✔ solo 404 significa ausente; no interpreta errores del proveedor como archivo perdido (0.8453ms)
+✔ identidad y rol se derivan del servidor; el payload no puede convertirse en revisor (364.1042ms)
+✔ sesión ausente y curso ajeno no ejecutan revisión (79.1972ms)
+✔ Storage firma sin sobrescribir y verifica metadata antes de descargar (7.1396ms)
+✔ metadata ausente o tamaño real distinto bloquea descarga (2.1778ms)
+✔ transferencia informa porcentaje y cancelar interrumpe XHR sin confirmar recepción (285.4562ms)
+✔ contratos rechazan autoridad del payload, rutas y tipos incompatibles (19.4386ms)
+✔ reserva firma únicamente la ruta persistida y no devuelve hash o identidad privada (3.3804ms)
+✔ confirmación verifica bytes y termina en UPLOADED, nunca READY (3.9879ms)
+✔ confirmación repetida conserva el estado sin descargar ni escribir (1.2923ms)
+✔ otro actor, reserva vencida y estado retirado no acceden a Storage (2.4521ms)
+✔ hash o tamaño diferentes no confirman el documento (1.5759ms)
+✔ inspección de recepción acepta los cuatro formatos sin extraerlos (61.3431ms)
+✔ rechaza MIME falsificado y texto binario sin marcar aptitud curricular (2.6842ms)
+✔ Office rechaza directorios masivos antes de cargar JSZip (3.6973ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2660.3163
+✔ borrador idempotente conserva DRAFT sin metadata de generación (4152.5017ms)
+✔ reserva y confirmación son idempotentes y el original queda vinculado al curso (3765.3605ms)
+✔ otra organización, otro actor y bytes distintos no confirman reservas (3484.0149ms)
+✔ cuota por curso se aplica antes de crear otra reserva (3703.4933ms)
+✔ reserva vencida no se confirma ni se renueva por reintentar (3187.034ms)
+✔ cuota de bytes es transaccional y no consume una clave fallida (3238.3621ms)
+✔ RLS y grants deniegan tablas y RPC a navegador; snapshots son inmutables para backend (2628.9579ms)
+✔ FK compuestas impiden asignar fragmentos de otro curso al snapshot (2426.6781ms)
+✔ Storage privado resiste una política histórica permisiva sin afectar otros buckets (2326.8266ms)
+✔ extracción tiene lease único y completa fragmentos atómicamente sin aceptar un token ajeno (2283.0669ms)
+✔ sustitución conserva original hasta READY, serializa sucesores y conserva historia inmutable (2383.9949ms)
+✔ política, asociaciones y aprobación tienen CAS y datos viejos se invalidan en la misma transacción (2603.764ms)
+✔ fallo de invalidación revierte política, revisión y metadata; WEB_ONLY conserva generación (2455.7674ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 38985.362
