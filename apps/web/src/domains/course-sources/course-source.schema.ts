@@ -15,6 +15,7 @@ export const reserveSourceUploadSchema = z.object({
   mimeType: z.enum(Object.values(COURSE_SOURCE_FORMATS)),
   sizeBytes: z.number().int().positive().max(COURSE_SOURCE_LIMITS.fileBytes),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  supersedesId: z.uuid().optional(),
 }).strict().superRefine((file, context) => {
   const extension = file.filename.split(".").pop()?.toLowerCase();
   if (!extension || COURSE_SOURCE_FORMATS[extension as keyof typeof COURSE_SOURCE_FORMATS] !== file.mimeType) {
@@ -37,6 +38,7 @@ export const courseSourceDocumentSchema = z.object({
   expected_sha256: z.string(), content_sha256: z.string().nullable(), storage_path: z.string(),
   status: z.enum(["RESERVED", "UPLOADED", "PROCESSING", "READY", "FAILED", "RETIRED"]),
   expires_at: z.string(), created_at: z.string(), uploaded_at: z.string().nullable(),
+  supersedes_id: z.uuid().nullable().optional(),
 });
 export type CourseSourceDocument = z.infer<typeof courseSourceDocumentSchema>;
 
@@ -46,5 +48,6 @@ export function publicSourceDocument(document: CourseSourceDocument) {
     sizeBytes: document.size_bytes, status: document.status,
     createdAt: document.created_at, uploadedAt: document.uploaded_at,
     expiresAt: document.expires_at,
+    supersedesId: document.supersedes_id || null,
   };
 }

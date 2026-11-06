@@ -3,7 +3,7 @@ import { courseSourceDocumentSchema, type CreateSourceDraft, type ReserveSourceU
 import { sourcePersistenceError } from "./course-source-error";
 
 export interface SourceActor { organizationId: string; userId: string }
-const DOCUMENT_COLUMNS = "id,artifact_id,organization_id,created_by,request_key,filename,mime_type,size_bytes,expected_sha256,content_sha256,storage_path,status,expires_at,created_at,uploaded_at";
+const DOCUMENT_COLUMNS = "id,artifact_id,organization_id,created_by,request_key,filename,mime_type,size_bytes,expected_sha256,content_sha256,storage_path,status,expires_at,created_at,uploaded_at,supersedes_id";
 
 export class CourseSourceRepository {
   constructor(private readonly database: SupabaseClient, private readonly actor: SourceActor) {}
@@ -19,10 +19,11 @@ export class CourseSourceRepository {
   }
 
   async reserve(artifactId: string, input: ReserveSourceUpload) {
-    const { data, error } = await this.database.rpc("reserve_course_source_upload", {
+    const { data, error } = await this.database.rpc("reserve_course_source_upload_v2", {
       p_artifact: artifactId, p_organization: this.actor.organizationId, p_actor: this.actor.userId,
       p_key: input.idempotencyKey, p_filename: input.filename, p_mime: input.mimeType,
       p_bytes: input.sizeBytes, p_sha256: input.sha256,
+      p_supersedes: input.supersedesId || null,
     });
     if (error) sourcePersistenceError(error);
     return courseSourceDocumentSchema.parse(data);

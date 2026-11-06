@@ -1,5 +1,7 @@
 # Fase 2 — extracción y biblioteca (2026-11-06)
 
+Este reporte conserva la primera entrega parcial. Los pendientes indicados aquí se resolvieron en [el cierre de fase 2](phase-2-close.md); consultar allí el estado final y evidencia actual.
+
 Implementación local: biblioteca en Base/Temario/Fuentes y preparación de borrador sin IA en creación de cursos. Carga directa privada con confirmación, extracción mediante función background firmada, recuperación explícita, vista de texto y descarga autorizada de original. Retirada lógica conserva el original y evita futuras reservas de procesamiento.
 
 La migración `20261106010000_course_source_extraction.sql` añade reserva de diez minutos y máximo tres intentos. La RPC bloquea por documento, rechaza tokens vencidos/ajenos y persiste fragmentos y READY en una transacción. Un worker anterior no completa después de retirada. El extractor existente admite PDF textual, DOCX, PPTX y TXT con hasta 40,000 caracteres; no hay OCR. Fragmentos de 2,000 caracteres conservan posiciones en el texto normalizado, no páginas inventadas. No hay llamadas IA.

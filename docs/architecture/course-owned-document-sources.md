@@ -1,12 +1,31 @@
-# Fuentes documentales propias — contrato de fase 1
+# Fuentes documentales propias — recepción, extracción y ciclo de vida
 
 Estado: base y biblioteca/extracción implementadas localmente; migraciones no aplicadas remotamente y despliegue no realizado. La biblioteca está en preparación de borrador, Base, Temario y Fuentes. El pipeline de generación conserva sus consumidores históricos; no anunciar generación documental completa como operativa.
 
-Actualización F2: `POST /api/artifacts/:artifactId/sources/documents/:documentId` solicita extracción firmada; `GET` devuelve fragmentos autorizados y `?download=1` una descarga privada de 60 segundos. `POST ?action=retire` retira lógicamente sin borrar original. Migración `20261106010000_course_source_extraction.sql`: lease de diez minutos, tres intentos máximos, persistencia atómica y recuperación explícita. Parser con límite 40,000 caracteres, fragmentos con posiciones en texto normalizado. `READY` acredita extracción, no cobertura curricular. Sustitución versionada y conciliación de huérfanos continúan pendientes; ver [evidencia F2](../../openspec/changes/course-owned-document-sources/reports/phase-2.md). Las secciones siguientes conservan el contrato base F1; la extracción nueva sustituye sus límites temporales de disponibilidad.
+Actualización F2: `POST /api/artifacts/:artifactId/sources/documents/:documentId` solicita extracción firmada; `GET` devuelve fragmentos autorizados y `?download=1` una descarga privada de 60 segundos. `POST ?action=retire` retira lógicamente sin borrar original. Migración `20261106010000_course_source_extraction.sql`: lease de diez minutos, tres intentos máximos, persistencia atómica y recuperación explícita. Parser con límite 40,000 caracteres, fragmentos con posiciones en texto normalizado. `READY` acredita extracción, no cobertura curricular. La migración aditiva `20261106020000_course_source_lifecycle.sql` completa sustitución e inspección/purga separada; ver [cierre F2](../../openspec/changes/course-owned-document-sources/reports/phase-2-close.md). Las secciones siguientes conservan el contrato base F1; las ampliaciones F2 sustituyen sus límites temporales de disponibilidad.
+
+## Sustitución e historial
+
+`POST /sources/uploads` admite `supersedesId` opcional. La RPC v2 autoriza el mismo curso/organización, requiere un predecesor READY y crea un ID/objeto nuevo con FK compuesta. Una sola sustitución no retirada puede apuntar a cada versión; la clave idempotente incluye el vínculo y no admite cambiarlo. Se aplican las mismas cuotas acumuladas y límites F1. Se rechazan archivos idénticos ya registrados con 409: reutilizar el original, sin duplicarlo.
+
+El predecesor sigue READY durante carga, extracción fallida o interrupción del sucesor. Cuando este completa READY, un trigger retira el anterior en la misma transacción; si el anterior dejó de estar disponible, se revierte la finalización. Se conservan original, fragmentos, fechas y vínculo; no hay UPDATE de identidad ni borrado de versiones históricas. La biblioteca muestra todas las versiones y permite descarga autorizada del anterior. Una sustitución fallida puede recuperarse hasta el límite de intentos o retirarse antes de preparar otra.
+
+La transferencia muestra progreso por bytes y permite cancelar XHR; la reserva queda para reintento/conciliación y la extracción en curso se cancela lógicamente mediante retirada. El reintento en la misma sesión conserva la clave por hash y predecesor. No confundir porcentaje de transferencia con avance del parser.
+
+## Conciliación, retención y purga autorizada
+
+`POST /api/artifacts/:artifactId/sources/reconciliation` exige JSON, mismo origen y rol revisor (ADMIN/SUPERADMIN/ARQUITECTO) con acceso al curso. Cuerpos estrictos:
+
+- `{ "action": "inspect" }`: inspecciona hasta 50 reservas RESERVED vencidas hace más de 24 horas. Solo un 404 explícito de Storage significa MISSING; otros fallos son UNKNOWN. Guarda actor/fecha y versión observada sin exponer rutas o capacidades de descarga. No borra objetos.
+- `{ "action": "purge", "documentId": "<UUID>", "confirmDocumentId": "<mismo UUID>" }`: operación irreversible separada; UI pide escribir el ID exacto. Revalida organización, estado RESERVED y al menos siete días desde vencimiento, conciliación conocida, referencias y versión del objeto. UNKNOWN, referencias o cambio de versión bloquean. Solo borra la ruta persistida en el bucket privado; después comprueba ausencia explícita y conserva registro/actor de autorización. Resultado incierto devuelve error y requiere consulta, nunca acredita éxito por timeout.
+
+Sin purga automática ni borrado de documentos UPLOADED/READY/RETIRED o fragmentos. El historial y las reservas conciliadas siguen contando en cuotas; no se declara una liberación de presupuesto antes de reconciliar datos/retención de forma separada. Para una carga huérfana fuera de una reserva conocida no se ofrece borrado general del bucket: debe investigarse administrativamente antes de autorizar un efecto.
+
+No se ejecutó purga de datos reales al desarrollar esta funcionalidad. En despliegue, el operador debe usar primero inspección, revisar el ID/curso/retención y autorizar cada purga desde el control separado. Mantener el historial de conciliación durante la vida del curso; las fuentes consumidas no tienen borrado automático. Cualquier política de eliminación de curso completo requiere un cambio específico.
 
 ## Responsabilidades
 
-`apps/web/src/domains/course-sources` separa schemas, reglas de recepción, repositorio, Storage, autorización y adaptación HTTP. Sus rutas delegan casos de uso; no importan proveedores IA ni disparan jobs.
+`apps/web/src/domains/course-sources` separa schemas, reglas de recepción, repositorio, Storage, autorización y adaptación HTTP. Las rutas de recepción no disparan generación; la ruta de procesamiento solicita el job firmado de extracción, sin proveedores IA.
 
 La biblioteca es independiente de `syllabus_source_documents` y del flag `PROVIDED_SYLLABUS_ENABLED`. El cargador histórico de Temario y la acción PDF de curación conservan su contrato. El creador histórico `generateArtifactAction` sigue iniciando IA; no debe utilizarse para crear un borrador documental. La conexión entre el nuevo borrador y generación pertenece a una fase posterior.
 
@@ -32,7 +51,7 @@ Máximo JSON: 4096 bytes. Las mutaciones requieren `Content-Type: application/js
 5. Confirmar: servidor consulta metadata, comprueba tamaño antes de descargar, verifica bytes reales, hash e inspección inicial de formato. Office limita entradas antes de materializar el directorio; TXT exige UTF-8 y ausencia de NUL. PDF comprueba cabecera. No se descomprime contenido Office ni se extrae texto aquí.
 6. La RPC bloquea la fila y confirma `UPLOADED` una sola vez. Confirmaciones repetidas devuelven su estado sin descargar de nuevo. Timeout o error de DB requieren consultar listado/volver a confirmar la misma reserva; no borrar originales como compensación.
 
-`UPLOADED` solo acredita recepción verificada. PDF con cabecera puede seguir siendo corrupto o escaneado; Office puede tener XML inválido. La extracción, budgets de descompresión, diagnóstico, estado `READY` y evaluación curricular pertenecen a F2/F3 y aún no se exponen. No hay job de extracción en esta fase.
+`UPLOADED` solo acredita recepción verificada. PDF con cabecera puede seguir siendo corrupto o escaneado; Office puede tener XML inválido. F2 expone extracción con lectura Office acotada, diagnóstico y estado `READY`; la evaluación curricular pertenece a F3 y todavía no se ofrece.
 
 ## Persistencia y seguridad
 
@@ -61,7 +80,7 @@ Storage: bucket privado con formatos y 15 MB máximos; política restrictiva imp
 | Borradores documentales | 50 por actor/organización en 24 horas |
 | Directorio Office | 2000 entradas; ZIP64 y volúmenes múltiples rechazados |
 
-La reserva serializa por organización mediante bloqueo transaccional corto, comprueba cuotas e inserta en una transacción. Reservas vencidas y fuentes retiradas continúan contando hasta que exista conciliación/retención; F1 no purga. Un hash repetido en un curso produce conflicto y debe reutilizarse el documento existente; no revela duplicados de otra organización. Las cuotas SQL y constantes de aplicación deben cambiar conjuntamente y validarse mediante pruebas.
+La reserva serializa por organización mediante bloqueo transaccional corto, comprueba cuotas e inserta en una transacción. Reservas vencidas y fuentes retiradas continúan contando incluso tras purgar su objeto: se preservan sus registros y no se anuncia liberación de presupuesto. Un hash repetido en un curso produce conflicto y debe reutilizarse el documento existente; no revela duplicados de otra organización. Las cuotas SQL y constantes de aplicación deben cambiar conjuntamente y validarse mediante pruebas.
 
 ## Puesta en servicio y reversión
 
@@ -76,5 +95,6 @@ La reversión operativa conserva datos y bloquea nuevas llamadas a estas rutas e
 - `npm run test:course-sources`: contratos/servicios/HTTP y migración real en PGlite aislado, sin configuración remota. Requiere runtime temporal PGlite: por defecto `apps/web/.tmp/syllabus-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js`; override `COURSE_SOURCES_PGLITE_PATH`. No es dependencia de producción.
 - Preparación del runtime si falta: `npm install --prefix apps/web/.tmp/syllabus-sql-runtime --no-save --package-lock=false --ignore-scripts @electric-sql/pglite@0.5.8`. No instala ni conecta una base remota.
 - `npm run db:migrations:check`, `npm run typecheck`, `npm run verify:pr` y suites de autoridad correspondientes.
+- `npm run qa:course-sources`: navegador local con React/CSS reales, APIs sintéticas y solicitudes externas bloqueadas; captura escritorio y móvil oscuro, comprueba sustitución/historial, texto seguro y confirmación explícita de purga. No utiliza datos tenant ni acredita Storage desplegado.
 
 Diseño de las fases siguientes y criterios de aceptación: [OpenSpec](../../openspec/changes/course-owned-document-sources/tasks.md). La cobertura por contenido, citas y elección de política por curso se implementarán después de esta base.

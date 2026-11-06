@@ -1,0 +1,39 @@
+
+> web@1.0.0 test:course-sources
+> tsc -p tsconfig.course-sources-test.json && node --test .tmp/course-sources-tests/domains/course-sources/__tests__/*.test.js
+
+✔ fragmentación preserva todo el texto y localizadores posteriores al extracto histórico (5.7063ms)
+✔ PDF textual real se extrae y un documento sin texto suficiente se rechaza (726.2185ms)
+✔ sin sesión o rol permitido no hay cliente privilegiado, repositorio ni firma (566.5316ms)
+✔ curso ajeno se rechaza antes de construir repositorio o Storage (33.8928ms)
+✔ caída de autoridad mantiene 503 sin efectos ni detalles privados (41.2903ms)
+✔ borrador devuelve DRAFT y no construye servicio de carga ni generador (32.8948ms)
+✔ UUID inválido, autoridad enviada en payload y paginación excesiva fallan sin escritura (97.6247ms)
+✔ listado autorizado conserva paginación y no firma descargas (26.7278ms)
+✔ mutaciones rechazan formularios y origen cruzado antes de consultar autoridad (83.0238ms)
+✔ purga exige revisor, autorización del curso y confirmación exacta antes de Storage (565.3692ms)
+✔ inspección no implica purga y el origen cruzado no tiene efectos (51.9543ms)
+✔ purga vuelve a comprobar objeto y registra ausencia confirmada sin borrar historial (11.622ms)
+✔ incertidumbre, objeto cambiado, referencias y retención impiden el borrado (4.1042ms)
+✔ un resultado incierto al borrar no acredita purga exitosa (1.0725ms)
+✔ solo 404 significa ausente; no interpreta errores del proveedor como archivo perdido (0.6878ms)
+✔ Storage firma sin sobrescribir y verifica metadata antes de descargar (6.3293ms)
+✔ metadata ausente o tamaño real distinto bloquea descarga (2.0529ms)
+✔ transferencia informa porcentaje y cancelar interrumpe XHR sin confirmar recepción (239.6716ms)
+✔ contratos rechazan autoridad del payload, rutas y tipos incompatibles (13.5586ms)
+✔ reserva firma únicamente la ruta persistida y no devuelve hash o identidad privada (3.5632ms)
+✔ confirmación verifica bytes y termina en UPLOADED, nunca READY (1.4301ms)
+✔ confirmación repetida conserva el estado sin descargar ni escribir (2.4583ms)
+✔ otro actor, reserva vencida y estado retirado no acceden a Storage (1.6484ms)
+✔ hash o tamaño diferentes no confirman el documento (1.5847ms)
+✔ inspección de recepción acepta los cuatro formatos sin extraerlos (35.2093ms)
+✔ rechaza MIME falsificado y texto binario sin marcar aptitud curricular (3.7538ms)
+✔ Office rechaza directorios masivos antes de cargar JSZip (3.9384ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2301.1111

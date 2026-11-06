@@ -1,6 +1,6 @@
 # Etapas de implementación
 
-Estado: fase 1 implementada localmente; migración remota, despliegue y fases 2–6 pendientes. Evidencia de F1 en `reports/phase-1.md`. Completar en orden, con cambios pequeños y recuperables en el checkout principal. No crear worktrees.
+Estado: fases 1 y 2 implementadas y verificadas localmente; migraciones remotas, despliegue y fases 3–6 pendientes. Evidencia de F2 en `reports/phase-2-close.md`. Completar en orden, con cambios pequeños y recuperables en el checkout principal. No crear worktrees.
 
 ## F0. Alcance y línea base
 - [x] Contrastar cargador de Temario, registro PDF, filtros de curación y consumo de Materiales con código vigente.
@@ -22,11 +22,11 @@ Salida: contratos y aislamiento probados; ningún consumidor de generación requ
 
 ## F2. Ingesta documental y biblioteca
 - [x] Extraer/reutilizar parsers de PDF/DOCX/PPTX/TXT con límites y versión explícita de extracción.
-- [ ] Implementar verificación de bytes reales, MIME, estructura, hash, cuotas y protección de ZIP Office; sin recursos remotos ni ejecución de contenido.
-- [ ] Implementar job firmado, leases, reintentos acotados, recuperación, cancelación y confirmación atómica de fragmentos.
-- [ ] Crear UI para selección/arrastre, progreso persistente, original privado y texto interpretado, errores, reutilización, reemplazo y retirada lógica.
+- [x] Implementar verificación de bytes reales, MIME, estructura, hash, cuotas y protección de ZIP Office; sin recursos remotos ni ejecución de contenido.
+- [x] Implementar job firmado, leases, reintentos acotados, recuperación, cancelación y confirmación atómica de fragmentos.
+- [x] Crear UI para selección/arrastre, progreso persistente, original privado y texto interpretado, errores, reutilización, reemplazo y retirada lógica.
 - [x] Conectar biblioteca a Base/Temario/Fuentes, manteniendo importación de temario explícito independiente.
-- [ ] Añadir conciliación de cargas huérfanas, retención y procedimiento de purga separado/autorizado.
+- [x] Añadir conciliación de cargas huérfanas, retención y procedimiento de purga separado/autorizado.
 
 Salida: cuatro formatos recuperables tras recarga; archivos inválidos o excesivos rechazados; fuentes nunca públicas.
 

@@ -132,9 +132,10 @@ preparada localmente, sin aplicación remota ni despliegue en este cambio.
 `UPLOADED` no significa texto extraído ni fuente apta. La biblioteca visual de
 F2 solicita `course-source-extraction-background` firmado y persiste fragmentos
 con lease y confirmación atómica mediante la migración `20261106010000`.
-`READY` acredita extracción, no cobertura curricular. Ambas migraciones permanecen
-sin aplicación remota en este cambio. Sustitución versionada y conciliación de
-huérfanos siguen pendientes; conservar consumidores históricos de generación.
+`READY` acredita extracción, no cobertura curricular. La migración `20261106020000`
+añade sustitución con historial y conciliación/purga puntual de reservas abandonadas.
+Las tres migraciones permanecen sin aplicación remota en este cambio. Conservar
+los consumidores históricos de generación hasta implementar F3/F4.
 Contratos, cuotas y operación:
 [fuentes propias](course-owned-document-sources.md).
 

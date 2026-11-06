@@ -34,6 +34,7 @@ async function database() {
     insert into profiles values ('${actor}'),('${otherActor}');`);
   await db.exec(migration);
   await db.exec(await readFile('supabase/migrations/20261106010000_course_source_extraction.sql', 'utf8'));
+  await db.exec(await readFile('supabase/migrations/20261106020000_course_source_lifecycle.sql', 'utf8'));
   await db.exec('set role service_role');
   return db;
 }
@@ -196,5 +197,33 @@ test('extracción tiene lease único y completa fragmentos atómicamente sin ace
     await command('retire');
     assert.equal((await db.query('select status from course_source_documents')).rows[0].status, 'RETIRED');
     await assert.rejects(command('reserve'), /SOURCE_CONFLICT/);
+  } finally { await db.close(); }
+});
+
+test('sustitución conserva original hasta READY, serializa sucesores y conserva historia inmutable', async () => {
+  const db = await database();
+  try {
+    const course = await draft(db); const original = await reserve(db, course); await confirm(db, original);
+    const process = async (entry, action, token = null) => (await db.query(
+      'select process_course_source_document($1,$2,$3,$4,$5,$6::jsonb) as token',
+      [entry.id, course, organization, action, token, JSON.stringify([{ordinal:0,text:'Texto fuente',sha256:'a'.repeat(64),locator:{characterStart:0}}])])).rows[0].token;
+    await process(original, 'complete', await process(original, 'reserve'));
+    const replacementKey = identifier();
+    const replace = async (replacementId = original.id, requestKey = replacementKey, hash = 'e'.repeat(64)) =>
+      (await db.query('select reserve_course_source_upload_v2($1,$2,$3,$4,$5,$6,$7,$8,$9) as entry',
+        [course, organization, actor, requestKey, 'nuevo.txt','text/plain',100,hash,replacementId])).rows[0].entry;
+    const next = await replace(); assert.equal(next.supersedes_id, original.id);
+    assert.equal((await replace()).id, next.id);
+    assert.equal((await db.query('select status from course_source_documents where id=$1',[original.id])).rows[0].status,'READY');
+    await assert.rejects(replace(original.id,identifier(),'f'.repeat(64)), /SOURCE_CONFLICT/);
+    await assert.rejects(replace(identifier(),identifier(),'f'.repeat(64)), /SOURCE_NOT_FOUND/);
+    await confirm(db,next);
+    await process(next,'complete',await process(next,'reserve'));
+    assert.equal((await db.query('select status from course_source_documents where id=$1',[original.id])).rows[0].status,'RETIRED');
+    assert.equal((await db.query('select count(*)::int as total from course_source_fragments')).rows[0].total,2);
+    await assert.rejects(db.query('update course_source_documents set supersedes_id=null where id=$1',[next.id]), /SOURCE_CONFLICT/);
+    await db.exec('set role authenticated');
+    await assert.rejects(db.query('select * from course_source_upload_reconciliation'), /permission denied/);
+    await assert.rejects(replace(), /permission denied/);
   } finally { await db.close(); }
 });

@@ -35,7 +35,32 @@ El sistema SHALL permitir cargar y reutilizar PDF textual, DOCX, PPTX y TXT desd
 - **WHEN** los bytes reales, contenido extraído, MIME o estructura incumplen el contrato
 - **THEN** se rechaza el archivo sin truncar silenciosamente ni aprobar contenido parcial
 
-### Requirement: Política explícita de fuentes
+### Requirement: Sustitución conserva versiones inmutables
+El sistema SHALL crear un original nuevo vinculado a su predecesor y conservar el anterior disponible hasta que la extracción del sucesor se confirme atómicamente.
+
+#### Scenario: Sustitución fallida
+- **WHEN** el archivo nuevo falla o se interrumpe su extracción
+- **THEN** el original anterior conserva su estado disponible y sus fragmentos
+- **AND** el nuevo puede recuperarse o retirarse sin sobrescribir el anterior
+
+#### Scenario: Sustitución completada
+- **WHEN** el sucesor pasa a READY
+- **THEN** el anterior pasa a RETIRED en la misma transacción y sigue descargable como historial
+- **AND** no se admiten dos sucesores vigentes para el mismo predecesor
+
+### Requirement: Conciliación y purga son operaciones distintas
+El sistema SHALL inspeccionar reservas vencidas tras 24 horas sin borrarlas y permitir purga puntual únicamente a un revisor autorizado tras siete días, confirmación exacta y comprobación de referencias y versión del objeto.
+
+#### Scenario: Storage no confirma ausencia
+- **WHEN** Storage responde con un error distinto de 404 o no acredita versión
+- **THEN** se registra UNKNOWN y no se habilita borrado por esa observación
+
+#### Scenario: Purga puntual autorizada
+- **WHEN** se confirma el ID exacto de una reserva sin referencias, con retención cumplida y objeto sin cambios
+- **THEN** solo se elimina su objeto privado y se confirma su ausencia antes de registrar éxito
+- **AND** se conserva el registro documental y el actor de autorización
+
+### Requirement: Política explícita de fuentes por curso
 El sistema SHALL resolver y fijar en servidor una política documental exclusiva, documental con complemento web o web, independiente de la ruta histórica del temario y del flag de importación de estructura.
 
 #### Scenario: Elección por curso documental
