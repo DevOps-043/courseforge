@@ -1,16 +1,18 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
-import { getAuthBridgeUser, getUserOrganizations } from "@/utils/auth/session";
+import { resolveServerIdentity } from "./server-identity";
+import { loadCurrentUserMemberships, type VerifiedOrganizationMembership } from "./tenant-memberships";
+import { TenantContextLookupError } from "./tenant-context-error";
+export { TenantContextLookupError } from "./tenant-context-error";
 import {
   getSupabaseServiceRoleKey,
   getSupabaseUrl,
 } from "@/lib/server/env";
 import {
-  mapOrganizationRoleToPlatformRole,
   normalizePlatformRole,
 } from "@/utils/auth/platform-role";
-import { isTransientTenantLookupError, runTenantLookupWithRetry } from "@/lib/server/tenant-lookup-retry";
+import { runTenantLookupWithRetry } from "@/lib/server/tenant-lookup-retry";
 
 export interface TenantContext {
   organizationId: string;
@@ -19,17 +21,6 @@ export interface TenantContext {
   userId: string;
   userEmail?: string | null;
   platformRole: string | null;
-}
-
-interface OrganizationCookieRecord {
-  id: string;
-  name?: string;
-  role: string;
-  slug: string;
-}
-
-interface ProfileRoleRecord {
-  platform_role?: string | null;
 }
 
 interface OrganizationUserRoleRecord {
@@ -46,34 +37,8 @@ function normalizePathSegment(segment: string | null | undefined) {
   return segment?.trim().toLowerCase() || null;
 }
 
-export class TenantContextLookupError extends Error {
-  readonly code = "TENANT_LOOKUP_UNAVAILABLE";
-  readonly retryable = true;
-
-  constructor() {
-    super("No se pudo verificar temporalmente la empresa y sus permisos. Intenta de nuevo.");
-  }
-}
-
-function getErrorMessage(error: unknown) {
-  if (typeof error === "object" && error !== null && "message" in error) {
-    return String(error.message);
-  }
-  return String(error);
-}
-
-function logTenantLookupError(label: string, error: unknown) {
-  const message = getErrorMessage(error);
-  if (isTransientTenantLookupError(error)) {
-    console.warn(`[TenantContext] ${label}: ${message}`);
-    return;
-  }
-
-  console.error(`[TenantContext] ${label}:`, message);
-}
-
 function getOrganizationBySlug(
-  organizations: OrganizationCookieRecord[],
+  organizations: VerifiedOrganizationMembership[],
   organizationSlug?: string | null,
 ) {
   const normalizedSlug = normalizePathSegment(organizationSlug);
@@ -86,25 +51,6 @@ function getOrganizationBySlug(
     ) || null
   );
 }
-
-const getProfilePlatformRole = cache(async (userId: string) => {
-  const { data, error } = await runTenantLookupWithRetry(async (signal) => {
-    const admin = getAdminClient();
-    return admin
-      .from("profiles")
-      .select("platform_role")
-      .eq("id", userId)
-      .abortSignal(signal)
-      .maybeSingle();
-  });
-
-  if (error) {
-    logTenantLookupError("Error loading profile role", error);
-    throw new TenantContextLookupError();
-  }
-
-  return ((data || null) as ProfileRoleRecord | null)?.platform_role || null;
-});
 
 export const getOrganizationPlatformRole = cache(async (
   userId: string,
@@ -122,7 +68,8 @@ export const getOrganizationPlatformRole = cache(async (
   });
 
   if (error) {
-    logTenantLookupError("Error loading organization role", error);
+    try { console.error("[TenantContext] No se pudo verificar el rol de la organización."); }
+    catch { /* Conservar la clase de indisponibilidad aunque falle observabilidad. */ }
     throw new TenantContextLookupError();
   }
 
@@ -157,17 +104,10 @@ export async function upsertOrganizationPlatformRole(params: {
 }
 
 export const getOrganizationsFromSession = cache(async () => {
-  const bridgeUser = await getAuthBridgeUser();
-  const organizationsFromCookie =
-    (await getUserOrganizations()) as OrganizationCookieRecord[];
-
-  const organizationIds = new Set(bridgeUser?.organization_ids || []);
-  const organizations =
-    organizationIds.size > 0
-      ? organizationsFromCookie.filter((organization) =>
-          organizationIds.has(organization.id),
-        )
-      : organizationsFromCookie;
+  const bridgeUser = (await resolveServerIdentity())?.user ?? null;
+  const organizations = bridgeUser?.id
+    ? await loadCurrentUserMemberships(bridgeUser.id)
+    : [];
 
   return {
     bridgeUser,
@@ -188,17 +128,12 @@ export const resolveTenantContext = cache(async (
     return null;
   }
 
-  const signedPlatformRole = normalizePlatformRole(bridgeUser.platform_role);
-  const platformRole =
-    signedPlatformRole ||
-    normalizePlatformRole(await getProfilePlatformRole(bridgeUser.id));
   const storedOrganizationPlatformRole = await getOrganizationPlatformRole(
     bridgeUser.id,
     organization.id,
   );
-  const organizationPlatformRole =
-    normalizePlatformRole(storedOrganizationPlatformRole) ||
-    mapOrganizationRoleToPlatformRole(organization.role);
+  const organizationPlatformRole = normalizePlatformRole(storedOrganizationPlatformRole);
+  if (!organizationPlatformRole) return null;
 
   return {
     organizationId: organization.id,
@@ -206,7 +141,7 @@ export const resolveTenantContext = cache(async (
     organizationSlug: organization.slug,
     userId: bridgeUser.id,
     userEmail: bridgeUser.email,
-    platformRole: organizationPlatformRole || platformRole,
+    platformRole: organizationPlatformRole,
   };
 });
 
@@ -228,6 +163,14 @@ export async function resolveDefaultTenantPath(targetPath = "/admin") {
 
   return buildTenantPath(activeOrganization.slug, targetPath);
 }
+
+export const resolveTenantContextByOrganizationId = cache(async (organizationId: string) => {
+  const { organizations } = await getOrganizationsFromSession();
+  const organization = organizations.find((candidate) => candidate.id === organizationId);
+  if (!organization) return null;
+  const tenant = await resolveTenantContext(organization.slug);
+  return tenant?.organizationId === organizationId ? tenant : null;
+});
 
 export function buildTenantPath(organizationSlug: string, path: string) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;

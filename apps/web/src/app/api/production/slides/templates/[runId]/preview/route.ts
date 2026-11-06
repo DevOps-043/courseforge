@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { resolveBundleAgentAuthContext } from "@/domains/production/bundle-agent/route-context";
 import { bundleAgentRouteErrorResponse } from "@/domains/production/bundle-agent/route-contract";
 import { hydrateImportedDesignForOrganization } from "@/domains/production/slides/import/imported-slide-bundle-assets.server";
@@ -26,6 +27,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ runI
     return new Response(importedDesignPreview(design, 0), { headers: { "Content-Type": "text/html; charset=utf-8",
       "Content-Security-Policy": IMPORT_PREVIEW_CSP, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "x-request-id": requestId } });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof HtmlSlideImportError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: error.message, requestId, status: 422 });
     return bundleAgentRouteErrorResponse({ component: "production.slides.templates.preview", error, requestId });
   }

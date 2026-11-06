@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -46,6 +47,8 @@ export async function GET(request: Request) {
     if (error) throw error;
     return apiSuccessResponse({ data: data || null }, { requestId, headers: { "Cache-Control": "private, no-store" } });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.automation.runs.lookup_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo consultar la automatización.", requestId, retryable: true, status: 500 });
   }
@@ -87,6 +90,8 @@ export async function POST(request: Request) {
     });
     return apiSuccessResponse({ data: result }, { requestId, status: 202 });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof ProductionAutomationRunError) {
       return apiErrorResponse({
         code: error.status === 404 ? API_ERROR_CODE.resourceNotFound : error.status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest,

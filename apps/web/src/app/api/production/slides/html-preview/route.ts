@@ -1,4 +1,5 @@
 import { createClient } from "@/utils/supabase/server";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import {
   getAuthenticatedUser,
   getAuthorizedMaterialComponentAdmin,
@@ -80,6 +81,8 @@ export async function GET(request: Request) {
     },
   });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.slides.html_preview_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar la vista previa de slides.", requestId, retryable: true, status: 500 });
   }

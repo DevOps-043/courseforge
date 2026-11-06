@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { authorizationUnavailableResponse } from '@/lib/server/authorization-unavailable-response';
 import { createClient } from '@/utils/supabase/server';
 import {
     getAuthenticatedUser,
@@ -98,6 +99,8 @@ export async function POST(request: Request) {
         }, { requestId });
 
     } catch (error: unknown) {
+        const unavailable = authorizationUnavailableResponse(error, requestId);
+        if (unavailable) return unavailable;
         logger.error('production.artlist.import.failed', error);
         const mapped = mapExternalImportError(error, 'Artlist');
         return apiErrorResponse({

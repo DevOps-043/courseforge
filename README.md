@@ -8,6 +8,9 @@ trabajo asistido por agentes. Lee [AGENTS.md](AGENTS.md), la
 [contexto canónico](docs/architecture/system-context.md). Las instrucciones por
 herramienta apuntan a esas fuentes; el estado de cambios vive en OpenSpec.
 
+La [auditoría de deuda técnica](TECHNICAL_DEBT_AUDIT.md) registra la línea base,
+la cobertura efectiva, los hallazgos priorizados y las verificaciones pendientes.
+
 SofLIA Architect crea cursos completos a partir de una idea o de un paquete SCORM: investiga, estructura, planifica, cura fuentes, genera materiales, produce assets visuales, ensambla videos con Remotion y publica el resultado hacia SofLIA.
 
 El producto es un flujo operativo con aprobaciones humanas, contratos de datos versionados, configuracion por organizacion, importacion de assets externos, monitoreo de consumo de IA y una capa de produccion audiovisual (editor de composicion, HeyGen, slides, efectos de sonido y procesamiento de audio).

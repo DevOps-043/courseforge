@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
@@ -31,11 +32,12 @@ export async function POST(request: Request, context: RouteContext) {
     const supabase = await createClient();
     const user = await getAuthenticatedUser(supabase);
     if (!user) return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
-    if (!(await canReviewContent(user.userId))) {
-      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para separar audio.", requestId, status: 403 });
-    }
+
     const tenant = await resolveActiveTenantContext();
     if (!tenant) return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 });
+    if (!(await canReviewContent(user.userId, tenant))) {
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para separar audio.", requestId, status: 403 });
+    }
     const { draftId } = await context.params;
     const parsedDraftId = z.string().uuid().parse(draftId);
     const parsed = await parseJsonRequest(request, requestSchema, MAX_HYPERFRAMES_DETACH_AUDIO_REQUEST_BYTES);
@@ -139,6 +141,8 @@ export async function POST(request: Request, context: RouteContext) {
     if (linkError) throw linkError;
     return apiSuccessResponse({ data: detachedAsset }, { requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: error.issues[0]?.message || "Solicitud inválida.", requestId, status: 400 });
     }

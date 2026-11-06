@@ -1,0 +1,171 @@
+
+> web@1.0.0 test:auth-bridge
+> tsc -p tsconfig.auth-bridge-test.json && node .tmp/auth-bridge-tests/app/login/__tests__/auth-bridge-contract.test.js && node --test .tmp/auth-bridge-tests/features/auth/__tests__/auth-session.test.js .tmp/auth-bridge-tests/app/login/__tests__/tenant-authority.test.js
+
+▶ Auth Bridge contract
+  ✔ preserves the session deadline when switching organizations (4.6017ms)
+  ✔ rejects expired or missing session deadlines (0.378ms)
+  ✔ selects the migrated Learning profile contract (0.4519ms)
+  ✔ accepts Learning Supabase Auth when the UUID matches the profile (1.7001ms)
+  ✔ supports username login after the bridge resolves the profile email (0.447ms)
+  ✔ rejects invalid credentials with a safe message (0.4184ms)
+  ✔ rejects mismatched Auth and profile UUIDs (0.4004ms)
+  ✔ maps operational auth failures without exposing internals (0.3875ms)
+  ✔ keeps the bridge source away from removed Learning columns (1.1124ms)
+  ✔ keeps the JWT metadata compatible while promoting platform_role (1.2014ms)
+  ✔ normalizes legacy Learning roles to the Engine contract (0.5859ms)
+  ✔ derives a tenant role from the active organization membership (0.2775ms)
+  ✔ grants global monitoring only to the explicit Learning administrator role (0.464ms)
+  ✔ routes canonical roles to their corresponding workspace (0.2922ms)
+  ✔ declares the Learning Auth anon key as required runtime config (0.89ms)
+✔ Auth Bridge contract (17.8015ms)
+ℹ tests 15
+ℹ suites 1
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 32.8488
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+▶ autoridad tenant vigente
+  ✖ conserva rol local e ignora cookie y rol global ADMIN (454.4456ms)
+  ✖ deniega rol ausente o desconocido sin fallback (65.9346ms)
+  ✖ claims vacíos o ausentes no agregan membresía desde cookie (36.6377ms)
+  ✖ recupera sesión legacy con membresía vigente sin depender de cookie (37.3913ms)
+  ✖ revocación prevalece sobre claim firmado y rol local (30.2856ms)
+  ✖ no consulta roles para slug ajeno ni membresías sin identidad (31.466ms)
+  ✔ propaga caída de membresía y rol incluso con referer (52.836ms)
+  ✔ rechaza resultados truncados, malformados o inconsistentes (199.2376ms)
+✖ autoridad tenant vigente (911.7696ms)
+{"timestamp":"2026-11-04T23:15:41.526Z","level":"warn","component":"auth.session","event":"auth.session.unavailable","correlationId":"1fce931f-5907-4c74-bfbe-433d0e9f1e04"}
+▶ Server-verified client identity
+  ✔ accepts Auth Bridge without requiring a GoTrue session (3.9418ms)
+  ✔ preserves legacy Supabase sessions when no bridge identity exists (0.5714ms)
+  ✔ returns no identity when neither provider has a valid session (0.3177ms)
+  ✔ does not silently fall back when verification fails operationally (0.7285ms)
+  ✔ projects only declared fields and rejects invalid actor identities (2.1346ms)
+✔ Server-verified client identity (10.0098ms)
+▶ Session HTTP and client contract
+  ✔ returns a non-cacheable, token-free identity with correlation headers (10.0472ms)
+  ✔ returns non-cacheable 401 for absent or expired sessions (1.4822ms)
+  ✔ returns safe non-cacheable 500 without provider details (5.5725ms)
+  ✔ uses same-origin credentials, no-store and a bounded request (1.8051ms)
+  ✔ treats 401 as unauthenticated, but rejects server errors and malformed identities (3.1536ms)
+✔ Session HTTP and client contract (22.9787ms)
+▶ Client identity lifecycle
+  ✔ deduplicates concurrent initialization and hydrates actorId (1.7097ms)
+  ✔ does not resurrect a user when a lookup finishes after logout (0.5628ms)
+  ✔ clears stale identity on expiration and supports retry after network failure (0.7078ms)
+  ✔ retains the scope guard and shows a recovery action instead of silently hiding (1.401ms)
+✔ Client identity lifecycle (4.9198ms)
+ℹ tests 22
+ℹ suites 4
+ℹ pass 16
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1610.0059
+
+✖ failing tests:
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\tenant-authority.test.js:75:24
+✖ conserva rol local e ignora cookie y rol global ADMIN (454.4456ms)
+  Error [TenantContextLookupError]: No se pudo verificar temporalmente la empresa y sus permisos. Intenta de nuevo.
+      at loadCurrentUserMemberships (evalmachine.<anonymous>:46:15)
+      at async evalmachine.<anonymous>:84:11
+      at async Object.resolveTenantContext (evalmachine.<anonymous>:92:43)
+      at async TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\tenant-authority.test.js:77:33)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1869:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    code: 'TENANT_LOOKUP_UNAVAILABLE',
+    retryable: true
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\tenant-authority.test.js:81:24
+✖ deniega rol ausente o desconocido sin fallback (65.9346ms)
+  Error [TenantContextLookupError]: No se pudo verificar temporalmente la empresa y sus permisos. Intenta de nuevo.
+      at loadCurrentUserMemberships (evalmachine.<anonymous>:46:15)
+      at async evalmachine.<anonymous>:84:11
+      at async Object.resolveTenantContext (evalmachine.<anonymous>:92:43)
+      at async TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\tenant-authority.test.js:85:36)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'TENANT_LOOKUP_UNAVAILABLE',
+    retryable: true
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\tenant-authority.test.js:88:24
+✖ claims vacíos o ausentes no agregan membresía desde cookie (36.6377ms)
+  Error [TenantContextLookupError]: No se pudo verificar temporalmente la empresa y sus permisos. Intenta de nuevo.
+      at loadCurrentUserMemberships (evalmachine.<anonymous>:46:15)
+      at async evalmachine.<anonymous>:84:11
+      at async Object.resolveTenantContext (evalmachine.<anonymous>:92:43)
+      at async TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\tenant-authority.test.js:93:32)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'TENANT_LOOKUP_UNAVAILABLE',
+    retryable: true
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\tenant-authority.test.js:96:24
+✖ recupera sesión legacy con membresía vigente sin depender de cookie (37.3913ms)
+  Error [TenantContextLookupError]: No se pudo verificar temporalmente la empresa y sus permisos. Intenta de nuevo.
+      at loadCurrentUserMemberships (evalmachine.<anonymous>:46:15)
+      at async evalmachine.<anonymous>:84:11
+      at async Object.resolveTenantContext (evalmachine.<anonymous>:92:43)
+      at async TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\tenant-authority.test.js:99:33)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'TENANT_LOOKUP_UNAVAILABLE',
+    retryable: true
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\tenant-authority.test.js:101:24
+✖ revocación prevalece sobre claim firmado y rol local (30.2856ms)
+  Error [TenantContextLookupError]: No se pudo verificar temporalmente la empresa y sus permisos. Intenta de nuevo.
+      at loadCurrentUserMemberships (evalmachine.<anonymous>:46:15)
+      at async evalmachine.<anonymous>:84:11
+      at async Object.resolveTenantContext (evalmachine.<anonymous>:92:43)
+      at async TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\tenant-authority.test.js:105:32)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'TENANT_LOOKUP_UNAVAILABLE',
+    retryable: true
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\tenant-authority.test.js:108:24
+✖ no consulta roles para slug ajeno ni membresías sin identidad (31.466ms)
+  Error [TenantContextLookupError]: No se pudo verificar temporalmente la empresa y sus permisos. Intenta de nuevo.
+      at loadCurrentUserMemberships (evalmachine.<anonymous>:46:15)
+      at async evalmachine.<anonymous>:84:11
+      at async Object.resolveTenantContext (evalmachine.<anonymous>:92:43)
+      at async TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\tenant-authority.test.js:110:32)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    code: 'TENANT_LOOKUP_UNAVAILABLE',
+    retryable: true
+  }
+npm error Lifecycle script `test:auth-bridge` failed with error:
+npm error code 1
+npm error path D:\Pulse Hub\courseforge\apps\web
+npm error workspace web@1.0.0
+npm error location D:\Pulse Hub\courseforge\apps\web
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c tsc -p tsconfig.auth-bridge-test.json && node .tmp/auth-bridge-tests/app/login/__tests__/auth-bridge-contract.test.js && node --test .tmp/auth-bridge-tests/features/auth/__tests__/auth-session.test.js .tmp/auth-bridge-tests/app/login/__tests__/tenant-authority.test.js

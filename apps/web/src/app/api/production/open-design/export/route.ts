@@ -1,4 +1,5 @@
 import { APP_CONFIG } from "../../../../../config/app";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { escapeBrandingHtml } from "../../../../../config/branding-html";
 import { z } from 'zod';
 import { createClient } from '@/utils/supabase/server';
@@ -525,6 +526,8 @@ export async function POST(request: Request) {
         }, { requestId });
 
     } catch (error: unknown) {
+        const unavailable = authorizationUnavailableResponse(error, requestId);
+        if (unavailable) return unavailable;
         logger.error('production.open_design.export_failed', error);
         return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo exportar la presentación.', requestId, retryable: true, status: 500 });
     }

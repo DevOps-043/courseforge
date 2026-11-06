@@ -1,0 +1,4 @@
+The prop value with an expression type of TSNonNullExpression could not be resolved. Please file an issue ( https://github.com/jsx-eslint/jsx-ast-utils/issues/new ) to get this fixed immediately.
+The prop value with an expression type of TSNonNullExpression could not be resolved. Please file an issue ( https://github.com/jsx-eslint/jsx-ast-utils/issues/new ) to get this fixed immediately.
+Lint: 0 errores, 572 warnings detectados, 0 diferencias con baseline.
+Diagnóstico completo: D:\Pulse Hub\courseforge\.tmp\remediation-lint-clean\apps\web\.tmp\lint\latest.json

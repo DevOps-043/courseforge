@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
@@ -41,6 +42,8 @@ export async function GET(request: Request, context: RouteContext) {
     }
     return NextResponse.redirect(data.signedUrl, { headers: { "Cache-Control": "private, no-store", "x-request-id": requestId }, status: 307 });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador de efecto inválido.", requestId, status: 400 });
     if (error instanceof SoundEffectLibraryError) return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: error.message, requestId, status: error.status });
     logger.error("production.sound_effect.download_failed", error);

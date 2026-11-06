@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { canReviewContent, getAuthenticatedUser, getAuthorizedMaterialComponentAdmin } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
@@ -55,6 +56,8 @@ export async function GET(request: Request, context: RouteContext) {
       requestId,
     });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Identificador inválido.", requestId, status: 400 });
     }
@@ -93,6 +96,8 @@ export async function POST(request: Request, route: RouteContext) {
     logger.info("production.audio.waveform.queued", { jobId: job.id });
     return apiSuccessResponse({ data: { jobId: job.id, status: job.status } }, { requestId, status: 202 });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError || error instanceof WaveformSourceError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: error instanceof WaveformSourceError ? error.message : "Identificador inválido.", requestId, status: 422 });
     logger.error("production.audio.waveform.queue_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo iniciar el análisis.", requestId, status: 500 });

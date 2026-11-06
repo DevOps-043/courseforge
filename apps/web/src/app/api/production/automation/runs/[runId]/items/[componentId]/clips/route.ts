@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { HeygenScenesService } from "@/domains/production/providers/heygen/heygen-scenes.service";
@@ -58,6 +59,8 @@ export async function POST(request: Request, context: { params: Promise<{ compon
     const assets = await service.saveSceneClips({ avatarGenerationMode: "scene_clips", clips: scenes, componentId: component.id });
     return apiSuccessResponse({ data: { clips: assets.avatar_clips || [] } }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.automation.clips.prepare_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudieron preparar los clips.", requestId, retryable: true, status: 500 });
   }
@@ -95,6 +98,8 @@ export async function PUT(request: Request, context: { params: Promise<{ compone
     const assets = await service.saveSceneClips({ avatarGenerationMode: "scene_clips", clips, componentId: component.id });
     return apiSuccessResponse({ data: { clips: assets.avatar_clips || [] } }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.automation.clips.save_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudieron guardar los clips.", requestId, retryable: true, status: 500 });
   }

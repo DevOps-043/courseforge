@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
@@ -22,7 +23,7 @@ import {
   type CompositionPreviewAssetDiagnostics,
 } from "@/domains/production/composition-editor/composition-preview-performance";
 import { createClient } from "@/utils/supabase/server";
-import { API_ERROR_CODE } from "@/lib/server/api-contract";
+import { API_ERROR_CODE, type ApiErrorBody } from "@/lib/server/api-contract";
 import { apiErrorResponse } from "@/lib/server/api-response";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 import { isCompositionDocumentHash, parseCompositionPreviewGeneration } from "@/domains/production/composition-editor/composition-preview-comparison";
@@ -135,6 +136,13 @@ export async function GET(request: Request, context: RouteContext) {
       },
     });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) {
+      if (!failureBridgeHash || previewGeneration === null) return authorityUnavailable;
+      const failure = await authorityUnavailable.json() as ApiErrorBody;
+      return previewFailureResponse({ bridgeCode: "DEPENDENCY_FAILED", code: API_ERROR_CODE.dependencyUnavailable,
+        documentHash: failureBridgeHash, message: failure.message, previewGeneration, requestId, retryable: true, status: 503 });
+    }
     if (error instanceof HtmlEditingPreviewCspError) return previewFailureResponse({ bridgeCode: "COMPILATION_FAILED",
       code: API_ERROR_CODE.invalidRequest, documentHash: failureBridgeHash, message: "La política de aislamiento del HTML editable fue rechazada.",
       previewGeneration, requestId, retryable: false, status: 422 });
@@ -176,6 +184,7 @@ function previewFailureResponse(input: {
     status: input.status,
     headers: {
       "Cache-Control": "private, no-store",
+      Vary: "Cookie",
       "Content-Security-Policy": bridge.contentSecurityPolicy,
       "Content-Type": "text/html; charset=utf-8",
       "Referrer-Policy": "no-referrer",

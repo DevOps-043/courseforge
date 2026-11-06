@@ -1,4 +1,5 @@
 import { PRODUCTION_MEDIA_CACHE_CONTROL_SECONDS } from '@/domains/production/media-storage.config';
+import { authorizationUnavailableResponse } from '@/lib/server/authorization-unavailable-response';
 import { createClient } from '@/utils/supabase/server';
 import {
     getAuthenticatedUser,
@@ -172,6 +173,8 @@ export async function POST(request: Request) {
         }, { requestId });
 
     } catch (error: unknown) {
+        const unavailable = authorizationUnavailableResponse(error, requestId);
+        if (unavailable) return unavailable;
         if (error instanceof HeygenCredentialResolverError) {
             return apiErrorResponse({ code: error.status === 403 ? API_ERROR_CODE.tenantForbidden : API_ERROR_CODE.conflict, message: error.message, requestId, status: error.status });
         }

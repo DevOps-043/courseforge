@@ -60,7 +60,7 @@ export function createHtmlSnapshotRecoveryHandler(dependencies:{enabled:()=>bool
       const data = summarizeHtmlSnapshotRecovery(params.data.operationId,recovered);
       return Response.json({success:true,data,requestId,correlationId:requestId},{headers});
     } catch {
-      dependencies.logFailure?.(requestId);
+      try { dependencies.logFailure?.(requestId); } catch { /* Conservar respuesta segura aunque falle observabilidad. */ }
       return fail(503,API_ERROR_CODE.dependencyUnavailable,"No se pudo confirmar el estado de la publicación. No se ha repetido la operación.");
     }
   };

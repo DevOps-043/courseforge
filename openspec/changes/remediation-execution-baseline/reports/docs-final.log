@@ -1,0 +1,5 @@
+
+> courseforge@1.0.0 docs:check
+> node scripts/quality/check-doc-links.mjs
+
+Documentación inválida: spawnSync git EPERM

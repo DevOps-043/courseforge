@@ -5,6 +5,7 @@ import {
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { HeygenRepository } from "@/domains/production/providers/heygen/heygen.repository";
 import { createClient } from "@/utils/supabase/server";
 import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
@@ -59,6 +60,8 @@ export async function GET(request: Request) {
       },
     }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.heygen.presets.read_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno del servidor al leer presets de HeyGen.", requestId, retryable: true, status: 500 });
   }
@@ -102,6 +105,8 @@ export async function PATCH(request: Request) {
     }
     return apiSuccessResponse({ data: { archived, kind, presetId } }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.heygen.presets.update_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno del servidor al actualizar el catalogo.", requestId, retryable: true, status: 500 });
   }

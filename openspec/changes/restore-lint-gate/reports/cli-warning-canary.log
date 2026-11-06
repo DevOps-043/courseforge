@@ -1,0 +1,25 @@
+
+> courseforge@1.0.0 lint
+> npm run lint -w apps/web
+
+
+> web@1.0.0 lint
+> node ../../scripts/quality/lint-web.mjs
+
+
+D:\Pulse Hub\courseforge\apps\web\src\remediation-lint-canary.ts
+  1:5  warning  'monto_canario' is never reassigned. Use 'const' instead  prefer-const
+
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+
+Lint: 0 errores, 573 warnings existentes, 1 diferencias con baseline.
+Lint incremento: src/remediation-lint-canary.ts / prefer-const: 0 → 1
+Diagnóstico completo: D:\Pulse Hub\courseforge\apps\web\.tmp\lint\latest.json
+npm error Lifecycle script `lint` failed with error:
+npm error code 1
+npm error path D:\Pulse Hub\courseforge\apps\web
+npm error workspace web@1.0.0
+npm error location D:\Pulse Hub\courseforge\apps\web
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c node ../../scripts/quality/lint-web.mjs

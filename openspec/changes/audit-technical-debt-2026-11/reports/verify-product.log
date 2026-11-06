@@ -1,0 +1,31 @@
+
+> courseforge@1.0.0 verify
+> npm run lint && npm run typecheck && npm run architecture:cycles && npm run db:migrations:check && npm run test:branding && npm run test:security-boundaries && npm run test:audio-processing && npm run test:coverage-gaps -w apps/web && npm run test:course-delivery
+
+
+> courseforge@1.0.0 lint
+> npm run lint -w apps/web
+
+
+> web@1.0.0 lint
+> eslint . --quiet
+
+
+Oops! Something went wrong! :(
+
+ESLint: 9.39.5
+
+A configuration object specifies rule "react-hooks/immutability", but could not find plugin "react-hooks".
+
+Common causes of this problem include:
+
+1. The "react-hooks" plugin is not defined in your configuration file.
+2. The "react-hooks" plugin is not defined within the same configuration object in which the "react-hooks/immutability" rule is applied.
+
+npm error Lifecycle script `lint` failed with error:
+npm error code 2
+npm error path D:\Pulse Hub\courseforge\apps\web
+npm error workspace web@1.0.0
+npm error location D:\Pulse Hub\courseforge\apps\web
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c eslint . --quiet

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import {
   getAuthenticatedUser,
   getAuthorizedMaterialComponentAdmin,
@@ -69,6 +70,8 @@ export async function GET(request: Request) {
     },
   }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.slides.jobs_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo consultar el trabajo de slides.", requestId, retryable: true, status: 500 });
   }

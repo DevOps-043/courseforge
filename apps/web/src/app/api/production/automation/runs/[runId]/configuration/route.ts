@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { createClient } from "@/utils/supabase/server";
@@ -133,6 +134,8 @@ export async function PUT(request: Request, context: { params: Promise<{ runId: 
     if (updateRunError) throw updateRunError;
     return apiSuccessResponse({ approved: input.approve }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.automation.configuration.failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo guardar la configuración.", requestId, retryable: true, status: 500 });
   }

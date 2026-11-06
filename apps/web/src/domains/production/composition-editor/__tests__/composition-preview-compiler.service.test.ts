@@ -266,7 +266,15 @@ test("compiles HyperFrames media as provider variables instead of ZIP paths", as
   });
 
   assert.match(html, new RegExp(`data-var-src="${variableName}"`));
-  assert.ok(html.includes(`<html lang="es" data-color-grading-runtime="not_required" data-composition-variables='[{&quot;default&quot;:&quot;&quot;,&quot;id&quot;:&quot;${variableName}&quot;,&quot;label&quot;:&quot;${APP_CONFIG.name} remote asset&quot;,&quot;type&quot;:&quot;string&quot;}]'`));
+  const htmlElement = html.match(/<html\b[^>]*>/)?.[0];
+  assert.ok(htmlElement);
+  assert.match(htmlElement, /\slang="es"(?:\s|>)/);
+  assert.match(htmlElement, /\sdata-color-grading-runtime="not_required"(?:\s|>)/);
+  const serializedVariables = htmlElement.match(/\sdata-composition-variables='([^']*)'/)?.[1];
+  assert.ok(serializedVariables);
+  const entities = new Map([["&quot;", '"'], ["&amp;", "&"], ["&#39;", "'"], ["&lt;", "<"], ["&gt;", ">"]]);
+  const variables = JSON.parse(serializedVariables.replace(/&(?:quot|amp|#39|lt|gt);/g, entity => entities.get(entity) ?? entity));
+  assert.deepEqual(variables, [{ default: "", id: variableName, label: `${APP_CONFIG.name} remote asset`, type: "string" }]);
   assert.doesNotMatch(html, /src="https:\/\/project\.supabase\.co\/avatar\.mp4"/);
 });
 

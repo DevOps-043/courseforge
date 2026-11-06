@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { canReviewContent, getAuthenticatedUser, getAuthorizedMaterialComponentAdmin } from "@/lib/server/artifact-action-auth";
 import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
@@ -41,6 +42,8 @@ export async function POST(request: Request) {
     logger.info("production.audio_processing.requested", { jobId: job.id, sourceAssetId: parsed.data.sourceAssetId, status: job.status });
     return apiSuccessResponse({ data: { jobId: job.id, profileId: parsed.data.profileId, reused: job.status !== "PENDING", status: job.status } }, { requestId, status: 202 });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Solicitud de audio inválida.", requestId, status: 400 });
     if (error instanceof AudioProcessingJobError) {
       logger.warn("production.audio_processing.source_rejected", { reason: error.code });
@@ -95,6 +98,8 @@ export async function GET(request: Request) {
       durationSeconds: source.duration_milliseconds ? source.duration_milliseconds / 1000 : source.duration_seconds || null },
       job: data || null, processedAudio, status: data?.status || "NOT_REQUESTED" } }, { requestId, headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof AudioProcessingJobError) return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: error.message, requestId, status: 404 });
     logger.error("production.audio_processing.query_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo consultar el trabajo de audio.", requestId, retryable: true, status: 500 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import {
@@ -45,6 +46,8 @@ export async function GET(request: Request) {
     const data = await listReadySoundEffects({ filters, organizationId: authorization.organizationId, supabase: authorization.admin });
     return apiSuccessResponse({ data }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Filtros inválidos.", requestId, status: 400 });
     logger.error("production.sound_effects.list_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo consultar la biblioteca de efectos.", requestId, retryable: true, status: 500 });
@@ -99,6 +102,8 @@ export async function POST(request: Request) {
     const data = await linkReadySoundEffectToDraft({ ...input, organizationId: authorization.organizationId, supabase: authorization.admin });
     return apiSuccessResponse({ data }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Solicitud inválida.", requestId, status: 400 });
     if (error instanceof SoundEffectLibraryError) {
       return apiErrorResponse({ code: mapLibraryStatus(error.status), message: error.message, requestId, status: error.status });

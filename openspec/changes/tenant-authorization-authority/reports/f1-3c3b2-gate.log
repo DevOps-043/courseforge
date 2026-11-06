@@ -1,0 +1,493 @@
+
+> courseforge@1.0.0 verify:pr
+> node scripts/quality/run-gate.mjs
+
+Compuerta: npm run adapters:check
+
+> courseforge@1.0.0 adapters:check
+> node scripts/ai/sync-agent-adapters.mjs --check
+
+Adaptadores verificados: 27
+Compuerta: npm run harness:validate
+
+> courseforge@1.0.0 harness:validate
+> node scripts/quality/validate-harness.mjs
+
+Arnés de Coursegen válido.
+Compuerta: npm run docs:check
+
+> courseforge@1.0.0 docs:check
+> node scripts/quality/check-doc-links.mjs
+
+Enlaces locales verificados: 279 documentos; catálogo canónico y enlaces nuevos.
+Compuerta: npm run openspec:validate
+
+> courseforge@1.0.0 openspec:validate
+> openspec validate --all --strict --no-interactive
+
+✓ change/adapt-coursegen-harness
+✓ change/audio-clip-editing
+✓ change/audit-technical-debt-2026-11
+✓ change/automatic-transparent-captions
+✓ change/background-deploy-policy
+✓ change/branding-clip-controls
+✓ change/caption-animation-presets
+✓ change/complete-live-preparation-delivery
+✓ change/custom-reference-guides
+✓ change/diagnose-font-catalog
+✓ change/dynamic-composition-layers
+✓ change/editor-action-autosave
+✓ change/expand-slide-import-size
+✓ change/fix-canvas-resize-format
+✓ change/fix-caption-paragraph-layout
+✓ change/fix-clip-range-export
+✓ change/fix-extended-video-loop
+✓ change/fix-heygen-external-import-v3
+✓ change/fix-heygen-preset-handoff
+✓ change/fix-heygen-scene-save
+✓ change/fix-opendesign-css-compatibility
+✓ change/fix-slide-import-modal-theme
+✓ change/fix-user-actions-menu
+✓ change/global-branding
+✓ change/import-html-slide-templates
+✓ spec/imported-template-bases
+✓ change/manual-caption-creation
+✓ change/manual-position-controls
+✓ change/monitor-space-zoom
+✓ change/nested-composition-groups
+✓ change/netlify-typecheck-memory
+✓ change/prepare-large-html-slide-files
+✓ change/preserve-imported-html-design
+✓ change/remediation-execution-baseline
+✓ spec/synchronous-hybrid-authoring
+✓ change/tenant-authorization-authority
+✓ change/timeline-master-volume
+✓ change/timeline-nesting
+✓ change/video-canvas-motion
+✓ change/visual-clip-masks
+Totals: 40 passed, 0 failed (40 items)
+Compuerta: npm run test:harness
+
+> courseforge@1.0.0 test:harness
+> node --test scripts/quality/harness.test.mjs scripts/capture-background-deployment.test.mjs
+
+✔ captura únicamente el origen del deploy concreto sin secretos (17.7902ms)
+✔ build local elimina metadatos antiguos y no depende de variables de producción (8.2525ms)
+✔ build de Netlify falla si no puede capturar un destino seguro (4.5677ms)
+✔ el comando de build captura el manifiesto junto al resolver incluso desde otro cwd (310.1055ms)
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-yq9suv/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-9XeVge/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-uElL7a/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-aFDaQE/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-3SGSnE/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-wAN2LY/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-6vkCdh/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-mFG3w4/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-m2aP7Q/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-73GEml/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-C4PMum/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-vM6ajk/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-DRuQ1N/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-SQZkUH/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-aOjvgi/.git/config: Permission denied
+fatal: could not set 'core.repositoryformatversion' to '0'
+✖ genera adaptadores deterministas y acepta CRLF equivalente (1902.9163ms)
+✖ rechaza drift y la regeneración lo corrige (1118.9544ms)
+✖ rechaza huérfanos y conserva su contenido incluso al sincronizar (1450.5809ms)
+✖ rechaza metadatos que intentan cambiar la ruta de la skill (1227.4289ms)
+✖ rechaza destinos enlazados sin escribir fuera del repositorio (1728.0744ms)
+✖ detecta una ruta obligatoria ausente (974.2611ms)
+✖ rechaza skills registradas inexistentes y fuentes fuera de dominio (946.9139ms)
+✖ rechaza exposición de desarrollo al runtime (1095.8831ms)
+✖ detecta un área perdida del estándar maestro (1154.3725ms)
+✖ rechaza cambios locales sensibles sin leer su contenido (1248.877ms)
+✖ verifica enlaces nuevos con espacios y rechaza destinos inexistentes (360.8516ms)
+✖ no oculta enlaces rotos nuevos tras una línea base histórica (369.7014ms)
+✖ CI detecta enlaces nuevos ya comprometidos frente a la base del PR (326.3168ms)
+✖ rechaza referencias base inexistentes en vez de omitir la comprobación (333.3174ms)
+✖ CI no puede sustituir la verificación de producto por la del arnés (1131.2979ms)
+✔ la compuerta conserva verify de producto y se detiene con el código real (3.4591ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 5
+ℹ fail 15
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15852.0787
+
+✖ failing tests:
+
+test at scripts\quality\harness.test.mjs:48:1
+✖ genera adaptadores deterministas y acepta CRLF equivalente (1902.9163ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-yq9suv/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:49:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 20804,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:60:1
+✖ rechaza drift y la regeneración lo corrige (1118.9544ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-9XeVge/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:61:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 3624,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:67:1
+✖ rechaza huérfanos y conserva su contenido incluso al sincronizar (1450.5809ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-uElL7a/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:68:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 17908,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:75:1
+✖ rechaza metadatos que intentan cambiar la ruta de la skill (1227.4289ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-aFDaQE/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:76:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 19496,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:80:1
+✖ rechaza destinos enlazados sin escribir fuera del repositorio (1728.0744ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-3SGSnE/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:81:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 19568,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:91:1
+✖ detecta una ruta obligatoria ausente (974.2611ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-wAN2LY/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:92:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 2396,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:95:1
+✖ rechaza skills registradas inexistentes y fuentes fuera de dominio (946.9139ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-6vkCdh/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:96:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 21536,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:102:1
+✖ rechaza exposición de desarrollo al runtime (1095.8831ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-mFG3w4/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:103:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 10756,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:106:1
+✖ detecta un área perdida del estándar maestro (1154.3725ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-m2aP7Q/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:107:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 20280,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:112:1
+✖ rechaza cambios locales sensibles sin leer su contenido (1248.877ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-73GEml/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:113:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 22524,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:118:1
+✖ verifica enlaces nuevos con espacios y rechaza destinos inexistentes (360.8516ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-C4PMum/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:119:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 21008,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:126:1
+✖ no oculta enlaces rotos nuevos tras una línea base histórica (369.7014ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-vM6ajk/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:127:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 22184,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:138:1
+✖ CI detecta enlaces nuevos ya comprometidos frente a la base del PR (326.3168ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-DRuQ1N/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:139:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 19652,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:147:1
+✖ rechaza referencias base inexistentes en vez de omitir la comprobación (333.3174ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-SQZkUH/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:148:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 18044,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }
+
+test at scripts\quality\harness.test.mjs:151:1
+✖ CI no puede sustituir la verificación de producto por la del arnés (1131.2979ms)
+  Error: Command failed: git init -q
+  error: could not write config file C:/Users/Lordg/AppData/Local/Packages/sandbox.{1f10f543-001d-4575-b483-c5309c1a917f}/AC/Temp/coursegen-harness-aOjvgi/.git/config: Permission denied
+  fatal: could not set 'core.repositoryformatversion' to '0'
+  
+      at genericNodeError (node:internal/errors:985:15)
+      at wrappedFn (node:internal/errors:539:14)
+      at checkExecSyncError (node:child_process:942:11)
+      at execFileSync (node:child_process:978:15)
+      at fixture (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:33:3)
+      at TestContext.<anonymous> (file:///D:/Pulse%20Hub/courseforge/scripts/quality/harness.test.mjs:152:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19) {
+    status: 128,
+    signal: null,
+    output: [ null, <Buffer >, <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes> ],
+    pid: 20812,
+    stdout: <Buffer >,
+    stderr: <Buffer 65 72 72 6f 72 3a 20 63 6f 75 6c 64 20 6e 6f 74 20 77 72 69 74 65 20 63 6f 6e 66 69 67 20 66 69 6c 65 20 43 3a 2f 55 73 65 72 73 2f 4c 6f 72 64 67 2f ... 193 more bytes>
+  }

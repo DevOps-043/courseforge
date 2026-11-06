@@ -2,7 +2,7 @@ import type { CompositionCaptionCue } from "./composition-text-layer.types";
 import { DEFAULT_CAPTION_EFFECTS, type CompositionCaptionEffects } from "./composition-caption-effects.types";
 import { resolveCompositionCaptionWordGaps } from "./composition-text-presentation";
 
-export { isCaptionTextBoundary, captionEmphasisIssues } from "./composition-caption-text-boundaries";
+export { isCaptionTextBoundary, captionEmphasisIssues } from "./composition-caption-text-validation";
 
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
 

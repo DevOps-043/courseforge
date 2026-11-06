@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { narrativeExtractionApplyRequestSchema, NARRATIVE_EXTRACTION_QUERY_MAX_BYTES } from "../composition-narrative-extraction-contract";
 
-export type NarrativeExtractionHttpAuthorization = { status: "AUTHORIZED"; organizationId: string; userId: string }
-  | { status: "AUTH_REQUIRED" | "TENANT_FORBIDDEN" | "ROLE_FORBIDDEN" };
+export type { NarrativeExtractionHttpAuthorization } from "./composition-narrative-http-authorization.contract";
 
 /** Configuration only: never infer trust from request Host/X-Forwarded-Host. */
 export function resolveNarrativeExtractionTrustedOrigin(configuredUrl: string | null) {

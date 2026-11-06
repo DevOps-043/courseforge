@@ -8,6 +8,7 @@ import {
     getServiceRoleClient,
 } from '@/lib/server/artifact-action-auth';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
+import { authorizationUnavailableResponse } from '@/lib/server/authorization-unavailable-response';
 import { publishRequestSchema } from '@/domains/publication/publication.schemas';
 import { hashPublicationPayload, PUBLICATION_OUTBOX_STEP } from '@/domains/publication/publication-outbox';
 import { dispatchBackgroundFunctionJson } from '@/lib/server/background-function-client';
@@ -158,6 +159,8 @@ export async function POST(request: Request) {
                 'Publicación programada. El envío a Soflia continuará en segundo plano.',
         }, { requestId: correlationId, status: 202 });
     } catch (error: unknown) {
+        const unavailable = authorizationUnavailableResponse(error, correlationId);
+        if (unavailable) return unavailable;
         logger.error('publication.request.failed', error);
         return apiErrorResponse({
             code: API_ERROR_CODE.internalError,

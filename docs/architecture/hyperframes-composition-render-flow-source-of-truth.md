@@ -206,6 +206,146 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
 
 ## 5. Contrato de autorizacion y tenancy
 
+Las 17 rutas HTTP directas del corte .7.b.2 (24 métodos) usan indisponibilidad de
+autoridad segura y revisión anclada al tenant. Se conservan reasons legacy de
+tenant y clasificadores de dominio. El preview nativo sigue devolviendo failure
+bridge HTML para sync v2 válido y JSON en los otros casos, con CSP y generación
+originales; un fallo de autoridad produce DEPENDENCY_FAILED sin detalles internos.
+Los 30 adaptadores delegados requieren su inspección independiente. Inventario,
+transformación reproducible y alcance de pruebas:
+[F1.3.c.3.c.7.b.2.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2a.md).
+
+La frontera compartida de lectura HTML valida actor/tenant/rol antes del cliente
+privilegiado y conserva errores neutrales aunque falle observabilidad. Tiene
+regresión ejecutada para cuotas y aislamiento entre solicitudes. Las pruebas del
+core no acreditan los contratos de cada adaptador; el inventario delega doce GET
+en once adaptadores y mantiene pendientes escrituras, capabilities y narrativa.
+Alcance y canarios:
+[F1.3.c.3.c.7.b.2.b.1](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b1.md).
+
+Los handlers de publicación y recuperación de snapshots contienen fallos del
+callback de observabilidad: mantienen 503 neutral y sin reintento automático.
+Sus suites HTTP se ejecutan desde test:hyperframes, incluidos errores anteriores
+al cliente privilegiado y posteriores al host simulado. Esto no acredita una
+publicación o recuperación real en DB/Storage. Evidencia:
+[F1.3.c.3.c.7.b.2.b.2](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b2.md).
+
+Los comandos narrativos compartidos y el plan de fragmentos contienen fallos del
+callback y del logger por defecto. La respuesta conserva commandId y flags de
+recuperación según el punto de fallo; un error de observabilidad no autoriza
+repetir una escritura incierta. Las tres suites HTTP narrativas se ejecutan en
+test:hyperframes. Su cobertura usa repositorios simulados y no acredita commit
+en SQL. Evidencia:
+[F1.3.c.3.c.7.b.2.b.3](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b3.md).
+
+Veinte rutas HTML con authenticate inline tienen pruebas de composición para
+27 métodos: políticas reales con entorno sintético, actor/tenant actuales y
+propagación de errores. Veinte suites HTTP adicionales se ejecutan en HyperFrames.
+Wiring interceptado y handlers con persistencia simulada acreditan fronteras
+distintas; no equivalen a integración real ni cubren diez roots compartidos
+pendientes. Alcance y canarios:
+[F1.3.c.3.c.7.b.2.b.4.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b4.md).
+
+Las diez rutas compartidas restantes conservan wiring de narrativa/reconstruction
+y PAGE/RESOURCE_RENEWAL/RESOURCE con configuración del operador. La composición
+de treinta rutas/38 métodos tiene cobertura local, sin acreditar DB o cookies
+reales. Resource-link ejecuta además su suite indirecta de handlers. Sigue abierta
+la revisión de emisores posteriores al contexto. Evidencia:
+[F1.3.c.3.c.7.b.2.b.4.b](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b2b4b.md).
+
+GET/POST de renders proyectan las clases conocidas de autoridad como 503 seguro,
+con revisión anclada al tenant. El fallo de dispatcher conserva failDispatch
+antes de responder; fallar al compensar no acredita reparación durable. Se
+mantienen actor/tenant del servidor, attemptId y no despachar de nuevo un
+resultado reutilizado o con ID de proveedor. Alcance simulado y aceptación:
+[F1.3.c.3.c.7.b.1](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7b1.md).
+
+Los soportes compartidos de presets, propuestas del agente y seguimiento de
+render traducen las dos clases conocidas de indisponibilidad de autoridad a
+response 503 segura antes de crear admin. Sus dieciocho métodos consumidores
+devuelven response antes de invocar dominio/SDK. Errores desconocidos se relanzan
+al contrato propio de cada ruta; revisión y contexto corresponden al mismo tenant.
+Las rutas de creación/recuperación y otros consumidores independientes siguen
+pendientes. Evidencia y alcance de dobles:
+[F1.3.c.3.c.7.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c7a.md).
+
+Las ocho operaciones HTTP de automation/runs proyectan las clases conocidas
+de indisponibilidad de autoridad como 503 seguro/reintentable, correlacionado
+y sin caché. Se conservan filtros de organización, aprobación, configuración,
+captions, edición de clips y firma de despacho. Los errores de dominio y el
+callback del worker mantienen sus contratos. Esto no acredita atomicidad de
+las escrituras sucesivas de configuración ni ejecución real del proveedor.
+La integración de automatización se conserva en:
+[F1.3.c.3.c.6.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c6a.md).
+
+Standalone exige comprobante servidor de propósito exclusivo, ligado a vídeo y
+organización y válido siete días, además de identidad/tenant/rol vigentes. Se
+verifica antes de credenciales/proveedor y no se renueva por polling. El studio
+lo transmite por header redactable y conserva el valor validado en cada respuesta;
+todas las respuestas de vídeo son privadas/no-store. Sin comprobante válido se
+deniega, incluidos IDs históricos; no se presume ownership por cuenta de HeyGen.
+La firma se comprueba antes de generar. Un ID distinto del proveedor no expone
+su URL. Media y vídeo proyectan indisponibilidad conocida de autoridad como 503.
+El comprobante no es una bitácora durable ni revoca URLs públicas ya entregadas.
+Compatibilidad, pérdidas de respuesta y aceptación pendiente:
+[F1.3.c.3.c.6.b](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c6b.md).
+
+La biblioteca de plantillas usa únicamente la organización del resolver vigente
+antes de crear el cliente privilegiado y filtra ejecuciones, conversaciones y
+especificaciones por ella. Claims y cookies históricos no conceden acceso.
+Sin tenant devuelve un fallo explícito (HTTP 403); ante indisponibilidad conocida
+devuelve fallo seguro y reintentable (HTTP 503), sin presentarlo como lista vacía.
+El Server Action conserva success/error para sus consumidores y añade errorCode;
+la UI existente muestra ese fallo. Evidencia:
+[F1.3.c.3.c.5.a](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c5a.md).
+Los otros ocho handlers de slides/open-design usan el mismo mapper de autoridad
+en sus fronteras HTTP. Se conservan CSP/DTO, firmas, reutilización de jobs y
+compensación de despacho/preparación; no se acredita ejecución real de proveedores.
+Transformación HTML a PNG, preparación de deck animado y apariencia exigen
+namespace del componente autorizado después de normalizar el path, incluso para
+referencias guardadas. El rechazo precede a descarga/rasterización/sobrescritura.
+Se admite HTML propio recién subido sin esperar la persistencia de su referencia.
+Evidencia: [F1.3.c.3.c.5.b](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c5b.md).
+
+Las operaciones HTTP de HeyGen (assets, plataforma, presets, escenas, voz,
+vídeos, clips y jobs) proyectan caídas internas conocidas de autoridad como
+503 seguro con correlación y `private, no-store`. Se conservan permisos y errores
+de proveedor, despacho 202 y compensación de clips. Una reserva de sincronización
+existente conserva su compensación antes de proyectar la caída de autoridad;
+la sincronización opcional del editor mantiene su advertencia de fallo parcial.
+No se certifica idempotencia o ejecución real del proveedor por estas pruebas.
+Evidencia: [F1.3.c.3.c.4](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c4.md).
+
+El descriptor de QA de render controlado vive en un contrato independiente de
+fence, materialización y supervisor. Contiene identidad de ejecución/revisión,
+organización, hashes y el contrato de conformidad existente; no contiene claves,
+credenciales o leases ni acredita autoridad por sí mismo. Las validaciones y
+garantías de esos servicios permanecen iguales. Evidencia:
+[F3.5.d1](../../openspec/changes/decouple-controlled-render-descriptor/reports/context-F3.5d1.md).
+
+Los handlers HTTP de narrativa comparten su tipo de autoridad desde
+`composition-narrative-http-authorization.contract.ts`; el adaptador de voz
+mantiene el export anterior. El contrato no depende de handlers y no concede
+permisos ni cambia estados/respuestas. Evidencia:
+[F3.5.c](../../openspec/changes/decouple-narrative-http-authority/reports/context-F3.5c.md).
+
+Las conexiones/validaciones de HyperFrames y HeyGen, settings de generación,
+identidad de ensamble y LiveAvatar usan la misma proyección HTTP de autoridad:
+503 seguro, correlación y `private, no-store` ante clases internas conocidas.
+La firma, credenciales, webhooks y medios solo se alcanzan tras validar identidad,
+rol y tenant. Se conserva el orden existente de los efectos y errores de proveedor;
+esto no acredita atomicidad entre guardar una credencial y configurar su webhook.
+Evidencia y límites:
+[F1.3.c.3.c.3](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c3.md).
+
+Las fronteras HTTP de medios privados, descargas de assets/SFX, preview y biblioteca
+SFX, waveform y jobs de audio distinguen indisponibilidad de autoridad de una
+denegación: las clases internas de identidad/tenant producen 503 seguro con
+correlación, retryable y `private, no-store`, antes de firma, ingestión o jobs.
+Los redirects y TTL existentes, el acceso READY por organización y los errores
+del dominio se conservan. Contrato y pruebas de entrega con NextResponse real:
+[F1.3.c.3.c.2](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3c2.md).
+
 Antes de admitir un UUID en el documento se deben comprobar por separado:
 
 1. borrador activo y perteneciente a `organizationId`;
@@ -268,6 +408,17 @@ service role, SQL manual o un bug del backend.
   Regresión: `qa:composition-video-loop` del workspace web y
   `openspec/changes/fix-extended-video-loop/`.
 
+- La validación de fronteras UTF-16 y rangos de énfasis vive en
+  `composition-caption-text-validation.ts`, sin depender del schema de cues ni
+  del servicio de efectos. El schema consume ese módulo y el servicio conserva
+  sus exports públicos. No cambia texto, rangos, errores, tiempos o formato.
+  Evidencia: [desacoplamiento de captions](../../openspec/changes/decouple-caption-text-validation/reports/context-F3.5a.md).
+- El documento valida invariantes globales sobre `composition-clip.contract.ts`;
+  ese contrato conserva los schemas de clip, layout y crop. Las referencias de
+  fuentes se validan en `composition-font-reference.contract.ts`, separado de su
+  lector. El plan de captions consume solo clips; los exports de las rutas
+  anteriores reexportan los mismos contratos, sin cambiar reglas o formatos.
+  Evidencia: [contratos de documento](../../openspec/changes/decouple-composition-document-contracts/reports/context-F3.5b.md).
 - Los presets de animación Educativo, Lectura guiada y Social aplican settings de
   efectos a la capa sin modificar texto, tiempos o personalizaciones por frase.
   Los presets visuales permanecen independientes. Social usa karaoke `BACKGROUND`
@@ -333,6 +484,15 @@ operaciones sin una transaccion unica. Una falla intermedia puede dejar un ZIP
 o revision huerfanos o una revision parcialmente enlazada.
 
 ## 8. Contrato de entrega a HeyGen/HyperFrames Cloud
+
+La ruta genérica `/api/storage/signed-upload-url` no firma `production-videos`
+ni admite `purpose: production-video`. Los vídeos finales conservan los flujos
+específicos de render/importación y sus comprobaciones de identidad. Las miniaturas
+de publicación se firman para un artefacto autorizado en un path nuevo generado
+por el servidor, con sobrescritura desactivada. No se modifican URLs históricas,
+documentos ni snapshots. Contrato, consumidores y pruebas:
+[F1.3.c.3.b.2](../../openspec/changes/tenant-authorization-authority/reports/context-F1.3c3b2.md).
+La verificación de políticas efectivas de Storage continúa pendiente.
 
 Courseforge sigue el flujo oficial: comprimir, direct upload, crear render y
 consultar el estado. La documentacion oficial fija un maximo de 200 MB para el
@@ -504,6 +664,64 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-05: clasificación de 47 candidatas HyperFrames y normalización de 17
+  rutas directas, preservando contratos legacy/iframe. Evidencia .7.b.2.a en sección 5.
+
+- 2026-11-05: autoridad HTTP de creación/recuperación de render y compensación
+  preservada; evidencia F1.3.c.3.c.7.b.1 en sección 5. Rutas independientes restantes pendientes.
+
+- 2026-11-05: autoridad segura en tres soportes compartidos HyperFrames y sus
+  dieciocho métodos consumidores, sin modificar lógica del editor/render.
+  Evidencia F1.3.c.3.c.7.a en sección 5; lote padre pendiente.
+
+- 2026-11-05: comprobante de consulta standalone ligado a vídeo/organización,
+  transporte en el studio y errores de autoridad en tres operaciones. Vigencia,
+  compatibilidad y límites en evidencia F1.3.c.3.c.6.b de sección 5.
+
+- 2026-11-05: ocho operaciones HTTP de automatización normalizan errores de
+  autoridad. Filtros, aprobación y despacho preservados; standalone pendiente.
+  Evidencia F1.3.c.3.c.6.a en sección 5.
+
+- 2026-11-05: ocho handlers de slides/open-design proyectan indisponibilidad de
+  autoridad; tres operaciones HTML verifican namespace del componente autorizado.
+  Recuperación y contratos multimedia preservados; evidencia F1.3.c.3.c.5.b en sección 5.
+
+- 2026-11-05: biblioteca de plantillas con autoridad vigente antes del acceso
+  privilegiado, denegación explícita y errores seguros. Evidencia F1.3.c.3.c.5.a
+  en sección 5; los otros ocho handlers siguen pendientes.
+
+- 2026-11-05: normalización de indisponibilidad de autoridad en operaciones,
+  clips y jobs HeyGen; diecinueve métodos con contratos y compensación
+  preservados. Evidencia F1.3.c.3.c.4 en sección 5.
+
+- 2026-11-05: descriptor neutral de QA; desaparece la componente circular
+  restante sin cambiar las seis implementaciones emitidas. verify:pr aprueba
+  localmente; TD-12 conserva pendiente la corrección del resolvedor de alias.
+
+- 2026-11-05: contrato neutral de autoridad HTTP narrativa; elimina la
+  dependencia circular entre handler genérico y adaptador de voz con emisión
+  CommonJS idéntica. Evidencia F3.5.c en sección 5.
+
+- 2026-11-05: separación de contratos de clip y referencias tipográficas del
+  documento y sus lectores/planes. Serialización, hashes, errores y planes
+  caracterizados sin cambios; F3.5.b elimina su componente circular.
+
+- 2026-11-05: extracción neutral de validación de texto de captions; se elimina
+  su componente circular preservando exports, Unicode y schemas. Evidencia
+  F3.5.a en la sección de subtítulos; TD-12 sigue abierto por los demás grupos.
+
+- 2026-11-05: normalización de indisponibilidad de autoridad en conexiones,
+  configuración e identidad de ensamble; schemas, DTO y orden de efectos
+  conservados y probados con dobles. Evidencia F1.3.c.3.c.3 en sección 5.
+
+- 2026-11-05: las rutas de medios, descargas, audio y SFX proyectan caídas de
+  autoridad como 503 seguro; se comprueban redirects/TTL/DTO y permisos sin
+  modificar documento, render ni snapshots. Evidencia F1.3.c.3.c.2 en sección 5.
+
+- 2026-11-04: cierre local de firma genérica de vídeos y ownership de thumbnails
+  de publicación; render/importación conservan sus contratos. Evidencia y límites
+  en F1.3.c.3.b.2, enlazada en la sección 8.
 
 - 2026-11-03: acceso «Grupos» desde el timeline y selección explícita de grupos
   completos en el panel. La selección aditiva se procesa una sola vez en click

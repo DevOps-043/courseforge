@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { extractSyllabusSourceDocument } from "@/domains/syllabus/lib/syllabus-document-extractor";
 import { createHash } from "node:crypto";
 import { isSyllabusImportEnabled } from "@/domains/syllabus/import/syllabus-import.repository";
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
     }
 
     const tenant = await resolveActiveTenantContext();
+    if (!tenant) return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'Empresa no autorizada.', requestId, status: 403 });
     const formData = await request.formData();
     const artifactId = String(formData.get("artifactId") || "");
     const files = formData
@@ -140,6 +142,8 @@ export async function POST(request: Request) {
     }
     return apiSuccessResponse({ documents }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("syllabus.documents.failed", error);
     return apiErrorResponse({
       code: API_ERROR_CODE.invalidRequest,

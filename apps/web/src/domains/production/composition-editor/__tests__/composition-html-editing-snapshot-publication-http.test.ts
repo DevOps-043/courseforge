@@ -7,6 +7,8 @@ import {htmlEditingFixtureId as uuid,htmlEditingFixtureOtherId as other} from ".
 import type {createHtmlSnapshotRecoveryService} from "../composition-html-editing-snapshot-recovery.server";
 import {sendTrackedHtmlSnapshotPublication} from "../composition-html-snapshot-publication-http.client";
 import {readHtmlSnapshotLocator} from "../composition-html-snapshot-locator.client";
+import {AuthIdentityLookupError} from "../../../../lib/server/auth-identity-error";
+import {TenantContextLookupError} from "../../../../lib/server/tenant-context-error";
 
 const hash="a".repeat(64),projectHash="b".repeat(64);
 const identity={operationId:uuid,organizationId:uuid,compositionId:other,draftId:uuid,documentHash:hash,projectHash};
@@ -20,11 +22,12 @@ function fixture() {
     rateAllowed:true,rateMalformed:false,rateError:false,draft:{composition_id:other,state:"ACTIVE"} as unknown,
     composition:{active_revision_id:null,status:"DRAFT"} as unknown,latest:{document_hash:hash} as unknown,
     existing:{status:"NOT_FOUND"} as unknown,publication:{...ack,scope:"REGISTERED_BY_HOST_PORT_NOT_RENDERED"} as unknown,
-    publishError:false,recoveryError:false,logged:0,
+    publishError:false,recoveryError:false,logged:0,authenticationFailure:null as unknown,loggerThrows:false,
     recovered:{status:"LOCATED",intent,registration:{status:"COMMITTED_ACTIVE",acknowledgment:ack,currentActiveRevisionId:uuid},automaticRetryAllowed:false} as
       Awaited<ReturnType<ReturnType<typeof createHtmlSnapshotRecoveryService>>>};
   const handler=createHtmlSnapshotPublicationHandler({enabled:() => state.enabled,
-    authenticate:async () => {calls.push("auth");return {actorId:state.actorId,tenant:state.tenant};},
+    authenticate:async () => {calls.push("auth");if(state.authenticationFailure) throw state.authenticationFailure;
+      return {actorId:state.actorId,tenant:state.tenant};},
     serviceClient:() => {
       calls.push("client");return {rpc:(name:string,args:Record<string,unknown>) => ({abortSignal:async () => {
         calls.push(name);if (name === "read_html_editing_snapshot_intent") return {data:state.existing,error:null};
@@ -42,13 +45,36 @@ function fixture() {
       if (state.publishError) throw new Error("private credentials");return state.publication;
     },
     recover:() => async () => {calls.push("recover");if (state.recoveryError) throw new Error("private");return state.recovered;},
-    logFailure:() => {state.logged++;},
+    logFailure:() => {state.logged++;if(state.loggerThrows) throw new Error("CANARIO_PRIVADO_LOGGER");},
   });
   const request=(payload:unknown=body,headers:Record<string,string>={},method="POST",signal?:AbortSignal) => new Request(
     `https://app.example/api/drafts/${uuid}/html-snapshots`,{method,headers:{origin:"https://app.example","content-type":"application/json",...headers},
       ...(method === "POST" ? {body:JSON.stringify(payload)} : {}),signal});
   return {state,calls,filters,rateKeys,handler,request,params:{draftId:uuid}};
 }
+
+for(const createFailure of [() => new AuthIdentityLookupError(), () => new TenantContextLookupError(), () => new Error("CANARIO_PRIVADO")]) {
+  test(`publicación conserva respuesta segura si fallan ${createFailure().constructor.name} y logger`,async () => {
+    const f=fixture();const failure=createFailure();failure.message="CANARIO_PRIVADO";
+    f.state.authenticationFailure=failure;f.state.loggerThrows=true;
+    const response=await f.handler(f.request(),f.params);const payload=await response.json();
+    assert.equal(response.status,503);assert.equal(payload.retryable,false);
+    assert.equal(response.headers.get("cache-control"),"private, no-store");
+    assert.match(response.headers.get("vary")!,/Cookie/);assert.ok(payload.requestId);
+    assert.equal(payload.correlationId,payload.requestId);assert.doesNotMatch(JSON.stringify(payload),/CANARIO_PRIVADO/);
+    assert.deepEqual(f.calls,["auth"]);assert.equal(f.state.logged,1);
+  });
+}
+
+for(const stage of ["publish","recover"] as const) test(`publicación conserva resultado incierto ante fallo de ${stage} y logger`,async () => {
+  const f=fixture();f.state.publishError=stage === "publish";f.state.recoveryError=stage === "recover";f.state.loggerThrows=true;
+  const response=await f.handler(f.request(),f.params);const payload=await response.json();
+  assert.equal(response.status,503);assert.equal(payload.retryable,false);
+  assert.doesNotMatch(JSON.stringify(payload),/private credentials|CANARIO_PRIVADO/);
+  assert.equal(f.calls.filter(call => call === "publish").length,1);
+  assert.equal(f.calls.filter(call => call === "recover").length,stage === "recover" ? 1 : 0);
+  assert.equal(f.state.logged,1);
+});
 
 test("publication flag defaults off and disabled handler does no authentication or database work", async () => {
   for (const value of [undefined,false,true,"TRUE","false","1",""]) assert.equal(htmlSnapshotPublicationEnabled(value),false);

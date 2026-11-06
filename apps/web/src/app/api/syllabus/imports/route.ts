@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
 import {
@@ -29,6 +30,8 @@ import { executeSyllabusImport } from "@/domains/syllabus/import/syllabus-import
 export const maxDuration = 120;
 
 function errorResponse(error: unknown, requestId: string) {
+  const unavailable = authorizationUnavailableResponse(error, requestId);
+  if (unavailable) return unavailable;
   const status =
     error instanceof SyllabusImportError
       ? error.status

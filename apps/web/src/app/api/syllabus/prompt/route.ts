@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { SYLLABUS_PROMPT } from "@/domains/syllabus/config/syllabus.config";
 import {
   getAuthenticatedUser,
@@ -73,6 +74,8 @@ export async function GET(request: Request) {
 
     return apiSuccessResponse({ prompt }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("syllabus.prompt_lookup_failed", error, { artifactId });
     return apiErrorResponse({
       code: API_ERROR_CODE.dependencyUnavailable,

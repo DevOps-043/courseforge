@@ -4,6 +4,7 @@ import {
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import {
   HeygenCatalogSyncIncompleteError,
   HeygenCatalogSyncInProgressError,
@@ -90,6 +91,8 @@ export async function POST(request: Request) {
         syncedAt: new Date().toISOString(),
       }).catch((cleanupError) => logger.error("production.heygen.sync.cleanup_failed", cleanupError));
     }
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof HeygenCatalogSyncIncompleteError || error instanceof HeygenCatalogSyncInProgressError) {
       return apiErrorResponse({
         code: API_ERROR_CODE.conflict,

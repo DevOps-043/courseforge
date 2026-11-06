@@ -7,6 +7,7 @@ import {
   getAuthorizedMaterialComponentAdmin,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { runHeygenAvatarClipsBackground } from "@/domains/production/providers/heygen/heygen-avatar-background.service";
 import { HeygenApiError } from "@/domains/production/providers/heygen/heygen.client";
 import {
@@ -135,6 +136,8 @@ export async function POST(request: Request) {
       { requestId, status: 202 },
     );
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof HeygenScenesServiceError) {
       return apiErrorResponse({
         code: mapServiceStatus(error.status),

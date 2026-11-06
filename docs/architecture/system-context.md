@@ -1,4 +1,6 @@
 Estado: contexto operativo conservado del repositorio; adaptación del arnés revisada el 2026-10-15.
+Contraste parcial de rutas y backend: 2026-11-04. La [auditoría de deuda técnica](../../TECHNICAL_DEBT_AUDIT.md)
+documenta cobertura y pendientes; este contraste no certifica todo el contexto.
 
 # SofLIA Architect
 
@@ -13,7 +15,7 @@ SofLIA Architect es una plataforma multi-tenant para crear, validar, producir y 
 - **Monorepo npm workspaces**: `apps/web` y `apps/api`.
 - **Frontend**: Next.js 16, React 19, TypeScript, TailwindCSS 4, Zustand, Remotion Player.
 - **Backend web**: Next.js API routes y Netlify Functions para jobs largos del pipeline.
-- **Backend de produccion**: Next.js API routes para `desktop_worker`; Express en `apps/api` queda como camino legacy para render local/Lambda.
+- **Backend de producción**: Next.js API routes y workers especializados. El servidor Express legado en `apps/api/src/server.ts` solo monta `GET /health`; no monta render local/Lambda ni builds cloud. El worker de escritorio fue retirado de las rutas HTTP; persisten módulos y tablas residuales, que no prueban exposición activa.
 - **DB/Auth**: Supabase PostgreSQL con RLS, tabla `profiles`, Auth Bridge JWT HS256 y soporte multi-organizacion.
 - **IA**: Google Gemini como proveedor principal; OpenAI como fallback y para el bundle agent de Remotion.
 - **Servicios**: Gamma API, Google Search grounding, SofLIA API, Google Drive, Microsoft Graph/OneDrive, Artlist, AWS Remotion Lambda, S3, CodeBuild y CloudFront para templates externos.
@@ -47,7 +49,7 @@ npm run test:curation --workspace=apps/web
 Notas:
 
 - `npm run dev` levanta `apps/web` en `:3000`.
-- `npm run dev:legacy-api` levanta `apps/api` en `:4000` solo para diagnosticar el camino Express.
+- `npm run dev:legacy-api` levanta el servidor Express legado en `:4000`, cuyo único endpoint montado es `/health`.
 - En `apps/web`, `npm run lint` usa `eslint . --quiet`; para tipos usa `npm run typecheck` desde la raíz.
 - En `apps/api`, `npm run lint` es `tsc --noEmit` (no hay ESLint en ese workspace).
 - Los scripts `test:*` compilan primero con `tsc -p <tsconfig.*-test.json>` hacia `.tmp/` y luego ejecutan los `.js` resultantes con `node`; no son runners tipo Jest/Vitest, así que para correr un test individual hay que compilar y apuntar `node` directamente al archivo compilado bajo `.tmp/`.
@@ -191,7 +193,7 @@ Incluye:
 - Templates Remotion versionados y validados
 - Bundle agent para generar specs/bundles desde conversacion
 - Preview externo de bundles aprobados
-- Render final mediante worker de escritorio y rutas Next.js
+- Render final mediante los flujos de producción vigentes; el worker de escritorio y sus rutas de render fueron retirados (véase README).
 
 ## Remotion y Produccion
 
@@ -222,32 +224,16 @@ revisor, vinculada a item, clip y hash. La opción se ofrece desde la revisión 
 producción; «Generar desde la voz» también pregunta antes de reemplazar una capa.
 No se persiste permiso de sobrescritura para el reconciliador.
 
-El control plane activo vive en `apps/web` bajo `/api/v1/production` y expone:
-
-- `POST /remotion/render`
-- `GET /remotion/readiness`
-- `GET /remotion/workers`
-- `POST /remotion/workers/link-codes`
-- `POST /remotion/workers/link`
-- `POST /remotion/workers/heartbeat`
-- `POST /remotion/workers/jobs/claim-next`
-- `POST /remotion/workers/jobs/:jobId/claim`
-- `POST /remotion/workers/jobs/:jobId/progress`
-- `POST /remotion/workers/jobs/:jobId/complete`
-- `POST /remotion/workers/jobs/:jobId/fail`
-- `GET /jobs/:jobId/status`
-
-`apps/api` conserva endpoints legacy para render local/Lambda, previews externos y builds cloud.
-
-Proveedores de render:
-
-- `local`
-- `lambda`
-- `desktop_worker`
+En `apps/web` permanece `GET /api/v1/production/jobs/:jobId/status`.
+Las rutas `/api/v1/production/remotion/*` fueron retiradas. `apps/api` conserva
+workers de audio/integridad y código residual, pero su servidor Express no monta
+endpoints de render, previews externos ni builds cloud. Los identificadores
+`local`, `lambda`, `desktop_worker` y `RENDER_PROVIDER` pueden aparecer en módulos
+residuales; no deben interpretarse como proveedores HTTP activos por su presencia.
 
 Reglas importantes:
 
-- `RENDER_PROVIDER` decide el proveedor.
+- No usar `RENDER_PROVIDER` como evidencia de un proveedor activo: verificar el consumidor vigente.
 - En produccion local/Cloud Run se requieren timeouts altos para renders largos.
 - Lambda requiere region, function name, serve URL y bucket.
 - Templates externos deben pasar validacion, versionado, aprobacion y, para Lambda, build cloud compatible con Remotion `4.0.484`.
@@ -304,7 +290,6 @@ La publicacion valida el contrato `SOFLIA_DIALOGUE` para dialogos modernos y blo
 - `POST /api/admin/scorm/upload`
 - `POST /api/admin/scorm/process`
 - `POST /api/gpt/sources`
-- `GET /api/debug/soflia`
 - `POST /api/production/cloud-storage/import`
 - `GET /api/production/cloud-storage/list`
 - `POST /api/production/google-drive/import`

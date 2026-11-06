@@ -1,0 +1,58 @@
+
+> web@1.0.0 test:auth-bridge
+> tsc -p tsconfig.auth-bridge-test.json && node .tmp/auth-bridge-tests/app/login/__tests__/auth-bridge-contract.test.js && node --test .tmp/auth-bridge-tests/features/auth/__tests__/auth-session.test.js
+
+▶ Auth Bridge contract
+  ✔ preserves the session deadline when switching organizations (4.0901ms)
+  ✔ rejects expired or missing session deadlines (0.5552ms)
+  ✔ selects the migrated Learning profile contract (0.666ms)
+  ✔ accepts Learning Supabase Auth when the UUID matches the profile (2.3057ms)
+  ✔ supports username login after the bridge resolves the profile email (0.6543ms)
+  ✔ rejects invalid credentials with a safe message (0.5363ms)
+  ✔ rejects mismatched Auth and profile UUIDs (0.5695ms)
+  ✔ maps operational auth failures without exposing internals (0.4796ms)
+  ✔ keeps the bridge source away from removed Learning columns (1.2689ms)
+  ✔ keeps the JWT metadata compatible while promoting platform_role (1.3601ms)
+  ✔ normalizes legacy Learning roles to the Engine contract (0.8456ms)
+  ✔ derives a tenant role from the active organization membership (0.6228ms)
+  ✔ grants global monitoring only to the explicit Learning administrator role (0.5089ms)
+  ✔ routes canonical roles to their corresponding workspace (0.3583ms)
+  ✔ declares the Learning Auth anon key as required runtime config (1.0535ms)
+✔ Auth Bridge contract (21.1689ms)
+ℹ tests 15
+ℹ suites 1
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 42.8076
+{"timestamp":"2026-11-04T21:46:45.610Z","level":"warn","component":"auth.session","event":"auth.session.unavailable","correlationId":"7c4e2a3f-c93b-47ca-a543-55e9c7b109a5"}
+▶ Server-verified client identity
+  ✔ accepts Auth Bridge without requiring a GoTrue session (11.7144ms)
+  ✔ preserves legacy Supabase sessions when no bridge identity exists (1.785ms)
+  ✔ returns no identity when neither provider has a valid session (0.5991ms)
+  ✔ does not silently fall back when verification fails operationally (1.2946ms)
+  ✔ projects only declared fields and rejects invalid actor identities (3.4647ms)
+✔ Server-verified client identity (23.0516ms)
+▶ Session HTTP and client contract
+  ✔ returns a non-cacheable, token-free identity with correlation headers (14.5252ms)
+  ✔ returns non-cacheable 401 for absent or expired sessions (2.8056ms)
+  ✔ returns safe non-cacheable 500 without provider details (8.0173ms)
+  ✔ uses same-origin credentials, no-store and a bounded request (3.2477ms)
+  ✔ treats 401 as unauthenticated, but rejects server errors and malformed identities (5.9137ms)
+✔ Session HTTP and client contract (35.8919ms)
+▶ Client identity lifecycle
+  ✔ deduplicates concurrent initialization and hydrates actorId (1.9958ms)
+  ✔ does not resurrect a user when a lookup finishes after logout (0.8261ms)
+  ✔ clears stale identity on expiration and supports retry after network failure (1.5085ms)
+  ✔ retains the scope guard and shows a recovery action instead of silently hiding (2.0443ms)
+✔ Client identity lifecycle (7.1965ms)
+ℹ tests 14
+ℹ suites 3
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 753.398

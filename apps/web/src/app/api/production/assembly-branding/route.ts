@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { ALL_FORMATS, Input, UrlSource } from "mediabunny";
 import {
   canReviewContent,
@@ -94,6 +95,8 @@ export async function GET(request: Request) {
       { requestId },
     );
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("assembly_branding.load_failed", error);
     return apiErrorResponse({
       code: API_ERROR_CODE.internalError,
@@ -173,6 +176,8 @@ export async function PUT(request: Request) {
     });
     return apiSuccessResponse({}, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("assembly_branding.selection_failed", error);
     return apiErrorResponse({
       code: API_ERROR_CODE.internalError,
@@ -372,6 +377,8 @@ export async function PATCH(request: Request) {
     });
     return apiSuccessResponse({ data: { id: pathInfo.id } }, { requestId, status: 201 });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("assembly_branding.direct_upload_finalize_failed", error);
     return apiErrorResponse({
       code: API_ERROR_CODE.internalError,

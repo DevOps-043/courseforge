@@ -1,0 +1,6 @@
+
+> courseforge@1.0.0 db:migrations:check
+> node scripts/check-migration-versions.mjs
+
+Migration version guard passed (214 SQL files; historical collisions frozen).
+EXIT=0

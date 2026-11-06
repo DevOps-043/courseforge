@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { HEYGEN_STANDALONE_VIDEO_TOKEN_HEADER } from "@/domains/production/providers/heygen/heygen-standalone-video-access.contract";
 import { SceneVisualSelector } from "@/domains/materials/components/composition-editor/SceneVisualSelector";
 import type { SceneVisualCatalog } from "@/domains/production/composition-editor/composition-narrative.types";
 import Link from "next/link";
@@ -172,6 +173,7 @@ interface HeygenAsset {
 }
 
 interface CurrentJob {
+  standaloneAccessToken?: string | null;
   asset?: HeygenAsset | null;
   jobId: string;
   providerJobId?: string | null;
@@ -710,7 +712,9 @@ export default function HeygenStudioClient({
       const statusUrl = currentJob.standalone
         ? `/api/production/heygen/standalone/videos/${encodeURIComponent(currentJob.providerJobId || currentJob.jobId)}`
         : `/api/production/heygen/jobs/${currentJob.jobId}?autoPromote=true`;
-      const response = await fetch(statusUrl, { cache: "no-store" });
+      const response = await fetch(statusUrl, { cache: "no-store",
+        ...(currentJob.standalone ? { headers: { [HEYGEN_STANDALONE_VIDEO_TOKEN_HEADER]: currentJob.standaloneAccessToken || "" } } : {}),
+      });
       const payload = await readApiResponse(response);
 
       if (!response.ok || !payload.success) {

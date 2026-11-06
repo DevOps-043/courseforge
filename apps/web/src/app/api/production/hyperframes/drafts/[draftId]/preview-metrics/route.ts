@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
@@ -58,6 +59,8 @@ export async function POST(request: Request, context: RouteContext) {
     else logger.info("production.hyperframes.draft.preview_metrics_received", logContext);
     return new NextResponse(null, { status: 202, headers: { "Cache-Control": "private, no-store", "x-request-id": requestId } });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof z.ZodError || error instanceof SyntaxError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "El lote de métricas no es válido.", requestId, status: 400 });
     }

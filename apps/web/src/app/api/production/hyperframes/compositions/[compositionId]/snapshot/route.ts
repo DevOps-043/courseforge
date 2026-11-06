@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext, TenantContextLookupError } from "@/lib/server/tenant-context";
@@ -39,7 +40,9 @@ export async function POST(request: Request, context: RouteContext) {
     });
     return apiSuccessResponse({ data }, { requestId, status: data.reused ? 200 : 201 });
   } catch (error) {
-    if (error instanceof TenantContextLookupError) return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, details: { reason: error.code }, message: error.message, requestId, retryable: true, status: 503 });
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId, error instanceof TenantContextLookupError ? { details: { reason: error.code } } : undefined);
+    if (authorityUnavailable) return authorityUnavailable;
+
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "La solicitud de snapshot no es válida.", requestId, status: 400 });
     if (error instanceof CompositionSnapshotError) return apiErrorResponse({ code: mapStatusToErrorCode(error.status), message: error.message, requestId, status: error.status });
     logger.error("production.hyperframes.composition.snapshot_failed", error);

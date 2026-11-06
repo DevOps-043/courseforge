@@ -4,6 +4,9 @@ import { createNarrativeFragmentPlanHttpHandler, type NarrativeFragmentPlanHttpD
 import { createNarrativeDocumentFixture } from "./fixtures/composition-narrative.fixture";
 import { deriveNarrativeNavigationOccurrences } from "../composition-narrative-occurrence.service";
 import { compositionNativeTextSourceSchema } from "../composition-text-layer.types";
+import { AuthIdentityLookupError } from "../../../../lib/server/auth-identity-error";
+import { TenantContextLookupError } from "../../../../lib/server/tenant-context-error";
+import { loggingModes, withBrokenNarrativeLogger, assertSafeNarrativeFailure } from "./fixtures/narrative-logging-test.fixture";
 
 const draftId = "55555555-5555-4555-8555-555555555555";
 const organizationId = "33333333-3333-4333-8333-333333333333";
@@ -37,6 +40,24 @@ function setup() {
     method: "POST", headers: { origin: "https://courseforge.example", "content-type": "application/json" }, body: JSON.stringify(body), ...overrides });
   return { document, body, calls, dependencies, request, handle: createNarrativeFragmentPlanHttpHandler(dependencies) };
 }
+for (const logging of loggingModes) {
+  for (const createFailure of [() => new AuthIdentityLookupError(), () => new TenantContextLookupError()]) {
+    test(`plan de fragmento contiene ${createFailure().constructor.name} y logger ${logging}`, async () => {
+      const f = setup(); const failure = createFailure(); failure.message = "CANARIO_PRIVADO";
+      f.dependencies.authorize = async () => { f.calls.push("authorize"); throw failure; };
+      const response = await withBrokenNarrativeLogger(f.dependencies, logging, () => f.handle(f.request(), draftId));
+      const body = await assertSafeNarrativeFailure(response);
+      assert.equal(body.details.reason, "OPERATION_UNAVAILABLE"); assert.deepEqual(f.calls, ["authorize"]);
+    });
+  }
+  test(`plan de fragmento contiene error del repositorio y logger ${logging}`, async () => {
+    const f = setup();
+    f.dependencies.createRepository = () => { f.calls.push("repository"); throw new Error("CANARIO_PRIVADO"); };
+    await assertSafeNarrativeFailure(await withBrokenNarrativeLogger(f.dependencies, logging, () => f.handle(f.request(), draftId)));
+    assert.deepEqual(f.calls, ["authorize", "limit", "repository"]);
+  });
+}
+
 test("authorized audiovisual review returns only summary, no operations and no write receipt", async () => {
   const current = setup();
   const response = await current.handle(current.request(), draftId);

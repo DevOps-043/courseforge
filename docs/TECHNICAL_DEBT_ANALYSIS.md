@@ -1,5 +1,10 @@
 # Technical Debt Analysis - CourseForge
 
+> Documento histórico de marzo de 2026. Sus porcentajes y afirmaciones de «cero»
+> no describen el checkout actual ni constituyen una línea base vigente.
+> Consultar el [informe de auditoría vigente](../TECHNICAL_DEBT_AUDIT.md), que
+> conserva cobertura, hallazgos y verificaciones del corte 2026-11-04.
+
 **Original analysis date**: 2026-03-24
 **Last verified against live code**: 2026-03-27
 **Revision**: 12 (verified with on-disk `wc -l`, `rg` searches, `tsc --noEmit`)

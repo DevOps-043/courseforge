@@ -6,7 +6,7 @@ import { createNarrativeExtractionHttpHandler, type NarrativeExtractionHttpDepen
 import { consumeNarrativeExtractionRateLimit } from "../composition-narrative-extraction-rate-limit";
 import { createNarrativeExtractionReadRepository } from "../composition-narrative-extraction.repository";
 import { createNarrativeExtractionCommandRepository, createSupabaseNarrativeExtractionRpcTransport } from "../composition-narrative-extraction-command.repository";
-import type { NarrativeExtractionHttpAuthorization } from "./composition-narrative-extraction-handler.server";
+import type { NarrativeExtractionHttpAuthorization } from "./composition-narrative-http-authorization.contract";
 
 export async function authorizeServerNarrativeExtraction(): Promise<NarrativeExtractionHttpAuthorization> {
   const user = await getAuthenticatedUser(await createClient());

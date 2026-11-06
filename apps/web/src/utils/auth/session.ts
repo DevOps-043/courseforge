@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
 import { jwtVerify, type JWTPayload } from 'jose'
-import { getErrorMessage } from '@/lib/errors'
+import { AuthIdentityLookupError } from '@/lib/server/auth-identity-error'
 import { getCourseforgeJwtSecret } from '@/lib/server/env'
 import { normalizePlatformRole } from '@/utils/auth/platform-role'
 
@@ -63,26 +63,33 @@ function isNextDynamicRenderingSignal(error: unknown) {
     && error.digest === 'DYNAMIC_SERVER_USAGE'
 }
 
+const INVALID_BRIDGE_TOKEN_CODES = new Set([
+  'ERR_JWT_EXPIRED', 'ERR_JWT_CLAIM_VALIDATION_FAILED', 'ERR_JWT_INVALID',
+  'ERR_JWS_INVALID', 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED', 'ERR_JOSE_ALG_NOT_ALLOWED',
+])
+
 export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
+  return (await getAuthBridgeSession())?.user ?? null
+}
+
+export async function getAuthBridgeSession(): Promise<{ user: AuthBridgeUser; accessToken: string } | null> {
   try {
     const cookieStore = await cookies()
     const token = cookieStore.get('cf_access_token')?.value
-    console.log('[AuthBridge] Cookie cf_access_token:', token ? 'Present' : 'MISSING')
 
     if (!token) {
       return null
     }
 
-    console.log('[AuthBridge] Verifying token with secret...')
     const secretKey = new TextEncoder().encode(getCourseforgeJwtSecret())
 
     const { payload } = await jwtVerify(token, secretKey, {
       algorithms: ['HS256'],
     })
     const typedPayload = payload as AuthBridgeJwtPayload
-    console.log('[AuthBridge] Token verified for sub:', typedPayload.sub)
 
-    if (!typedPayload.sub || !typedPayload.email) {
+    if (typeof typedPayload.sub !== 'string' || !typedPayload.sub || typeof typedPayload.email !== 'string' || !typedPayload.email
+      || !Number.isInteger(typedPayload.exp) || (typedPayload.exp ?? 0) <= Math.floor(Date.now() / 1000)) {
       return null
     }
 
@@ -92,7 +99,7 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
       userMetadata.platform_role || userMetadata.cargo_rol
     const platformRole = normalizePlatformRole(rawPlatformRole)
 
-    return {
+    const user: AuthBridgeUser = {
       id: typedPayload.sub,
       email: typedPayload.email,
       username: userMetadata.username,
@@ -110,18 +117,16 @@ export async function getAuthBridgeUser(): Promise<AuthBridgeUser | null> {
           )
         : [],
     }
+    return { user, accessToken: token }
   } catch (error: unknown) {
     // cookies() uses this control-flow signal so Next can switch the route to
     // dynamic rendering. Swallowing it produces misleading build errors.
     if (isNextDynamicRenderingSignal(error)) {
       throw error
     }
-    if (getErrorCode(error) === 'ERR_JWT_EXPIRED') {
-      console.log('Auth token expired')
-    } else {
-      console.error('Auth verification error:', getErrorMessage(error))
-    }
-    return null
+    const code = getErrorCode(error)
+    if (code && INVALID_BRIDGE_TOKEN_CODES.has(code)) return null
+    throw new AuthIdentityLookupError()
   }
 }
 

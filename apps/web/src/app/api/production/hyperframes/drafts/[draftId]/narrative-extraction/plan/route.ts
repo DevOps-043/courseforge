@@ -1,6 +1,7 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
-import { resolveActiveTenantContext, TenantContextLookupError } from "@/lib/server/tenant-context";
+import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { createClient } from "@/utils/supabase/server";
 import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
@@ -47,7 +48,9 @@ export async function POST(request: Request, context: { params: Promise<{ draftI
     }
     return apiSuccessResponse({ data: result.summary }, { requestId, headers });
   } catch (error) {
-    if (error instanceof TenantContextLookupError) return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, message: "No se pudo verificar la empresa activa.", requestId, retryable: true, status: 503, headers });
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
+
     if (error instanceof z.ZodError) return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "La solicitud de extracción no es válida.", requestId, status: 400, headers });
     if (error instanceof CompositionDocumentError && error.status === 404) return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Documento no disponible.", requestId, status: 404, headers });
     logger.error("production.hyperframes.narrative_extraction.plan_failed", error);

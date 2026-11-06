@@ -1,0 +1,144 @@
+▶ autoridad HTTP en proveedores de producción
+  ✖ GET artlist/search: indisponibilidad no inicia efectos posteriores (250.5102ms)
+  ✖ GET cloud-storage/list: indisponibilidad no inicia efectos posteriores (28.8845ms)
+  ✖ GET google-drive/list: indisponibilidad no inicia efectos posteriores (24.2523ms)
+  ✖ POST artlist/import: indisponibilidad no inicia efectos posteriores (41.1367ms)
+  ✖ POST cloud-storage/import: indisponibilidad no inicia efectos posteriores (57.2614ms)
+  ✖ POST google-drive/import: indisponibilidad no inicia efectos posteriores (50.2509ms)
+  ✖ POST import-external: indisponibilidad no inicia efectos posteriores (52.0816ms)
+  ✔ conserva ausencia de identidad, tenant y componente sin consultar al proveedor (435.6679ms)
+  ✔ preserva validación y límites declarados antes de autenticación (191.0733ms)
+  ✔ preserva DTO de listados y sus errores genéricos (102.1427ms)
+  ✔ preserva errores externos, cuotas, timeout y Retry-After sin aceptar códigos falsos de autoridad (179.5095ms)
+✖ autoridad HTTP en proveedores de producción (1416.1054ms)
+ℹ tests 11
+ℹ suites 1
+ℹ pass 4
+ℹ fail 7
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2269.3865
+
+✖ failing tests:
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:97:28
+✖ GET artlist/search: indisponibilidad no inicia efectos posteriores (250.5102ms)
+  AssertionError [ERR_ASSERTION]: artlist/search/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:104:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1869:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:97:28
+✖ GET cloud-storage/list: indisponibilidad no inicia efectos posteriores (28.8845ms)
+  AssertionError [ERR_ASSERTION]: cloud-storage/list/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:104:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:97:28
+✖ GET google-drive/list: indisponibilidad no inicia efectos posteriores (24.2523ms)
+  AssertionError [ERR_ASSERTION]: google-drive/list/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:104:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:97:28
+✖ POST artlist/import: indisponibilidad no inicia efectos posteriores (41.1367ms)
+  AssertionError [ERR_ASSERTION]: artlist/import/identity
+  
+  502 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:104:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 502,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:97:28
+✖ POST cloud-storage/import: indisponibilidad no inicia efectos posteriores (57.2614ms)
+  AssertionError [ERR_ASSERTION]: cloud-storage/import/identity
+  
+  502 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:104:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 502,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:97:28
+✖ POST google-drive/import: indisponibilidad no inicia efectos posteriores (50.2509ms)
+  AssertionError [ERR_ASSERTION]: google-drive/import/identity
+  
+  502 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:104:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 502,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:97:28
+✖ POST import-external: indisponibilidad no inicia efectos posteriores (52.0816ms)
+  AssertionError [ERR_ASSERTION]: import-external/identity
+  
+  502 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\production-provider-authority-http.test.js:104:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 502,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

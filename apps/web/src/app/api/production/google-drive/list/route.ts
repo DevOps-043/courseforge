@@ -1,4 +1,5 @@
 import { createClient } from "@/utils/supabase/server";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { getAuthenticatedUser } from "@/lib/server/artifact-action-auth";
 import { GoogleDriveService } from "@/domains/production/providers/google-drive.service";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
@@ -36,6 +37,8 @@ export async function GET(request: Request) {
       files,
     }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.google_drive.list.failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno del servidor al buscar en Google Drive", requestId, retryable: true, status: 500 });
   }

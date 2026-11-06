@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { createClient } from "@/utils/supabase/server";
 import { HeygenApiError } from "@/domains/production/providers/heygen/heygen.client";
 import { getHeygenClientForOrganization, HeygenCredentialResolverError } from "@/domains/production/providers/heygen/heygen-credential-resolver.service";
@@ -108,6 +109,8 @@ function handleError(
   requestId: string,
   logger: ReturnType<typeof createOperationalLogger>,
 ) {
+  const unavailable = authorizationUnavailableResponse(error, requestId);
+  if (unavailable) return unavailable;
   if (error instanceof z.ZodError) {
     return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: error.issues[0]?.message || "Solicitud HeyGen inválida.", requestId, status: 400 });
   }

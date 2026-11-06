@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import {
   getAuthenticatedUser,
@@ -56,6 +57,8 @@ export async function GET(request: Request) {
       status: 307,
     });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("storage.media.authorization_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo autorizar el medio.", requestId, retryable: true, status: 500 });
   }

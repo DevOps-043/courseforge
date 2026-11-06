@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
+import { createHeygenStandaloneVideoAccess, HeygenStandaloneVideoAccessUnavailableError } from "@/domains/production/providers/heygen/heygen-standalone-video-access.server";
+import { HEYGEN_STANDALONE_VIDEO_TOKEN_HEADER, HEYGEN_STANDALONE_VIDEO_PRIVATE_HEADERS } from "@/domains/production/providers/heygen/heygen-standalone-video-access.contract";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -16,7 +19,7 @@ import { HEYGEN_VIDEO_STATUSES } from "@/domains/production/providers/heygen/hey
 import { createClient } from "@/utils/supabase/server";
 import { API_ERROR_CODE } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
-import { heygenCredentialErrorResponse, heygenProviderErrorResponse } from "@/lib/server/heygen-route-response";
+import { heygenCredentialErrorResponse, heygenProviderErrorResponse, heygenServiceErrorResponse } from "@/lib/server/heygen-route-response";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
 interface RouteContext {
@@ -25,7 +28,7 @@ interface RouteContext {
 
 const videoIdSchema = z.string().trim().min(1).max(200);
 
-export async function GET(request: Request, context: RouteContext) {
+async function getVideoResponse(request: Request, context: RouteContext) {
   const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   const logger = createOperationalLogger("production.heygen.standalone.video", { correlationId: requestId });
   try {
@@ -37,28 +40,38 @@ export async function GET(request: Request, context: RouteContext) {
       return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
 
-    const canReview = await canReviewContent(authenticatedUser.userId);
-    if (!canReview) {
-      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para consultar videos de HeyGen.", requestId, status: 403 });
-    }
-
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
       return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no valida o no autorizada.", requestId, status: 403 });
     }
+    if (!(await canReviewContent(authenticatedUser.userId, tenant))) {
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para consultar videos de HeyGen.", requestId, status: 403 });
+    }
 
+    const standaloneAccessToken = request.headers.get(HEYGEN_STANDALONE_VIDEO_TOKEN_HEADER);
+    const videoAccess = createHeygenStandaloneVideoAccess(tenant.organizationId);
+    if (!videoAccess.verify(standaloneAccessToken, videoId)) {
+      return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, headers: HEYGEN_STANDALONE_VIDEO_PRIVATE_HEADERS,
+        message: "Vídeo no encontrado para esta empresa.", requestId, status: 404 });
+    }
     const heygenAuth = await getHeygenClientForOrganization({
       allowGlobalFallback: false,
       organizationId: tenant.organizationId,
       supabase: getServiceRoleClient(),
     });
     const video = await heygenAuth.client.getVideo(videoId);
+    if (video.videoId !== videoId) {
+      logger.warn("heygen.video_id_inconsistente");
+      return apiErrorResponse({ code: API_ERROR_CODE.providerError, headers: HEYGEN_STANDALONE_VIDEO_PRIVATE_HEADERS,
+        message: "El proveedor devolvió un vídeo distinto al solicitado.", requestId, retryable: true, status: 502 });
+    }
     const providerStatus = video.status.toLowerCase();
     const isCompleted = providerStatus === HEYGEN_VIDEO_STATUSES.COMPLETED;
     const isFailed = providerStatus === HEYGEN_VIDEO_STATUSES.FAILED;
 
     return apiSuccessResponse({
       data: {
+        standaloneAccessToken,
         asset:
           isCompleted && video.videoUrl
             ? {
@@ -77,8 +90,14 @@ export async function GET(request: Request, context: RouteContext) {
             ? "FAILED"
             : "WAITING_PROVIDER",
       },
-    }, { requestId });
+    }, { requestId, headers: HEYGEN_STANDALONE_VIDEO_PRIVATE_HEADERS });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
+    if (error instanceof HeygenStandaloneVideoAccessUnavailableError) {
+      logger.warn("autorizacion.video_standalone_no_disponible", { codigo: error.code });
+      return heygenServiceErrorResponse({ message: error.message, status: 503 }, requestId, HEYGEN_STANDALONE_VIDEO_PRIVATE_HEADERS);
+    }
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Video ID invalido para consultar HeyGen.", requestId, status: 400 });
     }
@@ -94,4 +113,10 @@ export async function GET(request: Request, context: RouteContext) {
     logger.error("production.heygen.standalone.video_read_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "Error interno del servidor al consultar HeyGen standalone.", requestId, retryable: true, status: 500 });
   }
+}
+
+export async function GET(request: Request, context: RouteContext) {
+  const response = await getVideoResponse(request, context);
+  for (const [name, value] of Object.entries(HEYGEN_STANDALONE_VIDEO_PRIVATE_HEADERS)) response.headers.set(name, value);
+  return response;
 }

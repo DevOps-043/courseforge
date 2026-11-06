@@ -3,6 +3,7 @@ import {
   getAuthenticatedUser,
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import {
   ProductionProviderCredentialError,
@@ -42,6 +43,8 @@ export async function POST(request: Request) {
 
     return apiSuccessResponse({ data: status }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof ProductionProviderCredentialError) {
       return apiErrorResponse({
         code: error.status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest,

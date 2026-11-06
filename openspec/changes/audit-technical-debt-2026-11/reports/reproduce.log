@@ -1,0 +1,5 @@
+TD-26: sin fila de rol, cookie owner produce ADMIN pese a claim CONSTRUCTOR (dependencias simuladas).
+TD-26: claim organization_ids vacío admite organización de cookie sin filtro (precondición explícita).
+TD-26: sin TenantContext, cf_active_org ajena se agrega al filtro service-role pese a membresías firmadas solo propias; BD simulada.
+TD-27: parseJsonRequest consume 65536 bytes antes de rechazar límite de 1024.
+TD-27: parseJsonRequestOptional consume 65536 bytes antes de rechazar límite de 1024.

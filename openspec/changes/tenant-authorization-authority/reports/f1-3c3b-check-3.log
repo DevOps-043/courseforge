@@ -1,0 +1,114 @@
+
+> web@1.0.0 test:syllabus-duration
+> tsc -p tsconfig.syllabus-duration-test.json && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/module-title.test.js && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/lesson-duration-estimator.test.js && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/syllabus-iteration.test.js && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/syllabus-generation-recovery.test.js && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/syllabus-model-provider.test.js && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/syllabus-generation-request.schema.test.js && node .tmp/syllabus-duration-tests/domains/syllabus/lib/__tests__/syllabus-document-extractor.test.js && node .tmp/syllabus-duration-tests/domains/plan/lib/__tests__/plan-iteration.test.js && node .tmp/syllabus-duration-tests/domains/plan/lib/__tests__/instructional-plan-generation.schema.test.js
+
+✔ removes repeated legacy numbering without changing the topic (2.2276ms)
+✔ manual drafts require objectives before saving and preserve stable IDs (8.0291ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25.6919
+✔ estimates lesson time from video duration and Bloom complexity (12.3865ms)
+✔ responds to the video duration selected at course creation (0.9394ms)
+✔ overrides AI estimates for new generations but preserves manual legacy values (2.5617ms)
+✔ calculates course hours from per-lesson estimates instead of an average (0.5405ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 37.5712
+✔ normaliza contadores ausentes o invalidos (3.4548ms)
+✔ permite generar hasta cinco iteraciones (0.7613ms)
+✔ bloquea una sexta iteracion (1.5461ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 31.5425
+✔ a stale generating syllabus is escalated with a readable reason (4.1076ms)
+✔ a generation still within its lease is left untouched (0.4589ms)
+✔ states other than generating are never rewritten (0.4134ms)
+✔ losing the guard race returns the row that was read (1.8232ms)
+✔ database failures are propagated instead of leaving the UI generating (2.0711ms)
+✔ a missing syllabus is returned as-is (0.4921ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26.0187
+✔ envia modelos GPT al cliente OpenAI (5.2664ms)
+✔ envia modelos Gemini al cliente Google (0.8068ms)
+✔ usa web_search de OpenAI durante la investigacion (1.0432ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25.8373
+✔ the syllabus request requires a tenant-authorizable artifact (7.8514ms)
+✔ the syllabus request rejects unbounded or unknown input (1.4345ms)
+✔ the syllabus request accepts a bounded per-generation prompt override (0.6532ms)
+✔ an edited prompt reaches the final model prompt with required runtime context (1.3189ms)
+✔ document-based generation requires one or more bounded source documents (2.8704ms)
+✔ only the signed background contract accepts a reserved iteration (2.8984ms)
+✔ syllabus management accepts bounded server-side mutations (3.7222ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 37.4176
+✔ extracts normalized text from multiple supported document formats (35.751ms)
+✔ makes attached documents the primary generation context (1.6526ms)
+✔ rejects oversized extracted text instead of silently dropping syllabus topics (1.2919ms)
+✔ rejects binary and invalid UTF-8 masquerading as text (1.3295ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 55.2705
+✔ normaliza contadores de iteracion del plan (1.9071ms)
+✔ permite generar hasta cinco iteraciones del plan (0.4613ms)
+✔ bloquea una sexta iteracion del plan (1.0189ms)
+✔ revierte solamente la iteracion reservada que fallo (0.3228ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19.7642
+✔ emits an OpenAI-compatible strict JSON schema (7.8065ms)
+✔ accepts nullable pedagogical fields while keeping every key present (4.4699ms)
+✔ requires a one-to-one lesson mapping between syllabus and plan (1.028ms)
+✔ uses the company prompt until an explicit per-generation edit is enabled (0.4393ms)
+✔ reads the validation audience from current artifact JSON fields (0.4569ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 27.817

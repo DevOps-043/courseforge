@@ -1,0 +1,11 @@
+
+> web@1.0.0 lint
+> eslint . --quiet --format json --output-file ../../openspec/changes/restore-lint-gate/reports/lint-initial.json
+
+npm error Lifecycle script `lint` failed with error:
+npm error code 1
+npm error path D:\Pulse Hub\courseforge\apps\web
+npm error workspace web@1.0.0
+npm error location D:\Pulse Hub\courseforge\apps\web
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c eslint . --quiet --format json --output-file ../../openspec/changes/restore-lint-gate/reports/lint-initial.json

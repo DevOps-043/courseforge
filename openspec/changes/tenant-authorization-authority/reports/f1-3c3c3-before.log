@@ -1,0 +1,359 @@
+▶ autoridad HTTP en conexiones y configuración de producción
+  ✖ GET heygen/connection: autoridad caída no accede a configuración (47.3375ms)
+  ✖ POST heygen/connection: autoridad caída no accede a configuración (27.4339ms)
+  ✖ DELETE heygen/connection: autoridad caída no accede a configuración (33.1056ms)
+  ✖ POST heygen/connection/validate: autoridad caída no accede a configuración (12.5335ms)
+  ✖ GET hyperframes/connection: autoridad caída no accede a configuración (27.9727ms)
+  ✖ POST hyperframes/connection: autoridad caída no accede a configuración (25.0375ms)
+  ✖ DELETE hyperframes/connection: autoridad caída no accede a configuración (20.9656ms)
+  ✖ POST hyperframes/connection/validate: autoridad caída no accede a configuración (11.6306ms)
+  ✖ GET hyperframes/settings: autoridad caída no accede a configuración (16.987ms)
+  ✖ PUT hyperframes/settings: autoridad caída no accede a configuración (17.6586ms)
+  ✖ GET assembly-branding: autoridad caída no accede a configuración (43.7951ms)
+  ✖ PUT assembly-branding: autoridad caída no accede a configuración (31.6171ms)
+  ✖ PATCH assembly-branding: autoridad caída no accede a configuración (29.887ms)
+  ✖ GET liveavatar: autoridad caída no accede a configuración (28.3141ms)
+  ✖ POST liveavatar: autoridad caída no accede a configuración (25.4784ms)
+  ✖ DELETE liveavatar: autoridad caída no accede a configuración (31.0817ms)
+  ✔ mantiene 401/403 sin construir clientes ni leer credenciales (808.4539ms)
+  ✖ conserva DTO de consultas y validaciones sin exponer claves (64.9521ms)
+  ✔ guarda conexiones en el tenant y configura webhook después de guardar (75.259ms)
+  ✔ conserva desconexión compartida y limpieza RPC sin clave anterior (131.8759ms)
+  ✖ mantiene settings de generación y rechaza fallback igual al principal (24.2903ms)
+  ✔ conserva selección y finalización de ensamble con filtros de tenant (261.2397ms)
+  ✔ mantiene rechazo y liberación de medios de ensamble inválidos (159.2979ms)
+  ✔ mantiene catálogo LiveAvatar conectado y creación de embedding (104.7538ms)
+  ✔ conserva validación estricta y límite declarado sin efectos externos (296.0414ms)
+  ✔ preserva errores propios de credenciales y LiveAvatar (173.9792ms)
+  ✔ un error genérico o un objeto con código de autoridad conserva 500 seguro (516.2204ms)
+✖ autoridad HTTP en conexiones y configuración de producción (3052.0038ms)
+ℹ tests 27
+ℹ suites 1
+ℹ pass 9
+ℹ fail 18
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4331.4197
+
+✖ failing tests:
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ GET heygen/connection: autoridad caída no accede a configuración (47.3375ms)
+  AssertionError [ERR_ASSERTION]: GET/heygen/connection/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1869:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ POST heygen/connection: autoridad caída no accede a configuración (27.4339ms)
+  AssertionError [ERR_ASSERTION]: POST/heygen/connection/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ DELETE heygen/connection: autoridad caída no accede a configuración (33.1056ms)
+  AssertionError [ERR_ASSERTION]: DELETE/heygen/connection/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ POST heygen/connection/validate: autoridad caída no accede a configuración (12.5335ms)
+  AssertionError [ERR_ASSERTION]: POST/heygen/connection/validate/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ GET hyperframes/connection: autoridad caída no accede a configuración (27.9727ms)
+  AssertionError [ERR_ASSERTION]: GET/hyperframes/connection/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ POST hyperframes/connection: autoridad caída no accede a configuración (25.0375ms)
+  AssertionError [ERR_ASSERTION]: POST/hyperframes/connection/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ DELETE hyperframes/connection: autoridad caída no accede a configuración (20.9656ms)
+  AssertionError [ERR_ASSERTION]: DELETE/hyperframes/connection/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ POST hyperframes/connection/validate: autoridad caída no accede a configuración (11.6306ms)
+  AssertionError [ERR_ASSERTION]: POST/hyperframes/connection/validate/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ GET hyperframes/settings: autoridad caída no accede a configuración (16.987ms)
+  AssertionError [ERR_ASSERTION]: GET/hyperframes/settings/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ PUT hyperframes/settings: autoridad caída no accede a configuración (17.6586ms)
+  AssertionError [ERR_ASSERTION]: PUT/hyperframes/settings/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ GET assembly-branding: autoridad caída no accede a configuración (43.7951ms)
+  AssertionError [ERR_ASSERTION]: GET/assembly-branding/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ PUT assembly-branding: autoridad caída no accede a configuración (31.6171ms)
+  AssertionError [ERR_ASSERTION]: PUT/assembly-branding/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ PATCH assembly-branding: autoridad caída no accede a configuración (29.887ms)
+  AssertionError [ERR_ASSERTION]: PATCH/assembly-branding/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ GET liveavatar: autoridad caída no accede a configuración (28.3141ms)
+  AssertionError [ERR_ASSERTION]: GET/liveavatar/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ POST liveavatar: autoridad caída no accede a configuración (25.4784ms)
+  AssertionError [ERR_ASSERTION]: POST/liveavatar/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:13:28
+✖ DELETE liveavatar: autoridad caída no accede a configuración (31.0817ms)
+  AssertionError [ERR_ASSERTION]: DELETE/liveavatar/identity
+  
+  500 !== 503
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:20:38)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 503,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:39:24
+✖ conserva DTO de consultas y validaciones sin exponer claves (64.9521ms)
+  AssertionError [ERR_ASSERTION]: Values have same structure but are not reference-equal:
+  
+  {
+    agentAssistedGenerationEnabled: true,
+    agentModel: 'gemini-3.5-flash',
+    automaticGenerationEnabled: true,
+    fallbackModel: null,
+    temperature: 0.3
+  }
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:53:34)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { agentAssistedGenerationEnabled: true, agentModel: 'gemini-3.5-flash', automaticGenerationEnabled: true, fallbackModel: null, temperature: 0.3 },
+    expected: { agentAssistedGenerationEnabled: true, agentModel: 'gemini-3.5-flash', automaticGenerationEnabled: true, fallbackModel: null, temperature: 0.3 },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at .tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:98:24
+✖ mantiene settings de generación y rechaza fallback igual al principal (24.2903ms)
+  AssertionError [ERR_ASSERTION]: Values have same structure but are not reference-equal:
+  
+  {
+    agentAssistedGenerationEnabled: true,
+    agentModel: 'gemini-3.5-flash',
+    automaticGenerationEnabled: true,
+    fallbackModel: null,
+    temperature: 0.3
+  }
+  
+      at TestContext.<anonymous> (D:\Pulse Hub\courseforge\apps\web\.tmp\auth-bridge-tests\app\login\__tests__\integration-authority-http.test.js:103:26)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { agentAssistedGenerationEnabled: true, agentModel: 'gemini-3.5-flash', automaticGenerationEnabled: true, fallbackModel: null, temperature: 0.3 },
+    expected: { agentAssistedGenerationEnabled: true, agentModel: 'gemini-3.5-flash', automaticGenerationEnabled: true, fallbackModel: null, temperature: 0.3 },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

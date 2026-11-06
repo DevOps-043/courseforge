@@ -5,6 +5,7 @@ import {
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { HeygenApiError } from "@/domains/production/providers/heygen/heygen.client";
 import {
   HeygenVideoService,
@@ -70,6 +71,8 @@ export async function GET(request: Request, context: RouteContext) {
       data: heygenJobStatusResponseSchema.parse(statusResult),
     }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Job ID invalido para consultar HeyGen.", requestId, status: 400 });
     }

@@ -7,14 +7,9 @@ import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract'
 import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response'
 import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger'
 import { getRemainingSessionLifetime } from '@/utils/auth/session-expiration'
-
-interface OrganizationSummary {
-  id: string
-  logo_url?: string
-  name: string
-  role: string
-  slug: string
-}
+import { loadCurrentUserMemberships } from '@/lib/server/tenant-memberships'
+import { getOrganizationPlatformRole, TenantContextLookupError } from '@/lib/server/tenant-context'
+import { normalizePlatformRole } from '@/utils/auth/platform-role'
 
 const MAX_SWITCH_ORGANIZATION_REQUEST_BYTES = 4 * 1024
 const switchOrganizationRequestSchema = z.object({
@@ -72,30 +67,9 @@ export async function POST(request: NextRequest) {
       return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'Token inválido o expirado.', requestId, status: 401 })
     }
 
-    const appMetadata = payload.app_metadata || {}
-    const organizationIds: string[] = appMetadata.organization_ids || []
-
-    if (!organizationIds.includes(organizationId)) {
-      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'No tienes acceso a esta organización.', requestId, status: 403 })
-    }
-
-    const orgsRaw = cookieStore.get('cf_user_orgs')?.value
-    let organizations: OrganizationSummary[] = []
-
-    try {
-      if (orgsRaw) {
-        organizations = JSON.parse(orgsRaw) as OrganizationSummary[]
-      }
-    } catch {
-      // Ignore malformed org cookie payload.
-    }
-
-    const targetOrg = organizations.find(
-      (organization) => organization.id === organizationId,
-    )
-
-    if (!targetOrg) {
-      return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: 'Organización no encontrada en tu lista.', requestId, status: 404 })
+    const identity = z.object({ sub: z.string().uuid(), email: z.string().min(1) }).safeParse(payload)
+    if (!identity.success) {
+      return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'Identidad de sesión inválida.', requestId, status: 401 })
     }
 
     const now = Math.floor(Date.now() / 1000)
@@ -103,6 +77,12 @@ export async function POST(request: NextRequest) {
     if (remainingSessionLifetime === null) {
       return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: 'Token inválido o expirado.', requestId, status: 401 })
     }
+    const organizations = await loadCurrentUserMemberships(identity.data.sub)
+    const targetOrg = organizations.find((organization) => organization.id === organizationId)
+    if (!targetOrg || !normalizePlatformRole(await getOrganizationPlatformRole(identity.data.sub, organizationId))) {
+      return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: 'No tienes acceso a esta organización.', requestId, status: 403 })
+    }
+    const appMetadata = payload.app_metadata || {}
     const newAccessToken = await new SignJWT({
       aud: payload.aud,
       role: payload.role,
@@ -111,6 +91,7 @@ export async function POST(request: NextRequest) {
       iss: 'courseforge-auth-bridge',
       app_metadata: {
         ...appMetadata,
+        organization_ids: organizations.map((organization) => organization.id),
         active_organization_id: organizationId,
       },
       user_metadata: payload.user_metadata || {},
@@ -155,6 +136,9 @@ export async function POST(request: NextRequest) {
       },
     }, { requestId })
   } catch (error: unknown) {
+    if (error instanceof TenantContextLookupError) {
+      return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, message: error.message, requestId, retryable: true, status: 503 })
+    }
     logger.error('auth.switch_organization.failed', error)
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo cambiar la organización.', requestId, retryable: true, status: 500 })
   }

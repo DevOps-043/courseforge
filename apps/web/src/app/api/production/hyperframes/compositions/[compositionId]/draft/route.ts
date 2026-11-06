@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import { canReviewContent, getAuthenticatedUser, getServiceRoleClient } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext, TenantContextLookupError } from "@/lib/server/tenant-context";
@@ -35,9 +36,9 @@ export async function POST(request: Request, context: RouteContext) {
       requestId,
     });
   } catch (error) {
-    if (error instanceof TenantContextLookupError) {
-      return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, details: { reason: error.code }, message: error.message, requestId, retryable: true, status: 503 });
-    }
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId, error instanceof TenantContextLookupError ? { details: { reason: error.code } } : undefined);
+    if (authorityUnavailable) return authorityUnavailable;
+
     logger.error("production.hyperframes.composition.draft_request_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo preparar el proyecto de edición.", requestId, retryable: true, status: 500 });
   }
@@ -60,6 +61,8 @@ async function initializeDraftResponse(params: {
     });
     return apiSuccessResponse({ data: draft }, { requestId: params.requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, params.requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof z.ZodError) {
       logger.warn("production.hyperframes.composition.draft_data_invalid", {
         compositionId: params.compositionId,

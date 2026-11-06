@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { readStandaloneHtmlLibrary } from "@/domains/production/standalone/standalone-timeline-library.service";
 import { z } from "zod";
 import {
@@ -27,12 +28,13 @@ export async function GET(request: Request) {
     if (!authenticatedUser) {
       return apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 });
     }
-    if (!(await canReviewContent(authenticatedUser.userId))) {
-      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para consultar assets de video.", requestId, status: 403 });
-    }
+
     const tenant = await resolveActiveTenantContext();
     if (!tenant) {
       return apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 });
+    }
+    if (!(await canReviewContent(authenticatedUser.userId, tenant))) {
+      return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para consultar assets de video.", requestId, status: 403 });
     }
     const assets = await listHyperframesSourceAssets({
       componentId,
@@ -42,6 +44,8 @@ export async function GET(request: Request) {
     const htmlClips = await readStandaloneHtmlLibrary({ componentId, organizationId: tenant.organizationId, supabase: getServiceRoleClient() });
     return apiSuccessResponse({ data: assets, htmlClips }, { requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Component ID inválido.", requestId, status: 400 });
     }

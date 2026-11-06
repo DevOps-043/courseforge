@@ -4,6 +4,9 @@ import { createNarrativeFragmentCommandHttpHandler, type NarrativeFragmentComman
 import { fingerprintNarrativeFragmentRequest } from "../composition-narrative-fragment-apply.server";
 import type { NarrativeFragmentApplyRequest } from "../composition-narrative-fragment-command-contract";
 import { narrativeFragmentApplyEnabled, narrativeFragmentPersistenceReady, narrativeFragmentOrganizationEnabled } from "../http/composition-narrative-fragment-rollout.server";
+import { AuthIdentityLookupError } from "../../../../lib/server/auth-identity-error";
+import { TenantContextLookupError } from "../../../../lib/server/tenant-context-error";
+import { loggingModes, withBrokenNarrativeLogger, assertSafeNarrativeFailure } from "./fixtures/narrative-logging-test.fixture";
 
 const draftId = "55555555-5555-4555-8555-555555555555";
 const organizationId = "33333333-3333-4333-8333-333333333333";
@@ -37,6 +40,36 @@ function setup() {
 function request(body: unknown = command, headers: Record<string, string> = {}) {
   return new Request(`https://editor.example/api/drafts/${draftId}`, { method: "POST",
     headers: { Origin: "https://editor.example", "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
+}
+
+for (const mode of ["APPLY", "RECOVERY"] as const) for (const logging of loggingModes) {
+  for (const createFailure of [() => new AuthIdentityLookupError(), () => new TenantContextLookupError()]) {
+    test(`fragmento ${mode} contiene ${createFailure().constructor.name} y logger ${logging}`, async () => {
+      const f = setup(); const failure = createFailure(); failure.message = "CANARIO_PRIVADO";
+      f.dependencies.authorize = async () => { throw failure; };
+      const response = await withBrokenNarrativeLogger(f.dependencies, logging,
+        () => createNarrativeFragmentCommandHttpHandler(mode, f.dependencies)(request(), draftId));
+      const body = await assertSafeNarrativeFailure(response);
+      assert.equal(body.details.requestNotApplied, mode === "APPLY"); assert.equal(body.details.recoveryRequired, false);
+      assert.equal(body.details.commandId, undefined); assert.equal(body.details.automaticRetryAllowed, false);
+      assert.deepEqual(f.counts(), { serviceLoads: 0, receiptReads: 0 });
+    });
+  }
+  test(`fragmento ${mode} conserva recuperación ante fallo de recibo y logger ${logging}`, async () => {
+    const f = setup(); const loadServices = f.dependencies.loadServices;
+    let receiptAttempts = 0;
+    f.dependencies.loadServices = async (scope, signal) => {
+      const services = await loadServices(scope, signal); assert.ok(services);
+      services.commands.readReceipt = async () => { receiptAttempts++; throw new Error("CANARIO_PRIVADO"); };
+      return services;
+    };
+    const response = await withBrokenNarrativeLogger(f.dependencies, logging,
+      () => createNarrativeFragmentCommandHttpHandler(mode, f.dependencies)(request(), draftId));
+    const body = await assertSafeNarrativeFailure(response);
+    assert.equal(body.details.requestNotApplied, false); assert.equal(body.details.recoveryRequired, true);
+    assert.equal(body.details.commandId, commandId); assert.equal(body.details.automaticRetryAllowed, false);
+    assert.equal(receiptAttempts, 1); assert.equal(f.counts().serviceLoads, 1);
+  });
 }
 
 test("audiovisual replay and recovery expose all clip identities without current source reads or append", async () => {

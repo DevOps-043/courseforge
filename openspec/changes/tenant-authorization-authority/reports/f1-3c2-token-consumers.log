@@ -1,0 +1,74 @@
+apps/web/src/domains/curation/actions/curation-action-context.ts-71-    throw new Error("Artifact not found or inaccessible");
+apps/web/src/domains/curation/actions/curation-action-context.ts-72-  }
+apps/web/src/domains/curation/actions/curation-action-context.ts-73-
+apps/web/src/domains/curation/actions/curation-action-context.ts-74-  const accessToken = options.requireAccessToken
+apps/web/src/domains/curation/actions/curation-action-context.ts:75:    ? await getAccessToken(context.supabase)
+apps/web/src/domains/curation/actions/curation-action-context.ts-76-    : null;
+apps/web/src/domains/curation/actions/curation-action-context.ts-77-
+apps/web/src/domains/curation/actions/curation-action-context.ts-78-  if (options.requireAccessToken && !accessToken) {
+apps/web/src/domains/curation/actions/curation-action-context.ts-79-    throw new Error("Unauthorized");
+apps/web/src/domains/curation/actions/curation-action-context.ts-80-  }
+apps/web/src/domains/curation/actions/curation-action-context.ts-81-
+apps/web/src/domains/curation/actions/curation-action-context.ts-82-  return {
+apps/web/src/domains/curation/actions/curation-action-context.ts-83-    ...context,
+apps/web/src/domains/curation/actions/curation-action-context.ts-84-    admin: authorized.admin,
+--
+apps/web/src/domains/materials/actions/production.actions.ts-676-  componentId: string,
+apps/web/src/domains/materials/actions/production.actions.ts-677-  storyboard: StoryboardItem[],
+apps/web/src/domains/materials/actions/production.actions.ts-678-) {
+apps/web/src/domains/materials/actions/production.actions.ts-679-  const supabase = await createClient();
+apps/web/src/domains/materials/actions/production.actions.ts:680:  const userToken = await getAccessToken(supabase);
+apps/web/src/domains/materials/actions/production.actions.ts-681-  if (!userToken) return { success: false, error: "Unauthorized" };
+apps/web/src/domains/materials/actions/production.actions.ts-682-
+apps/web/src/domains/materials/actions/production.actions.ts-683-  try {
+apps/web/src/domains/materials/actions/production.actions.ts-684-    const authenticatedUser = await getAuthenticatedUser(supabase);
+apps/web/src/domains/materials/actions/production.actions.ts-685-    if (!authenticatedUser) {
+apps/web/src/domains/materials/actions/production.actions.ts-686-      return { success: false, error: "Unauthorized" };
+apps/web/src/domains/materials/actions/production.actions.ts-687-    }
+apps/web/src/domains/materials/actions/production.actions.ts-688-
+apps/web/src/domains/materials/actions/production.actions.ts-689-    const admin = getServiceRoleClient();
+--
+apps/web/src/domains/materials/actions/production.actions.ts-1283-  const { error: authError, supabase } = await getAuthorizedSupabase();
+apps/web/src/domains/materials/actions/production.actions.ts-1284-  if (authError) return { success: false, error: authError };
+apps/web/src/domains/materials/actions/production.actions.ts-1285-
+apps/web/src/domains/materials/actions/production.actions.ts-1286-  const webSupabase = await createClient();
+apps/web/src/domains/materials/actions/production.actions.ts:1287:  const token = await getAccessToken(webSupabase);
+apps/web/src/domains/materials/actions/production.actions.ts-1288-  if (!token) return { success: false, error: "No se encontró un token de autenticación" };
+apps/web/src/domains/materials/actions/production.actions.ts-1289-
+apps/web/src/domains/materials/actions/production.actions.ts-1290-  let rawComponent: any = null;
+apps/web/src/domains/materials/actions/production.actions.ts-1291-  try {
+apps/web/src/domains/materials/actions/production.actions.ts-1292-    const { data, error: fetchError } = await supabase
+apps/web/src/domains/materials/actions/production.actions.ts-1293-      .from("material_components")
+apps/web/src/domains/materials/actions/production.actions.ts-1294-      .select(
+apps/web/src/domains/materials/actions/production.actions.ts-1295-        `
+apps/web/src/domains/materials/actions/production.actions.ts-1296-          assets, content, type, material_lesson_id,
+--
+apps/web/src/domains/materials/actions/production.actions.ts-1515-    const { error: authError } = await getAuthorizedSupabase();
+apps/web/src/domains/materials/actions/production.actions.ts-1516-    if (authError) return { success: false, error: authError };
+apps/web/src/domains/materials/actions/production.actions.ts-1517-
+apps/web/src/domains/materials/actions/production.actions.ts-1518-    const webSupabase = await createClient();
+apps/web/src/domains/materials/actions/production.actions.ts:1519:    const token = await getAccessToken(webSupabase);
+apps/web/src/domains/materials/actions/production.actions.ts-1520-    if (!token) return { success: false, error: "No se encontro un token de autenticacion" };
+apps/web/src/domains/materials/actions/production.actions.ts-1521-
+apps/web/src/domains/materials/actions/production.actions.ts-1522-    const productionApiUrl = getProductionApiBaseUrl();
+apps/web/src/domains/materials/actions/production.actions.ts-1523-    const response = await fetchProductionApiRead(`${productionApiUrl}/api/v1/production/jobs/${jobId}/status`, {
+apps/web/src/domains/materials/actions/production.actions.ts-1524-      headers: {
+apps/web/src/domains/materials/actions/production.actions.ts-1525-        "Authorization": `Bearer ${token}`,
+apps/web/src/domains/materials/actions/production.actions.ts-1526-      }
+apps/web/src/domains/materials/actions/production.actions.ts-1527-    });
+apps/web/src/domains/materials/actions/production.actions.ts-1528-
+--
+apps/web/src/domains/materials/actions/production.actions.ts-1666-}
+apps/web/src/domains/materials/actions/production.actions.ts-1667-
+apps/web/src/domains/materials/actions/production.actions.ts-1668-async function getProductionApiToken() {
+apps/web/src/domains/materials/actions/production.actions.ts-1669-  const webSupabase = await createClient();
+apps/web/src/domains/materials/actions/production.actions.ts:1670:  return getAccessToken(webSupabase);
+apps/web/src/domains/materials/actions/production.actions.ts-1671-}
+apps/web/src/domains/materials/actions/production.actions.ts-1672-
+apps/web/src/domains/materials/actions/production.actions.ts-1673-export async function getRenderWorkerStatusAction(artifactId: string) {
+apps/web/src/domains/materials/actions/production.actions.ts-1674-  return withProductionActionBoundary("Unhandled render worker status error", async () => {
+apps/web/src/domains/materials/actions/production.actions.ts-1675-    const organizationId = await getArtifactOrganizationId(artifactId);
+apps/web/src/domains/materials/actions/production.actions.ts-1676-    if (!organizationId) {
+apps/web/src/domains/materials/actions/production.actions.ts-1677-      return { success: false, error: "No se encontro la organizacion del artefacto" };
+apps/web/src/domains/materials/actions/production.actions.ts-1678-    }
+apps/web/src/domains/materials/actions/production.actions.ts-1679-

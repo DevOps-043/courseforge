@@ -4,6 +4,7 @@ import { createClient } from '@/utils/supabase/server';
 import { getSofliaInboxEnv, getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 import { getAuthenticatedUser } from '@/lib/server/artifact-action-auth';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
+import { authorizationUnavailableResponse } from '@/lib/server/authorization-unavailable-response';
 import { API_ERROR_CODE, parseJsonRequest } from '@/lib/server/api-contract';
 import { apiErrorResponse, apiSuccessResponse } from '@/lib/server/api-response';
 import { createOperationalLogger, resolveCorrelationId } from '@/lib/server/operational-logger';
@@ -111,6 +112,8 @@ export async function POST(req: Request) {
     return apiSuccessResponse({ user: { ...profile, platform_role: role } }, { requestId });
 
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error('admin.users.failed', error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: 'No se pudo actualizar el usuario.', requestId, retryable: true, status: 500 });
   }

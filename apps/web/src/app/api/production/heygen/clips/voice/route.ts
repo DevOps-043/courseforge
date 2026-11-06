@@ -4,6 +4,7 @@ import {
   getAuthorizedMaterialComponentAdmin,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import {
   getHeygenClientForOrganization,
   HeygenCredentialResolverError,
@@ -65,6 +66,8 @@ export async function POST(request: Request) {
 
     return apiSuccessResponse({ data }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof HeygenScenesServiceError) {
       return apiErrorResponse({ code: mapServiceStatus(error.status), message: error.message, requestId, retryable: error.status === 429 || error.status >= 500, status: error.status });
     }

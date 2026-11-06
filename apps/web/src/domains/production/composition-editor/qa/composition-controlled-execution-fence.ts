@@ -3,7 +3,7 @@ import {lstat, open, realpath, unlink} from "node:fs/promises";
 import {isAbsolute, join, resolve} from "node:path";
 import {z} from "zod";
 import {pinConformanceFile, assertConformanceFileUnchanged} from "./composition-conformance-file-integrity";
-import type {ControlledRenderDescriptor} from "./composition-controlled-render-descriptor";
+import type {ControlledRenderDescriptor as Descriptor} from "./composition-controlled-render-descriptor.contract";
 
 export const CONTROLLED_EXECUTION_FENCE_POLICY = {id: "LOCAL_HOST_PENDING_EXECUTION_V1", maximumBytes: 4096} as const;
 const hostIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/);
@@ -12,7 +12,6 @@ const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const leaseSchema = z.object({policy: z.literal(CONTROLLED_EXECUTION_FENCE_POLICY.id), hostId: hostIdSchema,
   nonce: uuid, organizationId: uuid, revisionId: uuid, executionId: uuid, documentHash: hash, projectHash: hash}).strict();
 export type ControlledExecutionFenceLease = z.infer<typeof leaseSchema>;
-type Descriptor = Pick<ControlledRenderDescriptor,"organizationId" | "revisionId" | "executionId" | "documentHash" | "projectHash">;
 export interface ControlledExecutionFence {
   acquire(descriptor: Descriptor): Promise<ControlledExecutionFenceLease>;
   releaseConfirmed(lease: ControlledExecutionFenceLease): Promise<void>;

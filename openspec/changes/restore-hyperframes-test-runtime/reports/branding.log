@@ -1,0 +1,17 @@
+
+> courseforge@1.0.0 test:branding
+> tsc -p apps/web/tsconfig.branding-test.json && node --test apps/web/.tmp/branding-tests/config/__tests__/branding.test.js
+
+✔ la identidad pública es inmutable y sus recursos existen (4.0941ms)
+✔ una identidad alternativa se propaga a prompts, proveedor y schema sin cambiar contratos (750.3552ms)
+✔ OAuth escapa la marca y conserva el canal de integración (182.4623ms)
+✔ el escape HTML preserva texto y neutraliza caracteres de marcado (0.3282ms)
+✔ las superficies activas no reintroducen nombres de producto literales (3692.4915ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5167.552

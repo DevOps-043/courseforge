@@ -5,6 +5,7 @@ import {
   getAuthorizedMaterialComponentAdmin,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { HeygenApiError } from "@/domains/production/providers/heygen/heygen.client";
 import {
   HeygenScenesService,
@@ -66,6 +67,8 @@ export async function GET(request: Request) {
 
     return apiSuccessResponse({ data: result }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Component ID invalido para consultar clips HeyGen.", requestId, status: 400 });
     }

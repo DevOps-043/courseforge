@@ -8,7 +8,7 @@ import { compositionCaptionCueSchema } from "../composition-text-layer.types";
 import { DEFAULT_CAPTION_EFFECTS, compositionCaptionEffectsSchema } from "../composition-caption-effects.types";
 import { buildCaptionEffectPlan, buildCaptionTextParts, captionEffectElementId, captionPartElementId } from "../composition-caption-effects-plan";
 import { scheduleCaptionEffects } from "../composition-caption-effects-runtime";
-import { captionSelectionTokens, resolveCaptionEffects, retainCaptionCueWordWindow } from "../composition-caption-effects.service";
+import { captionEmphasisIssues, isCaptionTextBoundary, captionSelectionTokens, resolveCaptionEffects, retainCaptionCueWordWindow } from "../composition-caption-effects.service";
 import { applyCompositionEditorPatches } from "../editor-patch.service";
 import { compileCompositionPreview, COMPOSITION_COMPILATION_TARGETS } from "../composition-preview-compiler.service";
 import { buildTextParityCheckpointPlan } from "../composition-text-checkpoint-plan";
@@ -21,6 +21,30 @@ function caption(document = createCaptionEffectsFixture()) {
   if (clip.source.type !== "NATIVE_CAPTIONS") throw new Error("Expected captions");
   return { document, clip, source: clip.source };
 }
+
+test("las fronteras UTF-16 conservan emoji ZWJ, acentos combinantes y banderas completos", () => {
+  const text = "A👩‍💻e\u0301🇲🇽Z";
+  const boundaries = new Set([0, 1, 6, 8, 12, 13]);
+  assert.equal(text.length, 13);
+  for (let offset = -1; offset <= text.length + 1; offset += 1) {
+    assert.equal(isCaptionTextBoundary(text, offset), boundaries.has(offset), `Offset ${offset}`);
+  }
+  assert.equal(isCaptionTextBoundary("", 0), true);
+});
+
+test("la validación de énfasis preserva entrada, permite adyacencia y rechaza división o solapamiento", () => {
+  const text = "A👩‍💻e\u0301🇲🇽Z";
+  const range = (start: number, end: number) => ({ start, end, color: "#ff0000" });
+  const unordered = [range(8, 12), range(1, 6), range(6, 8)];
+  const original = structuredClone(unordered);
+  assert.equal(captionEmphasisIssues(text, unordered), false);
+  assert.deepEqual(unordered, original);
+  assert.equal(captionEmphasisIssues(text, []), false);
+  for (const invalid of [[range(2, 6)], [range(6, 7)], [range(8, 10)],
+    [range(1, 8), range(6, 12)], [range(-1, 1)], [range(0, 14)]]) {
+    assert.equal(captionEmphasisIssues(text, invalid), true);
+  }
+});
 
 test("strict versioned settings reject executable values, unknown fields, unbounded values and versions", () => {
   for (const value of [{ ...DEFAULT_CAPTION_EFFECTS, version: 2 }, { ...DEFAULT_CAPTION_EFFECTS, intensity: Infinity },
@@ -52,6 +76,14 @@ test("cue overrides inherit untouched settings and unconfigured documents keep t
   const html = await compileCompositionPreview({ document, assetUrls: new Map() });
   assert.match(html, /class="composition-caption-word" style="opacity:0.55;"/);
   assert.doesNotMatch(html, /id="captions-caption-first-effect"/);
+});
+
+test("el plan de captions solo requiere clips y conserva la entrada de solo lectura", () => {
+  const document = createCaptionEffectsFixture();
+  const clips = Object.freeze([...document.clips]);
+  const before = structuredClone(clips);
+  assert.deepEqual(buildCaptionEffectPlan({ clips }), buildCaptionEffectPlan(document));
+  assert.deepEqual(clips, before);
 });
 
 test("text parts preserve punctuation, spaces, emoji and authored text even without acoustic alignment", () => {

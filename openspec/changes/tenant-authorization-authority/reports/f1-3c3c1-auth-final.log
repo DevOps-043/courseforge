@@ -1,0 +1,164 @@
+
+> web@1.0.0 test:auth-bridge
+> tsc -p tsconfig.auth-bridge-test.json && node .tmp/auth-bridge-tests/app/login/__tests__/auth-bridge-contract.test.js && node --test .tmp/auth-bridge-tests/features/auth/__tests__/auth-session.test.js .tmp/auth-bridge-tests/app/login/__tests__/tenant-authority.test.js .tmp/auth-bridge-tests/app/login/__tests__/artifact-authority.test.js .tmp/auth-bridge-tests/app/login/__tests__/derived-resource-authority.test.js .tmp/auth-bridge-tests/app/login/__tests__/switch-organization-authority.test.js .tmp/auth-bridge-tests/app/login/__tests__/server-identity.test.js .tmp/auth-bridge-tests/app/login/__tests__/authorization-http.test.js .tmp/auth-bridge-tests/app/login/__tests__/syllabus-authority-http.test.js .tmp/auth-bridge-tests/app/login/__tests__/storage-upload-ownership.test.js .tmp/auth-bridge-tests/app/login/__tests__/production-provider-authority-http.test.js
+
+▶ Auth Bridge contract
+  ✔ preserves the session deadline when switching organizations (3.8666ms)
+  ✔ rejects expired or missing session deadlines (0.3205ms)
+  ✔ selects the migrated Learning profile contract (0.4551ms)
+  ✔ accepts Learning Supabase Auth when the UUID matches the profile (1.6511ms)
+  ✔ supports username login after the bridge resolves the profile email (0.4507ms)
+  ✔ rejects invalid credentials with a safe message (0.4112ms)
+  ✔ rejects mismatched Auth and profile UUIDs (0.4799ms)
+  ✔ maps operational auth failures without exposing internals (0.3955ms)
+  ✔ keeps the bridge source away from removed Learning columns (1.2006ms)
+  ✔ keeps the JWT metadata compatible while promoting platform_role (1.123ms)
+  ✔ normalizes legacy Learning roles to the Engine contract (0.6287ms)
+  ✔ derives a tenant role from the active organization membership (0.4056ms)
+  ✔ grants global monitoring only to the explicit Learning administrator role (0.3341ms)
+  ✔ routes canonical roles to their corresponding workspace (0.2576ms)
+  ✔ declares the Learning Auth anon key as required runtime config (0.9264ms)
+✔ Auth Bridge contract (16.3884ms)
+ℹ tests 15
+ℹ suites 1
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 29.7044
+▶ frontera privilegiada de artefactos
+  ✔ sin contexto ni con cookie ajena consulta artefactos (329.1903ms)
+  ✔ ForTenant revalida contexto y no acepta un ID ajeno (73.9702ms)
+  ✔ acceso propio filtra un tenant y rechaza resultado ajeno o legacy null (50.0309ms)
+  ✔ rechaza selectores contradictorios antes de leer artefactos (43.4542ms)
+  ✔ caída de autoridad propaga el mismo error sin consulta privilegiada (44.9834ms)
+  ✔ revisión usa rol vigente y actor actual, sin perfil global ni DTO de respaldo (41.6159ms)
+✔ frontera privilegiada de artefactos (588.5052ms)
+▶ errores HTTP de autoridad en publicación y usuarios
+  ✔ save-draft: identidad y tenant caídos producen 503 sin efectos (294.4444ms)
+  ✔ save-draft: conserva 400 de validación y 500 para errores ajenos (69.1637ms)
+  ✔ publish: identidad y tenant caídos producen 503 sin efectos (307.9678ms)
+  ✔ publish: conserva 400 de validación y 500 para errores ajenos (70.0639ms)
+  ✔ admin/users: identidad y tenant caídos producen 503 sin efectos (215.7706ms)
+  ✔ admin/users: conserva 400 de validación y 500 para errores ajenos (83.9995ms)
+  ✔ no trata un objeto con code o un error genérico como clase de autoridad (0.6069ms)
+✔ errores HTTP de autoridad en publicación y usuarios (1046.9207ms)
+[CurationRowAccess] No se pudo consultar la fila autorizada.
+[MaterialComponentAccess] No se pudo consultar el componente autorizado.
+[MaterialComponentAccess] No se pudo consultar el componente autorizado.
+[MaterialsActions] No se pudieron consultar los materiales autorizados.
+[MaterialsActions] No se pudo consultar la lección autorizada.
+▶ acceso tenant a recursos derivados
+  ✔ sin contexto no realiza prelecturas privilegiadas (438.3574ms)
+  ✔ revalida ForTenant ajeno antes de consultar (118.6678ms)
+  ✔ resuelve recursos propios con filtro tenant y relación objeto o arreglo (134.787ms)
+  ✔ ausencia o recurso ajeno no pasa a la segunda lectura de artefacto (107.4558ms)
+  ✔ mantiene semántica de errores por helper sin conceder acceso (61.4716ms)
+  ✔ no autoriza ni busca artefactos cuando falta la relación requerida (44.1226ms)
+  ✔ autoridad caída se propaga antes de cualquier prelectura (59.9817ms)
+✔ acceso tenant a recursos derivados (970.2464ms)
+▶ autoridad HTTP en proveedores de producción
+  ✔ GET artlist/search: indisponibilidad no inicia efectos posteriores (542.8203ms)
+  ✔ GET cloud-storage/list: indisponibilidad no inicia efectos posteriores (200.3659ms)
+  ✔ GET google-drive/list: indisponibilidad no inicia efectos posteriores (260.9173ms)
+  ✔ POST artlist/import: indisponibilidad no inicia efectos posteriores (288.244ms)
+  ✔ POST cloud-storage/import: indisponibilidad no inicia efectos posteriores (407.9244ms)
+  ✔ POST google-drive/import: indisponibilidad no inicia efectos posteriores (263.7291ms)
+  ✔ POST import-external: indisponibilidad no inicia efectos posteriores (202.841ms)
+  ✔ conserva ausencia de identidad, tenant y componente sin consultar al proveedor (418.6336ms)
+  ✔ preserva validación y límites declarados antes de autenticación (168.5675ms)
+  ✔ preserva DTO de listados y sus errores genéricos (136.888ms)
+  ✔ preserva errores externos, cuotas, timeout y Retry-After sin aceptar códigos falsos de autoridad (174.0954ms)
+  ✔ mantiene errores particulares de credenciales y API HeyGen (79.0546ms)
+✔ autoridad HTTP en proveedores de producción (3149.5396ms)
+▶ identidad y token coherentes en servidor
+  ✔ sesiones duales divergentes usan Bridge sin leer GoTrue (84.2373ms)
+  ✔ GoTrue-only resuelve identidad sin conceder autoridad desde metadatos (39.4133ms)
+  ✔ no entrega token GoTrue si pertenece a otro actor o no verifica (62.4812ms)
+  ✔ caída Bridge no cambia silenciosamente al actor GoTrue (28.6982ms)
+  ✔ caídas GoTrue o getSession propagan error seguro (33.7444ms)
+  ✔ sesión GoTrue ausente o rechazada devuelve null (27.1082ms)
+✔ identidad y token coherentes en servidor (280.6573ms)
+▶ verificación Bridge sin fallback operativo
+  ✔ retorna el mismo token verificado junto al actor (162.7316ms)
+  ✔ rechaza firma inválida, token sin exp y expirado como ausencia (188.6243ms)
+  ✔ errores de configuración son seguros y señales Next se propagan (87.8314ms)
+✔ verificación Bridge sin fallback operativo (441.5913ms)
+▶ ownership de firma genérica de uploads
+  ✔ miniatura autorizada genera path nuevo del recurso sin sobrescritura (656.1481ms)
+  ✔ rechaza artefacto ajeno y discordancia de tenant sin abrir Storage (197.2295ms)
+  ✔ falla cerrado sin identidad, tenant o autoridad del artefacto (244.7549ms)
+  ✔ no permite omitir recurso, MIME o tamaño ni exceder 5 MiB (411.9782ms)
+  ✔ propósitos alternativos no evaden ownership ni habilitan firma de vídeos (557.0569ms)
+✔ ownership de firma genérica de uploads (2071.4659ms)
+▶ cambio de organización con autoridad vigente
+  ✔ usa autoridad y DTO actual sin cookie, renueva IDs y conserva exp (790.6393ms)
+  ✔ acepta sesión legacy sin IDs solo con autoridad vigente (88.4827ms)
+  ✔ rechaza membresía revocada aunque el JWT la conserve (71.8704ms)
+  ✔ rechaza rol local ausente o desconocido sin emitir token (106.1058ms)
+  ✔ autoridad caída devuelve 503 seguro sin escribir cookies (95.3369ms)
+  ✔ sesión ausente, inválida o sin identidad no consulta autoridad (192.0946ms)
+  ✔ solicitud inválida o destino ajeno no concede acceso (30.1049ms)
+✔ cambio de organización con autoridad vigente (1381.6842ms)
+▶ autoridad HTTP de syllabus, documentos e upload
+  ✔ GET src/app/api/syllabus/route.ts: caída de autoridad no inicia efectos (892.2258ms)
+  ✔ DELETE src/app/api/syllabus/route.ts: caída de autoridad no inicia efectos (419.1333ms)
+  ✔ PATCH src/app/api/syllabus/route.ts: caída de autoridad no inicia efectos (310.0895ms)
+  ✔ POST src/app/api/syllabus/route.ts: caída de autoridad no inicia efectos (269.5452ms)
+  ✔ GET src/app/api/syllabus/prompt/route.ts: caída de autoridad no inicia efectos (110.1358ms)
+  ✔ POST src/app/api/syllabus/documents/route.ts: caída de autoridad no inicia efectos (144.8957ms)
+  ✔ GET src/app/api/syllabus/imports/route.ts: caída de autoridad no inicia efectos (173.2203ms)
+  ✔ POST src/app/api/syllabus/imports/route.ts: caída de autoridad no inicia efectos (163.3531ms)
+  ✔ POST src/app/api/storage/signed-upload-url/route.ts: caída de autoridad no inicia efectos (176.256ms)
+  ✔ documentos y upload rechazan tenant ausente sin extracción ni firma (60.4631ms)
+  ✔ documentos conserva 400 por falta de archivos y 413 por tamaño declarado (22.8275ms)
+✔ autoridad HTTP de syllabus, documentos e upload (2746.6469ms)
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar el rol de la organización.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+[TenantContext] No se pudo verificar la membresía vigente.
+▶ autoridad tenant vigente
+  ✔ conserva rol local e ignora cookie y rol global ADMIN (625.2325ms)
+  ✔ deniega rol ausente o desconocido sin fallback (150.1863ms)
+  ✔ claims vacíos o ausentes no agregan membresía desde cookie (131.182ms)
+  ✔ recupera sesión legacy con membresía vigente sin depender de cookie (72.2672ms)
+  ✔ revocación prevalece sobre claim firmado y rol local (64.901ms)
+  ✔ resuelve por ID solo membresía vigente y rol local (64.8975ms)
+  ✔ no consulta roles para slug ajeno ni membresías sin identidad (50.4599ms)
+  ✔ propaga caída de membresía y rol incluso con referer (118.6989ms)
+  ✔ rechaza resultados truncados, malformados o inconsistentes (261.8156ms)
+✔ autoridad tenant vigente (1548.0014ms)
+{"timestamp":"2026-11-05T07:37:18.705Z","level":"warn","component":"auth.session","event":"auth.session.unavailable","correlationId":"f53973c0-73a9-436d-96bb-bcc6399edb13"}
+▶ Server-verified client identity
+  ✔ accepts Auth Bridge without requiring a GoTrue session (10.3229ms)
+  ✔ preserves legacy Supabase sessions when no bridge identity exists (5.6299ms)
+  ✔ returns no identity when neither provider has a valid session (0.9392ms)
+  ✔ does not silently fall back when verification fails operationally (1.5973ms)
+  ✔ projects only declared fields and rejects invalid actor identities (9.0456ms)
+✔ Server-verified client identity (34.848ms)
+▶ Session HTTP and client contract
+  ✔ returns a non-cacheable, token-free identity with correlation headers (32.2189ms)
+  ✔ returns non-cacheable 401 for absent or expired sessions (2.6007ms)
+  ✔ returns safe non-cacheable 500 without provider details (14.8542ms)
+  ✔ uses same-origin credentials, no-store and a bounded request (6.279ms)
+  ✔ treats 401 as unauthenticated, but rejects server errors and malformed identities (7.9668ms)
+✔ Session HTTP and client contract (65.931ms)
+▶ Client identity lifecycle
+  ✔ deduplicates concurrent initialization and hydrates actorId (3.3506ms)
+  ✔ does not resurrect a user when a lookup finishes after logout (0.742ms)
+  ✔ clears stale identity on expiration and supports retry after network failure (2.9299ms)
+  ✔ retains the scope guard and shows a recovery action instead of silently hiding (3.0611ms)
+✔ Client identity lifecycle (11.0179ms)
+ℹ tests 87
+ℹ suites 13
+ℹ pass 87
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4790.7568

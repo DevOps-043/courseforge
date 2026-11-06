@@ -6,6 +6,7 @@ import {
   getServiceRoleClient,
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { HeygenApiError } from "@/domains/production/providers/heygen/heygen.client";
 import {
   assertSafeHeygenAudioUrl,
@@ -173,6 +174,8 @@ export async function POST(request: Request) {
       },
     }, { requestId });
   } catch (error: unknown) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof HeygenVideoServiceError || error instanceof HeygenRequestValidationError) {
       return heygenServiceErrorResponse(error, requestId);
     }

@@ -1,0 +1,624 @@
+
+> web@1.0.0 test:hyperframes
+> tsc -p tsconfig.hyperframes-test.json && node --test .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-position-preview-runtime.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-visual-mask.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-reference-guides.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-view.test.js .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-viewport-geometry.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-preflight.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-cloud.client.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-polling.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-final-video.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-render-recovery.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-video-import.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-generation-settings.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-source-asset.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-plan.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-project-builder.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-draft.service.test.js && node .tmp/hyperframes-tests/domains/production/hyperframes/__tests__/hyperframes-request-validation.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-document.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-document-version.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-document.factory.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-audio-mix.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-timeline-snap.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-snapshot.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-prompt.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-proposal.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-proposal-store.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-model-output.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-recovery.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-agent-read-tools.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-compiler.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-preview-telemetry.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/editor-patch.service.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/standalone-media-composition.test.js && node .tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-clip-export.test.js
+
+✔ el preview parcial conserva el otro eje, tamaño, opacidad y rotación (3.3777ms)
+✔ una confirmación anterior actualiza la base y conserva el borrador posterior (0.56ms)
+✔ confirmar la posición temporal elimina la superposición sin revertir al limpiar (0.4703ms)
+✔ una escena nueva conserva el borrador sobre el nodo nuevo y tolera eliminación (0.6545ms)
+✔ protocolo y receptor rechazan valores inválidos sin tocar el último preview válido (6.36ms)
+✔ controles, protocolo y geometría comparten el rango de zoom (8.7827ms)
+✔ safe areas follow the same centered canvas at every supported zoom (3.3521ms)
+✔ fit uses letterboxing for portrait, square and mismatched monitor sizes (2.626ms)
+✔ tiny monitors preserve the runtime minimum scale and offscreen canvas bounds (0.5858ms)
+✔ hidden monitor and malformed geometry never expose a misleading overlay (0.7159ms)
+✔ the same fit function runs inside the sandbox without module dependencies (4.2346ms)
+✔ guías locales separan drafts y conservan posición, color y visibilidad (5.5611ms)
+✔ contrato rechaza límites, duplicados, CSS y entradas no finitas (6.1695ms)
+✔ mover una guía valida ID, ratio y generación del iframe (2.3992ms)
+✔ las guías son exclusivas del preview interactivo y no aparecen en render (41.3894ms)
+✔ formas cerradas y límites no admiten CSS, URLs ni parámetros desconocidos (8.5561ms)
+✔ máscara persiste y se quita sin modificar crop, layout, motion ni fuente (42.0165ms)
+✔ pista bloqueada y texto rechazan máscaras en servicio y documento (8.9866ms)
+✔ renderer compartido intersecta máscara con crop en video y diapositiva; legacy no agrega wrapper (33.85ms)
+✔ reiniciar un asset elimina máscara y recorte; audio rechaza la operación (4.4254ms)
+✔ el preview conserva la máscara posterior y limpiar restaura el último canónico (0.7958ms)
+✔ las máscaras de imagen se renderizan y los presets las conservan (18.3672ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2159.8134
+▶ HyperFrames render preflight
+  ✔ resolves stable content-versioned variables from trusted Storage identity (3.7171ms)
+  ✔ rejects untrusted buckets before provider submission (1.0435ms)
+  ✔ signs private render sources just in time (0.725ms)
+  ✔ counts a repeated checksum once against the cloud limit (4.7192ms)
+  ✔ blocks unique assets larger than 200 MiB (0.8983ms)
+  ✔ blocks an oversized archive even when the asset manifest is valid (0.5035ms)
+  ✔ blocks an individual video larger than the 100 MiB provider limit (0.4946ms)
+  ✔ allows large aggregate media when the thin project uses remote variables (0.6139ms)
+  ✔ blocks MOV inputs before consuming a provider render attempt (0.5263ms)
+  ✔ rejects unsafe asset paths before a render can be submitted (1.2813ms)
+  ✔ warns when a long standard render should be segmented (0.6829ms)
+  ✔ blocks a predicted output larger than the durable 2 GiB limit (0.5084ms)
+✔ HyperFrames render preflight (18.749ms)
+ℹ tests 12
+ℹ suites 1
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 32.0113
+▶ HyperFrames Cloud client
+  ✔ uploads directly, finalizes and submits without a webhook (45.6396ms)
+  ✔ fails before network use when the idempotency key is unsafe (1.1115ms)
+  ✔ includes the durable callback correlation when configured (2.1014ms)
+  ✔ rejects oversized provider JSON before parsing it (1.3187ms)
+✔ HyperFrames Cloud client (52.4449ms)
+ℹ tests 4
+ℹ suites 1
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 62.6176
+▶ HyperFrames polling decisions
+  ✔ keeps queued and rendering jobs in the polling flow (1.3289ms)
+  ✔ expires an upload that never receives a HeyGen render id (0.3034ms)
+  ✔ waits for a signed URL without inventing a failure and accepts completion with one (0.3005ms)
+✔ HyperFrames polling decisions (3.9597ms)
+ℹ tests 3
+ℹ suites 1
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15.0357
+▶ HyperFrames durable final videos
+  ✔ rehydrates missing projection fields from the durable asset (1.5251ms)
+  ✔ does not replace a user-provided final video (0.2602ms)
+  ✔ clears only the HyperFrames final-video projection before deletion (4.4341ms)
+  ✔ does not clear a manual final-video projection (0.3354ms)
+  ✔ resolves only the managed object path for the requested lesson component (0.3655ms)
+  ✔ rejects a final-video path belonging to another lesson component (0.8941ms)
+✔ HyperFrames durable final videos (10.1755ms)
+ℹ tests 6
+ℹ suites 1
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20.4313
+▶ HyperFrames render recovery
+  ✔ returns one request only when both id and organization match (3.074ms)
+  ✔ returns the active request and scopes every ledger lookup to the organization (2.6875ms)
+  ✔ keeps a completed asset available when the latest revision failed (1.0176ms)
+  ✔ does not expose data when the composition has no scoped component (0.2973ms)
+✔ HyperFrames render recovery (9.4974ms)
+ℹ tests 4
+ℹ suites 1
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20.1247
+▶ HyperFrames final-video import
+  ✔ only accepts HTTPS video URLs served by HeyGen (2.345ms)
+✔ HyperFrames final-video import (4.3158ms)
+▶ HyperFrames completed-render assets
+  ✔ replaces the final video and clears stale markers from the prior render (3.3088ms)
+✔ HyperFrames completed-render assets (3.6008ms)
+ℹ tests 2
+ℹ suites 2
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20.209
+▶ HyperFrames generation settings
+  ✔ uses safe defaults for internal automatic and agent-assisted generation (1.3287ms)
+  ✔ rejects unsafe model configuration values (3.3729ms)
+  ✔ allows supported Gemini and GPT models but rejects arbitrary provider names (1.5076ms)
+  ✔ returns the model persisted for the requested organization without replacing it with the default (1.9549ms)
+✔ HyperFrames generation settings (10.4351ms)
+ℹ tests 4
+ℹ suites 1
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21.3282
+▶ HyperFrames source assets
+  ✔ only exposes renderable media from the internal asset registry (2.3312ms)
+  ✔ recovers manual cloud voices persisted before multi-audio references existed (0.2985ms)
+  ✔ keeps recovered avatar and voice history visible without reviving archived media (0.403ms)
+  ✔ keeps a ready animated deck as HTML rather than slide images (4.6142ms)
+  ✔ inherits appearance and repairs CSS from ready legacy decks (0.8065ms)
+  ✔ marks rasterized slides as deck dependencies when the HTML deck is ready (1.2052ms)
+  ✔ identifies images embedded by the deck separately from uploaded production media (1.5644ms)
+  ✔ inherits only internally stored media from the Production step (0.4617ms)
+  ✔ keeps an authored avatar duration so the assembly template can use it (0.4394ms)
+  ✔ keeps uploaded b-roll dimensions for deterministic source-aspect layout (0.5101ms)
+  ✔ fails closed for historical B-roll audio and preserves avatar narration (0.5119ms)
+  ✔ preserves scene identity for interleaved avatar and voice assets (0.6715ms)
+  ✔ compares synchronized durations at the persisted millisecond precision (0.3275ms)
+  ✔ detects stale scene identity when an active source becomes standalone (0.5096ms)
+  ✔ registers editor-detached audio as an editable narration source (0.3284ms)
+  ✔ exposes every manually uploaded voice as an independent timeline asset (0.4011ms)
+  ✔ accepts a video above the embedded limit when Storage delivers it remotely (2.2601ms)
+  ✔ keeps a video above the remote Storage limit visible with a warning (1.541ms)
+  ✔ blocks source media above the maximum supported resolution (0.4844ms)
+✔ HyperFrames source assets (23.0935ms)
+ℹ tests 19
+ℹ suites 1
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 47.8564
+▶ HyperFrames internal plan
+  ✔ constrains automatic output to a typed plan rather than HTML (1.2796ms)
+✔ HyperFrames internal plan (3.0526ms)
+ℹ tests 1
+ℹ suites 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14.4306
+▶ HyperFrames internal project builder
+  ✔ packages selected media and emits deterministic self-contained HTML (78.6548ms)
+  ✔ preserves animated deck HTML and exposes its preview timeline (24.096ms)
+  ✔ creates editable source without downloading assets or creating an archive (5.1966ms)
+✔ HyperFrames internal project builder (111.8666ms)
+ℹ tests 3
+ℹ suites 1
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 119.2817
+✔ creates a Studio-safe descriptor without exposing a storage path (2.983ms)
+✔ rejects traversal paths and versions file contents (1.2495ms)
+✔ reconciles an existing draft with the active Production avatar only (25.2656ms)
+✔ recovers the composition that wins a concurrent initialization (2.1303ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 45.7591
+✔ accepts UUID composition identifiers and rejects route placeholders (4.3359ms)
+✔ summarizes nested validation failures without copying rejected input (6.2206ms)
+✔ keeps the render profile bound to the immutable snapshot (0.4713ms)
+✔ exposes only avatar-safe user profiles and keeps high quality selectable (0.5166ms)
+✔ removes manifest-only metadata before resolving a provider request (0.3093ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23.009
+✔ links verified processed voice and restores the original while protecting paired scenes (38.1047ms)
+✔ reemplazo rechaza medios sin identidad y límites de entrega verificables (2.7301ms)
+✔ reemplazo exige vínculo al borrador y normaliza metadatos desde el registro (16.6778ms)
+✔ normalizes legacy layer depths into the 0 to 10 contract (0.3435ms)
+✔ uses the stored document hash as the concurrency token (1.7043ms)
+✔ selects the latest saved occurrence when a document hash repeats (1.787ms)
+✔ appends the complete accumulated document when saving a new version (2.8676ms)
+✔ persiste y recarga grupos como parte del documento versionado (5.6717ms)
+✔ allows trusted system reconciliation to add a clip without weakening the agent policy (2.7017ms)
+✔ appends a linked READY sound effect without relying on an embedded PostgREST relation (3.7045ms)
+✔ classifies statement cancellation as a retryable save timeout (0.6302ms)
+✔ classifies an upstream gateway timeout as temporary storage unavailability (0.3422ms)
+✔ keeps an unknown persistence failure generic while preserving correlation (0.2084ms)
+✔ authorizes only draft-linked READY sound effects without embedded-relation cardinality assumptions (0.5492ms)
+✔ fails closed when a linked sound effect is not READY (0.2995ms)
+✔ propagates a sound-effect lookup failure instead of authorizing an unknown asset (0.3099ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 92.2765
+✔ uses a strong quoted ETag for the document concurrency token (1.8535ms)
+✔ parses only a strong quoted ETag when an HTTP client needs one (0.35ms)
+✔ uses the persisted document hash regardless of CDN-managed response ETag (0.3348ms)
+✔ rejects a missing or malformed persisted document hash (0.5305ms)
+✔ prefers a valid If-Match and verifies the redundant version (1.6071ms)
+✔ accepts the redundant version when the platform removes If-Match (1.6139ms)
+✔ rejects absent, malformed, and contradictory preconditions (0.4549ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18.7648
+✔ preserves deck HTML as editable clips and labels missing timings as estimated (16.8988ms)
+✔ formats and parses editor timecodes without decimal ambiguity (0.5895ms)
+✔ steps the playhead by an exact frame or one coarse second (0.3422ms)
+✔ keeps production media as references instead of copying files (2.9734ms)
+✔ centers a vertical b-roll at source aspect without hiding its frame (2.5324ms)
+✔ separates voice and music into semantic layers the agent can identify (1.3537ms)
+✔ preserves persisted layer controls while normalizing the track topology (1.9457ms)
+✔ preserves the production asset name so an avatar clip is identifiable in the timeline (1.2363ms)
+✔ uses source durations for the base template and distributes b-roll clips (1.9668ms)
+✔ hashes one document deterministically regardless of object key order (1.6611ms)
+✔ resolves duration with the strict voice, avatar, b-roll and slides priority (0.4606ms)
+✔ rejects a composition without an eligible duration source (0.8735ms)
+✔ places multiple avatar clips consecutively and records their source duration (1.2399ms)
+✔ keeps avatar and voice-only scenes interleaved on one shared scene clock (3.2954ms)
+✔ keeps distinct scene identities sequential when legacy scene orders collide (5.5158ms)
+✔ quantizes scaled scene timings without crossing the canvas boundary (0.5814ms)
+✔ expands an automatic canvas and appends newly completed scene voices without overlap (1.8172ms)
+✔ appends a second manual voice after a user-edited canvas and extends its duration (1.5638ms)
+✔ uses the expanded automatic canvas when distributing newly available media (2.1195ms)
+✔ refreshes regenerated audio bounds without producing an invalid clip (1.1575ms)
+✔ reconciles newly available avatar media into an existing draft document (1.38ms)
+✔ reconciliation prefers one full avatar over its generated fragments (1.218ms)
+✔ reconciles an unframed legacy B-roll to full-source fit without overriding authored crop (2.4435ms)
+✔ reconciles legacy FPS and explicit source-audio metadata (1.2665ms)
+✔ adds a prepared deck to a draft created before its slides and preserves subsequent manual timing (2.4801ms)
+✔ reconciles legacy production filenames to the canonical asset label (0.9837ms)
+✔ removes only deck-owned raster assets from an existing timeline (7.4748ms)
+✔ preserves retained clip bounds and removes orphan animations when production assets change (7.1934ms)
+✔ keeps a removed slide excluded when Production sources reconcile (2.247ms)
+✔ preassembles selected slides on measured narrative scene durations (5.932ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 97.9772
+✔ builds one deterministic music envelope from voice timing (14.8217ms)
+✔ keeps music ducked across nearby voice and avatar intervals (1.7994ms)
+✔ does not duck for hidden or muted narration (1.709ms)
+✔ supports disabling ducking without changing static track volume (1.2403ms)
+✔ builds non-destructive fade envelopes even when ducking is disabled (1.0935ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 44.5056
+✔ composition API responses preserve valid JSON contracts (47.8536ms)
+✔ composition API responses classify missing deployments (2.1052ms)
+✔ composition API responses reject malformed JSON predictably (0.8193ms)
+✔ ignora el cero inicial del iframe mientras espera restaurar el playhead (1.671ms)
+✔ mantiene pendiente la restauración hasta que el iframe confirma el seek (0.4963ms)
+✔ conserva el comportamiento normal para reproducción y seeks manuales (0.3572ms)
+✔ ajusta la posición restaurada a la nueva duración del canvas (0.365ms)
+✔ solicita una sola actualización cuando el documento guardado supera al preview (0.2685ms)
+✔ construye candidatos de inicio y final y excluye el clip activo y los ocultos (0.841ms)
+✔ alinea el inicio de un clip con el inicio de otro track (0.8222ms)
+✔ alinea el inicio inmediatamente después del final de otro clip (0.5324ms)
+✔ compara ambos bordes al mover y elige el ajuste más cercano (0.6773ms)
+✔ conserva la preferencia por el playhead cuando hay empate (0.377ms)
+✔ ignora candidatos fuera de tolerancia o que rompen los límites (0.4041ms)
+✔ no hace snap cuando la tolerancia está desactivada (0.3446ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 76.9571
+✔ HTML snapshots cannot bypass frozen-source integration by reusing a saved native hash (73.9996ms)
+✔ rejects legacy documents before creating a paid render snapshot (1.4282ms)
+✔ incluye la correcciÃ³n por clip en el hash persistido por snapshots (1.6674ms)
+✔ lists persisted snapshots and identifies the active revision (6.5206ms)
+✔ restores a snapshot into the editable timeline and revokes approval (4.248ms)
+✔ rejects snapshot restoration when the editable timeline changed concurrently (1.4373ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 101.0289
+✔ exposes semantic layers, audio mix and visual depth without source internals (16.8671ms)
+✔ documents the allow-listed depth and ducking operations for the agent (1.8666ms)
+✔ rejects agent audio-mix properties outside the allow-list (14.5989ms)
+✔ constrains agent visual depth to the persisted layout range (3.5591ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 63.4654
+✔ builds a versioned proposal with a safe diff and exact inverse operations (40.9754ms)
+✔ rejects destructive manual operations even though the general patch schema accepts them (1.7449ms)
+✔ rejects a newly introduced overlap on the same track (4.0907ms)
+✔ allows an explicit unlock followed by an edit and reverses both changes (12.8778ms)
+✔ marks content-hiding proposals as high risk with reinforced confirmation (3.8053ms)
+✔ rejects no-op proposals instead of asking the user to approve an empty change (2.6491ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 96.8772
+✔ prepares one persisted proposal and restores its exact base document (42.3527ms)
+✔ fails closed when a persisted inverse no longer returns to the base hash (9.3167ms)
+✔ persists bounded recovery metadata with the final model only (6.5532ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 71.9094
+✔ normalizes required nullable provider fields without widening persisted operations (16.0349ms)
+✔ accepts a finite playback preset that lasts longer than an entrance (0.7177ms)
+✔ rejects a provider partial object that contains only null values (5.4183ms)
+✔ decodes a provider's compact operation envelope before authoritative validation (2.8687ms)
+✔ rejects malformed or type-overriding compact provider arguments (2.3408ms)
+✔ builds strict JSON Schema requests for OpenAI and Gemini (5.2805ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 62.023
+✔ returns a valid primary proposal without recovery (3.1662ms)
+✔ repairs one invalid provider contract with the same model and temperature zero (0.932ms)
+✔ uses the configured fallback only after the primary repair also fails (0.6376ms)
+✔ retries one transient provider failure with bounded backoff (0.7488ms)
+✔ repairs a semantic validation failure using only normalized issues (0.5822ms)
+✔ does not retry or fall back on an authentication rejection (1.0153ms)
+✔ does not retry a forbidden operation (0.6255ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 37.0146
+✔ returns scoped read results without source references and resolves selection (17.212ms)
+✔ snapshot is deeply frozen and detached from all nested document fields (2.7457ms)
+✔ legacy context fails safely on entity, output and conflict limits (3.5603ms)
+✔ conflicts preserve exact nested overlap and exclude hidden/touching clips (1.2942ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 49.532
+✔ preview y render conservan la profundidad adicional registrada (41.3138ms)
+✔ el sincronizador deja completar el bucle sin regresar al último fotograma (8.1793ms)
+✔ audio meters are opt-in, CORS-enabled in preview and absent from the render target (19.2322ms)
+✔ vertical canvas preserves the original HTML deck dimensions (7.8999ms)
+✔ uses stable public URLs and scoped signatures without iframe authentication (1.6584ms)
+✔ keeps preview media warming bounded for remote assets (0.3285ms)
+✔ compiles bounded silent video rate consistently for preview and render (10.9508ms)
+✔ compiles final-frame hold without loop in both targets (9.7995ms)
+✔ seeks browser animations on the deterministic composition clock (5.0656ms)
+✔ compiles HyperFrames media as provider variables instead of ZIP paths (2.4692ms)
+✔ serializa la correcciÃ³n bÃ¡sica en el medio real para preview y render (28.2094ms)
+✔ omite el atributo neutro y conserva el contrato en imÃ¡genes (8.1649ms)
+✔ treats a bundled numeric HyperFrames module id as an optional runtime without a filesystem path (0.2918ms)
+✔ usa el fallback de Courseforge cuando el runtime de color externo no está publicado (4.3135ms)
+✔ no usa un checkout vecino de HyperFrames cuando el paquete instalado no publica el runtime (6.573ms)
+✔ el agrupamiento editorial no altera el HTML enviado a HyperFrames (3.0962ms)
+✔ embeds a stable Storage URL for public production media (2.7655ms)
+✔ signs preview assets in bounded parallel batches (2.1708ms)
+✔ compiles the native document into a seekable preview with stable visual ids (13.6385ms)
+✔ repairs appearance selectors in persisted legacy composition documents (3.9352ms)
+✔ scales an inset deck with contain semantics instead of clipping its authored canvas (4.0335ms)
+✔ applies an HTML slide crop identically in preview and HyperFrames render (5.0085ms)
+✔ fails closed when a document references an asset without a preview URL (6.8483ms)
+✔ compiles the same spatial crop into preview and HyperFrames render (8.8313ms)
+✔ scales crop insets with layout size instead of narrowing the visible window (2.0692ms)
+✔ keeps vertical B-roll fully visible with identical preview and render fit (12.7996ms)
+✔ compiles a deterministic HyperFrames render document without the interactive controller (1.8934ms)
+✔ creates a separate synchronized audio element for an avatar video (12.3477ms)
+✔ applies independent B-roll clip volume in preview and render (22.3928ms)
+✔ compiles derived video clips with the same source and their distinct media offsets (3.134ms)
+✔ compila la misma transición real y sus handles en preview y render (26.5635ms)
+✔ compila dip to color como overlay determinista dentro del timeline (5.1089ms)
+✔ mantiene preview y render en paridad para dividir a 01:30 y eliminar un intervalo intermedio (8.5677ms)
+✔ compiles the same seek-safe music ducking envelope for preview and render (4.7366ms)
+✔ compiles motion on an inner subject without replacing the editable layout (9.4718ms)
+✔ compiles ambient motion as a finite loop that closes at the assigned duration (7.3906ms)
+✔ compiles simple path points identically in preview and render (5.7634ms)
+✔ compiles reversible intermediate visibility presets identically for preview and render (4.1923ms)
+✔ compiles assembly branding with the same remote variable contract (1.0766ms)
+✔ intro y outro compilan sus capas y animaciones en preview y render (14.8098ms)
+✔ resolves a linked READY sound effect into a private preview URL (1.8915ms)
+✔ compiles a transition sound effect with the complete HyperFrames audio contract (1.4388ms)
+ℹ tests 42
+ℹ suites 0
+ℹ pass 42
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 369.8384
+✔ accepts bounded diagnostics and rejects URL-shaped extra fields (5.9603ms)
+✔ summarizes latency without retaining individual media identifiers (1.7595ms)
+✔ uses nearest-rank p95 and reports slow samples without media identifiers (0.4538ms)
+✔ counts bounded sync failures and stale ACKs separately from latency (2.9557ms)
+✔ accepts bounded edit diagnostics without URLs or free-form labels (1.5288ms)
+✔ batches preview telemetry through the authenticated draft endpoint (40.4142ms)
+✔ la cuota limita cada minuto y permite observar sesiones largas sin crecer el buffer (5.9271ms)
+✔ formats stable server timings and rejects unsafe correlation ids (1.2635ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 71.9375
+✔ capas extra: registro, asignación, lectura y restauración conservan 11 y 12 (33.5641ms)
+✔ capas extra: eliminar una vacía conserva los números y los planos base (3.8687ms)
+✔ capas extra: ocupación oculta, confirmación obsoleta y pista bloqueada fallan sin mutar (5.6137ms)
+✔ capas extra: entradas inválidas, duplicados y agente están restringidos (26.958ms)
+✔ capas extra: no elimina parcialmente una capa que dejaría vacía una composición automática (2.4652ms)
+✔ applies and restores verified voice treatment without moving the paired avatar or trimming edits (4.2885ms)
+✔ reemplaza la fuente de un clip conservando sus decisiones de edición (6.4915ms)
+✔ rechaza reemplazos incompatibles, cortos y de pistas bloqueadas (2.7888ms)
+✔ protege la sincronía avatar-voz ante un reemplazo individual (1.4361ms)
+✔ edita la lÃ­nea de tiempo sin alterar la referencia del asset (1.7963ms)
+✔ acota la velocidad de B-roll silencioso y conserva el asset (4.6154ms)
+✔ velocidad desactivada impide nuevos cambios pero mantiene lectura y rollback (1.6876ms)
+✔ congela solo la cola acotada de B-roll silencioso y permite rollback con la flag apagada (4.16ms)
+✔ rechaza congelación fuera del último frame, con audio o velocidad (1.9169ms)
+✔ aplica correcciÃ³n bÃ¡sica por clip, la hereda al dividir y elimina el estado neutro (4.2816ms)
+✔ limita la correcciÃ³n de color al usuario, a pistas editables y a medios visuales (1.9843ms)
+✔ valida rangos y rechaza controles de color fuera del contrato v1 (3.2633ms)
+✔ mueve en conjunto un avatar de escena y su voz asociada (2.0585ms)
+✔ conserva el desfase interno al mover una unión avatar-voz (1.1721ms)
+✔ rechaza atómicamente el movimiento si la contraparte vinculada está bloqueada (1.2594ms)
+✔ amplía el canvas con el límite real de la contraparte vinculada (2.0846ms)
+✔ falla de forma segura ante una relación avatar-voz ambigua (1.2367ms)
+✔ crea un grupo lógico entre capas sin crear clips sintéticos (2.592ms)
+✔ impide que un clip pertenezca directamente a más de un grupo (1.7569ms)
+✔ rechaza grupos con miembros inexistentes y acepta documentos previos sin groups (1.1899ms)
+✔ mueve un grupo entre capas conservando offsets, pistas y el vínculo avatar-voz una sola vez (2.3212ms)
+✔ rechaza atómicamente mover un grupo con una pista bloqueada (1.8068ms)
+✔ añade y retira miembros, disolviendo el grupo cuando queda uno (1.8951ms)
+✔ desagrupa sin modificar los clips ni la relación avatar-voz (1.8717ms)
+✔ un clip derivado hereda el grupo de su clip de origen (1.6652ms)
+✔ un fragmento conservado tras remove-range hereda el grupo (1.9077ms)
+✔ eliminar un miembro disuelve automáticamente un grupo de dos clips (1.4066ms)
+✔ rechaza dividir individualmente una relación avatar-voz (1.0715ms)
+✔ aplica un recorte visual no destructivo y conserva timing, layout y fuente (1.9619ms)
+✔ aplica el mismo recorte visual no destructivo a una diapositiva HTML (1.1395ms)
+✔ limita los insets para conservar al menos un píxel visible (1.1652ms)
+✔ rechaza cambios que exceden el canvas (1.2219ms)
+✔ respeta tracks bloqueados (1.0332ms)
+✔ actualiza controles de capa y permite volver a desbloquearla (1.5603ms)
+✔ persiste el volumen individual de B-roll sin alterar el master del track (1.011ms)
+✔ acepta volumen individual de avatar cuando la fuente confirma audio (0.8995ms)
+✔ rechaza volumen individual sin audio confirmado y valores fuera de rango (2.5945ms)
+✔ actualiza la mezcla automática sin modificar los tracks de audio (1.148ms)
+✔ agrega y quita un clip del timeline sin borrar el asset de origen (1.644ms)
+✔ acepta reinsertar un asset eliminado incluyendo la definición de su track existente (3.0504ms)
+✔ aplica una plantilla de tiempo después de ampliar el canvas (1.231ms)
+✔ amplía el canvas atómicamente cuando un timecode de clip supera la duración actual (1.356ms)
+✔ persiste un recorte atómico con offset de fuente (1.2946ms)
+✔ extiende una diapositiva desde el borde izquierdo sin recortar su fuente HTML (1.6963ms)
+✔ permite extender un video más allá de su fuente para reproducirlo en loop (1.2847ms)
+✔ normaliza el offset al recortar un video que ya está en loop (1.135ms)
+✔ restaura una versión anterior como un documento nuevo sin mutar su snapshot (1.661ms)
+✔ divide un video en dos clips derivados sin duplicar ni modificar el asset fuente (1.1124ms)
+✔ normaliza los rangos derivados al frame rate del documento (1.018ms)
+✔ elimina un segmento intermedio y conserva los dos rangos del mismo asset (1.0828ms)
+✔ permite eliminar un intervalo desde el inicio del clip (1.1569ms)
+✔ permite eliminar un intervalo hasta el final del clip (1.13ms)
+✔ mantiene el error cuando el intervalo realmente queda fuera del clip (0.8953ms)
+✔ reinicia un asset, consolida sus fragmentos y elimina recortes y animaciones (6.942ms)
+✔ permite mostrar completa una fuente visual sin confundir fit con crop (1.1185ms)
+✔ impide que el agente reinicie un asset sin confirmación del usuario (0.9595ms)
+✔ reiniciar también recupera el inicio eliminado por un trim de timeline (1.3823ms)
+✔ rechaza cortes en los límites y migra animaciones que no atraviesan el corte (2.1611ms)
+✔ rechaza únicamente el corte que atraviesa una animación (1.2918ms)
+✔ redistribuye animaciones al eliminar un intervalo entre ellas (3.3261ms)
+✔ acumula ediciones sucesivas sin reiniciar propiedades previamente guardadas (1.6341ms)
+✔ actualiza documentos V1 a V2 sin perder su estado existente (1.3555ms)
+✔ acepta el límite del canvas cuando la suma decimal solo excede por precisión IEEE-754 (1.2366ms)
+✔ mantiene el rechazo para un clip que realmente rebasa el canvas (1.6641ms)
+✔ añade motion sin modificar layout ni timing y lo elimina en cascada con el clip (1.8736ms)
+✔ crea y reconfigura animaciones ambientales con cadencia finita (3.0588ms)
+✔ crea ocultación intermedia instantánea y con desvanecimiento reversible (1.816ms)
+✔ inserta un punto de path acotado y rechaza segmentos inválidos (5.5221ms)
+✔ desactiva nuevos paths sin bloquear la lectura de puntos persistidos (3.0861ms)
+✔ acota el tiempo de paso de puntos interiores sin mover los extremos (4.4693ms)
+✔ ancla los presets de salida al final y conserva sus límites de fase (1.9239ms)
+✔ planifica entrada, reproducción y salida sin solapar el mismo grupo de propiedades (3.0583ms)
+✔ marca un preset como no disponible cuando su propiedad ocupa todo el clip (1.4829ms)
+✔ mueve una salida por frames conservando su anclaje al final (0.639ms)
+✔ aplica snap magnético a animaciones Durante y respeta el interruptor global (3.053ms)
+✔ redimensiona una banda dentro del máximo del preset y hace snap al playhead (0.2921ms)
+✔ marca como manual una animación ajustada desde la timeline (1.4371ms)
+✔ el cálculo automático conserva layout, visibilidad y tiempos manuales (2.0955ms)
+ℹ tests 83
+ℹ suites 0
+ℹ pass 83
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 255.2789
+✔ generic media uses format tracks without avatar or music defaults (20.7273ms)
+✔ renamed format tracks survive normalization and vertical edits preserve geometry (20.3537ms)
+✔ images alone initialize with an editable duration (3.2159ms)
+✔ server probes actual image content and rejects a forged format (12.5479ms)
+✔ multiple HTML assets isolate selectors and animation names, including legacy styles (30.0182ms)
+✔ HTML files retain authored clips when another file is inserted earlier (10.3123ms)
+✔ HTML preparation strips scripts and rejects external media (11.7376ms)
+✔ uploaded markup cannot navigate or retain executable SVG and external CSS (4.5804ms)
+✔ HTML ids and local SVG references are scoped per asset (2.9009ms)
+✔ HTML source exclusions do not collide with legacy slide indices (2.3194ms)
+✔ vertical preview keeps separate HTML scopes and original deck proportions (13.8495ms)
+✔ a legacy deck added later cannot replace an independently uploaded HTML clip (4.1381ms)
+✔ standalone starts empty and synchronization only updates its library styles (6.7408ms)
+✔ explicit insertion, deletion of the last clip, and reload keep standalone selection manual (4.831ms)
+✔ manual mode preserves previously edited standalone clips and rejects forged HTML sources (3.0904ms)
+✔ standalone synchronization preserves manual placement even for legacy scene assets (2.1352ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 642.4921
+✔ exporta ventanas fuente correctas tras eliminar el inicio (22.9891ms)
+✔ exporta ventanas fuente correctas tras eliminar el centro (2.1977ms)
+✔ exporta ventanas fuente correctas tras eliminar el final (1.5765ms)
+✔ exporta el offset acumulado tras recortes sucesivos (1.6307ms)
+✔ la descarga espera la confirmación del recorte local y captura sus offsets vigentes (4.6926ms)
+✔ una cola vacía tras fallar el guardado no permite descargar la proyección sin confirmar (2.41ms)
+✔ un residual menor al mínimo no genera una identidad seleccionable inexistente (1.4634ms)
+✔ eliminar el clip completo no ofrece un fragmento exportable (1.7664ms)
+✔ audio usa WAV y rechaza velocidad, congelación, bucles y duración excesiva (1.3306ms)
+✔ fuente descargada: éxito, HTTP fallido, vacío, tamaño declarado y cancelación (40.6456ms)
+✔ el tamaño real limita respuestas chunked y cancela su lector (98.2499ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 192.5609

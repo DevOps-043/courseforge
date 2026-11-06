@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import {
   canReviewContent,
@@ -40,6 +41,8 @@ export async function GET(request: Request) {
     });
     return apiSuccessResponse({ data: compositions }, { requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     logger.error("production.hyperframes.compositions.list_failed", error);
     return respondCompositionError(error, "No se pudieron listar composiciones de video.", requestId);
   }
@@ -63,6 +66,8 @@ export async function POST(request: Request) {
     });
     return apiSuccessResponse({ data: result.composition, created: result.created }, { requestId, status: result.created ? 201 : 200 });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     logger.error("production.hyperframes.compositions.create_failed", error);
     return respondCompositionError(error, "No se pudo crear la composición de video.", requestId);
   }
@@ -72,12 +77,13 @@ async function getHyperframesAuthorization(requestId: string) {
   const supabase = await createClient();
   const authenticatedUser = await getAuthenticatedUser(supabase);
   if (!authenticatedUser) return { response: apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 }) } as const;
-  if (!(await canReviewContent(authenticatedUser.userId))) {
-    return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para administrar composiciones de video.", requestId, status: 403 }) } as const;
-  }
+
   const tenant = await resolveActiveTenantContext();
   if (!tenant) {
     return { response: apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 }) } as const;
+  }
+  if (!(await canReviewContent(authenticatedUser.userId, tenant))) {
+    return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para administrar composiciones de video.", requestId, status: 403 }) } as const;
   }
   return {
     admin: getServiceRoleClient(),

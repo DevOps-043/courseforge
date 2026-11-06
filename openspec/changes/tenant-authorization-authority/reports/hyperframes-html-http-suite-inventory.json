@@ -1,0 +1,138 @@
+{
+  "base": "e22013bd",
+  "criterion": "Suites que importan directamente handlers HTTP HTML/generated-deck; selección no acredita dominio real ni rutas compartidas pendientes.",
+  "records": [
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-generated-deck-initialization-handler.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-generated-deck-initialization-handler.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "be598690224cb95b33ba5073d2386f4e9975fbc5ea2e12ab3e5c3888a56c858e"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-generated-deck-initialization.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-generated-deck-initialization.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "814bd2be874f90af3ff0ed3cf7c0ece80ef33468d29efd6a220664547b5eda39"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-historical-publication-http.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-historical-publication-http.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "5906f2ce6900eacb7831a915713f9bd9c701e13fe6b8553b5c89ec2540a09a68"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-initialization-http.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-initialization-http.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "b05314d6c9eec5f5d1e8a412f49ca9ae1b78cb52821284a80d45284ccbd07d10"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-initialization-operation-http.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-initialization-operation-http.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "c43c50494cc375f018ebe136db41cdd0575cad9d1eb7172096584a8f3cb12f39"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-inspector.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-inspector.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "af7095aa9f79783deec529838de9d99b8909d3d6923e04f10b98e79561835cd3"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-legacy-adoption-http.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-legacy-adoption-http.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "905c971a1149255cfbb5eb076636ace3cc69283278a8fa4dcc9af27beb680115"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-legacy-inventory.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-legacy-inventory.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "4f1e9aa67f94d306956b8ff09de28fde08a143125c0f88f2e4693173192a40d0"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-legacy-review-http.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-legacy-review-http.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "7d977506e3c2521d0906e7dbac5d7b6f94b5b252a26c6b1a2155e50c6750cfd0"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-mutation.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-mutation.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "f8bdaac2b83b28a8b5b5151787caba9ee00a9482ba49d3b005c3cea860eea41c"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-operation-http.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-operation-http.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "2bc0c7d046c9afabac5f65afe75557e3265edef87b01e44557423256d7815417"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-preview-delivery.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-preview-delivery.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "722c8e9893d4dc7b2a61b6ac24629f502227e2d45e29ba2e56e2bf6e6cfa5c41"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-preview-page.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-preview-page.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "57555d9a7bfe7c6639892650371e899c485169456dd22c46883f3870cc274439"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-reconstruction-library.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-reconstruction-library.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "bf77720833a34b1a9593d8fa721400bc9374aa8217a37660830100ffbe684a62"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-reconstruction-opening.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-reconstruction-opening.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "4140ccca78785ccd7ebb76736749883d1cde82bdec660d7ffd6ff4f5ef2f921d"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-snapshot-history-http.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-snapshot-history-http.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "996c796761587d773a85c35fd441de64ee5a74ae73efa1205294771135cd6260"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-snapshot-inspection-http.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-snapshot-inspection-http.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "6149995e32d7a0b4eb972a31e3f3ebb560478db24e2932c17e5c2c06012c667c"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-snapshot-publication-http.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-snapshot-publication-http.test.js",
+      "executedByHyperframesAtBase": true,
+      "sha256": "c990278394ed8ca28156038f142d1e2eed7bef75d74a5e80a1d114116a40c04c"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-snapshot-recovery-http.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-snapshot-recovery-http.test.js",
+      "executedByHyperframesAtBase": true,
+      "sha256": "60850982daa96e748a30cfcb30443dbcb0e64181162a21311f9846360dfe3652"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-snapshot-republication-review.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-snapshot-republication-review.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "9efed1c7ceef1a93284958174d437d759674f8161ed79255ebedf8135ca9f762"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-editing-template-choices.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-editing-template-choices.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "caffb1b2e11433047290a1adcc573e2b6ca9ef8516f368b640259acb9a8446af"
+    },
+    {
+      "source": "apps/web/src/domains/production/composition-editor/__tests__/composition-html-initial-anchor.test.ts",
+      "compiled": ".tmp/hyperframes-tests/domains/production/composition-editor/__tests__/composition-html-initial-anchor.test.js",
+      "executedByHyperframesAtBase": false,
+      "sha256": "ab5caea7f305283d4f7ab6c40749080e26d44bfa6952caa2ae244163a21b1a7a"
+    }
+  ]
+}

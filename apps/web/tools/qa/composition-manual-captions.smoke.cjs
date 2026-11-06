@@ -1,18 +1,18 @@
 // Desde la raíz, tras compilar las pruebas HyperFrames. Sin servicios externos.
-const assert = require('node:assert/strict');
-const {createServer} = require('node:http');
-const {build} = require('esbuild');
-const {mkdir, writeFile} = require('node:fs/promises');
-const root = '../../.tmp/hyperframes-tests/domains/production/composition-editor/';
-const {createInitialCompositionDocument} = require(root + 'composition-document.factory.js');
-const {compileCompositionPreview, COMPOSITION_COMPILATION_TARGETS} = require(root + 'composition-preview-compiler.service.js');
-const {launchCompositionQaBrowser} = require(root + 'qa/composition-qa-browser.js');
-
 async function main() {
+  const {default: assert} = await import('node:assert/strict');
+  const {createServer} = await import('node:http');
+  const {build} = await import('esbuild');
+  const {mkdir, writeFile} = await import('node:fs/promises');
+  const root = '../../.tmp/hyperframes-tests/domains/production/composition-editor/';
+  const {createInitialCompositionDocument} = await import(root + 'composition-document.factory.js');
+  const {compileCompositionPreview, COMPOSITION_COMPILATION_TARGETS} = await import(root + 'composition-preview-compiler.service.js');
+  const {launchCompositionQaBrowser} = await import(root + 'qa/composition-qa-browser.js');
   const initial = createInitialCompositionDocument({animatedDeck:{css:'',fonts:[],width:1920,height:1080,
     slides:[{index:0,label:'Base',classes:'slide',html:'<section>Base</section>',animationCount:0}]},assets:[],
     plan:{accentColor:'#38BDF8',durationSeconds:12,subtitle:'',title:'Subtítulos manuales'}});
   initial.canvas.durationSeconds = 12;
+  console.info('QA de subtítulos: compilando fixture local.');
   const bundle = await build({stdin:{contents:`
     import React,{useRef,useState} from 'react';import {createRoot} from 'react-dom/client';
     import {CompositionStudioLibrary} from '@/domains/materials/components/composition-editor/CompositionStudioLibrary';
@@ -48,10 +48,13 @@ async function main() {
   const javascript=bundle.outputFiles.find(file=>file.path.endsWith('.js')).text;
   const css=bundle.outputFiles.find(file=>file.path.endsWith('.css')).text;
   const server = createServer((request,response)=>{response.setHeader('Content-Type','text/html; charset=utf-8');response.end(`<html lang="es"><style>${css}</style><div id="root"></div><script>${javascript}</script></html>`);});
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  console.info('QA de subtítulos: iniciando servidor local.');
+  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
   let browser;
   try {
+    console.info('QA de subtítulos: iniciando Chromium.');
     browser=await launchCompositionQaBrowser({profilePrefix:'courseforge-manual-captions-'});
+    console.info('QA de subtítulos: verificando interacción.');
     const evaluate=async expression=>{const response=await browser.client.send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(response.exceptionDetails)throw Error(JSON.stringify(response.exceptionDetails));return response.result.value;};
     const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     const waitFor=async expression=>{for(let i=0;i<100;i++){if(await evaluate(expression))return;await pause(100);}throw Error('No se cumplió: '+expression);};

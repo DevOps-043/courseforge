@@ -1,0 +1,24 @@
+npm error code EPERM
+npm error syscall mkdir
+npm error path D:\Pulse Hub\courseforge\.tmp\remediation-lint-clean\node_modules\@webassemblyjs
+npm error errno -4048
+npm error Error: EPERM: operation not permitted, mkdir 'D:\Pulse Hub\courseforge\.tmp\remediation-lint-clean\node_modules\@webassemblyjs'
+npm error     at async mkdir (node:internal/fs/promises:916:10)
+npm error     at async C:\Users\Lordg\AppData\Roaming\npm\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\reify.js:624:20
+npm error     at async Promise.allSettled (index 270)
+npm error     at async #reifyPackages (C:\Users\Lordg\AppData\Roaming\npm\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\reify.js:353:11)
+npm error     at async Arborist.reify (C:\Users\Lordg\AppData\Roaming\npm\node_modules\npm\node_modules\@npmcli\arborist\lib\arborist\reify.js:139:7)
+npm error     at async CI.exec (C:\Users\Lordg\AppData\Roaming\npm\node_modules\npm\lib\commands\ci.js:110:5)
+npm error     at async Npm.exec (C:\Users\Lordg\AppData\Roaming\npm\node_modules\npm\lib\npm.js:193:9)
+npm error     at async module.exports (C:\Users\Lordg\AppData\Roaming\npm\node_modules\npm\lib\cli\entry.js:67:5) {
+npm error   errno: -4048,
+npm error   code: 'EPERM',
+npm error   syscall: 'mkdir',
+npm error   path: 'D:\\Pulse Hub\\courseforge\\.tmp\\remediation-lint-clean\\node_modules\\@webassemblyjs'
+npm error }
+npm error
+npm error The operation was rejected by your operating system.
+npm error It's possible that the file was already in use (by a text editor or antivirus), or that you lack permissions to access it.
+npm error
+npm error If you believe this might be a permissions issue, please double-check the permissions of the file and its containing directories, or try running the command again as root/Administrator.
+npm error A complete log of this run can be found in: C:\Users\Lordg\AppData\Local\Packages\sandbox.{***}\AC\npm-cache\_logs\2026-11-05T06_46_10_253Z-debug-0.log

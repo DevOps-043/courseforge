@@ -95,7 +95,7 @@ export function createHtmlSnapshotPublicationHandler(dependencies:{enabled:()=>b
       if (data.status !== "COMMITTED_ACTIVE" && data.status !== "COMMITTED_SUPERSEDED") throw new Error();
       return Response.json({success:true,data,requestId,correlationId:requestId},{status:201,headers});
     } catch {
-      dependencies.logFailure?.(requestId);
+      try { dependencies.logFailure?.(requestId); } catch { /* Observabilidad no debe sustituir el resultado incierto. */ }
       return fail(503,API_ERROR_CODE.dependencyUnavailable,"No se pudo confirmar la publicación. Consulta su estado; no repitas el envío automáticamente.");
     }
   };

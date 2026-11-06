@@ -44,9 +44,11 @@ export function heygenProviderErrorResponse(input: {
 export function heygenServiceErrorResponse(
   error: { message: string; status: number },
   requestId: string,
+  headers?: HeadersInit,
 ) {
   return apiErrorResponse({
     code: mapHeygenServiceStatus(error.status),
+    headers,
     message: error.message,
     requestId,
     retryable: error.status === 429 || error.status >= 500,

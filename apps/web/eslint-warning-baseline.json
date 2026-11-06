@@ -1,0 +1,1225 @@
+{
+  "schemaVersion": 2,
+  "files": {
+    "netlify/functions/instructional-plan-background.ts": {
+      "@next/next/no-assign-module-variable": {
+        "e3207940266be6b384cfd627e72429b31d5225f61a8325c0c31de468e62b78e8": 1
+      }
+    },
+    "netlify/functions/shared/bootstrap.ts": {
+      "prefer-const": {
+        "d060f090ad8ac5387255d7391dd540851ebc5af519d5b41eec8d4ff119d475ca": 1
+      }
+    },
+    "netlify/functions/shared/curation-v2/workflow.ts": {
+      "@next/next/no-assign-module-variable": {
+        "2bdaaacfa20068112c82b717c61218f45a23a248f46358a44cb91ab609f0341c": 1
+      }
+    },
+    "scripts/check_lesson_assets.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "c24e474629392ec1032b6fb0752fa54c159c30c3ca1176752e3bf06fd8b81c52": 1
+      }
+    },
+    "scripts/debug_pub_data.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "9eff9ca773f1d705b17bfd54e5a79d52f18fe0bc3364b1b226e11156996bc085": 1
+      }
+    },
+    "scripts/inspect_materials.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "5c7f7db832f52e3cde66a06d182b52d642621c3ad129ecbafae0a8adb8d622b9": 1,
+        "a97aae36c912fc3e11df22ce4f84b58afeaf55f3929d7bbc4948528e53c35f1f": 1,
+        "aba376f433eb1a2ca7c32f1b4fce04660edc01185a3db0ec66219c344aa39918": 1
+      }
+    },
+    "scripts/test_quiz_transform.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "3c94a8afc5c7325cde87e611117b5ec85cd5e9980933677bee4172d442862db3": 1,
+        "e3144e608ea6a5b736a3f904886d3b632c22c7b0c8a54134ffa79b63b31e46a2": 1
+      }
+    },
+    "src/app/[empresaSlug]/admin/layout.tsx": {
+      "prefer-const": {
+        "62006ad3a231e11733a35c379075fd44d80dc79ef7c35adbe9947bb03ba8f4aa": 1
+      }
+    },
+    "src/app/[empresaSlug]/architect/layout.tsx": {
+      "prefer-const": {
+        "62006ad3a231e11733a35c379075fd44d80dc79ef7c35adbe9947bb03ba8f4aa": 1
+      }
+    },
+    "src/app/[empresaSlug]/builder/layout.tsx": {
+      "prefer-const": {
+        "62006ad3a231e11733a35c379075fd44d80dc79ef7c35adbe9947bb03ba8f4aa": 1
+      }
+    },
+    "src/app/admin/artifacts/ArtifactsList.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "d0ec7700c52ae1c769ab26fcd1b2cc20fdc4894c6055b6628219cf6f5be58614": 1
+      }
+    },
+    "src/app/admin/artifacts/[id]/ArtifactClientView.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "39db986a388b56eff918f30a2b26a03363cf3b9e66af41abc1f31e434269fd21": 1,
+        "50e356b585b69095aaa85d3717f682bba476fbbba235c0f7f301aeced657a795": 1,
+        "c958da38f8a99a4c42fd2248f39040c55fa5de6ba0d741324b6bd92f7ff0deab": 1
+      }
+    },
+    "src/app/admin/artifacts/[id]/ArtifactWorkflowHeader.tsx": {
+      "react/no-unescaped-entities": {
+        "9732b1a5776c248d5ffe7588a83841a2a7c37d75f50d4148d4615c475242a992": 1
+      }
+    },
+    "src/app/admin/artifacts/[id]/publish/PublicationClientView.tsx": {
+      "@typescript-eslint/no-unused-vars": {
+        "05bffb7209880805a84d28c3a5b697a56b620f88542264116b0489eab8bdebcc": 1
+      }
+    },
+    "src/app/admin/artifacts/[id]/publish/components/CourseDataForm.tsx": {
+      "@next/next/no-img-element": {
+        "6f4bd0ad22a11409258f5739dec9eb77ca565894e55471c085116187340ff366": 1
+      }
+    },
+    "src/app/admin/artifacts/new/components/CloudStorageConnectButton.tsx": {
+      "prefer-const": {
+        "0b1ad8a3c6a8cd3143730c3c365e23b4f9abdbdf04c623d0b474b11ff3c582ae": 1
+      }
+    },
+    "src/app/admin/artifacts/new/components/CloudStorageProviderSelector.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "5fdcf6604d753da747a627068fed43845317dec2c40cfac31164fd5da6bbcb8e": 1
+      }
+    },
+    "src/app/admin/artifacts/new/page.tsx": {
+      "@next/next/no-html-link-for-pages": {
+        "ded466fdcb6491745351b07e1b33fc6a48cc7da4f4da7b17e18cf74f1d50585e": 3
+      },
+      "@typescript-eslint/no-unused-vars": {
+        "376c30f78219c41403b291fe5614dfd97e379ffdb8c6bbc198fc2c71e6f9a1e8": 1
+      }
+    },
+    "src/app/admin/heygen/HeygenPlatformTools.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "c2f42589bb8e471462ff8969007b98592b2c52855e60d97e6cbaa138aeb84f36": 1
+      }
+    },
+    "src/app/admin/heygen/HeygenStudioClient.tsx": {
+      "@next/next/no-img-element": {
+        "5afaa5c6f0525319578f7c0c9b4e7bbffa5a8d7b01216c35468d2eea463c00f8": 1
+      },
+      "@typescript-eslint/no-explicit-any": {
+        "50e4070dd4d3086550f73e0b666d7b0e538cd8a8b9b8b8cb2dff3aadc2c09160": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "0cfb59ce36a9ac89b378fd66369c37aae3fff7bf8923c2038175725548adb58c": 1,
+        "486f1b1cc994a3b2df8794639b80cf180cc8227c9ccce592189760611c86f31f": 1,
+        "6dfc2b53250e39b7090a77a215ff543ecf8a01aecbb85b168708d03d7bf1a4f3": 1,
+        "d0ec7700c52ae1c769ab26fcd1b2cc20fdc4894c6055b6628219cf6f5be58614": 1,
+        "e15b65a259ce3b7ab8247b25989c318db755009133c887c646d5ad292a1fcf33": 1,
+        "e2062c444160bd0e7fb4027c141dbdd0d74beda3a448b268a0492592f18f30a0": 1,
+        "e7cfa9944b377338a480c526a841f7add54996aed13e41b2d21c1e7d469163ff": 1,
+        "ec7c67c675e4f8f6615357da3e4820af13edf95a7e7d649053538b8a1ce9d564": 1
+      }
+    },
+    "src/app/admin/integrations/AssemblyBrandingCard.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "92e7d615a8ae2f501bdd5e13469fadd5ae7cc3aa4bfe0a5004f6ea5bad0fa227": 1
+      }
+    },
+    "src/app/admin/integrations/ProviderIntegrationCard.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "dcc39cb7c0337ae0e79a93b36683db3c766d8038ef9875de8263530029959d64": 1
+      }
+    },
+    "src/app/admin/layout.tsx": {
+      "prefer-const": {
+        "c77b9da760e3869be5bc98bb08584fb745166aaf044361bdae6c41d2e3ae5e9e": 1
+      }
+    },
+    "src/app/admin/library/components/SoundEffectLibraryPanel.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "08bf3e3cc82ba45e4dac15a125bd2f9d004b5dbfac1b59a9a2b7cb5a89935540": 1
+      }
+    },
+    "src/app/admin/profile/ProfileForm.tsx": {
+      "@next/next/no-img-element": {
+        "8430485ddc6ab2965e9343b4e8e7a4f5d285362f0dc8feade19f322a284aef51": 1
+      },
+      "@typescript-eslint/no-explicit-any": {
+        "64b20d0450ce11a129983535e7aef4be0f6178d0c18b4cc12ff2b5b1ca960e35": 2
+      }
+    },
+    "src/app/admin/remotion/bundle-agent/BundleAgentClient.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "cd392d6ea530102162e04368cf0cf56b12a53ac799ab1cf027267f0cd15baca5": 1
+      }
+    },
+    "src/app/admin/slides/templates/SlideTemplateStudioClient.tsx": {
+      "react-hooks/exhaustive-deps": {
+        "74347cacb63f3c0d29c02fb398eb25481571910535ab549cdf6222c2744bc92f": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "fbf09eb04e3f80944c501611a8734ebd0ef913520f856cfd6030a13753692407": 1
+      }
+    },
+    "src/app/admin/users/UserModal.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "69508bd1c9a70e16a6b5a903dbfd76d3f338789151ccdfeb1d56e115e136ad3a": 1
+      }
+    },
+    "src/app/api/production/cloud-storage/import/route.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "44fbb0b5621fa022ebd9eb82e7bca5585fa2321fa4da53b401e3702c629c0023": 1,
+        "c27d0414f5ea3e5e92f65b78049767ea1d5b22f88dbc94f7621c8b9a6ea0764a": 1
+      }
+    },
+    "src/app/api/production/google-drive/import/route.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "44fbb0b5621fa022ebd9eb82e7bca5585fa2321fa4da53b401e3702c629c0023": 1,
+        "c27d0414f5ea3e5e92f65b78049767ea1d5b22f88dbc94f7621c8b9a6ea0764a": 1
+      }
+    },
+    "src/app/api/production/open-design/export/route.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "44fbb0b5621fa022ebd9eb82e7bca5585fa2321fa4da53b401e3702c629c0023": 1,
+        "c27d0414f5ea3e5e92f65b78049767ea1d5b22f88dbc94f7621c8b9a6ea0764a": 1
+      }
+    },
+    "src/app/api/production/open-design/html-to-png/route.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "44fbb0b5621fa022ebd9eb82e7bca5585fa2321fa4da53b401e3702c629c0023": 1,
+        "c27d0414f5ea3e5e92f65b78049767ea1d5b22f88dbc94f7621c8b9a6ea0764a": 1
+      }
+    },
+    "src/app/architect/layout.tsx": {
+      "prefer-const": {
+        "c77b9da760e3869be5bc98bb08584fb745166aaf044361bdae6c41d2e3ae5e9e": 1
+      }
+    },
+    "src/app/builder/artifacts/new/page.tsx": {
+      "@next/next/no-html-link-for-pages": {
+        "ded466fdcb6491745351b07e1b33fc6a48cc7da4f4da7b17e18cf74f1d50585e": 3
+      },
+      "@typescript-eslint/no-unused-vars": {
+        "376c30f78219c41403b291fe5614dfd97e379ffdb8c6bbc198fc2c71e6f9a1e8": 1
+      }
+    },
+    "src/app/builder/layout.tsx": {
+      "prefer-const": {
+        "c77b9da760e3869be5bc98bb08584fb745166aaf044361bdae6c41d2e3ae5e9e": 1
+      }
+    },
+    "src/app/dashboard/page.tsx": {
+      "prefer-const": {
+        "1cd91b2106369d2f42a720dc56a94d21ce443408f81b08a90db7966ac2a60b7f": 1
+      }
+    },
+    "src/app/login/__tests__/source-test-loader.ts": {
+      "@next/next/no-assign-module-variable": {
+        "3dfce7ac44df678083815db457da55e142b8b6a2cfcf4bbfccac40eabe9f5e89": 1
+      }
+    },
+    "src/app/page.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "3fc4b0e251100c70a5ba4636803ec7741a202e9954fe2df23cd465ebc47b839c": 1
+      }
+    },
+    "src/components/OrganizationSwitcher.tsx": {
+      "@next/next/no-img-element": {
+        "5775bad62c178b9297eb067785c2ceaf86ef29cf8e460eb40f4b5f09e3c1a882": 1
+      }
+    },
+    "src/components/layout/SharedSidebarLayout.tsx": {
+      "@next/next/no-img-element": {
+        "fc17c778c233de993750e45e410121416a464117109ab0fd023f6a1519d267ab": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "3fc4b0e251100c70a5ba4636803ec7741a202e9954fe2df23cd465ebc47b839c": 1
+      }
+    },
+    "src/components/layout/UserMenu.tsx": {
+      "@next/next/no-img-element": {
+        "ac4173da3a29098e8b147e0fadcd2fb46849d9b1cfd4202e150f5be0344ceb0e": 1
+      }
+    },
+    "src/domains/artifacts/lib/__tests__/artifact-base-generation.schema.test.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "4b8217caafe091397bd8acbd8b0a217e2f1eb109dc8692383049de27a237deb3": 1
+      }
+    },
+    "src/domains/course-delivery/components/DeliverySettingsPanel.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "fdc194d2acd29e91a949a10a9edb46579f53687db9f23a8b02e7426642cbe4f2": 1
+      }
+    },
+    "src/domains/course-delivery/hooks/useCourseDelivery.ts": {
+      "react-hooks/set-state-in-effect": {
+        "068c7cd8ca1b87072dcdc327a57cdbd3d6c3d630488107b40beffc6fec4a7ea1": 1
+      }
+    },
+    "src/domains/curation/components/CurationSettingsManager.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "1f47d7daddd28bc404d5c7268907b9a67360c3d789c65983bc68cf158371e379": 1
+      }
+    },
+    "src/domains/curation/hooks/useCuration.ts": {
+      "react-hooks/set-state-in-effect": {
+        "6a367d05d8764bb8591a52b4de504f75df05948d61539f5eecf2c0f27c5e9439": 1
+      }
+    },
+    "src/domains/curation/hooks/useCurationControls.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "df8df7ea15a5add8f3eda0070c67f4fe69a1c0e64836193ea0918e5aaa445d64": 1
+      },
+      "react/no-unescaped-entities": {
+        "97ea6e5b45edd2a3295fa0a4dc51b64c43d6a2ce7dd6bc65c284fedc0fbd26c2": 2
+      }
+    },
+    "src/domains/materials/actions/production.actions.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "1bb56c6448c6bba1060e4f26a3442288ee450a0cea93896dc6b31f3cf113593d": 1,
+        "21dd3551ba12214a80e46b6d03eb4473401078f4e2f870ee91c69f1e60472e90": 1,
+        "32fd8522597c0be88976d454c461ee47d2f18605411d6361d008eec429feb350": 1,
+        "364703b67529c457f691984319aac9ab891f1516aef23fa677b176ae4ac8bed5": 1,
+        "37cd6009ea18c99a6a4448f8133b03e9ad3e62f69b6ccc822f9d9e73d4196dca": 1,
+        "41edc27c1edb718938810c8d270f1cb324ac1c83d5942c9eaa97ea2323af9dfa": 1,
+        "479b40e75d59cf3abddd5a22cd7f6654c806fcb303c65a535aecc09caaf3c97f": 1,
+        "4c11c5690d7ccc02f88dd3e686d51c6a3a988bb49ad3cca31e4b0361f1b4a5f2": 1,
+        "5192aac20b705e6345052d0af2f921bc55fbbf1a3d236846cdfa58dd55fedb1d": 1,
+        "5848187307dca282a3b9ce7dd8fc747807a0e697999e3715798572d3b84f6d16": 1,
+        "64b20d0450ce11a129983535e7aef4be0f6178d0c18b4cc12ff2b5b1ca960e35": 1,
+        "6d5ea969975aeef96440313f83ba1c46e4cb0d7d32c9e9d739658de2a4266d78": 1,
+        "781b823bb2d13c9f6141b3a9326a350aca285d254ed36fb4d9b6e40d7e9c5101": 1,
+        "820a87419f6ffd565d98b27fb731c293dea185f9134293c974b3350a8064101b": 1,
+        "82d00dd01e5935e8eab8463b06105cef5f40320fde7504664a70e8e1f88bc8d0": 1,
+        "845aeacc4f8b287b1b2a52a06660a3268d7ac43a143854111de34c4c3e65a357": 1,
+        "8ab6c5e018554ec8839c35e477b848ff6c63a8a7ed77628b1a2c8c21943def60": 1,
+        "983cf0237de24be9b7a53154dd4e3822998edf27f94fc8cc007ca7411bfde49b": 1,
+        "9f84f4f2b5c2d28fe24d1d8b2f6663df4feff53f5a80f187e768e60828c9c84a": 1,
+        "a817be6e9b1c56b361eb4e158a4ce552aeb9f3152cb73d7bc299f691832fbd60": 1,
+        "b50a374ad741c9f8ef415c150ba99965046900fe0b0ce4e1c775e25ee42a26c7": 1,
+        "bfc1b7908905ce9083cc564f62507110d507857e685a7f83f1cbf6228e6b39cf": 1,
+        "c81926c33b47c12a7cb1579c2acbe464f17666bfc0b3a69a8f7986b9e421114f": 1,
+        "dd5b1f93ff0b4d1d20635ec82b30e02ba0bb1e5eca89d919d54b34a386df94d4": 1,
+        "dff1fc2b9d17cfb69588cd6ae445765ed8a7cdaacb49d1a9074280965a7f97eb": 1,
+        "f1e4ff16c32e07ca81e6caad74ab3683446558aadd0e85a32c4665511686d2b9": 1,
+        "f56d22ac4ee5951dbfd86bf4eacac41cb569bebff712a78bc140970cca146463": 1
+      },
+      "@typescript-eslint/no-unused-vars": {
+        "1ca7a1a796dadcc6b535f2ca30cfe2929623a9cf486cc8126315f919681b063d": 2
+      }
+    },
+    "src/domains/materials/components/ComponentContentRenderer.tsx": {
+      "react/no-unescaped-entities": {
+        "8fa053246a5a9409efb8095649928f0ccb14dd0414180e01ae196634a28991fa": 2
+      }
+    },
+    "src/domains/materials/components/HyperframesCompositionPanel.tsx": {
+      "react-hooks/exhaustive-deps": {
+        "95ce3a47f6d28760e0b0dbf995273416c9c562cb194c505951edf924d697af11": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "232ec8238ee8de7404acb52d02d34bed3b0f5a60770b7d24107ef733c628048d": 1
+      }
+    },
+    "src/domains/materials/components/LessonMaterialsCard.tsx": {
+      "react-hooks/exhaustive-deps": {
+        "c5e2794186ca760b639dd79e6d9274196acf3c6606580024c0315f05944037e3": 1
+      },
+      "react-hooks/immutability": {
+        "432f7bf19ff2c75ed078d9e80a9977b3e61bd9afd45a113c9b2cd9c780492caf": 1
+      },
+      "react/no-unescaped-entities": {
+        "73d109cb3f68316296f9cf571e6e1db41569062b23b0884274865c9a9f7586c8": 1
+      }
+    },
+    "src/domains/materials/components/MaterialDetailsModal.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "6d366dcc1aea18f8e3dd3bbffa7aedde6aafabfa347f65f620724ef4fe0b6ac4": 1
+      }
+    },
+    "src/domains/materials/components/PostproductionAssemblyContainer.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "178f118b093aa6132983ea1a51a5ca1c5d77ca8835a282fc473555bf8102a0a3": 1
+      }
+    },
+    "src/domains/materials/components/ProductionAssetCard.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "5c3638d74a9c474ff8804c012d836e4738098da1f26e1d273af6f4eb6fdd562d": 1
+      }
+    },
+    "src/domains/materials/components/ProductionMediaPreview.tsx": {
+      "@next/next/no-img-element": {
+        "5afaa5c6f0525319578f7c0c9b4e7bbffa5a8d7b01216c35468d2eea463c00f8": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "8c9ad4fb68b6a2daa4e86cd60b8a0cc7eda0816e6fee4754ddbd35b809352c8e": 1
+      }
+    },
+    "src/domains/materials/components/ProductionStructuredAssetSections.tsx": {
+      "@next/next/no-img-element": {
+        "5afaa5c6f0525319578f7c0c9b4e7bbffa5a8d7b01216c35468d2eea463c00f8": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "2430704fedfac8f4600f9244ff8b9c93f908e7a6b29b193f5243e0cf80b5f480": 1,
+        "5ce711c529debc733b9b3f6ac186500b4f57e13f815abfe9c09f98f921b97d90": 1,
+        "5fdcf6604d753da747a627068fed43845317dec2c40cfac31164fd5da6bbcb8e": 1
+      }
+    },
+    "src/domains/materials/components/VisualProductionContainer.tsx": {
+      "react-hooks/exhaustive-deps": {
+        "bf29540809a523edc657b516dd10d3b41162d80e87a1346575a185993a2dedda": 1
+      },
+      "react-hooks/immutability": {
+        "123a8f2af47cb9c3f07b5bd3cb4a2f23a45743a3ba221f2f0159a61610f0b526": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "34cc036d0851491b905a734c3b0c9560422f280d20d8390d2a84106fda4c1f8c": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/AnimationTimelineBand.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "edbd841a3e48244b1d21b3446b77d6d976dc6181029eb944bf063c5e069c0e24": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/AudioMixControls.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "ed1bdb80177a3e9dcf5277bd937eefd602d323d98ac871a0452e2294e49f8722": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/CompositionAutosaveBoundary.tsx": {
+      "react-hooks/refs": {
+        "0b24bb07427f6b6edbdf337f37f6773cc47e86292ca596f5a7217fb4c2b622c0": 2,
+        "1c1774d72e7027b8d3dce8191b0cccee4705f22489b67c1c7c5da96b86646281": 1,
+        "35fb0f232687fdadf5a9751b8213c20a9953530ced6f58ea4a9038a027d9ad0f": 2,
+        "5821e5e1f76af42f557e0d171b8e0aa0611970c181953b4a4d4e514f8107a262": 3,
+        "5a00620789a1c6c260140c53ed8c00de4b361d4933a7218fa35ed7ae9e41ca42": 1,
+        "a44d25c5e5eb13080dfb5a536d8e703c71b2473a0dfe8b76dd5b8ab6b2c5e661": 1,
+        "b7459e4c396ff2f79e7f595fd868afdb9e2f6667b4930c979a5aadebb8daef4b": 2
+      }
+    },
+    "src/domains/materials/components/composition-editor/CompositionHtmlSnapshotRecoveryPanel.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "de627bb9c286216bed46817660ff6dc261a0278cd749091b7274ca58bc8c4574": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/CompositionInspector.tsx": {
+      "react-hooks/exhaustive-deps": {
+        "2e6aa9f037998e556fb88c729937ef568510586d59a61bfe6449de7dfbe1622e": 1,
+        "43bea732b90b98b003e0905eb477af34298b92786c9b0bddcad5e67fa9513b43": 1,
+        "57d7dc4daf2a9aeb2cc6cc086eb404d22c789d59999586ab628c42da6e404351": 1,
+        "eb4c94a55639d05043608b291131170e4c88277fc22efb39c4d5327b3db74b3c": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "2e6aa9f037998e556fb88c729937ef568510586d59a61bfe6449de7dfbe1622e": 1,
+        "57d7dc4daf2a9aeb2cc6cc086eb404d22c789d59999586ab628c42da6e404351": 1,
+        "a6a6bd6a62308432f36156f14848b4e45ab81c552d38d744abf15fa8fcb3fa21": 1,
+        "b3dc2268809393070757882747a9115bab990fc251c72965832811ee34f8e547": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/CompositionMaskControls.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "f79c381940fbf01a1d7b9d0baba8a5d2ac3af7ba991ad237ed4769748459b896": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/CompositionMotionControls.tsx": {
+      "react-hooks/exhaustive-deps": {
+        "bf36e485a82cb0c1e856b95a12b354eb0d6f643257b465c9ed9dc53f19f09b87": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "cda40e04a5a49502675e22cea911364e7481f6b9d2e9a4777ab5b1e7333545a5": 1,
+        "ce4e9040749f756fce15aeaf265cf9a7d4f2fc0fc07e8e971bbd956f3ae17d22": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/CompositionPreviewZoomControls.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "7f548529fb2e43f78525187b86023625c93d82ac98d3e928a86877976c38e1a2": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/CompositionReferenceGuidesPanel.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "ab2ba758f8d5ee8c44fce15ae021bd8b12d5cd122a10ecaf34107f0fe17afe5e": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/CompositionStudioLibrary.tsx": {
+      "@next/next/no-img-element": {
+        "5ae621581bd063ae185c5adc86cf97413f89ff93857ccc29834a7f3de71ade79": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "0668bb90a81bce09066d5876f3104dc6952bac54bf08d908682df65ca494e8c8": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/CompositionVideoRateControls.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "b7c2092423e03b0b64137dd4a93c3b50dc90342d6016a2121815eadf3349a00c": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/CompositionVolumeEnvelopeControls.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "dc6afc0f122d4dda3bcd496e9795a76e1260e0373683b740213416344baab730": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/LayerDepthControls.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "93c497a6bac9284d84a594e3e30719a8da133c75ae91c1317a571a8ff96eb485": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/NativeCompositionPreview.tsx": {
+      "@typescript-eslint/no-unused-vars": {
+        "6ec43854d8b57a57ba07da83f72710e25f981a9b5a7aaa3a7814a707b1a9f3b3": 1
+      },
+      "react-hooks/exhaustive-deps": {
+        "27c7e19d1e112eeabf093062e0e24babd319cebac309a618f8cf7a9aa324b972": 3,
+        "3d41a17d7b1008166525b7fe32fea639ec2e8e18de59c64dab42f3ad3fcc9ebf": 1,
+        "63202b71624cfdff0daf005eb3cdbe597fe608d5e4967073c4b93be01c86ad11": 1,
+        "93296a9e8c1660a05431005d2c129b916a1bb8c573f6de95cf1a741c89ed3185": 1,
+        "c13d0abb2da8b8d21b082b92f39b320c00a60281d6af55b837125094850cb834": 1,
+        "c7a249bc13731d711d70d7b8a455447dc9073e5927a45f5e0b550f43a46d1b14": 1,
+        "ce782c89eba4e854daf40a408994574459729e7f672fb27c718c6c372dd823d0": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "17dc60fe9fffc65aa6b503042712ac0aa715657e1f3ebf8c0353114a43b37b59": 1,
+        "36866de220ecd856156b5e341e53000654f0ce3467ec2f94b436979f669d6aae": 1,
+        "78c3089a084ad59821f3d87f75dd62ed766d0f12e4dda57497619286717557cd": 1,
+        "81c17316a60f754fb21ffeecad7e919f1e2af10f924e78faec93f8daec1b5c77": 1,
+        "8644cc3d56a501f6836af9b3f9faffef7b0ff5744d72600d100a2788db915f73": 1,
+        "a2841647e1767950e343996c4a0243ba9a924476ce8f36a5319cbd3218f16354": 1,
+        "c046a242ea30a85f66fca1f6d1f3f256176020207561a91f132a9ecadaaaa9a6": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/RenderDiagnosticsPanel.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "4308b8e72316e665c0f55be58e246b634b1b4f8d778f6226e1431da18f72c083": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/SceneVisualSelector.tsx": {
+      "react-hooks/refs": {
+        "a842ed696ceda4762683401412f7efc87c672e9b694575395c0952b2effc7318": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "181e060d19cd41ebd35d15a91a24d885f0991e060615fbfdf1e3acd79a5d0cc7": 1,
+        "6a9c474ab975c471d32d2464ff0196e4888422c6b79c49d96f405c708abe0557": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/TrackControls.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "3cec6a828bf9fadd341ead8bc427c018938c72bf4446d5238a6b0461c9569bac": 1,
+        "505a3a336ab4a0654acaf1a8a9cdba36ddab7ae07dc14b7d0534ac154e6fb8eb": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/useCompositionHtmlEditorialSession.ts": {
+      "react-hooks/refs": {
+        "3fdd779a08362b79984eaa59df4d17c25aef5e95503144b6945153c49d1e21c2": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/useCompositionHtmlTemplateChoices.ts": {
+      "react-hooks/refs": {
+        "2ebcd1f191af42e7916e97e4d6e40cb667effe371fc9592e667b5b67e853f5de": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/useCompositionPanelFocus.ts": {
+      "react-hooks/refs": {
+        "b7d3981afc07595c8ae84bf274ee815b16f51b96032c26ed7adcc4b1d001c8e2": 1
+      }
+    },
+    "src/domains/materials/components/composition-editor/useCompositionReferenceGuides.ts": {
+      "react-hooks/set-state-in-effect": {
+        "4a38e99ee92180b3debb19011db238cb8d1817c42b0fcea1a970acbb059420fd": 1,
+        "6b60035f77fdbc9aa6e9b55ae41d91acb90a674c3e2a994c6a3f4496ee4a2925": 1
+      }
+    },
+    "src/domains/materials/components/production-asset-ui.tsx": {
+      "@typescript-eslint/no-unused-vars": {
+        "7b73de9987352e1efefe910ca6114a240d9e9b419c4caf7157086b64591f7487": 1
+      }
+    },
+    "src/domains/materials/downloads/asset-access-audit.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 2
+      }
+    },
+    "src/domains/materials/hooks/useMaterials.ts": {
+      "react-hooks/set-state-in-effect": {
+        "38a40963bb335acd52df8fef9599f2a696ecf324f72dd7d54fea99a912af4e37": 1
+      }
+    },
+    "src/domains/materials/hooks/useProductionAssetState.ts": {
+      "react-hooks/exhaustive-deps": {
+        "27c7e19d1e112eeabf093062e0e24babd319cebac309a618f8cf7a9aa324b972": 1
+      },
+      "react-hooks/immutability": {
+        "7e4d1555a3067b9f1b6b8cf7250133e86651b7962d428da254d73c1ac2fb5f6e": 1,
+        "fe2b1578afd6d31c356fc3d5c85d11641e7d6236d2a19b08037d489f48f1e124": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "921025ea58418ac311ee09d057ab8931776445ef9f35ccadad029beaff23e315": 1
+      }
+    },
+    "src/domains/plan/components/InstructionalPlanGenerationContainer.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "4a232582d0af759c9145081a98e6e0ab5d3b561a7ee20bb2271b55012c2eac49": 1
+      }
+    },
+    "src/domains/plan/components/VideoDurationCoursePolicyEditor.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "f84922b0036e824bcee0354f5bcd573e4ce8b233365de9aa98d8239d01fe2f28": 1
+      }
+    },
+    "src/domains/production/actions/cloud-storage.actions.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "15b511f4381968d3edbbe358b5a447ee042d6d7dd6eba9606902d3bcd49668b6": 1,
+        "715bac942a627f191b5c98bd208a0574e21b8edbc48d7c98083594c68af4e9cc": 1,
+        "80519ffe64a99e678c926965386a849d71423b39bd463b9744e47d45943c8742": 1,
+        "cd4155d043b7e986d9ca00ae4f97535a50047e38a64dbc1184c4944eb16b3982": 1
+      }
+    },
+    "src/domains/production/automation/production-automation-dispatcher.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "a0b094805527579d20bd768d35fb5b5558ec5716d714ad6be06832faf78d6426": 2
+      }
+    },
+    "src/domains/production/automation/production-automation-run.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "a0b094805527579d20bd768d35fb5b5558ec5716d714ad6be06832faf78d6426": 2
+      }
+    },
+    "src/domains/production/bundle-agent/ai-spec.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "754bd57209135db32ea24e5ff4ea077b4844d29198d25e9a00d7cfec96f50d1f": 1
+      }
+    },
+    "src/domains/production/bundle-agent/types.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "a8d683509ba372fbfdeb146312952a3d4d4567e7632be9e55561300451de5772": 1
+      }
+    },
+    "src/domains/production/components/VideoStudioSettings.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "0894bdc0940d031bb3f95f446994bab92434ecb7b59d91c094b00f4abd406031": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-browser-playback-audio.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "41e90fa5c89767c18c84ede519bc0b2b83165b41af0e0d5692d2596690ae4b62": 4,
+        "a0e7e761fcc60d26340ac62068ed68042292497795b0b224e1bff52fbf9ac12d": 1,
+        "d200c7f9766d1af4bd9d9f4946863044768fa635c65fa98e5533d1f11c0f23da": 1,
+        "db77fc3ad3fbb9e2271dcc4daa3912a62b10338842b1063ff99614cde7072bf8": 1
+      },
+      "@typescript-eslint/no-unused-vars": {
+        "dc05bce1b5e1d24568e81cc65c96f73b8283235e027b33e155030739a9fd1629": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-canvas-control-keyboard.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "2dcb9c67d81e7eaf1fb9e779e67800505e34ea9c8b854e6dae713fa1d6c7a5b0": 1,
+        "58bb4f2c0afc53806493e3f369f659f199afb0f78d2cffa272bb6b862f35cdb6": 1,
+        "68aef7d50e105f764fc409f3b3d2c49f88ee5d80cb37b6b379b23289e3ab223c": 1,
+        "e0220bba83a8db1af2a8b3bdfd326fd1d0e386a990948b5a8dbad3a1a74dc49a": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-conformance-evidence-reader.test.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "d1a00cfc0144ebfaf02b5a598432e0853d3f15aaa8f03302c30b507017786cec": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-conformance-job.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "204efe7ad56c9a8e51ef8d591ae8fc837b84a85bbd869bb39ea8362c16cd1cea": 3,
+        "2b89e95d95e0c8fd42061f37c7e18012aafd30a775a1e7d849e779368fff4e86": 1,
+        "85743c5b62acbb7f12bc97914cd9a9274479a86f4366b8f493539c692ba7c88a": 1,
+        "8fa5c31a1c5feeb30726388ff5967ef1c0a1f53f7415de5697d5ad98d8ef539a": 1,
+        "9e8f92c381a6aa8e547bb69b254126818f89e326eacac12f52d5f6cfb9517a37": 1,
+        "ad2d1abba5cbd2cd536a7815a4a890361085a69ba21e171889f545e0468bd8f0": 1,
+        "b561c9a0a0de3eea272b2966587cee338171674641f547d8c88aad2e3bb8c57f": 1,
+        "d9d1a65788cfc3ebc094212f5d1490fe617c76c2e7b256b26eeb918b5804d8d2": 1,
+        "f31b237ae44737aa03d7ca2bc44b950c0b9897414632baca5b30ce3978483ba2": 2
+      },
+      "@typescript-eslint/no-unused-vars": {
+        "aef03c1aad9fe6e341599bfa85fd906c409d72abec7234995efdc19a7f537d9b": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-conformance-reference-pipeline.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "626a6e22dbd9b8535ee0df550ff9159013033f6b59892488538987419fd93a43": 1,
+        "79b34cb8fe74c39127656e43446cf71b1e11b23d26fc4894b9783b9da968c740": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-conformance-render-reservation.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "34bcf0d92d6e027df1d5a7ca1f70cde5ad54fb0bb97068c1a2b1380a02fdfbaf": 3
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-conformance-visual-capture.test.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "06df33d07b9bc75259935e15bafb92cc4c5c5c7ee93a4825d1cdfadac85afbac": 1,
+        "cbfdc0b5fe378b51e77e8d7286f868a44b1bc17fe16f261e7ac36b8e57b6b534": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-editor-shortcut.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "78064da00d1ed2a9cbacaf61b2c26c8bdc084da31b159ee5f3a7261ed917623d": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-font-usage-contract.test.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "39424cfa27454aea9afb786b56185b695c60a7cdfa58f156dd3b846ce1605166": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-frame-ssim.test.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "7920e4ed201893f48f0115b5b016a8e256797f4583e7a713c64ebb9656c720b6": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-html-editing-bootstrap-host.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "5832cceaa24abb8b89501fc4f077e4b1d2e203cb5fe7c7cc0799dc3b4a4f35d6": 1,
+        "bdf8807961e9942f387d934d011d70c4f35cb6750b6836da73221f9308af8515": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-html-editing-durable-mutation.test.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "ee580d44be3c7b5756e13ab78f7b48e7687d76a5715cf254d1ee8df62c35fed0": 4
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-html-editing-mutation.test.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "5e234c2e6f43c57b8b785e726f445ad6d10729acb211f56d0730cd8c7de91343": 4,
+        "c812a41efdce7fc6326197ee0cc95e59e1036aad10ea2d339fde036825512df0": 4
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-html-editing-repository.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "3dd9c5ac197db8ac2c7e067338443932ecf681f66f0a45a0f0207be7d9391e7b": 1,
+        "6666a058d1f71f77037d5bc286e317d8fae56b465af72f08480f3c50e7641d1c": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-playback-boundaries.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "024bf263808707e65bd8da7741a556a1f14f6f2f467ecb9cc2714c2335436d2e": 1,
+        "89fd63f17b13838498c50dfeb7b9041f76e3850d45642695d39bf7cb804d1a6b": 1,
+        "b3127f5708cbcd219bcedabfb3e0f28aec64fdf40b7acb8dd1aea29a31332dc4": 1,
+        "dc41b97c4e7cb4ae3c098a1b063d90c44c4a70a91d87123e13f6cba2a716c20a": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-render-authority.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "34bcf0d92d6e027df1d5a7ca1f70cde5ad54fb0bb97068c1a2b1380a02fdfbaf": 12,
+        "3edefe4d7096d607f1b1ebd89a904088329d8c966a52578e5c469aa3885bd49c": 1,
+        "440a428c7df411da8e07706bfb68fbfe8ff031b55e0a72142d22dc9ecbbc5c34": 1,
+        "5f2ef40e20f9298afc68bc630452fdab08ebeedbc41fde93f66db61395dca603": 1,
+        "91a2befe56e04f3f15558d0b53d85229e0ad932a342ff9de54597b29e0af71f2": 1,
+        "a6f46bbcdca91400ee4de3528c8b31c37012961ea9c6408af02ff9394d375e1c": 1,
+        "aef21cf33d026791778a7e410562668e93af935895c8516e4f1a4357919f6bc0": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-renderer-text-geometry.test.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "b7d2f10e90a0ae39a507a2bea725c6fa3dd8d6dbbd7931d89478273af1f2d3cb": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-silent-conformance-gate.test.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "a1fe67bfa195f742278d6b89835fcbeb2afe388aeb72877c27a9cb074226478f": 1
+      }
+    },
+    "src/domains/production/composition-editor/__tests__/composition-snapshot.service.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "7e34b3ce5779a70f07aa61ea1daf9a81e4338309fb7850e13339ce89422fdae3": 2
+      }
+    },
+    "src/domains/production/composition-editor/composition-agent-proposal-store.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 4
+      }
+    },
+    "src/domains/production/composition-editor/composition-branding.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 2
+      }
+    },
+    "src/domains/production/composition-editor/composition-document.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 16
+      }
+    },
+    "src/domains/production/composition-editor/composition-font-assets.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 6
+      }
+    },
+    "src/domains/production/composition-editor/composition-html-editing-preview-images.server.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "f485ffecfc4ba696a0abbcc8628c3873adc23b2604f437413872e741eb8b89e6": 1
+      }
+    },
+    "src/domains/production/composition-editor/composition-preset-store.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 2
+      },
+      "@typescript-eslint/no-unused-vars": {
+        "cf1cddfa97317bd13d1521ee1bd4d8bcb3baa5ec48344b5a713a6cef2296f7ef": 1
+      }
+    },
+    "src/domains/production/composition-editor/composition-preview-assets.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 2
+      }
+    },
+    "src/domains/production/composition-editor/composition-snapshot.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "22789b3d0382f6d6e45aecf47c149efd627322fb42d124aa62b9b216937336be": 2,
+        "28345c7238f943c877d6881997ab15c677ca1d621100c56a4d0eeae574a46bc1": 2,
+        "3f4256002f49a1f5f651b1543ce6fe253707458e8f31932c7e9f7dc3af25541a": 2,
+        "60c9c068bcedd5c42305ded45856b4312ff3b441801c17a92b0c6fb26acc2e7f": 2,
+        "a74dcbb761f406fba10dfaa90eb72868f52504b57549258e270ddd8fa8a727f3": 2,
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 8
+      }
+    },
+    "src/domains/production/composition-editor/composition-sound-effect-assets.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 2
+      }
+    },
+    "src/domains/production/composition-editor/html-editing/html-editing-manifest-digest.server.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "61838cb9ceb23907c6f05515dfee0496da4203ed4c3cd2319d4d08d6d0117be8": 1
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-audio-evidence-persistence.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "cc7937f527b4e7bd122d22fdb719cad079f36ce169838ba61f5cbc3aa62ee138": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-audio-evidence-reader.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "cc7937f527b4e7bd122d22fdb719cad079f36ce169838ba61f5cbc3aa62ee138": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-conformance-event-batch-adapters.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "0d24a103f33f9884d9eb397591a29bf9286363fb537537c0d2a8471046076eb6": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-conformance-event-batch-persistence.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "c5b396c74b167dc45dc72e6c023bd679e1f6ab58d1a41799f7dcdbede692448b": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-conformance-evidence-persistence.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "93473067f6642ea1fb8eda0956419b7b18f31a093d04e5abaaa2cd4bb7e49a2d": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-conformance-evidence-reader.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "cc7937f527b4e7bd122d22fdb719cad079f36ce169838ba61f5cbc3aa62ee138": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-conformance-job-execution.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "8acf924784c9d7d8df0c8abef693f534ed2de5ad49a978d3d985ea7078888bc9": 3,
+        "bd440300e64c0278d0aa95299cefec602917b8d7ecf914a3a699d62b10953c67": 3
+      },
+      "@typescript-eslint/no-unused-vars": {
+        "6358cc047f2dc85ee855486c79ae2b990679fa9b9515ed939fabc8ec7dbd9169": 1
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-conformance-job-worker.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "6d3eb2f4a0898d3e13c8fa5b6536a7fc8d17e37efc33792f53814b45db8e4746": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-conformance-reference-pipeline.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "0fa9e5023cc1b3d2431a4cf95aea265df9145a505364f7efa1b43ac1e3200ca0": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-conformance-render-evidence.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "b4337fcd884525ce45e256699ae05a711231e6aacaf603a719c2e26609f2cf74": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-conformance-render-reservation.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "279eb731143d766a717f8122e85ad2923b42e8c9c13cb35d432ea7807fa3ec98": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-conformance-storage.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "0fa9e5023cc1b3d2431a4cf95aea265df9145a505364f7efa1b43ac1e3200ca0": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-controlled-html-authority.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "8bf1c087672819c60c48abacd5db9631ad54bde9db67a893e7e8ed6b52e502c2": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-controlled-render-finalization.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "1ff59dcd83abc562da1277d881ff3b6658de115ddbfc685ca75a0804d8e1e8e7": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-controlled-render-queue.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "be7ae1b3450db6b11807ce1d499d4e22ff674cd743a36aa99dac4f88252d7183": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-controlled-render-upload.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "2599fcb50024218d7d956ed5c5ac2a4f4b58dd3abb652b53aa626b7eaf0da9ce": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-controlled-render-worker-host.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "2144a21858ab579c93302f8ac7dad83bbb7d6ea633be8cc5763f1d69a847745d": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-media-replacement-smoke.fixture.tsx": {
+      "react-hooks/refs": {
+        "16847e276b94d72b6c922a3ae3645930cb517b66008eaa4f84fae6b6886fc0b1": 2,
+        "c2ffff486fdabee10df88461a6a3ec5bcee70fa69ba5d1c44c8e30a5a6092eda": 2
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-pcm-decoder-stream.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "31ee698c4e4071c81830bc1b26252ca70d0d9da8f2d0ab52b7be79c743e6b7b3": 1
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-platform-font-capture.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "a92b1194fc8bb219b9cdb0622fea08f6a55e532f4117399d8282cb04fae4c920": 1
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-render-authority.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "d035ba141cdf082e8d6a6a1c0499d3d85679beabd2c4f2a3eb9888dbe1a23b0e": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-render-supervisor.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "065e9a32010f434ff006c520854cd19be71944bf83d3e69710d16b6054ddba3e": 3
+      }
+    },
+    "src/domains/production/composition-editor/qa/composition-sdr-mux-verification.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "5d0e19fb62c1f3924b54c0b5ced13e4149338ee6b3d2dd35008dd719fa9034d5": 1
+      }
+    },
+    "src/domains/production/hyperframes/__tests__/hyperframes-draft.service.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "c7ba4ee11732535df2c6afe553b7e1294e4d059ff05f0526a94e2f9eece44592": 1
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-asset-delivery.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 4
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-composition.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 8
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-draft.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 8
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-final-video-deletion.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e7c0f3a62d86c0b2611fd4caedd77949aaea9f6a34a9050efdb9008af0b1f551": 2
+      },
+      "@typescript-eslint/no-unused-vars": {
+        "1cebff146e5d89d4bd6c51ff587dab61674739b36a3582e5fd3b5838f6d3b964": 1,
+        "3706a78aa2b2a9676647792273618fad4e4edce4724570eed000a574599b87ee": 1,
+        "6c7cfdf603f8e482c4d7ef6546179ce312061832c9ca2e586f5186e68ff882d8": 1,
+        "79f53e66da0badcfb72e2819d3bafbcd647b39c6a2e221e5f1c1ba5fbd8f7c15": 1,
+        "97e6af15db2a89fdbdabe2c4403b28bb7fcde2f4c967acdb626b592df9e869be": 1,
+        "df98fe5d2ae87e63a9b369586decba78686bc6c48eefa7eda5e245d9391de713": 1
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-final-video.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e7c0f3a62d86c0b2611fd4caedd77949aaea9f6a34a9050efdb9008af0b1f551": 2
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-generation-settings.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 4
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-render-diagnostics.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "a0b094805527579d20bd768d35fb5b5558ec5716d714ad6be06832faf78d6426": 2
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-render-evidence.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "a0b094805527579d20bd768d35fb5b5558ec5716d714ad6be06832faf78d6426": 2
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-render-polling.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e7c0f3a62d86c0b2611fd4caedd77949aaea9f6a34a9050efdb9008af0b1f551": 2
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-render-recovery.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e7c0f3a62d86c0b2611fd4caedd77949aaea9f6a34a9050efdb9008af0b1f551": 2
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-render-submission.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e7c0f3a62d86c0b2611fd4caedd77949aaea9f6a34a9050efdb9008af0b1f551": 2
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-revision-generation.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "a0b094805527579d20bd768d35fb5b5558ec5716d714ad6be06832faf78d6426": 2
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-source-asset.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "342551782293fdd9734c45ab293eef3849e97095d3d42d07d7465f6641f3f3ac": 2,
+        "4db2a0d2638f19a6dcc60b0477b9fa2359aa6796a98326ef46b95cb5b5d6471d": 2,
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 8
+      }
+    },
+    "src/domains/production/hyperframes/hyperframes-video-import.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e7c0f3a62d86c0b2611fd4caedd77949aaea9f6a34a9050efdb9008af0b1f551": 2
+      },
+      "@typescript-eslint/no-unused-vars": {
+        "6bed27bbaa2d2ff3ba7e7be971c988fac5bf878cd834e505a52fb2c094691fb5": 1,
+        "9351cbc4ca4e3a5d32e8261ae4d6e37e30b5dea1a7350639521aaa64d718f7a4": 1
+      }
+    },
+    "src/domains/production/providers/credentials/provider-credentials.types.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "b51979decc3e12e745d2162e140c557d7125b869e957616653b856493ca90d30": 1,
+        "d6a7cd2a7371b1a15d543196979ff74fdb027023ebf187d5d329be11055c77fd": 1
+      }
+    },
+    "src/domains/production/providers/heygen/__tests__/heygen-credential-resolver.service.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e144071732b8927d9bb1a14f4c306af0262369110f18fa8c6813063748fcfcc4": 1
+      }
+    },
+    "src/domains/production/providers/heygen/__tests__/heygen-script-builder.test.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "53ab14bf5de55dbf19294c4c9e930a63e5cf7538bdac92bf8d8a5337d0311631": 4
+      }
+    },
+    "src/domains/production/providers/heygen/heygen-platform.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "af231b3bbad7aeefca880f8a727a03c8a448ca4be6eff76693ab8c7aca919e11": 2
+      }
+    },
+    "src/domains/production/providers/heygen/heygen-scene-assets.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "06f2b4d7419cc2bdaad32ffb2231d84f0cc81ae11c50aee876a7984dec85d112": 1,
+        "12f2e9f5859fd49473cca2612936cd848427829ca587c91fd9fad4530def67ba": 1,
+        "198b7609129c62e3f31449d1f3d98da87c2bbe804fbb03ecd416a2a907ba9c2a": 1,
+        "20deb6b8fc47dc39cd979fe5fa4112d696981ac20710da6b38441f22a16baaf6": 1,
+        "4fe32bcfa9c3c0b0ed7e9126a0d72c2e1332323005d8a4bc2ddb184c526c7085": 1,
+        "5c87f66b3a8f759f30fd378f744f537109ba3850b8376fa261065e3114986da3": 1,
+        "6c26ca1163875b552368518afd2ed9e76ffd848fbd3f4da9189951cb6f57bc60": 1,
+        "7ef8fe762830ba7e44f297c52b8e272d4c6fd483de8bf483a38750c1feff8b49": 1,
+        "88b5502c7be047237d7a05cdcc262ea3d59267b1308dd2ec6395775d50dd3fe2": 1,
+        "8ced4f432f2941f4d270834d30c5c058bb8b420779061490198c0a024373ef5b": 1,
+        "b4368eab035fcf6cfec7e08580905192e408aaa2f47e0ec805c04c6df549d869": 1,
+        "dfc0081946931caa23ecb414d26cca6b35fa6f32c04e15279b4a310c5d605c9d": 1
+      }
+    },
+    "src/domains/production/providers/heygen/heygen-webhook.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "22789b3d0382f6d6e45aecf47c149efd627322fb42d124aa62b9b216937336be": 2,
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 8
+      }
+    },
+    "src/domains/production/providers/heygen/heygen.types.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "b24cc4edb8ed9b8fd1f7e5264ef03b8911ae8c5553f5f03773c8d7eb48259171": 2
+      }
+    },
+    "src/domains/production/render-batches/render-batch.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "0719c14dff81d8e77e61166def0e62508156922cea7fddfe7469a01e314541ba": 1,
+        "4dea27a00c365acdd1d01f5e33251c0df288a24900a7f08e709745fb5bffa220": 1,
+        "6ffc07ca6262165bf7738f8204feba6c1d553f905914fa07b664856f74b52d91": 1,
+        "8211d08b78af8e75da9db093f03d07759bb8256ebec8b1feb7db1d18f35193c0": 1,
+        "83358462b47f1d486dfe972516ec78de1f993b86d7666d85fd9416da232c78f7": 1,
+        "d5f57a190841f69ed830808ff3de0ccf1babd4cacd178538892660600cd1cfe6": 1,
+        "f327f3e4d1e9e8b84e586bed2d9b5eeb2c43e75a5b716ff3fb70a7afea350407": 1
+      }
+    },
+    "src/domains/production/slides/__tests__/imported-slide-catalog.fixture.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "f9843a25a936f7d774f93f9e56f40e3718e9e336fa401630bcb760aaf0200fad": 1
+      }
+    },
+    "src/domains/production/slides/slide-template-library.actions.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "00d21eb1a5a40623e1539025c15a838e8e53e6b36532a971d1fbd1b4add936be": 1,
+        "081f84734364f05d0f4e91d72cae8f78cbc44d6ad88f754e91e23774bf4e1f06": 1,
+        "50f0d0672651005b3cd831f468a795d3b57a800f1bb3ecbd117cd3b413697745": 1,
+        "51f4ebe297cbd0494bdcf9825936775a232bb707c7286a884a1e9cd92c4e5dd9": 1,
+        "7be05448f485ca829fd6f87088c4fdc5fc5d8edba724ad5d98b3b6b30c04a1ae": 1,
+        "8f5cec189d7f46baff7248829f4ed6f6acf342ac9bf4a262f587b5ed547f256a": 2,
+        "b606ed461149f798271f0158b9e782531c8d12487ab36857c7a452362be0c045": 1
+      }
+    },
+    "src/domains/production/sound-effects/sound-effect-library.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "e26170b380a8b5fab24dcbe932e805821bcc77c73805cbf9f13d31308755fe13": 8
+      }
+    },
+    "src/domains/production/standalone/StandaloneAssemblyStudio.tsx": {
+      "react-hooks/set-state-in-effect": {
+        "1db42f06c248a80c04f91ff67b5e442ee65843b770181e7fccfd0008dd36e0b2": 1,
+        "f5927449081c7449178a62a86bc41e628be7d5196d1f8d792baa3e6927fdb5b9": 1
+      }
+    },
+    "src/domains/production/templates/template-version.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "6ca58855e04531885088abbc277bebcfd8233e78629d0596b6402509f87c8cae": 1,
+        "8f7be4eae2dfbd83c551e09f69017e95b5dd7c3944b0d2f28aac1aa99b6f614b": 1
+      }
+    },
+    "src/domains/production/validation/bundle-validator.ts": {
+      "@typescript-eslint/no-empty-object-type": {
+        "cb8715f2557c3523dab0f6c5d941eafd05f2d127fa853340b275789d2e7e4071": 1
+      },
+      "@typescript-eslint/no-explicit-any": {
+        "64b20d0450ce11a129983535e7aef4be0f6178d0c18b4cc12ff2b5b1ca960e35": 1,
+        "937fd50580ce9ba89392b105a2dd7efcec27835b1dfcc4dd50e2f632dacde9e7": 1
+      },
+      "@typescript-eslint/no-unused-vars": {
+        "2492466da334f8c005d18392c334d104bd4c5c95fdbefa898c7360245f00e0b2": 1
+      }
+    },
+    "src/domains/production/validation/open-design-html-rasterizer.service.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "684ffa1992885d7c0a057d6586094abe9dde439149e10594a7f88bfecd2279ec": 1,
+        "c4a87790f40ab2461a66a6ca319beefc1683ac75244c2af5862b3f8e8592c283": 1
+      }
+    },
+    "src/domains/prompts/components/SystemPromptsManager.tsx": {
+      "react-hooks/exhaustive-deps": {
+        "27c7e19d1e112eeabf093062e0e24babd319cebac309a618f8cf7a9aa324b972": 1
+      },
+      "react-hooks/immutability": {
+        "49de787b5d1c739f35a6b9f4fae279eaee8ea3f409702632ff0df24c6c6711eb": 1
+      },
+      "react-hooks/set-state-in-effect": {
+        "19dc16bf46d29be7cd6b4230db733c066a2069c2155ee9449823bb7f9227951f": 1
+      }
+    },
+    "src/domains/syllabus/components/SyllabusGenerationContainer.tsx": {
+      "react-hooks/exhaustive-deps": {
+        "61227cef9df983cfaba163e6d234e9389c57b626c1be6e81b953288f1d80d546": 1,
+        "df8b47393344d3975d05ed52d66909da7e8974f1b0c9978c350ec67e00a3a0ef": 1
+      }
+    },
+    "src/domains/syllabus/components/SyllabusGenerationHeader.tsx": {
+      "react/no-unescaped-entities": {
+        "31fe5cfa7bcd6073a085d6d3162f0089eaf3ae036b78ba87ea3d58bcd3aadd92": 2
+      }
+    },
+    "src/domains/syllabus/import/syllabus-fidelity.ts": {
+      "@next/next/no-assign-module-variable": {
+        "158f39788b666eb519989d600f015edd843cb8abac95934ab41473e76a5dedea": 1,
+        "20840f3b9854446bf2a5257fbcc0372ede90b26dafac2223150e342ab63ff100": 1,
+        "4d5b5b29014cb6febf1a67c6c40c48ae49147ed595b892f16db4850567fc4ecb": 1
+      }
+    },
+    "src/domains/syllabus/import/use-syllabus-import.ts": {
+      "react-hooks/set-state-in-effect": {
+        "03143d660c3aa4136955cc56f35a0a58baae1786885d75e36a5fc6683b891be3": 1
+      }
+    },
+    "src/domains/syllabus/lib/__tests__/module-title.test.ts": {
+      "@next/next/no-assign-module-variable": {
+        "e8f7bbb8df6046b1ce945d4cca2e37a15675c9416812ee5a963aea93bd36d2cc": 1
+      }
+    },
+    "src/hooks/useArtifactWorkspacePreferences.ts": {
+      "react-hooks/refs": {
+        "930fba53606c438ed6f33ede0c75b35cf99a36870ecafbadd56b335988a78f61": 1
+      }
+    },
+    "src/lib/artifact-detail.ts": {
+      "@typescript-eslint/no-empty-object-type": {
+        "c7610b3b03598287ddef64e37993af2aed44cf2170e0eba91539825628fe025d": 1
+      }
+    },
+    "src/lib/client/api-response.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "ef32bf2be7e060872d010e6d9b9496c95a4fea6e6473e6615a2a491e8ee91fb6": 1
+      }
+    },
+    "src/lib/server/artifact-action-auth.ts": {
+      "@typescript-eslint/no-explicit-any": {
+        "3379bc4c7bbfa0046fb81e28180ce36dce50b18261974ba43907034af96cbd87": 1
+      }
+    },
+    "src/lib/server/background-function-client.ts": {
+      "@next/next/no-assign-module-variable": {
+        "656d0ce0663df8bf0a1d9c079f9f9de9decf7c5ba6522bec7611d7df4824db40": 1
+      }
+    },
+    "src/lib/server/external-import-concurrency.ts": {
+      "prefer-const": {
+        "939689108a77439d382ced0f1237133943db3ad2c0a34f1946012c7ac4eb3942": 1,
+        "d8fcf651cfc4df8b458ba1d3aff8029c8ef0d54374f2696a65f91c9159f8e858": 1
+      }
+    },
+    "src/remotion/assembly-assets.normalizer.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "957a8202fa4826f925fe8a7022f4b5d96406ed320afd80de2c19909c228ed29f": 2
+      }
+    },
+    "src/remotion/components/AvatarClipLayer.tsx": {
+      "react-hooks/immutability": {
+        "35891d55dd026d61cb93a104e5b36b258a590367e485689c21e45c7526cf3143": 1
+      }
+    },
+    "src/utils/supabase/server.ts": {
+      "@typescript-eslint/no-unused-vars": {
+        "7a9b78c9d21162522e694917a89f05d73292fb75bff89f0cb933a7f3e63a983a": 2
+      }
+    },
+    "tools/controlled-hyperframes/controlled-sdk-installation.mjs": {
+      "@typescript-eslint/no-unused-vars": {
+        "c2f040d3417eb139f5363b677f1da1fc60721427a56df4d39ee1a118dbb88943": 1
+      }
+    },
+    "tools/controlled-hyperframes/courseforge-producer-observer-v1.mjs": {
+      "@typescript-eslint/no-unused-vars": {
+        "7a9b78c9d21162522e694917a89f05d73292fb75bff89f0cb933a7f3e63a983a": 1
+      }
+    },
+    "tools/controlled-hyperframes/materialized-producer-bridge-configuration.test.mjs": {
+      "prefer-const": {
+        "76ba6029d75374aebb3a836973bda3640a2c8a6dd61fbf5a80549a68e266f27f": 1
+      }
+    },
+    "tools/controlled-hyperframes/observe-neutral-render.mjs": {
+      "@typescript-eslint/no-unused-vars": {
+        "96adf8ee660fd047405e37621398418ba483affd358933a0021889b0b66a253a": 1
+      }
+    },
+    "tools/controlled-hyperframes/observed-sdr-bootstrap.test.mjs": {
+      "@typescript-eslint/no-unused-vars": {
+        "37171e9ee923643c6526e8ad7bc849dd5c433fac6fe8a33fb5ca310496981213": 1,
+        "9bb840e546ae31cabb7c49c1c3f966b5d8b46ebb23956ae8d2f9a0e8759c3a95": 1
+      }
+    },
+    "tools/controlled-hyperframes/original-session-network-guard.mjs": {
+      "prefer-const": {
+        "03edaeb60ca077069c602cf6f622ff00dd9af827f7c3dab74a435a617afd43c9": 1
+      }
+    }
+  }
+}

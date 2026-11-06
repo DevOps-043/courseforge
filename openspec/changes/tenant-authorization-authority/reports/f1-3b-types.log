@@ -1,0 +1,23 @@
+
+> courseforge@1.0.0 typecheck
+> tsc -p apps/web/tsconfig.json --noEmit --pretty false
+
+apps/web/src/app/api/production/artlist/import/route.ts(67,68): error TS2339: Property 'volume_multiplier' does not exist on type '{}'.
+apps/web/src/app/api/production/cloud-storage/import/route.ts(137,62): error TS2339: Property 'volume_multiplier' does not exist on type '{}'.
+apps/web/src/app/api/production/cloud-storage/import/route.ts(187,67): error TS2339: Property 'images' does not exist on type '{}'.
+apps/web/src/app/api/production/cloud-storage/import/route.ts(188,34): error TS2339: Property 'images' does not exist on type '{}'.
+apps/web/src/app/api/production/cloud-storage/import/route.ts(230,11): error TS2339: Property 'html_content_path' does not exist on type '{}'.
+apps/web/src/app/api/production/cloud-storage/import/route.ts(231,11): error TS2339: Property 'html_public_url' does not exist on type '{}'.
+apps/web/src/app/api/production/cloud-storage/import/route.ts(236,11): error TS2698: Spread types may only be created from object types.
+apps/web/src/app/api/production/google-drive/import/route.ts(126,62): error TS2339: Property 'volume_multiplier' does not exist on type '{}'.
+apps/web/src/app/api/production/google-drive/import/route.ts(150,67): error TS2339: Property 'images' does not exist on type '{}'.
+apps/web/src/app/api/production/google-drive/import/route.ts(151,34): error TS2339: Property 'images' does not exist on type '{}'.
+apps/web/src/app/api/production/google-drive/import/route.ts(193,11): error TS2339: Property 'html_content_path' does not exist on type '{}'.
+apps/web/src/app/api/production/google-drive/import/route.ts(194,11): error TS2339: Property 'html_public_url' does not exist on type '{}'.
+apps/web/src/app/api/production/google-drive/import/route.ts(199,11): error TS2698: Spread types may only be created from object types.
+apps/web/src/app/api/production/open-design/export/route.ts(495,57): error TS2339: Property 'open_design_project_id' does not exist on type '{}'.
+apps/web/src/app/api/production/open-design/export/route.ts(497,13): error TS2339: Property 'html_content_path' does not exist on type '{}'.
+apps/web/src/app/api/production/open-design/export/route.ts(498,13): error TS2339: Property 'html_public_url' does not exist on type '{}'.
+apps/web/src/app/api/production/open-design/html-to-png/route.ts(52,66): error TS2339: Property 'html_content_path' does not exist on type '{}'.
+apps/web/src/app/api/production/open-design/html-to-png/route.ts(70,7): error TS2339: Property 'html_content_path' does not exist on type '{}'.
+apps/web/src/app/api/production/open-design/html-to-png/route.ts(71,7): error TS2339: Property 'html_public_url' does not exist on type '{}'.

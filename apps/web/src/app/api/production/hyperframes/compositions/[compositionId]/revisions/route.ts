@@ -1,3 +1,4 @@
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { z } from "zod";
 import {
   canReviewContent,
@@ -53,6 +54,8 @@ export async function GET(request: Request, context: RouteContext) {
     });
     return apiSuccessResponse({ data }, { headers: { "Cache-Control": "private, no-store" }, requestId });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     logger.error("production.hyperframes.composition.revisions.list_failed", error);
     return respondSnapshotError(error, "No se pudo cargar el historial de snapshots.", requestId);
   }
@@ -93,6 +96,8 @@ export async function PUT(request: Request, context: RouteContext) {
       requestId,
     });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     logger.error("production.hyperframes.composition.revisions.restore_failed", error);
     return respondSnapshotError(error, "No se pudo restaurar el snapshot.", requestId);
   }
@@ -116,6 +121,8 @@ export async function POST(request: Request, context: RouteContext) {
     });
     return apiSuccessResponse({ data: result }, { requestId, status: 201 });
   } catch (error) {
+    const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
+    if (authorityUnavailable) return authorityUnavailable;
     if (error instanceof z.ZodError) {
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, message: "Solicitud de revisión de video inválida.", requestId, status: 400 });
     }
@@ -131,11 +138,12 @@ async function authorize(requestId: string) {
   const supabase = await createClient();
   const user = await getAuthenticatedUser(supabase);
   if (!user) return { response: apiErrorResponse({ code: API_ERROR_CODE.authRequired, message: "No autorizado.", requestId, status: 401 }) } as const;
-  if (!(await canReviewContent(user.userId))) {
-    return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para generar revisiones HyperFrames.", requestId, status: 403 }) } as const;
-  }
+
   const tenant = await resolveActiveTenantContext();
   if (!tenant) return { response: apiErrorResponse({ code: API_ERROR_CODE.tenantForbidden, message: "Empresa no válida o no autorizada.", requestId, status: 403 }) } as const;
+  if (!(await canReviewContent(user.userId, tenant))) {
+    return { response: apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para generar revisiones HyperFrames.", requestId, status: 403 }) } as const;
+  }
   return { admin: getServiceRoleClient(), organizationId: tenant.organizationId, response: null, userId: user.userId };
 }
 

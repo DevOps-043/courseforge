@@ -1,6 +1,7 @@
 import type { CompositionEditorDocument } from "./composition-document.types";
 import { COMPOSITION_FONT_REFERENCE_LIMIT, compositionFontReferenceSchema, type CompositionFontReference } from "./composition-font-reference.contract";
-export * from "./composition-font-reference.contract";
+export { COMPOSITION_FONT_REFERENCE_LIMIT, compositionFontReferenceSchema, compositionDeckFontReferencesSchema } from "./composition-font-reference.contract";
+export type { CompositionFontReference } from "./composition-font-reference.contract";
 
 /** Native resource dependencies, not URLs, permissions or evidence of glyph use. */
 export function compositionFontReferenceDetails(document: CompositionEditorDocument): Map<string, CompositionFontReference> {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import {
   canReviewContent,
   getAuthenticatedUser,
@@ -43,6 +44,8 @@ export async function GET(request: Request) {
 
     return apiSuccessResponse({ data: status }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.heygen.connection.read_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo consultar la conexion HeyGen.", requestId, retryable: true, status: 500 });
   }
@@ -85,6 +88,8 @@ export async function POST(request: Request) {
 
     return apiSuccessResponse({ data: status }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     if (error instanceof ProductionProviderCredentialError) {
       return apiErrorResponse({
         code: error.status === 409 ? API_ERROR_CODE.conflict : API_ERROR_CODE.invalidRequest,
@@ -133,6 +138,8 @@ export async function DELETE(request: Request) {
 
     return apiSuccessResponse({ data: status }, { requestId });
   } catch (error) {
+    const unavailable = authorizationUnavailableResponse(error, requestId);
+    if (unavailable) return unavailable;
     logger.error("production.heygen.connection.disconnect_failed", error);
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo desconectar HeyGen.", requestId, retryable: true, status: 500 });
   }
