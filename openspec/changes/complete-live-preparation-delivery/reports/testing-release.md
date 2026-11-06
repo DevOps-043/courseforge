@@ -11,3 +11,11 @@ La guía de recorrido y orden de publicación está en docs/operations/synchrono
 El usuario confirmó que no había filas en la consulta del historial de 20261026160000; la reparación acotada está preparada y pasó dieciséis pruebas SQL locales. Su ejecución/fila final sigue pendiente de confirmación. No repetir la migración de negocio ni hacer db push general para resolver ese pendiente.
 
 El navegador está deshabilitado en esta sesión y no hay conexión Netlify ni CLI autenticada disponible. La publicación Git no acredita una URL de deploy, variables administradas, worker remoto vivo, cuenta Zoom ni una llamada real. No se presentan como completados. No se ha fusionado main ni se ha alterado un sitio productivo.
+
+## Publicación de la rama de pruebas
+
+Continuación del 2026-11-05: el usuario habilitó el navegador e inició sesión en Netlify. Learning completó el deploy 6aed311b87cd372cd48e585c desde 5ffa4092 en contexto branch-deploy, mediante bash scripts/netlify-build.sh. Su URL comprobada en el panel y abierta en navegador es https://codex-complete-synchronous-system--soflia-learning.netlify.app; el permalink es https://6aed311b87cd372cd48e585c--soflia-learning.netlify.app. Se publicaron catorce funciones y una edge function; duración total 4m 39s. Esto acredita despliegue y portada, no sesión académica ni grabación.
+
+En soflia-coursegen se agregó codex/complete-synchronous-system a branch deploys, conservando staging y main como producción. SYNCHRONOUS_COURSES_ENABLED ya vale true en el contexto branch-deploy; no se cambió. SOFLIA_API_URL recibió un override exclusivo para codex/complete-synchronous-system hacia la URL QA de Learning; los cinco contextos previos conservan https://soflia.ai. Se verificó el guardado de seis valores en cinco contextos y una rama; no se leyeron ni cambiaron claves privadas.
+
+Este commit inicia el build Git de Engine. Su deploy, URL final y acceso funcional se registrarán tras comprobar el resultado. El registro de historial de la migración manual y el piloto siguen abiertos.
