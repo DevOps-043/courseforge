@@ -33,6 +33,7 @@ async function database() {
     grant select,insert on artifacts to service_role;
     insert into profiles values ('${actor}'),('${otherActor}');`);
   await db.exec(migration);
+  await db.exec(await readFile('supabase/migrations/20261106010000_course_source_extraction.sql', 'utf8'));
   await db.exec('set role service_role');
   return db;
 }
@@ -173,5 +174,27 @@ test('Storage privado resiste una política histórica permisiva sin afectar otr
       await assert.rejects(db.exec("insert into storage.objects(bucket_id,name) values('course-source-originals','sin-reserva')"), /row-level security/);
       assert.equal((await db.query("delete from storage.objects where bucket_id='course-source-originals' returning id")).rows.length, 0);
     }
+  } finally { await db.close(); }
+});
+
+test('extracción tiene lease único y completa fragmentos atómicamente sin aceptar un token ajeno', async () => {
+  const db = await database();
+  try {
+    const course = await draft(db); const entry = await reserve(db, course); await confirm(db, entry);
+    const command = async (action, token = null, fragments = []) => (await db.query(
+      'select process_course_source_document($1,$2,$3,$4,$5,$6::jsonb) as token',
+      [entry.id, course, organization, action, token, JSON.stringify(fragments)])).rows[0].token;
+    const lease = await command('reserve'); assert.ok(lease);
+    assert.equal(await command('reserve'), null);
+    await assert.rejects(command('complete', identifier()), /SOURCE_CONFLICT/);
+    const fragments = [{ ordinal: 0, text: 'Contenido propio', sha256: 'a'.repeat(64), locator: { characterStart: 0 } }];
+    await command('complete', lease, fragments);
+    assert.equal((await db.query('select status from course_source_documents')).rows[0].status, 'READY');
+    assert.equal((await db.query('select count(*)::int as total from course_source_fragments')).rows[0].total, 1);
+    assert.equal(await command('reserve'), null);
+    await assert.rejects(command('complete', lease, fragments), /SOURCE_CONFLICT/);
+    await command('retire');
+    assert.equal((await db.query('select status from course_source_documents')).rows[0].status, 'RETIRED');
+    await assert.rejects(command('reserve'), /SOURCE_CONFLICT/);
   } finally { await db.close(); }
 });

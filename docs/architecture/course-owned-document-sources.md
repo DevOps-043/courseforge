@@ -1,6 +1,8 @@
 # Fuentes documentales propias — contrato de fase 1
 
-Estado: base implementada localmente; migración no aplicada remotamente y despliegue no realizado. La carga todavía no tiene interfaz ni extracción automática. El pipeline existente conserva sus consumidores. No anunciar un curso documental completo como operativo con esta fase.
+Estado: base y biblioteca/extracción implementadas localmente; migraciones no aplicadas remotamente y despliegue no realizado. La biblioteca está en preparación de borrador, Base, Temario y Fuentes. El pipeline de generación conserva sus consumidores históricos; no anunciar generación documental completa como operativa.
+
+Actualización F2: `POST /api/artifacts/:artifactId/sources/documents/:documentId` solicita extracción firmada; `GET` devuelve fragmentos autorizados y `?download=1` una descarga privada de 60 segundos. `POST ?action=retire` retira lógicamente sin borrar original. Migración `20261106010000_course_source_extraction.sql`: lease de diez minutos, tres intentos máximos, persistencia atómica y recuperación explícita. Parser con límite 40,000 caracteres, fragmentos con posiciones en texto normalizado. `READY` acredita extracción, no cobertura curricular. Sustitución versionada y conciliación de huérfanos continúan pendientes; ver [evidencia F2](../../openspec/changes/course-owned-document-sources/reports/phase-2.md). Las secciones siguientes conservan el contrato base F1; la extracción nueva sustituye sus límites temporales de disponibilidad.
 
 ## Responsabilidades
 

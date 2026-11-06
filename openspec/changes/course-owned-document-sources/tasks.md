@@ -21,11 +21,11 @@ Salida: matriz de consumidores, política y límites cerrados; riesgos de compat
 Salida: contratos y aislamiento probados; ningún consumidor de generación requiere todavía activar la capacidad.
 
 ## F2. Ingesta documental y biblioteca
-- [ ] Extraer/reutilizar parsers de PDF/DOCX/PPTX/TXT con límites y versión explícita de extracción.
+- [x] Extraer/reutilizar parsers de PDF/DOCX/PPTX/TXT con límites y versión explícita de extracción.
 - [ ] Implementar verificación de bytes reales, MIME, estructura, hash, cuotas y protección de ZIP Office; sin recursos remotos ni ejecución de contenido.
 - [ ] Implementar job firmado, leases, reintentos acotados, recuperación, cancelación y confirmación atómica de fragmentos.
 - [ ] Crear UI para selección/arrastre, progreso persistente, original privado y texto interpretado, errores, reutilización, reemplazo y retirada lógica.
-- [ ] Conectar biblioteca a Base/Temario/Fuentes, manteniendo importación de temario explícito independiente.
+- [x] Conectar biblioteca a Base/Temario/Fuentes, manteniendo importación de temario explícito independiente.
 - [ ] Añadir conciliación de cargas huérfanas, retención y procedimiento de purga separado/autorizado.
 
 Salida: cuatro formatos recuperables tras recarga; archivos inválidos o excesivos rechazados; fuentes nunca públicas.

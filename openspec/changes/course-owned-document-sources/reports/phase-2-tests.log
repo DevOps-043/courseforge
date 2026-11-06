@@ -1,0 +1,53 @@
+
+> courseforge@1.0.0 test:course-sources
+> npm run test:course-sources --workspace=apps/web && node --test scripts/test-course-source-migration.mjs
+
+
+> web@1.0.0 test:course-sources
+> tsc -p tsconfig.course-sources-test.json && node --test .tmp/course-sources-tests/domains/course-sources/__tests__/*.test.js
+
+✔ fragmentación preserva todo el texto y localizadores posteriores al extracto histórico (6.3165ms)
+✔ sin sesión o rol permitido no hay cliente privilegiado, repositorio ni firma (910.5386ms)
+✔ curso ajeno se rechaza antes de construir repositorio o Storage (61.0096ms)
+✔ caída de autoridad mantiene 503 sin efectos ni detalles privados (105.2487ms)
+✔ borrador devuelve DRAFT y no construye servicio de carga ni generador (58.1766ms)
+✔ UUID inválido, autoridad enviada en payload y paginación excesiva fallan sin escritura (154.2805ms)
+✔ listado autorizado conserva paginación y no firma descargas (55.1179ms)
+✔ mutaciones rechazan formularios y origen cruzado antes de consultar autoridad (138.386ms)
+✔ Storage firma sin sobrescribir y verifica metadata antes de descargar (7.0145ms)
+✔ metadata ausente o tamaño real distinto bloquea descarga (2.0004ms)
+✔ contratos rechazan autoridad del payload, rutas y tipos incompatibles (19.988ms)
+✔ reserva firma únicamente la ruta persistida y no devuelve hash o identidad privada (4.6568ms)
+✔ confirmación verifica bytes y termina en UPLOADED, nunca READY (4.5741ms)
+✔ confirmación repetida conserva el estado sin descargar ni escribir (1.2275ms)
+✔ otro actor, reserva vencida y estado retirado no acceden a Storage (2.6544ms)
+✔ hash o tamaño diferentes no confirman el documento (1.7965ms)
+✔ inspección de recepción acepta los cuatro formatos sin extraerlos (41.71ms)
+✔ rechaza MIME falsificado y texto binario sin marcar aptitud curricular (3.121ms)
+✔ Office rechaza directorios masivos antes de cargar JSZip (7.8336ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3283.5998
+✔ borrador idempotente conserva DRAFT sin metadata de generación (6000.8638ms)
+✔ reserva y confirmación son idempotentes y el original queda vinculado al curso (4107.794ms)
+✔ otra organización, otro actor y bytes distintos no confirman reservas (3631.8897ms)
+✔ cuota por curso se aplica antes de crear otra reserva (3704.7003ms)
+✔ reserva vencida no se confirma ni se renueva por reintentar (3177.0364ms)
+✔ cuota de bytes es transaccional y no consume una clave fallida (3186.5878ms)
+✔ RLS y grants deniegan tablas y RPC a navegador; snapshots son inmutables para backend (3597.0541ms)
+✔ FK compuestas impiden asignar fragmentos de otro curso al snapshot (3262.0632ms)
+✔ Storage privado resiste una política histórica permisiva sin afectar otros buckets (2995.4681ms)
+✔ extracción tiene lease único y completa fragmentos atómicamente sin aceptar un token ajeno (3329.5604ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 37607.1215

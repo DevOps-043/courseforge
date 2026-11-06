@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { Sparkles, Upload, ArrowRight, BookOpen, Users, Target, Settings, ChevronDown, CheckCircle2, HardDrive } from 'lucide-react';
 
 import { generateArtifactAction } from '@/domains/artifacts/actions/artifact.actions';
+import { CourseSourceDraft } from '@/domains/course-sources/CourseSourceDraft';
 import { ScormImportFlow } from './components/ScormImportFlow';
 import { CloudStorageProviderSelector } from './components/CloudStorageProviderSelector';
 import { toast } from 'sonner';
@@ -154,6 +155,7 @@ export default function NewArtifactPage({
                     </div>
 
                     {/* Form Container */}
+                    <CourseSourceDraft />
                     <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 md:p-8 shadow-xl">
                         {mode === 'ai' ? (
                             <div className="space-y-6">

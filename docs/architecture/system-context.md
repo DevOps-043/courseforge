@@ -129,9 +129,13 @@ La base de fuentes documentales propias vive en `domains/course-sources`:
 `/api/artifacts/:artifactId/sources` y `/sources/uploads[/confirm]` reservan,
 listan y confirman originales privados. La migración `20261105010000` está
 preparada localmente, sin aplicación remota ni despliegue en este cambio.
-`UPLOADED` no significa texto extraído ni fuente apta. No hay UI o job de
-extracción nuevo ni integración con generación en esta fase; conservar los
-consumidores históricos. Contratos, cuotas y operación:
+`UPLOADED` no significa texto extraído ni fuente apta. La biblioteca visual de
+F2 solicita `course-source-extraction-background` firmado y persiste fragmentos
+con lease y confirmación atómica mediante la migración `20261106010000`.
+`READY` acredita extracción, no cobertura curricular. Ambas migraciones permanecen
+sin aplicación remota en este cambio. Sustitución versionada y conciliación de
+huérfanos siguen pendientes; conservar consumidores históricos de generación.
+Contratos, cuotas y operación:
 [fuentes propias](course-owned-document-sources.md).
 
 ### Fase 1: BASE

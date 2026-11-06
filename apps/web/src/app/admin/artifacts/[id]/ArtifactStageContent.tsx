@@ -16,6 +16,7 @@ import type {
 } from "@/domains/publication/types/publication.types";
 import PublicationClientView from "./publish/PublicationClientView";
 import { ArtifactBaseStage } from "./ArtifactBaseStage";
+import { CourseSourceLibrary } from "@/domains/course-sources/CourseSourceLibrary";
 import type {
   ArtifactEditedContent,
   ArtifactEditingSection,
@@ -90,7 +91,7 @@ export function ArtifactStageContent({
   if (sessions && currentStep === 7 && !nexus) return <div className={STAGE_WRAPPER}><p>Ensamble no requerido: este curso no necesita producción audiovisual.</p><button className="mt-4 rounded border px-4 py-2" onClick={() => setCurrentStep(8)}>Continuar a entrega</button></div>;
   if (currentStep === 1) {
     return (
-      <div>{sessionPanel}<ArtifactBaseStage
+      <div><CourseSourceLibrary artifactId={artifact.id} />{sessionPanel}<ArtifactBaseStage
         artifact={artifact}
         profile={profile}
         activeTab={activeTab}
@@ -117,6 +118,7 @@ export function ArtifactStageContent({
   if (currentStep === 2) {
     return (
       <div className={STAGE_WRAPPER}>
+        <CourseSourceLibrary artifactId={artifact.id} />
         <SyllabusGenerationContainer
           artifactId={artifact.id}
           initialObjetivos={artifact.objetivos || []}
@@ -146,6 +148,7 @@ export function ArtifactStageContent({
   if (currentStep === 4) {
     return (
       <div className={STAGE_WRAPPER}>
+        <CourseSourceLibrary artifactId={artifact.id} />
         <SourcesCurationGenerationContainer
           artifactId={artifact.id}
           courseId={artifact.courseId || artifact.course_id || undefined}
