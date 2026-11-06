@@ -10,6 +10,12 @@ El alcance cerrado incluye los cuatro formatos con texto extraíble. OCR, audio/
 
 ## Decisions
 
+### Implementación local F4
+
+El contexto de estructura se obtiene de la selección READY antes de que exista una revisión curricular; exigir esa revisión en Base crearía una dependencia circular. Materiales usa exclusivamente la revisión aprobada. `course_source_snapshots` y sus items fijan referencias documentales inmutables y extractos web exactos; `course_source_generation_receipts` registra citas literales y hash del resultado comprobado. La clave de snapshot se deriva de la ejecución/iteración/unidad y no permite sustituir sus entradas al reintentar.
+
+Las guardas SQL reemplazan el bloqueo temporal F3. La vigencia de estructura depende de política, selección activa e inputs previos; Materiales añade revisión y fingerprint curricular, que incluye Base y versión del temario. Una asociación nueva no provoca regeneración circular de las primeras etapas si sus fuentes siguen iguales. Las guardas de producción fijan revisión, fingerprint y hash del componente en metadata del job; la publicación vuelve a comprobar la versión del paquete encolado. El verificador semántico no usa herramientas y no sustituye al revisor humano. Contratos efectivos, presupuestos y límites: `docs/architecture/course-owned-document-sources.md` y `reports/phase-4.md`.
+
 ### 1. Política independiente de la ruta de temario
 Decisión confirmada por el usuario: mostrar en cada curso documental «Solo mis archivos» y «Mis archivos + fuentes web», sin opción preseleccionada. Permitir guardar el borrador sin elección, pero bloquear la generación hasta que el autor elija. Persistir la elección y mostrarla al reabrir; no preguntar de nuevo en cada etapa. Cambiarla después requiere confirmar la invalidación de resultados afectados.
 

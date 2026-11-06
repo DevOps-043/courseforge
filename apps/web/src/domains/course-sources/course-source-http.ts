@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { listLegacySources, importLegacySource, legacySourceImportSchema } from "./course-source-legacy";
 import { API_ERROR_CODE, parseJsonRequest } from "../../lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "../../lib/server/api-response";
 import { authorizationUnavailableResponse } from "../../lib/server/authorization-unavailable-response";
@@ -11,13 +12,13 @@ import { CourseSourceService } from "./course-source.service";
 import { createSourceStorage } from "./course-source-storage";
 import { confirmSourceUploadSchema, createSourceDraftSchema, publicSourceDocument, reserveSourceUploadSchema, sourcePageSchema } from "./course-source.schema";
 
-type Operation = "draft" | "reserve" | "confirm" | "list";
+type Operation = "draft" | "reserve" | "confirm" | "list" | "legacy-list" | "legacy-import";
 
 export async function courseSourceHttp(request: Request, operation: Operation, artifactId?: string) {
   const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   const headers = { "Cache-Control": "private, no-store", Vary: "Cookie" };
   try {
-    if (operation !== "list") {
+    if (operation !== "list" && operation !== "legacy-list") {
       if (request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
         throw new CourseSourceError(415, "La solicitud debe usar application/json.");
       }
@@ -30,7 +31,11 @@ export async function courseSourceHttp(request: Request, operation: Operation, a
     const { tenant, admin } = await requireCourseSourceAccess(artifactId);
     const repository = new CourseSourceRepository(admin, tenant);
     let result: object;
-    if (operation === "list") {
+    if (operation === "legacy-list") {
+      result = await listLegacySources(admin, artifactId!);
+    } else if (operation === "legacy-import") {
+      result = await importLegacySource(admin, artifactId!, tenant, await parseBody(request, legacySourceImportSchema));
+    } else if (operation === "list") {
       const parameters = Object.fromEntries(new URL(request.url).searchParams);
       const page = sourcePageSchema.parse(parameters);
       const collection = await repository.list(artifactId!, page.offset, page.limit);

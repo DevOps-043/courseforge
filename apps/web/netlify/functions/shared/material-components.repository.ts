@@ -11,12 +11,16 @@ export async function commitGeneratedLesson(
   logPrefix: string,
   onlyTypes: string[] | undefined,
   durationContractsByType: Partial<Record<ComponentType, VideoDurationContract>> = {},
-  execution: { materialsId: string; version: number; success: boolean; error?: string },
+  execution: { materialsId: string; version: number; success: boolean; error?: string; sourceEvidenceByType?: Record<string, string> },
 ) {
   const rows = buildMaterialComponentWrites({
     lessonId, content, iteration, onlyTypes, durationContractsByType,
     generatedAt: new Date().toISOString(),
   });
+  for (const row of rows) {
+    const evidenceId = execution.sourceEvidenceByType?.[row.type];
+    if (evidenceId) row.assets = { ...row.assets, ...{ course_source_evidence_id: evidenceId } };
+  }
   const { data, error } = await supabase.rpc("commit_material_generation", {
     p_materials_id: execution.materialsId,
     p_version: execution.version,

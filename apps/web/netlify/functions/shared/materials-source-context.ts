@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readCourseSourcePolicy, readSourceReview } from "../../../src/domains/course-sources/course-source-review.service";
 import { getLessonSourceRequirement } from "../../../src/domains/curation/lib/lesson-source-requirement";
 import {
   findLessonSources,
@@ -53,6 +54,19 @@ export async function loadMaterialSourceValidationContext(
   artifactId: string,
   lessons: LessonReference[],
 ): Promise<MaterialSourceValidationContext> {
+  const settings = await readCourseSourcePolicy(supabase, artifactId);
+  if (settings && settings.policy !== "WEB_ONLY") {
+    const review = await readSourceReview(supabase, artifactId);
+    if (!review.approved || !review.coverage.length || !review.coverage.every(item => item.complete)) throw new Error("Revisa y aprueba las fuentes vigentes antes de validar materiales.");
+    const receipts = await supabase.rpc("current_course_source_component_ids", { p_artifact: artifactId });
+    if (receipts.error) throw new Error("No se pudo verificar el respaldo vigente de los componentes.");
+    return {
+      validComponentIds: new Set<string>(receipts.data || []),
+      requiresSources: true,
+      requiredSourcesByLesson: new Map(lessons.map(lesson => [lesson.lesson_id, 1])),
+      validSourceIdsByLesson: new Map(lessons.map(lesson => [lesson.lesson_id, new Set(review.associations.filter(item => item.lessonId === lesson.lesson_id.replace(/-G\d+$/i, "")).map(item => item.evidenceId))])),
+    };
+  }
   const [syllabus, plan, sources] = await Promise.all([
     supabase.from("syllabus").select("route").eq("artifact_id", artifactId).single(),
     supabase.from("instructional_plans").select("lesson_plans").eq("artifact_id", artifactId).single(),

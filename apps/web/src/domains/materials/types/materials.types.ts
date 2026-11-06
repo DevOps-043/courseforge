@@ -434,8 +434,11 @@ export interface MaterialsGenerationInput {
         source_title: string;
         source_ref: string;
         source_excerpt?: string;
+        source_locator?: Record<string, unknown>;
+        source_kind?: 'DOCUMENT' | 'WEB';
         cobertura_completa: boolean;
     }[];
+    course_source_snapshot_id?: string;
     /** Minimum distinct validated sources that the generated content must cite. */
     required_source_count?: number;
     /** False only for the explicit no-sources syllabus route. */

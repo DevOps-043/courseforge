@@ -39,6 +39,7 @@ function fixture(stage: "allowed" | "anonymous" | "role" | "foreign" | "unavaila
   }
   const http = load<{ courseSourceHttp: (request: Request, operation: string, artifactId?: string) => Promise<Response> }>(
     "src/domains/course-sources/course-source-http.ts", {
+      "./course-source-legacy": {},
       "../../lib/server/api-contract": contract, "../../lib/server/api-response": responses,
       "../../lib/server/authorization-unavailable-response": mapper, "../../lib/server/operational-logger": logger,
       "./course-source-access": access, "./course-source-policy": policy, "./course-source-error": errors,

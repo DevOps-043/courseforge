@@ -16,12 +16,13 @@ test("claims a pending billable job only when the conditional update wins", asyn
     select() { return this; },
     update() { return this; },
   };
-  const supabase = { from() { return query; } } as unknown as SupabaseClient;
+  const supabase = { from(table: string) { return table === "course_source_settings" ? absentSourceSettings() : query; } } as unknown as SupabaseClient;
 
   assert.equal(await claimPendingProductionJob({ jobId: "job-1", supabase }), true);
   assert.deepEqual(filters, [["id", "job-1"], ["status", "PENDING"]]);
 });
 
+function absentSourceSettings() { return { select() { return this; }, eq() { return this; }, maybeSingle: async () => ({ data: null, error: null }) }; }
 const context = {
   artifactId: "artifact-1",
   componentId: "component-1",
@@ -71,7 +72,7 @@ test("reopens a failed provider job when an explicit retry is requested", async 
     },
   };
   const supabase = {
-    from() { return query; },
+    from(table: string) { return table === "course_source_settings" ? absentSourceSettings() : query; },
   } as unknown as SupabaseClient;
 
   const result = await createOrReuseProductionJob(supabase, {
@@ -104,7 +105,7 @@ test("keeps the existing failed job when retry was not requested", async () => {
     select() { return this; },
   };
   const supabase = {
-    from() { return query; },
+    from(table: string) { return table === "course_source_settings" ? absentSourceSettings() : query; },
   } as unknown as SupabaseClient;
 
   const result = await createOrReuseProductionJob(supabase, {
@@ -140,7 +141,7 @@ test("persists a structured QA diagnostic when a production job fails", async ()
     eq() { return Promise.resolve({ error: null }); },
     update(value: Record<string, unknown>) { updates.push(value); return this; },
   };
-  const supabase = { from() { return query; } } as unknown as SupabaseClient;
+  const supabase = { from(table: string) { return table === "course_source_settings" ? absentSourceSettings() : query; } } as unknown as SupabaseClient;
 
   await failProductionJob({
     error: new Error("QA estructural fallida"),

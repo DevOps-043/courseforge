@@ -1,4 +1,6 @@
 import { Handler } from "@netlify/functions";
+import { prepareCourseGeneration, attestCourseGeneration } from "../../src/domains/course-sources/course-source-generation.service";
+import { courseSourcePrompt } from "../../src/domains/course-sources/course-source-generation";
 import { markArtifactGenerationFailed } from "../../src/domains/artifacts/lib/artifact-generation-failure";
 import { PIPELINE_GENERATION_LIMITS } from "../../src/lib/pipeline-generation-policy";
 import { generateObject } from "ai";
@@ -133,6 +135,7 @@ export const handler: Handler = async (event) => {
       return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
     }
 
+    const sourceContext = await prepareCourseGeneration(serviceSupabase, artifactId, "BASE", null, undefined, runId);
     if (cloudStorageProvider) {
       try {
         if (!userId || !organizationId) {
@@ -191,7 +194,7 @@ export const handler: Handler = async (event) => {
     const searchModels = configuredSearchModels.length > 0
       ? configuredSearchModels
       : [process.env.GEMINI_SEARCH_MODEL || "gemini-3.5-flash"];
-    if (configuredSearchModels.length === 0) {
+    if (configuredSearchModels.length === 0 && !sourceContext) {
       configurationWarnings.push(
         `ARTIFACT_BASE no incluye un modelo Gemini para research; se usará ${searchModels[0]} exclusivamente para Google Search.`,
       );
@@ -221,7 +224,7 @@ export const handler: Handler = async (event) => {
     });
 
     stage = "research";
-    for (const modelName of searchModels) {
+    for (const modelName of sourceContext ? [] : searchModels) {
       const startedAt = Date.now();
       try {
         console.log(`[Background Job] Researching with ${modelName}...`);
@@ -296,7 +299,7 @@ export const handler: Handler = async (event) => {
       }
     }
 
-    if (!researchSuccess) {
+    if (!researchSuccess && !sourceContext) {
       console.warn(
         "[Background Job] All research models failed. Proceeding without search context.",
       );
@@ -347,7 +350,7 @@ export const handler: Handler = async (event) => {
         ? `FEEDBACK PREVIO (Corrigiendo version anterior): ${feedback}`
         : "",
       researchContext,
-    });
+    }) + courseSourcePrompt(sourceContext);
 
     const promptResolution = {
       generation: {
@@ -414,7 +417,8 @@ export const handler: Handler = async (event) => {
           `[Background Job] Phase 1 Generation success using ${modelName}.`,
         );
         break;
-      } catch (error: unknown) {
+      } catch (failure: unknown) {
+        const error = sourceContext ? new Error("El proveedor no pudo generar la base documental. No se registra su contenido.") : failure;
         await recordAiFailure({
           context: {
             artifactId,
@@ -493,14 +497,20 @@ export const handler: Handler = async (event) => {
     const allPassed = validationReport.every((result) => result.passed);
 
     stage = "persistence";
+    const sourceEvidenceId = await attestCourseGeneration(serviceSupabase, sourceContext, {
+      nombres: content.nombres, objetivos: content.objetivos, descripcion: content.descripcion,
+    }, [genModelUsed, ...genModels]);
     let updateArtifactQuery = serviceSupabase
       .from("artifacts")
       .update({
+        ...(sourceEvidenceId ? { source_evidence_id: sourceEvidenceId } : {}),
         nombres: content.nombres,
         objetivos: content.objetivos,
         descripcion: content.descripcion,
         generation_metadata: {
           ...(scopedArtifact.generation_metadata || {}),
+          source_configuration_dirty: false,
+          ...(sourceContext ? { course_source_snapshot_id: sourceContext.snapshotId } : {}),
           research_summary: researchContext.slice(0, 2000),
           search_queries: detectedSearchQueries,
           model_used: genModelUsed,

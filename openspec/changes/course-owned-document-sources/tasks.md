@@ -1,12 +1,12 @@
 # Etapas de implementación
 
-Estado: fases 1–3 implementadas y verificadas localmente; migraciones remotas, despliegue y fases 4–6 pendientes. Evidencia de F3 en `reports/phase-3.md`. Completar en orden, con cambios pequeños y recuperables en el checkout principal. No crear worktrees.
+Estado: fases 1–4 implementadas y verificadas localmente; migraciones remotas, despliegue y fases 5–6 pendientes. Evidencia de F4 en `reports/phase-4.md`. Completar en orden, con cambios pequeños y recuperables en el checkout principal. No crear worktrees.
 
 ## F0. Alcance y línea base
 - [x] Contrastar cargador de Temario, registro PDF, filtros de curación y consumo de Materiales con código vigente.
 - [x] Registrar contexto, propuesta, diseño y criterios observables.
 - [x] Incorporar decisión del usuario: elección explícita entre modo exclusivo y mixto en cada curso documental, sin predeterminado.
-- [ ] Inventariar consumidores: Base, Temario, Plan, curación automática/manual, materiales estándar/video/sincrónicos, reintentos, regeneración parcial, QA y publicación.
+- [x] Inventariar consumidores: Base, Temario, Plan, curación automática/manual, materiales estándar/video/sincrónicos, reintentos, regeneración parcial, QA y publicación.
 - [ ] Registrar límites efectivos de plataforma, esquema/buckets/grants y contratos de creación de borrador. Solo introspección remota autorizada, sin secretos ni contenido de cursos en evidencia.
 
 Salida: matriz de consumidores, política y límites cerrados; riesgos de compatibilidad identificados.
@@ -42,14 +42,14 @@ Salida: cuatro formatos recuperables tras recarga; archivos inválidos o excesiv
 Salida: un solo criterio de cobertura decide en todos los consumidores, sin saltarse aprobaciones.
 
 ## F4. Integración de generación de extremo a extremo
-- [ ] Sustituir las guardas temporales F3 que bloquean generación documental por validación de snapshot/contexto vigente, sin habilitar motores antiguos sin sus fuentes.
-- [ ] Consumir documentos aprobados desde Base, Temario y Plan; desactivar investigación y herramientas web en modo exclusivo.
-- [ ] Sustituir contexto basado solo en extractos por fragmentos aprobados seleccionados para Materiales, con presupuesto y snapshot reproducible.
-- [ ] Aplicar política/contexto a todos los proveedores y fallback, jobs, reanudaciones, regeneración parcial, videos y variantes de entrega activas.
-- [ ] Validar IDs/localizadores, correspondencia con lección y snapshot, citas textuales y respaldo semántico; detener componentes sin sustento.
-- [ ] Rechazar resultados de jobs con versiones vencidas; conservar borradores y evitar regeneraciones pagadas implícitas.
-- [ ] Integrar vigencia de fuentes con QA, producción/ensamble y publicación; impedir fuga de referencias privadas.
-- [ ] Añadir adaptadores de documentos de Temario/PDF históricos y diagnóstico de originales ausentes.
+- [x] Sustituir las guardas temporales F3 que bloquean generación documental por validación de snapshot/contexto vigente, sin habilitar motores antiguos sin sus fuentes.
+- [x] Consumir la selección documental READY desde Base, Temario y Plan; exigir revisión curricular aprobada para Materiales, sin dependencia circular; desactivar investigación y herramientas web en modo exclusivo.
+- [x] Sustituir contexto basado solo en extractos por fragmentos aprobados seleccionados para Materiales, con presupuesto y snapshot reproducible.
+- [x] Aplicar política/contexto a todos los proveedores y fallback, jobs, reanudaciones, regeneración parcial, videos y variantes de entrega activas.
+- [x] Validar IDs/localizadores, correspondencia con lección y snapshot, citas textuales y respaldo semántico; detener componentes sin sustento.
+- [x] Rechazar resultados de jobs con versiones vencidas; conservar borradores y evitar regeneraciones pagadas implícitas.
+- [x] Integrar vigencia de fuentes con QA, producción/ensamble y publicación; impedir fuga de referencias privadas.
+- [x] Añadir adaptadores de documentos de Temario/PDF históricos y diagnóstico de originales ausentes.
 
 Salida: curso nuevo basado en archivos llega a Materiales revisables y al flujo de entrega vigente, con procedencia e invalidación demostrables.
 

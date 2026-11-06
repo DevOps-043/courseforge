@@ -1,3 +1,5 @@
+import { prepareCourseGeneration, attestCourseGeneration } from "../../course-sources/course-source-generation.service";
+import { courseSourcePrompt } from "../../course-sources/course-source-generation";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -75,6 +77,7 @@ export async function executeSyllabusImport(
       .eq("id", artifactId)
       .single();
     if (error) throw error;
+    const sourceContext = await prepareCourseGeneration(admin, artifactId, "SYLLABUS", null, undefined, `import:${entry.id}:${entry.revision}:${entry.operation}`, { objectives: artifact.objetivos || [] });
     let usedModelName = "deterministic";
     const generate = async (prompt: string) => {
       const settings = await getPipelineModelSettings(
@@ -105,7 +108,7 @@ export async function executeSyllabusImport(
           clients,
           model: settings.model_name,
           temperature: 0.1,
-          prompt,
+          prompt: prompt + courseSourcePrompt(sourceContext),
           telemetry: {
             supabase: admin,
             context: {
@@ -201,6 +204,8 @@ export async function executeSyllabusImport(
           technicalFailures.map((check) => check.message).join(" "),
           422,
         );
+      const verificationModel = sourceContext && usedModelName === "deterministic" ? (await getPipelineModelSettings("SYLLABUS", artifact.organization_id)).model_name : usedModelName;
+      const sourceEvidenceId = await attestCourseGeneration(admin, sourceContext, modules, verificationModel);
       await repository.transition(entry, "enriched", {
         modules,
         validation: {
@@ -208,6 +213,7 @@ export async function executeSyllabusImport(
           checks: validation.checks,
         },
         metadata: {
+          ...(sourceEvidenceId ? { course_source_evidence_id: sourceEvidenceId } : {}),
           import_baseline: outline.map((module) => ({
             ...module,
             sourceQuote: "",

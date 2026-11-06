@@ -1,0 +1,10 @@
+
+> courseforge@1.0.0 lint
+> npm run lint -w apps/web
+
+
+> web@1.0.0 lint
+> node ../../scripts/quality/lint-web.mjs
+
+Lint: 0 errores, 570 warnings detectados, 0 diferencias con baseline.
+Diagnóstico completo: D:\Pulse Hub\courseforge\apps\web\.tmp\lint\latest.json

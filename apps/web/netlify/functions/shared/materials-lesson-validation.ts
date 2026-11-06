@@ -54,6 +54,7 @@ export interface MaterialComponentRecord {
 }
 
 export interface MaterialSourceValidationContext {
+    validComponentIds?: Set<string>;
     requiredSourcesByLesson: Map<string, number>;
     requiresSources: boolean;
     validSourceIdsByLesson: Map<string, Set<string>>;
@@ -106,6 +107,9 @@ export function runInlineValidation(
     // Control 4: every source-required lesson must cite enough currently valid
     // curation rows belonging to that same lesson.
     const sourceErrors: string[] = [];
+    if (sourceContext.validComponentIds && components.some(component => !sourceContext.validComponentIds!.has(component.id))) {
+        sourceErrors.push('Hay componentes sin comprobación documental vigente. Regenera los componentes afectados antes de aprobar.');
+    }
     if (sourceContext.requiresSources) {
         const requiredSources = Math.max(
             1,

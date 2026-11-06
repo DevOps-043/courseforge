@@ -22,32 +22,8 @@ import {
   sourceReviewCommandSchema,
 } from "./course-source-review.schema";
 
-export async function readCourseSourcePolicy(
-  admin: SupabaseClient,
-  artifactId: string,
-) {
-  const result = await admin
-    .from("course_source_settings")
-    .select("policy,revision,approved_revision,organization_id")
-    .eq("artifact_id", artifactId)
-    .maybeSingle();
-  if (result.error) {
-    // Compatibilidad explícita solo mientras la migración de la biblioteca no existe.
-    if (["42P01", "PGRST205"].includes(result.error.code)) return null;
-    sourcePersistenceError(result.error);
-  }
-  if (!result.data) return null;
-  return z
-    .object({
-      policy: z
-        .enum(["DOCUMENTS_ONLY", "DOCUMENTS_AND_WEB", "WEB_ONLY"])
-        .nullable(),
-      revision: z.number().int(),
-      approved_revision: z.number().nullable(),
-      organization_id: z.uuid(),
-    })
-    .parse(result.data);
-}
+import { readCourseSourcePolicy } from "./course-source-settings";
+export { readCourseSourcePolicy } from "./course-source-settings";
 
 type CurriculumLesson = {
   id?: string;

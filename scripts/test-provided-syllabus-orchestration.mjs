@@ -26,7 +26,7 @@ const boundaryModules = {
     return {info: (event, fields) => globalThis.__syllabusImportQA.logs.push({event, fields}),
       warn: (event, fields) => globalThis.__syllabusImportQA.logs.push({event, fields})};
   }`,
-  "usage-telemetry": `export const recordAiFailure = async () => {};
+  "usage-telemetry": `export const recordAiFailure = async () => {}; export const recordAiSdkUsage = async () => {};
     export const recordGeminiUsage = async () => {}; export const recordOpenAiUsage = async () => {};`,
 };
 await build({
@@ -201,6 +201,7 @@ function fixture({
       calls.push(table);
       const filters = new Map();
       const result = () => {
+        if (table === "course_source_settings") return { data: null, error: null };
         if (table === "artifacts")
           return {
             data: {

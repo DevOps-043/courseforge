@@ -4,7 +4,7 @@ const{createRequire}=require('node:module');const{resolve}=require('node:path');
 const{build}=require('esbuild');const{compile}=require('@tailwindcss/node');const{Scanner}=require('@tailwindcss/oxide');
 const puppeteer=createRequire(resolve('apps/web/tools/controlled-hyperframes/package.json'))('puppeteer');
 async function main(){
-  const output=resolve('openspec/changes/course-owned-document-sources/reports/qa-phase3');mkdirSync(output,{recursive:true});
+  const output=resolve(process.env.COURSE_SOURCE_QA_OUTPUT || 'openspec/changes/course-owned-document-sources/reports/qa-phase3');mkdirSync(output,{recursive:true});
   const compiler=await compile(readFileSync('apps/web/src/app/globals.css','utf8'),{base:resolve('apps/web/src/app'),onDependency(){}});
   const css=compiler.build(new Scanner({sources:[{base:resolve('apps/web/src/domains/course-sources'),pattern:'*.tsx',negated:false}]}).scan());
   const component=resolve('apps/web/src/domains/course-sources/CourseSourceReviewPanel.tsx').replaceAll('\\','/');

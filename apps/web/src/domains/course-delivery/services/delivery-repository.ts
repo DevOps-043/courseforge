@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { deliveryDocumentSchema, emptyDeliveryDocument, type DeliveryWorkspace, type DeliveryDocument } from "../types/delivery.schemas";
 import { deliveryHash } from "../lib/delivery-hash";
 import { curriculumLessons } from "../lib/delivery-policy";
+import { readCourseSourcePolicy } from "../../course-sources/course-source-settings";
 
 export async function readDeliveryWorkspace(admin: SupabaseClient, artifactId: string, organizationId: string): Promise<DeliveryWorkspace> {
   const { data, error } = await admin.from("course_delivery_workspaces").select("artifact_id,organization_id,revision,document")
@@ -33,17 +34,25 @@ export async function readDeliveryContext(admin: SupabaseClient, artifactId: str
   const rows = curation.data ? await admin.from("curation_rows").select("*").eq("curation_id", curation.data.id).order("id") : { data: [], error: null };
   if (rows.error) throw new Error("No se pudieron verificar las fuentes del curso.");
   const allSources = rows.data || [];
-  const sources = allSources.filter(row => row.apta === true && row.url_status === "OK" &&
+  let sources = allSources.filter(row => row.apta === true && row.url_status === "OK" &&
     (!row.validation_report?.status || row.validation_report.status === "valid")).map(row => ({
     id: String(row.id), lessonId: String(row.lesson_id), reference: String(row.source_ref),
     title: String(row.source_title || ""), rationale: String(row.source_rationale || ""),
     evidence: row.validation_report, notes: row.notes,
   }));
+  const sourceSettings = await readCourseSourcePolicy(admin, artifactId);
+  let documentarySourceHash: unknown = null;
+  if (sourceSettings && sourceSettings.policy !== "WEB_ONLY") {
+    const { data: documentary, error: documentaryError } = await admin.rpc("read_course_source_delivery_evidence", { p_artifact: artifactId });
+    if (documentaryError) throw new Error("No se pudo verificar la evidencia documental de las sesiones.");
+    sources = documentary.sources;
+    documentarySourceHash = documentary;
+  }
   const modules = syllabus.data?.modules || [];
   return {
     title: artifact.data.idea_central || "Curso", modules, lessons: curriculumLessons(modules), syllabusApproved: syllabus.data?.state === "STEP_APPROVED",
     syllabusHash: deliveryHash(modules), nexus: nexus.data?.lesson_plans || null, nexusHash: deliveryHash(nexus.data?.lesson_plans || null),
-    nexusState: nexus.data?.state, materials: materials.data, curation: curation.data, allSources, sources, sourcesHash: deliveryHash(allSources),
+    nexusState: nexus.data?.state, materials: materials.data, curation: curation.data, allSources, sources, sourcesHash: deliveryHash(documentarySourceHash || allSources),
   };
 }
 export type DeliveryContext = Awaited<ReturnType<typeof readDeliveryContext>>;

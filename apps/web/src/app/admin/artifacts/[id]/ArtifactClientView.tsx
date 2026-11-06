@@ -223,7 +223,7 @@ export default function ArtifactClientView({
 
       const result = await updateArtifactContentAction(artifact.id, updates);
       if (!result.success) {
-        showToast("Error al guardar.", "error");
+        showToast(result.error || "Error al guardar.", "error");
         return;
       }
 

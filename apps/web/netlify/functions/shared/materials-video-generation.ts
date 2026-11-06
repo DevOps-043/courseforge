@@ -29,6 +29,8 @@ export async function generateAndTraceMaterialVideo(params: {
       ...params,
       prompts,
       request: createMaterialsModelRequest(params.modelRuntimeConfig, {
+        containsPrivateSources: params.input.sources.some(source => source.source_kind === "DOCUMENT"),
+        sourceSnapshotId: params.input.course_source_snapshot_id,
         supabase: params.supabase,
         context: {
           artifactId: params.artifactId,

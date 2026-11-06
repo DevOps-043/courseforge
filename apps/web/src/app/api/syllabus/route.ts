@@ -1,3 +1,5 @@
+import { prepareCourseGeneration, attestCourseGeneration } from "@/domains/course-sources/course-source-generation.service";
+import { courseSourcePrompt } from "@/domains/course-sources/course-source-generation";
 import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
 import { GoogleGenAI } from "@google/genai";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -623,6 +625,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const sourceContext = await prepareCourseGeneration(admin, artifactId, "SYLLABUS", null, undefined, `syllabus:${reservedIteration}`, { objectives: objetivos });
     const syllabusSettings = await getPipelineModelSettings(
       "SYLLABUS",
       tenant.organizationId,
@@ -655,6 +658,7 @@ export async function POST(request: Request) {
     let researchMetadata: GroundingMetadata | null = null;
 
     try {
+      if (!sourceContext) {
       const researchResult = await generateSyllabusResearch({
         clients,
         model: searchModelName,
@@ -671,6 +675,7 @@ export async function POST(request: Request) {
         artifactId,
         resultCharacters: researchContext.length,
       });
+      }
     } catch (researchError) {
       logger.warn("syllabus.research_failed", {
         artifactId,
@@ -698,7 +703,7 @@ export async function POST(request: Request) {
       }) +
       (iterationInstructions?.trim()
         ? `\n\nRETROALIMENTACION PARA ESTA ITERACION:\n${iterationInstructions.trim()}\nRegenera el temario completo aplicando esta retroalimentacion.`
-        : "");
+        : "") + courseSourcePrompt(sourceContext);
 
     const generationText = await generateSyllabusJson({
       clients,
@@ -769,9 +774,11 @@ export async function POST(request: Request) {
       },
     };
 
+    const sourceEvidenceId = await attestCourseGeneration(admin, sourceContext, content.modules, [mainModelName, searchModelName]);
     const { data: savedSyllabus, error: saveError } = await admin
       .from("syllabus")
       .update({
+        ...(sourceEvidenceId ? { source_evidence_id: sourceEvidenceId, upstream_dirty: false, upstream_dirty_source: null } : {}),
         route,
         modules: content.modules,
         source_summary: metadata,

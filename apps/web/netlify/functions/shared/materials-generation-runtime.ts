@@ -1,4 +1,6 @@
 import { loadAptaSources } from "./materials-source-context";
+import { prepareCourseGeneration, attestCourseGeneration } from "../../../src/domains/course-sources/course-source-generation.service";
+import { readCourseSourcePolicy } from "../../../src/domains/course-sources/course-source-settings";
 import { readSyllabusWithOrigin } from "../../../src/domains/syllabus/services/syllabus-workflow-read";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
@@ -37,6 +39,7 @@ export const PROCESS_NEXT_DELAY_MS = 8000;
 export const START_JITTER_MS = 3000;
 
 export interface MaterialsGenerationContext {
+  documentary?: boolean;
   artifactId: string;
   lessonPlans: LessonPlanRecord[];
   lessonSources: CurationRowRecord[];
@@ -66,7 +69,7 @@ export async function loadMaterialsGenerationContext(
   supabase: SupabaseClient,
   artifactId: string,
 ): Promise<MaterialsGenerationContext> {
-  const [lessonPlans, lessonSources, artifactResult, syllabusResult] = await Promise.all([
+  const [lessonPlans, lessonSources, artifactResult, syllabusResult, sourceSettings] = await Promise.all([
     loadLessonPlans(supabase, artifactId),
     loadAptaSources(supabase, artifactId),
     supabase
@@ -75,6 +78,7 @@ export async function loadMaterialsGenerationContext(
       .eq("id", artifactId)
       .single(),
     readSyllabusWithOrigin(supabase, artifactId, "route,state"),
+    readCourseSourcePolicy(supabase, artifactId),
   ]);
   if (artifactResult.error) throw artifactResult.error;
   if (syllabusResult.error) throw syllabusResult.error;
@@ -89,6 +93,7 @@ export async function loadMaterialsGenerationContext(
     }
   }
   return {
+    documentary: Boolean(sourceSettings && sourceSettings.policy !== "WEB_ONLY"),
     artifactId,
     lessonPlans,
     lessonSources,
@@ -187,6 +192,7 @@ export async function processGenerationResult(params: {
   logPrefix: string;
   onlyTypes?: string[];
   durationContractsByType?: Partial<Record<ComponentType, VideoDurationContract>>;
+  sourceEvidenceByType?: Record<string, string>;
 }) {
   const { supabase, lessonId, lessonTitle, result, iterationNumber, logPrefix, onlyTypes, durationContractsByType } =
     params;
@@ -199,7 +205,7 @@ export async function processGenerationResult(params: {
       logPrefix,
       onlyTypes || Object.keys(result.content?.components || {}),
       durationContractsByType,
-      { ...params.execution, success: result.success, error: result.success ? undefined : result.error },
+      { ...params.execution, success: result.success, error: result.success ? undefined : result.error, sourceEvidenceByType: params.sourceEvidenceByType },
     );
   if (!committed) return { success: false as const, superseded: true };
   if (result.success) {
@@ -241,11 +247,15 @@ export async function generateLessonMaterials(params: {
     modelRuntimeConfig,
   } = params;
 
+  const sourceContext = generationContext.documentary ? await prepareCourseGeneration(supabase, generationContext.artifactId, "MATERIALS", lesson.lesson_id, undefined, `${params.execution.materialsId}:${params.execution.version}:${lesson.id}:${iterationNumber || lesson.iteration_count || 1}`, { plans: generationContext.lessonPlans }) : null;
   const lessonSources = findLessonSources(generationContext.lessonSources, lesson);
   const planDetails = findPlanDetails(generationContext.lessonPlans, lesson);
+  if (sourceContext && (!planDetails || (lesson.oa_text && planDetails.oa_text && lesson.oa_text !== planDetails.oa_text) || (lesson.expected_components || []).some(type => !planDetails.components?.some(component => component.type === type)))) {
+    throw new Error("El plan de esta lección cambió. Actualiza sus materiales antes de regenerar componentes documentales.");
+  }
   const currentIteration = iterationNumber || lesson.iteration_count || 1;
   const requiredSources = getLessonSourceRequirement(planDetails).requiredSources;
-  if (generationContext.requiresSources && new Set(lessonSources.map((source) => source.source_ref)).size < requiredSources) {
+  if (!sourceContext && generationContext.requiresSources && new Set(lessonSources.map((source) => source.source_ref)).size < requiredSources) {
     return processGenerationResult({
       supabase, lessonId: lesson.id, lessonTitle: lesson.lesson_title, iterationNumber: currentIteration,
       logPrefix, execution: params.execution,
@@ -264,6 +274,14 @@ export async function generateLessonMaterials(params: {
   input.required_source_count = generationContext.requiresSources
     ? requiredSources
     : 0;
+  if (sourceContext) {
+    input.course_source_snapshot_id = sourceContext.snapshotId;
+    input.sources = sourceContext.sources.map(source => ({ id: source.id, source_title: source.title,
+      source_ref: source.kind === "DOCUMENT" ? `document:${source.id}` : source.url!,
+      source_excerpt: source.text, cobertura_completa: true, source_locator: source.locator, source_kind: source.kind }));
+    input.requires_sources = true;
+    input.required_source_count = 1;
+  }
 
   let selectedTypes = componentTypes?.length ? componentTypes : undefined;
   let savedComponents: MaterialComponentRecord[] = [];
@@ -274,6 +292,12 @@ export async function generateLessonMaterials(params: {
     if (error) throw error;
     savedComponents = saved || [];
     if (!selectedTypes?.length) selectedTypes = selectMaterialRetryTypes(input, savedComponents);
+    if (sourceContext && params.resumePendingOnly && !componentTypes?.length) {
+      const current = await supabase.rpc("current_course_source_component_ids", { p_artifact: generationContext.artifactId });
+      if (current.error) throw new Error("No se pudo verificar qué componentes conservan respaldo documental.");
+      const valid = new Set<string>(current.data || []);
+      selectedTypes = [...new Set([...(selectedTypes || []), ...savedComponents.filter(component => !valid.has(component.id)).map(component => component.type)])];
+    }
   }
   const completeInput = { ...input, lesson: { ...input.lesson } };
   if (selectedTypes && selectedTypes.length > 0) {
@@ -310,12 +334,27 @@ export async function generateLessonMaterials(params: {
       result = { success: false, content: result.content, error: validation.errors.join(" | ") };
     }
   }
+  const sourceEvidenceByType: Record<string, string> = {};
+  if (sourceContext && result.content) {
+    const groundingErrors: string[] = [];
+    for (const [type, content] of Object.entries(result.content.components)) {
+      try {
+        const receipt = await attestCourseGeneration(supabase, sourceContext, content, models, deadlineMs);
+        if (receipt) sourceEvidenceByType[type] = receipt;
+      } catch {
+        delete result.content.components[type as ComponentType];
+        groundingErrors.push(`${type}: no se pudo confirmar su respaldo vigente. Revisa las fuentes y reintenta el componente pendiente.`);
+      }
+    }
+    if (groundingErrors.length) result = { success: false, content: result.content, error: [...(result.success ? [] : [result.error]), ...groundingErrors].join(" | ") };
+  }
   return processGenerationResult({
     execution: params.execution,
     supabase,
     lessonId: lesson.id,
     lessonTitle: lesson.lesson_title,
     result,
+    sourceEvidenceByType,
     iterationNumber: input.iteration_number,
     logPrefix,
     onlyTypes: selectedTypes?.length ? selectedTypes : undefined,

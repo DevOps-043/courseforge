@@ -1,0 +1,3 @@
+
+> courseforge@1.0.0 typecheck
+> node --max-old-space-size=4096 node_modules/typescript/bin/tsc -p apps/web/tsconfig.json --noEmit --pretty false

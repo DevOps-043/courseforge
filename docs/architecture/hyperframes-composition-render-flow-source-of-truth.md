@@ -659,6 +659,15 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-11-06: generación documental integra recibos de respaldo y vigencia en
+  `production_jobs`/`production_assets`, con revisión, fingerprint y hash del
+  contenido del componente fijados por servidor. Las respuestas obsoletas se
+  rechazan antes de promover assets o completar producción. La idempotencia
+  distingue revisiones documentales. La migración `20261106040000` está preparada
+  localmente y requiere despliegue coordinado; documento, motion, ZIP y contratos
+  de proveedor conservan su formato. Alcance y evidencia:
+  [cierre de fuentes F4](../../openspec/changes/course-owned-document-sources/reports/phase-4.md).
+
 - 2026-11-05: clasificación de 47 candidatas HyperFrames y normalización de 17
   rutas directas, preservando contratos legacy/iframe. Evidencia .7.b.2.a en sección 5.
 

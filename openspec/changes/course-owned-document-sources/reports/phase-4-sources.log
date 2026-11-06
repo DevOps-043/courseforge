@@ -1,0 +1,102 @@
+
+> courseforge@1.0.0 test:course-sources
+> npm run test:course-sources --workspace=apps/web && node --test scripts/test-course-source-migration.mjs
+
+
+> web@1.0.0 test:course-sources
+> tsc -p tsconfig.course-sources-test.json && node --test .tmp/course-sources-tests/domains/course-sources/__tests__/*.test.js
+
+✔ edición histórica usa autorización del recurso y campos permitidos, sin depender de grants documentales al navegador (610.4437ms)
+✔ la edición directa no hereda recibos documentales ni evita autorización (247.2117ms)
+✔ un manual cubre varias lecciones sin exigir dos archivos (3.3202ms)
+✔ propuestas, conflictos sin resolver y evidencia ajena no acreditan cobertura (0.8893ms)
+✔ mixto busca solo vacíos y una URL revisada complementa sin desplazar el manual (0.7782ms)
+✔ sugerencias deterministas nunca se marcan verificadas y no inventan coincidencias (37.7369ms)
+✔ comandos rechazan autoridad y aprobación sin versión (5.7875ms)
+✔ una URL sin identidad de lección no se convierte en evidencia general (0.6068ms)
+✔ solo archivos no crea cliente ni busca web y los vacíos quedan bloqueados (383.0851ms)
+✔ documentación completa aprobada no busca complementos en modo mixto (55.5509ms)
+✔ mixto busca solo el tema faltante pero exige revisar la nueva URL (39.2802ms)
+✔ cancelación durante búsqueda no confirma filas ni aprobación (55.0914ms)
+✔ fragmentación preserva todo el texto y localizadores posteriores al extracto histórico (5.8184ms)
+✔ PDF textual real se extrae y un documento sin texto suficiente se rechaza (1300.1272ms)
+[Background Job] Starting generation for artifacts/artifact
+[Background Job] Model config: gemini-primary / gpt-fallback
+[Background Job] Generating Phase 1 with gemini-primary...
+[Background Job] Generation failed with gemini-primary: El proveedor no pudo generar la base documental. No se registra su contenido.
+[Background Job] Generating Phase 1 with gpt-fallback...
+[Background Job] Phase 1 Generation success using gpt-fallback.
+[Background Job] Success! Artifact artifact updated to Phase 1 Base.
+✔ Base documental omite investigación en principal/fallback incluso con prompt configurado que pide navegar (436.7975ms)
+✔ la política documental contrasta la organización del curso y bloquea una configuración ajena (303.4072ms)
+✔ citas requieren texto y afirmación literales, IDs vigentes y juicio favorable (9.1646ms)
+✔ el presupuesto rechaza excesos y conserva evidencia posterior a 12000 caracteres (1.681ms)
+✔ no vincula inputs anteriores a un fingerprint nuevo y conserva la clave de ejecución (216.352ms)
+✔ contexto por lección usa revisión aprobada, localizador real y manifiesto sin duplicar texto documental (71.546ms)
+✔ cursos históricos no reciben snapshots; política vacía y revisión pendiente bloquean antes de generar (263.0947ms)
+✔ sin sesión o rol permitido no hay cliente privilegiado, repositorio ni firma (832.7723ms)
+✔ curso ajeno se rechaza antes de construir repositorio o Storage (55.7655ms)
+✔ caída de autoridad mantiene 503 sin efectos ni detalles privados (27.2808ms)
+✔ borrador devuelve DRAFT y no construye servicio de carga ni generador (27.5644ms)
+✔ UUID inválido, autoridad enviada en payload y paginación excesiva fallan sin escritura (79.4073ms)
+✔ listado autorizado conserva paginación y no firma descargas (27.5655ms)
+✔ mutaciones rechazan formularios y origen cruzado antes de consultar autoridad (73.94ms)
+✔ el temario histórico crea TXT derivado y conserva procedencia sin fingir un original (846.4016ms)
+✔ un PDF ajeno, con traversal, excesivo o sin integridad no se copia (451.671ms)
+✔ la entrega documental exige revisión vigente y la versión exacta del paquete encolado (331.4099ms)
+✔ purga exige revisor, autorización del curso y confirmación exacta antes de Storage (934.621ms)
+✔ inspección no implica purga y el origen cruzado no tiene efectos (62.2812ms)
+✔ purga vuelve a comprobar objeto y registra ausencia confirmada sin borrar historial (11.4324ms)
+✔ incertidumbre, objeto cambiado, referencias y retención impiden el borrado (4.2205ms)
+✔ un resultado incierto al borrar no acredita purga exitosa (0.8533ms)
+✔ solo 404 significa ausente; no interpreta errores del proveedor como archivo perdido (0.7446ms)
+✔ identidad y rol se derivan del servidor; el payload no puede convertirse en revisor (303.7684ms)
+✔ sesión ausente y curso ajeno no ejecutan revisión (54.6804ms)
+✔ Storage firma sin sobrescribir y verifica metadata antes de descargar (6.2803ms)
+✔ metadata ausente o tamaño real distinto bloquea descarga (4.5411ms)
+✔ transferencia informa porcentaje y cancelar interrumpe XHR sin confirmar recepción (285.3896ms)
+✔ contratos rechazan autoridad del payload, rutas y tipos incompatibles (14.7637ms)
+✔ reserva firma únicamente la ruta persistida y no devuelve hash o identidad privada (5.1451ms)
+✔ confirmación verifica bytes y termina en UPLOADED, nunca READY (1.901ms)
+✔ confirmación repetida conserva el estado sin descargar ni escribir (1.0856ms)
+✔ otro actor, reserva vencida y estado retirado no acceden a Storage (2.4872ms)
+✔ hash o tamaño diferentes no confirman el documento (1.4367ms)
+✔ inspección de recepción acepta los cuatro formatos sin extraerlos (30.6708ms)
+✔ rechaza MIME falsificado y texto binario sin marcar aptitud curricular (2.0346ms)
+✔ Office rechaza directorios masivos antes de cargar JSZip (3.1527ms)
+ℹ tests 51
+ℹ suites 0
+ℹ pass 51
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2978.1309
+✔ borrador idempotente conserva DRAFT sin metadata de generación (3524.8096ms)
+✔ reserva y confirmación son idempotentes y el original queda vinculado al curso (2483.3333ms)
+✔ otra organización, otro actor y bytes distintos no confirman reservas (2295.0787ms)
+✔ cuota por curso se aplica antes de crear otra reserva (2326.073ms)
+✔ reserva vencida no se confirma ni se renueva por reintentar (2272.2231ms)
+✔ cuota de bytes es transaccional y no consume una clave fallida (2378.103ms)
+✔ RLS y grants deniegan tablas y RPC a navegador; snapshots son inmutables para backend (2243.3025ms)
+✔ FK compuestas impiden asignar fragmentos de otro curso al snapshot (2280.8338ms)
+✔ Storage privado resiste una política histórica permisiva sin afectar otros buckets (2364.9791ms)
+✔ extracción tiene lease único y completa fragmentos atómicamente sin aceptar un token ajeno (2262.8757ms)
+✔ sustitución conserva original hasta READY, serializa sucesores y conserva historia inmutable (2303.8408ms)
+✔ política, asociaciones y aprobación tienen CAS y datos viejos se invalidan en la misma transacción (2508.4671ms)
+✔ fallo de invalidación revierte política, revisión y metadata; WEB_ONLY conserva generación (2392.1836ms)
+✔ F4: el fallo inicial de Base termina sin recibo y no permite aprobar ni sustituir contenido (2347.4486ms)
+✔ F4: guarda resultados con recibo exacto, rechaza otra organización, citas inventadas y modificaciones posteriores (2377.7851ms)
+✔ F4: un manual aprobado permite materiales; ediciones curriculares y retirada rechazan resultados obsoletos (2470.4077ms)
+✔ F4: producción liga sus jobs al contenido vigente y rechaza callbacks de una versión anterior (2416.8746ms)
+✔ F4: sesiones guardan recibos por unidad y su aprobación no acepta contenido editado sin respaldo (2398.7387ms)
+✔ F4: reasignar o eliminar una URL revisada invalida la aprobación y el snapshot (2426.1922ms)
+✔ F4: aprobar fuentes conserva la versión de temario importado y rechaza una revisión anterior (2597.932ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 49037.213

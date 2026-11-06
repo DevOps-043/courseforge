@@ -136,9 +136,17 @@ con lease y confirmación atómica mediante la migración `20261106010000`.
 añade sustitución con historial y conciliación/purga puntual de reservas abandonadas.
 La migración `20261106030000` añade política, revisión por objetivo/tema y
 aprobación versionada mediante `/sources/review`; la curación documental busca
-solo vacíos en mixto y no navega en modo exclusivo. Las cuatro migraciones
-permanecen sin aplicación remota. Las guardas F3 bloquean generación documental
-sin contexto hasta F4; el flujo histórico sin configuración y WEB_ONLY continúa.
+solo vacíos en mixto y no navega en modo exclusivo. La migración `20261106040000`
+sustituye las guardas temporales por snapshots de generación y recibos de respaldo
+ligados al contenido exacto. Base/Temario/Plan usan documentos READY; Materiales
+y sesiones consumen la revisión aprobada por lección. Los reintentos conservan
+el contexto y las herramientas web permanecen fuera de esas generaciones;
+en mixto, la curación resuelve los vacíos antes de aprobar evidencia web.
+QA, producción y publicación comprueban vigencia; `/sources/legacy` permite
+importar explícitamente PDF privados o TXT derivados del temario histórico.
+Las cinco migraciones permanecen sin aplicación remota ni despliegue. El flujo
+histórico sin configuración y WEB_ONLY continúa; la aceptación desplegada queda
+en F6. Evidencia local y límites: [cierre F4](../../openspec/changes/course-owned-document-sources/reports/phase-4.md).
 Contratos, cuotas y operación:
 [fuentes propias](course-owned-document-sources.md).
 

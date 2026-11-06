@@ -1,6 +1,6 @@
-# Fuentes documentales propias — recepción, extracción y ciclo de vida
+# Fuentes documentales propias — biblioteca, revisión y generación
 
-Estado: base y biblioteca/extracción implementadas localmente; migraciones no aplicadas remotamente y despliegue no realizado. La biblioteca está en preparación de borrador, Base, Temario y Fuentes. El pipeline de generación conserva sus consumidores históricos; no anunciar generación documental completa como operativa.
+Estado: fases 1–4 implementadas localmente; migraciones no aplicadas remotamente y despliegue no realizado. La biblioteca está en preparación de borrador, Base, Temario y Fuentes. El pipeline documental usa snapshots y recibos de respaldo; conserva consumidores históricos para cursos anteriores. F5/F6 mantienen validación ampliada y aceptación desplegada pendientes.
 
 ## Política y revisión de cobertura — fase 3
 
@@ -15,15 +15,56 @@ API `GET /api/artifacts/:artifactId/sources/review` devuelve política, revisió
 
 El objetivo usa ref `objective`; temas, `topic:<índice>` bajo el token curricular. El token representa módulos, plan/estado y las partes curriculares de entrega sincrónica/híbrida; cambios de materiales o render no se incluyen. Es un mecanismo de concurrencia, no una credencial ni una afirmación de autenticidad. Máximo 1000 requisitos, 1000 evidencias por procedencia y 1000 asociaciones; excesos producen error, no truncamiento silencioso. El comando de revisión admite hasta 512 KiB y la evidencia textual hasta 2 MiB por revisión. Propuestas indexan términos una vez y la UI monta una lección de revisión a la vez para limitar DOM.
 
-`sourceCoverage` es el criterio compartido de UI, API y worker documental. Cuenta requisitos respaldados y confirmados, no archivos. Un manual puede cubrir todo el curso. En mixto se distingue evidencia documental de URLs revisadas; la búsqueda pide solo los requisitos faltantes y un presupuesto proporcional a vacíos. Las URLs técnicamente válidas siguen pendientes de suficiencia humana; no aprueban el curso automáticamente. La rama histórica conserva el mínimo web y su aprobación previa. PDF manual legado no se convierte implícitamente en URL pública: su adaptador documental pertenece a F4.
+`sourceCoverage` es el criterio compartido de UI, API y worker documental. Cuenta requisitos respaldados y confirmados, no archivos. Un manual puede cubrir todo el curso. En mixto se distingue evidencia documental de URLs revisadas; la búsqueda pide solo los requisitos faltantes y un presupuesto proporcional a vacíos. Las URLs técnicamente válidas siguen pendientes de suficiencia humana; no aprueban el curso automáticamente. La rama histórica conserva el mínimo web y su aprobación previa. El PDF manual legado se importa explícitamente a biblioteca; no se convierte en URL pública.
 
 Persistencia: `course_source_review_versions`, `course_source_review_approvals` y `course_source_policy_changes` son historiales inmutables para el rol backend, con RLS y sin permisos para navegador. Las versiones guardan referencias sin duplicar texto. La RPC compara revisión y token bajo bloqueo, revalida IDs y estados, y registra actor. La evaluación semántica queda en revisión humana, no se acredita por un hash o cita válida.
 
-Decisión de implementación: las asociaciones vigentes son el conjunto de referencias de `course_source_review_versions` para la revisión actual. El contrato normalizado `course_source_assignments` preparado en F1 no se rellena en paralelo ni se interpreta como cobertura real; F4 debe consumir las revisiones aprobadas o derivar una proyección explícita, sin crear dos fuentes de verdad.
+Decisión de implementación: las asociaciones vigentes son el conjunto de referencias de `course_source_review_versions` para la revisión actual. El contrato normalizado `course_source_assignments` preparado en F1 no se rellena en paralelo ni se interpreta como cobertura real; F4 consume las revisiones aprobadas, sin crear dos fuentes de verdad.
 
 Cambiar política, asociaciones o disponibilidad de documentos invalida dependencias en la misma transacción; un fallo revierte también el cambio. Los workers de curación documental confirman progreso con revisión/token/attempt vigentes. La validación de URLs existentes invalida una revisión si cambia su contenido o aptitud. La aprobación histórica por contar URLs no puede saltarse la revisión documental. Un cambio curricular vuelve obsoleto el token; actualizar y revisar de nuevo antes de aprobar.
 
-**Límite temporal de F3:** las guardas bloquean Base/Temario/Plan/Materiales documentales, incluido modo aún sin elegir, hasta integrar los contextos en F4. No se permite ejecutar el motor anterior como si hubiera leído la biblioteca. La revisión documental y su curación sí están implementadas; no se anuncia todavía generación completa desde documentos. Los cursos históricos sin configuración y `WEB_ONLY` conservan generación. No se regeneran cursos por cambiar una política.
+La restricción temporal de F3 se sustituye en F4 por comprobación de contexto y recibos vigentes. Sin elección o documentos listos se bloquea el inicio documental; Materiales exige revisión aprobada. Los cursos históricos sin configuración y `WEB_ONLY` conservan generación. No se regenera por cambiar una política. La implementación local no equivale a activación desplegada.
+
+## F4: generación con fuentes y comprobación de respaldo
+
+Migración aditiva `20261106040000_course_source_generation.sql`; servicios `course-source-generation.ts` y `course-source-generation.service.ts`. Base, Temario local/background/importado y Plan reciben el texto íntegro de todos los fragmentos READY dentro del presupuesto. No requieren aprobación curricular antes de que exista el plan. En ambos modos documentales se omite la investigación web de esas etapas: las búsquedas del modo mixto se realizan exclusivamente en curación para vacíos revisables. Los prompts configurados y feedback no conceden herramientas.
+
+Materiales selecciona los IDs de la revisión aprobada para la lección vigente, incluidas sus variantes `-Gn`; conserva texto y localizador real, también después del carácter 12.000. Un manual suficiente no hereda el mínimo web histórico. El contexto pasa a componentes estándar y a guion/storyboard, modelos alternativos, reanudaciones y regeneraciones parciales. Las sesiones consumen evidencias con sus identidades curriculares originales; los documentos pueden abarcar varias lecciones y una URL conserva sus lecciones aprobadas.
+
+| Consumidor | Integración |
+| --- | --- |
+| Base | `generate-artifact-background.ts`: snapshot previo, omisión de research y recibo del resultado. |
+| Temario | `api/syllabus`, `syllabus-generation-background` y `syllabus-import.service`: mismo resolver; fidelidad de importación existente conservada. |
+| Plan | `instructional-plan-background`: contexto protegido tras prompt/feedback y comprobación entre módulos. |
+| Materiales/videos | `materials-generation-runtime`, `materials-model-client`: selección por lección, vigencia por llamada, recibo por componente y pendientes recuperables. |
+| Sesiones | `delivery-generation` y `commit_course_source_delivery_unit`: recibos de cada unidad; ediciones manuales quedan revisables hasta recuperar respaldo. |
+| QA | `current_course_source_component_ids` y contexto de validación: los IDs de fuentes por sí solos no aprueban componentes obsoletos. |
+| Producción | Idempotencia diferenciada por revisión; guardas de `production_jobs`, `production_assets` y `production_complete`. |
+| Publicación | Guardas SQL, comprobación antes de encolar y antes de enviar el outbox; revisión/token del paquete y rechazo de referencias privadas. |
+
+Presupuestos: 120.000 caracteres de evidencia en estructura y 60.000 por lección/sesión; máximo 1.000 fragmentos. La salida sometida a comprobación admite 180.000 caracteres. El exceso es un error explícito: retirar fuentes sin uso, reducir alcance o dividir el curso; no se recortan fragmentos. La revisión de respaldo tiene hasta 120 segundos, comparte el tiempo restante de Materiales y respeta modelos alternativos configurados ante errores técnicos. Una decisión semántica desfavorable bloquea el resultado, sin buscar otro juez que lo apruebe.
+
+### Snapshots, citas y concurrencia
+
+`course_source_snapshots` conserva política, revisión, identidad de ejecución, versión real de temario, fingerprint y manifiesto. Los documentos se fijan por FK a fragmentos inmutables en `course_source_snapshot_items`; no se duplica su texto. La evidencia web guarda el extracto exacto en el manifiesto para reproducirlo tras cambios de URL. No se incluyen rutas Storage ni URLs firmadas. La clave de ejecución deriva del run/iteración/lección o unidad de sesión; repetirla recupera el mismo snapshot o rechaza entradas distintas.
+
+Las primeras etapas exigen la misma política, selección READY y entradas previas. Una nueva asociación curricular no obliga a regenerar indefinidamente Base/Temario/Plan si sus fuentes y entradas siguen iguales: su vigencia se reconcilia al aprobar. Materiales exige además revisión y aprobación actuales, incluyendo Base, módulos, versión de temario, plan y currículo de sesiones. Los materiales y renders no participan en el hash curricular para evitar invalidarse a sí mismos.
+
+Los inputs ya cargados por cada consumidor se cotejan con el currículo vigente antes de fijar el snapshot; un contador nuevo no legitima inputs anteriores. Producción y publicación rechazan dependencias estructurales sucias o sin recibo vigente. La aprobación de curación documental conserva `syllabus_content_version` para mantener los controles existentes de temario importado en Materiales.
+
+Una llamada de comprobación sin herramientas examina el respaldo completo de cada salida. El servidor valida UUIDs permitidos, citas literales de las evidencias y afirmaciones presentes en la salida; PostgreSQL repite esas comprobaciones literales y registra `course_source_generation_receipts` con hash del JSON exacto. Guardas de persistencia rechazan otro contenido, lección o snapshot vencido. Los recibos quedan en `source_evidence_id` para estructura y en `assets.course_source_evidence_id` para componentes; sesiones usan `course_source_delivery_receipts`. Los fallos de un componente no eliminan los demás componentes respaldados.
+
+Esta comprobación semántica usa IA y **no es una prueba matemática de fidelidad**. Continúan siendo necesarias revisión humana, controles pedagógicos y aceptación con proveedores reales. La auditoría almacena citas privadas con acceso de backend; no se exportan esas tablas como materiales públicos. Los logs nuevos conservan IDs/estado/costos, no prompts ni texto documental. No se garantiza ejecución exactamente una vez frente a todos los fallos externos: se conservan los controles de run, iteración, versión y aceptación incierta del pipeline.
+
+La edición directa de contenido no hereda recibos anteriores. Para cambios documentales se utiliza Regenerar con retroalimentación y su comprobación de respaldo. Guardar Base no inicia una llamada pagada oculta: devuelve esa instrucción explícita. La edición histórica sigue disponible con autorización por recurso, campos permitidos y organización validada en servidor.
+
+### Fuentes históricas y operación
+
+`GET /api/artifacts/:artifactId/sources/legacy` lista hasta 50 fuentes por origen. `POST` recibe exclusivamente `kind` (`SYLLABUS_DOCUMENT` o `CURATION_PDF`), `sourceId` e `idempotencyKey`; usa identidad y curso autorizados en servidor. La copia pasa por reserva, cuotas, checksum y confirmación de biblioteca. Debe procesarse y asociarse antes de generar. No cambia ni borra la fuente histórica.
+
+El temario histórico conserva texto, pero no un original binario: la importación crea un TXT derivado y lo anuncia expresamente. Un PDF de curación solo se lee desde `curation-sources`, en el namespace del curso y organización autorizados; un original ausente, alterado o mayor al límite nuevo de 15 MB exige volver a cargar/dividir. `course_source_legacy_imports` conserva origen, hash y disponibilidad del original, sin autoridad aportada por el payload.
+
+Despliegue pendiente: aplicar F1–F4 en orden y desplegar aplicación/jobs coordinadamente antes del piloto. El fingerprint F4 incorpora Base y versión de temario: aprobaciones documentales anteriores requieren revisión, no backfill de suficiencia. Ante una reversión, bloquear nuevas generaciones documentales con guardas temporales y conservar snapshots/recibos; no borrar tablas históricas ni regresar silenciosamente al motor web. La aplicación remota y el plan operativo completo pertenecen a F6. Evidencia y revisión propia: [cierre F4](../../openspec/changes/course-owned-document-sources/reports/phase-4.md).
 
 Verificación y cierre: [fase 3](../../openspec/changes/course-owned-document-sources/reports/phase-3.md). QA visual reproducible: `npm run qa:course-source-policy` con componentes/CSS reales y API sintética local; no acredita el piloto de producción.
 
@@ -76,7 +117,7 @@ Máximo JSON: 4096 bytes. Las mutaciones requieren `Content-Type: application/js
 5. Confirmar: servidor consulta metadata, comprueba tamaño antes de descargar, verifica bytes reales, hash e inspección inicial de formato. Office limita entradas antes de materializar el directorio; TXT exige UTF-8 y ausencia de NUL. PDF comprueba cabecera. No se descomprime contenido Office ni se extrae texto aquí.
 6. La RPC bloquea la fila y confirma `UPLOADED` una sola vez. Confirmaciones repetidas devuelven su estado sin descargar de nuevo. Timeout o error de DB requieren consultar listado/volver a confirmar la misma reserva; no borrar originales como compensación.
 
-`UPLOADED` solo acredita recepción verificada. PDF con cabecera puede seguir siendo corrupto o escaneado; Office puede tener XML inválido. F2 expone extracción con lectura Office acotada, diagnóstico y estado `READY`; la evaluación curricular pertenece a F3 y todavía no se ofrece.
+`UPLOADED` solo acredita recepción verificada. PDF con cabecera puede seguir siendo corrupto o escaneado; Office puede tener XML inválido. F2 expone extracción con lectura Office acotada, diagnóstico y estado `READY`; F3 aporta evaluación curricular y F4 consume sus revisiones.
 
 ## Persistencia y seguridad
 
@@ -89,7 +130,7 @@ Migración: `supabase/migrations/20261105010000_course_owned_document_sources.sq
 - `course_source_assignments`: asociaciones versionadas con lecciones y revisión; no hay endpoint F1 para aprobarlas.
 - `course_source_snapshots` y `course_source_snapshot_items`: contrato inmutable de evidencia por ejecución/etapa; las FK compuestas impiden vincular fragmentos de otro curso. No crean integraciones con jobs por existir las tablas.
 
-Mapa para F4: `curation_rows` seguirá como resultado por lección y conservará IDs históricos. El adaptador resolverá documentos/asociaciones aprobados a IDs de evidencia del snapshot, sin copiar el texto a `validation_report`; Materiales consumirá el fragmento canónico. No se añade FK de `lesson_id` a un identificador supuesto: actualmente las lecciones viven dentro del JSON versionado del plan. La validación de pertenencia curricular y el compare-and-swap de revisión se implementan en F3/F4 antes de exponer escrituras de asociaciones. La columna `source_revision` y las versiones de snapshot son el contrato de esas guardas, no una invalidación ya conectada al pipeline.
+`curation_rows` conserva resultados e IDs históricos. F4 resuelve las asociaciones aprobadas a IDs de evidencia del snapshot, sin copiar texto documental a `validation_report`; Materiales consume el fragmento canónico. No se añade FK de `lesson_id` a un identificador supuesto: las lecciones viven dentro del JSON versionado del plan. F3/F4 validan pertenencia curricular, revisión y vigencia de snapshots antes de aceptar resultados.
 
 RLS activa, sin grants ni políticas permisivas de tablas nuevas para `anon`/`authenticated`. RPC `SECURITY INVOKER` con `search_path` vacío, ejecutables solo por service-role. API autoriza antes de construir el repositorio. El backend tiene SELECT/INSERT; UPDATE únicamente sobre documentos para confirmar y avanzar estado; no DELETE. Snapshots/fragmentos no tienen UPDATE. El trigger de documentos protege identidad, bytes, hash y localizador ante cambios accidentales desde backend.
 

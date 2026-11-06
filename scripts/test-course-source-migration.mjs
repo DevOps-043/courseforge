@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,20 +17,24 @@ const otherOrganization = '10000000-0000-4000-8000-000000000002';
 let sequence = 10;
 const identifier = () => `40000000-0000-4000-8000-${String(sequence++).padStart(12, '0')}`;
 
-async function database() {
+async function database(generation = false) {
   const db = new PGlite();
   await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
     create schema storage;
     create table profiles(id uuid primary key);
     create table artifacts(id uuid primary key, organization_id uuid not null, created_by uuid references profiles(id),
-      idea_central text not null, course_id text, state text not null default 'DRAFT',production_complete boolean default false,generation_metadata jsonb default '{}');
+      idea_central text not null, course_id text, state text not null default 'DRAFT',production_complete boolean default false,generation_metadata jsonb default '{}',nombres jsonb default '[]',objetivos jsonb default '[]',descripcion jsonb default '{}',validation_report jsonb default '{}');
     create table syllabus(artifact_id uuid primary key references artifacts(id),modules jsonb default '[]',state text default 'STEP_DRAFT',upstream_dirty boolean default false,upstream_dirty_source text);
     create table instructional_plans(artifact_id uuid primary key references artifacts(id),lesson_plans jsonb default '[]',state text default 'STEP_DRAFT',upstream_dirty boolean default false,upstream_dirty_source text);
     create table curation(id uuid primary key default gen_random_uuid(),artifact_id uuid unique references artifacts(id),state text default 'PHASE2_DRAFT',attempt_number integer default 1,qa_decision jsonb,upstream_dirty boolean default false,upstream_dirty_source text);
     create table curation_rows(id uuid primary key default gen_random_uuid(),curation_id uuid references curation(id),lesson_id text,apta boolean,source_ref text,validation_report jsonb);
     create table materials(id uuid primary key default gen_random_uuid(),artifact_id uuid unique references artifacts(id),state text default 'PHASE3_DRAFT',version integer default 1,upstream_dirty boolean default false,upstream_dirty_source text);
-    create table publication_requests(artifact_id uuid primary key references artifacts(id),upstream_dirty boolean default false,upstream_dirty_source text);
+    create table publication_requests(artifact_id uuid primary key references artifacts(id),status text default 'DRAFT',upstream_dirty boolean default false,upstream_dirty_source text);
+    create table material_lessons(id uuid primary key default gen_random_uuid(),materials_id uuid references materials(id),lesson_id text);
+    create table material_components(id uuid primary key default gen_random_uuid(),material_lesson_id uuid references material_lessons(id),content jsonb,assets jsonb default '{}');
+    grant select,insert,update on material_lessons,material_components to service_role;
     grant select,insert,update on artifacts,syllabus,instructional_plans,curation,curation_rows,materials,publication_requests to service_role;
+    grant delete on curation_rows to service_role;
     create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
     create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);
     alter table storage.objects enable row level security;
@@ -43,6 +48,19 @@ async function database() {
   await db.exec(await readFile('supabase/migrations/20261106010000_course_source_extraction.sql', 'utf8'));
   await db.exec(await readFile('supabase/migrations/20261106020000_course_source_lifecycle.sql', 'utf8'));
   await db.exec(await readFile('supabase/migrations/20261106030000_course_source_policy_review.sql', 'utf8'));
+  if (generation) {
+    await db.exec(`alter table syllabus add column content_version integer default 0;
+      alter table curation add column syllabus_content_version integer default 0;
+      create table production_jobs(id uuid primary key default gen_random_uuid(),artifact_id uuid,material_component_id uuid,status text default 'PENDING',input_snapshot jsonb default '{}');
+      create table production_assets(id uuid primary key default gen_random_uuid(),artifact_id uuid,material_component_id uuid,production_job_id uuid);
+      create table course_delivery_workspaces(artifact_id uuid primary key,document jsonb,revision integer default 0);
+      create table course_delivery_runs(id uuid primary key,artifact_id uuid,operation text);
+      grant select,insert,update on production_jobs,production_assets,course_delivery_workspaces,course_delivery_runs to service_role;
+      create function commit_course_delivery_unit(uuid,uuid,jsonb,jsonb) returns integer language plpgsql as $$
+      begin update public.course_delivery_workspaces set document=$3,revision=revision+1 where artifact_id=(select artifact_id from public.course_delivery_runs where id=$1);return 1;end $$;
+      grant execute on function commit_course_delivery_unit(uuid,uuid,jsonb,jsonb) to service_role;`);
+    await db.exec(await readFile('supabase/migrations/20261106040000_course_source_generation.sql', 'utf8'));
+  }
   await db.exec('set role service_role');
   return db;
 }
@@ -281,5 +299,157 @@ test('fallo de invalidación revierte política, revisión y metadata; WEB_ONLY 
     await change('WEB_ONLY');await db.query("update materials set state='PHASE3_GENERATING' where artifact_id=$1",[course]);
     await db.query("update artifacts set state='GENERATING' where id=$1",[course]);
     assert.equal((await db.query('select state from materials')).rows[0].state,'PHASE3_GENERATING');
+  }finally{await db.close();}
+});
+
+async function generationFixture(db, seedBase = true) {
+  const course=await draft(db);
+  const hash=async()=>(await db.query('select course_source_curriculum($1) as context',[course])).rows[0].context.hash;
+  const change=async(action,payload={})=>{const revision=(await db.query('select revision from course_source_settings where artifact_id=$1',[course])).rows[0].revision;
+    return db.query('select change_course_source_review($1,$2,$3,$4,$5,$6,$7::jsonb)',[course,organization,actor,revision,await hash(),action,JSON.stringify(payload)]);};
+  await change('policy',{policy:'DOCUMENTS_ONLY'});
+  const document=await reserve(db,course);await confirm(db,document);
+  const text='El manual exige verificar la identidad antes de conceder acceso al curso.';
+  const fragment=identifier(),sha=createHash('sha256').update(text).digest('hex');
+  const locator={characterStart:0,characterEnd:text.length};
+  await db.query('insert into course_source_fragments(id,artifact_id,document_id,ordinal,text_content,content_sha256,locator) values($1,$2,$3,0,$4,$5,$6::jsonb)',[fragment,course,document.id,text,sha,JSON.stringify(locator)]);
+  await db.query("update course_source_documents set status='READY' where id=$1",[document.id]);
+  const manifest=[{id:fragment,documentId:document.id,kind:'DOCUMENT',title:'manual.txt',hash:sha,locator}];
+  const snapshot=async(stage='BASE',lesson=null,org=organization,execution=identifier())=>{const revision=(await db.query('select revision from course_source_settings where artifact_id=$1',[course])).rows[0].revision;
+    const fingerprint=(await db.query('select course_source_generation_fingerprint($1,$2) as hash',[course,stage])).rows[0].hash;
+    return (await db.query('select snapshot_course_source_generation($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) as id',[course,org,execution,stage,revision,fingerprint,lesson,sha,JSON.stringify(manifest)])).rows[0].id;};
+  const attest=async(id,output,quote=text)=>(await db.query('select attest_course_source_generation($1,$2::jsonb,$3::jsonb) as id',[id,JSON.stringify(output),JSON.stringify([{sourceId:fragment,quote,claim:'Verificar identidad'}])])).rows[0].id;
+  const base={nombres:['Manual seguro'],objetivos:['Verificar identidad'],descripcion:{texto:'Verificar identidad antes de conceder acceso al curso.'}};
+  if (seedBase) {
+    const baseReceipt=await attest(await snapshot('BASE'),base);
+    await db.query("update artifacts set nombres=$1::jsonb,objetivos=$2::jsonb,descripcion=$3::jsonb,source_evidence_id=$4,state='APPROVED',generation_metadata=generation_metadata||'{\"source_configuration_dirty\":false}'::jsonb where id=$5",[JSON.stringify(base.nombres),JSON.stringify(base.objetivos),JSON.stringify(base.descripcion),baseReceipt,course]);
+  }
+  return {course,document,fragment,text,change,snapshot,attest};
+}
+
+test('F4: el fallo inicial de Base termina sin recibo y no permite aprobar ni sustituir contenido',async()=>{
+  const db=await database(true);
+  try{
+    const {course}=await generationFixture(db,false);
+    await db.query("update artifacts set state='GENERATING' where id=$1",[course]);
+    const failure={all_passed:false,results:[{code:'GENERATION_FAILED',passed:false,message:'Generación fallida'}]};
+    await db.query("update artifacts set state='ESCALATED',validation_report=$2::jsonb where id=$1",[course,JSON.stringify(failure)]);
+    assert.equal((await db.query('select state from artifacts where id=$1',[course])).rows[0].state,'ESCALATED');
+    await assert.rejects(db.query("update artifacts set state='APPROVED' where id=$1",[course]),/SOURCE_GENERATION_STALE/);
+    await assert.rejects(db.query("update artifacts set objetivos='[\"Contenido sin respaldo\"]' where id=$1",[course]),/SOURCE_GENERATION_STALE/);
+  }finally{await db.close();}
+});
+
+test('F4: guarda resultados con recibo exacto, rechaza otra organización, citas inventadas y modificaciones posteriores',async()=>{
+  const db=await database(true);
+  try{
+    const fixture=await generationFixture(db);const {course,snapshot,attest}=fixture;
+    await assert.rejects(snapshot('BASE',null,otherOrganization),/SOURCE_NOT_FOUND/);
+    const execution=identifier();const id=await snapshot('BASE',null,organization,execution);
+    assert.equal(await snapshot('BASE',null,organization,execution),id);
+    assert.equal((await db.query('select count(*)::integer as total from course_source_snapshots where execution_id=$1',[execution])).rows[0].total,1);
+    const output={nombres:['Manual seguro'],objetivos:['Verificar identidad'],descripcion:{texto:'Verificar identidad antes de conceder acceso al curso.'}};
+    await assert.rejects(attest(id,output,'Una cita inexistente y falsa'),/SOURCE_CITATION_INVALID/);
+    const receipt=await attest(id,output);
+    await db.query("update artifacts set nombres=$1::jsonb,objetivos=$2::jsonb,descripcion=$3::jsonb,source_evidence_id=$4,state='APPROVED' where id=$5",[JSON.stringify(output.nombres),JSON.stringify(output.objetivos),JSON.stringify(output.descripcion),receipt,course]);
+    await assert.rejects(db.query("update artifacts set objetivos='[\"Inventar otra cosa\"]' where id=$1",[course]),/SOURCE_GENERATION_STALE/);
+    await db.exec('set role authenticated');
+    await assert.rejects(db.query('select * from course_source_generation_receipts'),/permission denied/);
+    await assert.rejects(db.query('select * from course_source_delivery_receipts'),/permission denied/);
+    await assert.rejects(db.query('select course_source_snapshot_current($1)',[id]),/permission denied/);
+  }finally{await db.close();}
+});
+
+test('F4: un manual aprobado permite materiales; ediciones curriculares y retirada rechazan resultados obsoletos',async()=>{
+  const db=await database(true);
+  try{
+    const {course,document,fragment,change,snapshot,attest}=await generationFixture(db);
+    await assert.rejects(snapshot('MATERIALS','lesson-1'),/SOURCE_REVIEW_REQUIRED/);
+    await change('save',{associations:[{lessonId:'lesson-1',evidenceType:'DOCUMENT',evidenceId:fragment,requirementIds:['objective'],verified:true,conflict:false,resolution:''}]});await change('approve');
+    const id=await snapshot('MATERIALS','lesson-1');
+    const content={text:'Verificar identidad antes de conceder acceso al curso.'};const receipt=await attest(id,content);
+    const material=(await db.query("insert into materials(artifact_id,state) values($1,'PHASE3_GENERATING') returning id",[course])).rows[0].id;
+    const lesson=(await db.query("insert into material_lessons(materials_id,lesson_id) values($1,'lesson-1-G2') returning id",[material])).rows[0].id;
+    await db.query('insert into material_components(material_lesson_id,content,assets) values($1,$2::jsonb,$3::jsonb)',[lesson,JSON.stringify(content),JSON.stringify({course_source_evidence_id:receipt})]);
+    await db.query('select assert_course_source_publication($1)',[course]);
+    await db.query("update artifacts set generation_metadata=generation_metadata||'{\"source_configuration_dirty\":true}'::jsonb where id=$1",[course]);
+    await assert.rejects(db.query('select assert_course_source_publication($1)',[course]),/SOURCE_UPSTREAM_REVIEW_REQUIRED/);
+    await db.query("update artifacts set generation_metadata=generation_metadata||'{\"source_configuration_dirty\":false}'::jsonb where id=$1",[course]);
+    await assert.rejects(db.query("update material_components set content='{\"text\":\"Cambiado\"}'"),/SOURCE_GENERATION_STALE/);
+    await db.query("insert into syllabus(artifact_id,modules) values($1,'[{\"lessons\":[]}]')",[course]);
+    assert.equal((await db.query('select course_source_snapshot_current($1) as valid',[id])).rows[0].valid,false);
+    await assert.rejects(attest(id,content),/SOURCE_CONFLICT/);
+    await assert.rejects(db.query('select assert_course_source_publication($1)',[course]),/SOURCE_REVIEW_REQUIRED/);
+    await db.query("update course_source_documents set status='RETIRED' where id=$1",[document.id]);
+    await assert.rejects(db.query("update materials set state='PHASE3_APPROVED' where id=$1",[material]),/SOURCE_REVIEW_REQUIRED/);
+  }finally{await db.close();}
+});
+
+test('F4: producción liga sus jobs al contenido vigente y rechaza callbacks de una versión anterior',async()=>{
+  const db=await database(true);
+  try{
+    const {course,fragment,change,snapshot,attest}=await generationFixture(db);
+    await change('save',{associations:[{lessonId:'lesson-1',evidenceType:'DOCUMENT',evidenceId:fragment,requirementIds:['objective'],verified:true,conflict:false,resolution:''}]});await change('approve');
+    const snapshotId=await snapshot('MATERIALS','lesson-1');
+    const content={text:'Verificar identidad antes de conceder acceso al curso.'};const receipt=await attest(snapshotId,content);
+    const material=(await db.query('insert into materials(artifact_id) values($1) returning id',[course])).rows[0].id;
+    const lesson=(await db.query("insert into material_lessons(materials_id,lesson_id) values($1,'lesson-1') returning id",[material])).rows[0].id;
+    const component=(await db.query('insert into material_components(material_lesson_id,content,assets) values($1,$2::jsonb,$3::jsonb) returning id',[lesson,JSON.stringify(content),JSON.stringify({course_source_evidence_id:receipt})])).rows[0].id;
+    const job=(await db.query('insert into production_jobs(artifact_id,material_component_id) values($1,$2) returning id,input_snapshot',[course,component])).rows[0];
+    assert.ok(job.input_snapshot.course_source_version.component_hash);
+    await db.query('insert into production_assets(artifact_id,material_component_id,production_job_id) values($1,$2,$3)',[course,component,job.id]);
+    const revised={text:'Verificar identidad antes de permitir acceso al curso.'};const next=await attest(snapshotId,revised);
+    await db.query('update material_components set content=$1::jsonb,assets=$2::jsonb where id=$3',[JSON.stringify(revised),JSON.stringify({course_source_evidence_id:next}),component]);
+    await assert.rejects(db.query("update production_jobs set status='SUCCEEDED' where id=$1",[job.id]),/SOURCE_GENERATION_STALE/);
+    await assert.rejects(db.query('insert into production_assets(artifact_id,material_component_id,production_job_id) values($1,$2,$3)',[course,component,job.id]),/SOURCE_GENERATION_STALE/);
+    await db.query("update production_jobs set status='FAILED' where id=$1",[job.id]);
+  }finally{await db.close();}
+});
+
+test('F4: sesiones guardan recibos por unidad y su aprobación no acepta contenido editado sin respaldo',async()=>{
+  const db=await database(true);
+  try{
+    const {course,snapshot,attest}=await generationFixture(db);const session=identifier(),run=identifier();
+    const plan={text:'Verificar identidad antes de conceder acceso al curso.'};
+    const document={config:{mode:'SYNCHRONOUS'},agenda:[{id:session}],plans:{[session]:plan},materials:{},planApproval:null,materialsApproval:null};
+    await db.query('insert into course_delivery_workspaces(artifact_id,document) values($1,$2::jsonb)',[course,JSON.stringify(document)]);
+    await db.query("insert into course_delivery_runs(id,artifact_id,operation) values($1,$2,'PLAN')",[run,course]);
+    const receipt=await attest(await snapshot('PLAN'),plan);
+    await db.query('select commit_course_source_delivery_unit($1,$2,$3::jsonb,$4::jsonb,$5,$6)',[run,identifier(),JSON.stringify(document),'[]',receipt,session]);
+    await db.query("select assert_course_source_delivery($1,'PLAN')",[course]);
+    document.plans[session]={text:'Contenido distinto sin comprobación'};document.planApproval={reviewed:true};
+    await assert.rejects(db.query('update course_delivery_workspaces set document=$1::jsonb where artifact_id=$2',[JSON.stringify(document),course]),/SOURCE_GENERATION_STALE/);
+    await db.exec('set role authenticated');await assert.rejects(db.query('select * from course_source_legacy_imports'),/permission denied/);
+  }finally{await db.close();}
+});
+
+test('F4: reasignar o eliminar una URL revisada invalida la aprobación y el snapshot',async()=>{
+  const db=await database(true);
+  try{
+    const {course,fragment,change,snapshot}=await generationFixture(db);
+    await change('policy',{policy:'DOCUMENTS_AND_WEB'});
+    const curation=(await db.query('insert into curation(artifact_id) values($1) returning id',[course])).rows[0].id;
+    const row=(await db.query("insert into curation_rows(curation_id,lesson_id,apta,source_ref,validation_report) values($1,'lesson-1',true,'https://example.org/manual',$2::jsonb) returning id",[curation,JSON.stringify({status:'valid',content_excerpt:'Procedimiento de comprobación de identidad.'})])).rows[0].id;
+    const association={lessonId:'lesson-1',evidenceType:'DOCUMENT',evidenceId:fragment,requirementIds:['objective'],verified:true,conflict:false,resolution:''};
+    await change('save',{associations:[association,{...association,evidenceType:'WEB',evidenceId:row}]});await change('approve');
+    const id=await snapshot('MATERIALS','lesson-1');
+    await db.query("update curation_rows set lesson_id='lesson-2' where id=$1",[row]);
+    assert.equal((await db.query('select approved_revision from course_source_settings where artifact_id=$1',[course])).rows[0].approved_revision,null);
+    assert.equal((await db.query('select course_source_snapshot_current($1) as valid',[id])).rows[0].valid,false);
+    await change('save',{associations:[association]});await change('approve');
+    await db.query('delete from curation_rows where id=$1',[row]);
+    assert.equal((await db.query('select approved_revision from course_source_settings where artifact_id=$1',[course])).rows[0].approved_revision,null);
+  }finally{await db.close();}
+});
+
+test('F4: aprobar fuentes conserva la versión de temario importado y rechaza una revisión anterior',async()=>{
+  const db=await database(true);
+  try{
+    const {course,fragment,change}=await generationFixture(db);
+    await db.query("insert into syllabus(artifact_id,modules,content_version) values($1,'[{\"lessons\":[{\"id\":\"lesson-1\",\"title\":\"Verificar identidad\"}]}]',7)",[course]);
+    await change('save',{associations:[{lessonId:'lesson-1',evidenceType:'DOCUMENT',evidenceId:fragment,requirementIds:['objective'],verified:true,conflict:false,resolution:''}]});await change('approve');
+    assert.equal((await db.query('select syllabus_content_version from curation where artifact_id=$1',[course])).rows[0].syllabus_content_version,7);
+    await db.query('update syllabus set content_version=8 where artifact_id=$1',[course]);
+    await assert.rejects(change('approve'),/SOURCE_CONFLICT/);
   }finally{await db.close();}
 });

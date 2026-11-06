@@ -20,7 +20,7 @@ export function CourseSourceDraft() {
   }
   return <details className="my-4 rounded-xl border p-4">
     <summary className="cursor-pointer font-semibold">Preparar documentos antes de generar</summary>
-    <p className="my-2 text-sm">Guarda un borrador y carga tus archivos sin iniciar IA. La generación basada en estos documentos todavía no está habilitada.</p>
+    <p className="my-2 text-sm">Guarda un borrador y carga tus archivos sin iniciar IA. Elige la política y procesa los documentos antes de generar la base del curso.</p>
     {!artifactId ? <div><input aria-label="Título del borrador documental" maxLength={300} value={title} onChange={event => setTitle(event.target.value)} className="rounded border p-2" />
       <button disabled={busy || !title.trim()} onClick={() => void createDraft()} className="ml-3 rounded border p-2">Crear borrador sin IA</button></div>
       : <><p className="text-sm">Borrador guardado: {artifactId}. Puedes retomarlo desde la lista de cursos.</p><CourseSourceLibrary artifactId={artifactId} /></>}

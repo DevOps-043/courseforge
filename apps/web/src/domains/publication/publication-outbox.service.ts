@@ -2,6 +2,7 @@ import { createClient as createSupabaseClient, type SupabaseClient } from "@supa
 import { getSofliaInboxEnv } from "@/lib/server/env";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 import { assertDeliveryPublicationReady } from "@/domains/course-delivery/services/delivery-publication";
+import { assertCourseSourcePublication, assertNoPrivateSourceReferences } from "../course-sources/course-source-publication";
 import {
   hashPublicationPayload,
   PUBLICATION_OUTBOX_LEASE_SECONDS,
@@ -60,6 +61,12 @@ export class PublicationOutboxService {
       catch { return this.recordRetryableFailure(claim, "DELIVERY_PACKAGE_NOT_READY"); }
     }
 
+    try {
+      const documentary = await assertCourseSourcePublication(this.supabase, parsedPayload.data.source.artifact_id, {
+        revision: parsedPayload.data.source.source_revision, fingerprint: parsedPayload.data.source.source_fingerprint,
+      });
+      if (documentary) assertNoPrivateSourceReferences(parsedPayload.data);
+    } catch { return this.recordRetryableFailure(claim, "DOCUMENTARY_PACKAGE_NOT_CURRENT"); }
     const inboxEnv = getSofliaInboxEnv();
     const soflia = createSupabaseClient(inboxEnv.url, inboxEnv.key, {
       global: { fetch: fetchSofliaWithDeadline },

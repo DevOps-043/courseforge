@@ -384,6 +384,8 @@ export async function generateMaterialsWithGemini(
   console.log(`${logPrefix} Calling ${model} through Gemini`);
 
   const response = await requestGeminiJson(genAI, model, prompt, modelRuntimeConfig, remainingRequestTime(deadlineMs), {
+    containsPrivateSources: input.sources.some(source => source.source_kind === "DOCUMENT"),
+    sourceSnapshotId: input.course_source_snapshot_id,
     supabase,
     context: {
       artifactId,
@@ -424,6 +426,8 @@ export async function generateMaterialsWithOpenAI(
   console.log(`${logPrefix} Calling ${model} through OpenAI`);
 
   const response = await requestOpenAiJson(client, model, prompt, modelRuntimeConfig, remainingRequestTime(deadlineMs), {
+    containsPrivateSources: input.sources.some(source => source.source_kind === "DOCUMENT"),
+    sourceSnapshotId: input.course_source_snapshot_id,
     supabase,
     context: {
       artifactId,

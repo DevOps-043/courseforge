@@ -1,4 +1,6 @@
 import { Handler } from "@netlify/functions";
+import { prepareCourseGeneration, attestCourseGeneration } from "../../src/domains/course-sources/course-source-generation.service";
+import { courseSourcePrompt } from "../../src/domains/course-sources/course-source-generation";
 import { readSyllabusWithOrigin } from "../../src/domains/syllabus/services/syllabus-workflow-read";
 import {
   createGeminiClient,
@@ -196,6 +198,7 @@ export const handler: Handler = async (event) => {
       .eq("id", artifactId)
       .maybeSingle();
 
+    const sourceContext = await prepareCourseGeneration(supabase, artifactId, "SYLLABUS", null, undefined, `syllabus:${nextIteration}`, { objectives: objetivos });
     const modelConfig = await resolveModelSetting(supabase, "SYLLABUS", {
       model: "gemini-3.5-flash",
       fallbackModel: "gemini-2.5-flash",
@@ -237,6 +240,7 @@ export const handler: Handler = async (event) => {
     let searchQueries: string[] = [];
 
     try {
+      if (!sourceContext) {
       const searchResult = await generateSyllabusResearch({
         clients,
         model: searchModelName,
@@ -268,6 +272,7 @@ export const handler: Handler = async (event) => {
       console.log(
         `[Syllabus Background] Proveedor de research: ${getTextModelProvider(searchModelName)}`,
       );
+      }
     } catch (researchError) {
       const message = getErrorMessage(researchError, "Error desconocido");
       console.warn(
@@ -289,7 +294,7 @@ export const handler: Handler = async (event) => {
       additionalContext: buildCorrectionRules(objetivos.length),
     }) + (iterationInstructions?.trim()
       ? `\n\nRETROALIMENTACION PARA ESTA ITERACION:\n${iterationInstructions.trim()}\nRegenera el temario completo aplicando esta retroalimentacion.`
-      : "");
+      : "") + courseSourcePrompt(sourceContext);
 
     let attempts = 0;
     const maxAttempts = 3;
@@ -346,7 +351,7 @@ export const handler: Handler = async (event) => {
           validationErrors,
         );
       } catch (generationError) {
-        const message = getErrorMessage(generationError, "Error desconocido");
+        const message = sourceContext ? "El proveedor no pudo generar el temario documental. No se registra su contenido." : getErrorMessage(generationError, "Error desconocido");
         console.error(
           `[Syllabus Background] Error con ${attemptModel} en intento ${attempts}:`,
           message,
@@ -412,9 +417,11 @@ export const handler: Handler = async (event) => {
       );
     }
 
+    const sourceEvidenceId = await attestCourseGeneration(supabase, sourceContext, content.modules, [architectModelName, ...configuredModels]);
     const { data: savedSyllabus, error: syllabusError } = await supabase
       .from("syllabus")
       .update({
+        ...(sourceEvidenceId ? { source_evidence_id: sourceEvidenceId, upstream_dirty: false, upstream_dirty_source: null } : {}),
         route,
         modules: content.modules,
         source_summary: metadata,

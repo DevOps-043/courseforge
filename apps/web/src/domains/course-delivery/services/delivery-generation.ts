@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { prepareCourseGeneration, attestCourseGeneration } from "../../course-sources/course-source-generation.service";
 import { generateObject } from "ai";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -83,6 +84,12 @@ export async function executeDeliveryRun(admin: SupabaseClient, runId: string, g
         (run.operation === "MATERIALS" && context.sourcesHash !== run.snapshot.context.sourcesHash)) throw new Error("Las entradas del curso cambiaron durante la generación.");
       const workspace = await readDeliveryWorkspace(admin, run.artifact_id, run.organization_id);
       if (workspace.revision !== run.expected_revision) throw new Error("Otra edición sustituyó esta ejecución.");
+      const selectedSession = workspace.document.agenda.find(session => session.id === unit.id);
+      const sourceContext = await prepareCourseGeneration(admin, run.artifact_id, run.operation === "MATERIALS" ? "MATERIALS" : "PLAN", null, selectedSession?.coverage.map(item => item.lessonId), `${run.id}:${unit.id}`);
+      if (sourceContext) {
+        run.snapshot.context.sources = sourceContext.sources.flatMap(source => (source.lessonIds || selectedSession?.coverage.map(item => item.lessonId) || context.lessons.map(item => item.id)).map(lessonId => ({ id: source.id, lessonId, title: source.title,
+          reference: source.url || `document:${source.id}`, rationale: "Evidencia documental seleccionada", evidence: { content_excerpt: source.text, locator: source.locator }, notes: null })));
+      }
       const generated = await generate(admin, run, unit);
       const document = structuredClone(workspace.document);
       let issues: string[] = [];
@@ -112,11 +119,14 @@ export async function executeDeliveryRun(admin: SupabaseClient, runId: string, g
         }
       }
       if (issues.length) throw new Error(issues.join(" "));
+      const sourceOutput = run.operation === "AGENDA" ? document.agenda : run.operation === "PLAN" ? document.plans[unit.id] : document.materials[unit.id];
+      const sourceReceipt = await attestCourseGeneration(admin, sourceContext, sourceOutput, generated.model);
       if (run.operation !== "MATERIALS") document.planApproval = null;
       document.materialsApproval = null;
       unit.ready = true; unit.model = generated.model;
-      const { data: revision, error: saveError } = await admin.rpc("commit_course_delivery_unit", {
+      const { data: revision, error: saveError } = await admin.rpc(sourceReceipt ? "commit_course_source_delivery_unit" : "commit_course_delivery_unit", {
         p_run_id: run.id, p_token: token, p_document: deliveryDocumentSchema.parse(document), p_units: run.units,
+        ...(sourceReceipt ? { p_receipt: sourceReceipt, p_unit: unit.id } : {}),
       });
       if (saveError) throw saveError;
       run.expected_revision = revision;

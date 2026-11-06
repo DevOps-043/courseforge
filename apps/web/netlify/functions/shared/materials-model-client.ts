@@ -18,6 +18,8 @@ export interface MaterialsModelRuntimeConfig {
 }
 
 export interface MaterialsModelTelemetry {
+  containsPrivateSources?: boolean;
+  sourceSnapshotId?: string;
   context: AiUsageContext;
   supabase?: SupabaseClient | null;
 }
@@ -44,6 +46,7 @@ export async function requestGeminiJson(
   timeoutMs: number = VIDEO_GENERATION_LIMITS.requestTimeoutMs,
   telemetry?: MaterialsModelTelemetry,
 ): Promise<VideoModelResponse> {
+  await checkSourceSnapshot(telemetry);
   const startedAt = Date.now();
   let response;
   try {
@@ -60,7 +63,7 @@ export async function requestGeminiJson(
     });
   } catch (error) {
     if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "gemini", startedAt });
-    throw error;
+    throw privateSourceFailure(error, telemetry);
   }
   if (telemetry) await recordGeminiUsage({ ...telemetry, model, response, startedAt });
   const finishReason = response.candidates?.[0]?.finishReason;
@@ -75,6 +78,7 @@ export async function requestOpenAiJson(
   timeoutMs: number = VIDEO_GENERATION_LIMITS.requestTimeoutMs,
   telemetry?: MaterialsModelTelemetry,
 ): Promise<VideoModelResponse> {
+  await checkSourceSnapshot(telemetry);
   const startedAt = Date.now();
   let response;
   try {
@@ -87,7 +91,7 @@ export async function requestOpenAiJson(
     }, { timeout: timeoutMs, maxRetries: 0, signal: AbortSignal.timeout(timeoutMs) });
   } catch (error) {
     if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "openai", startedAt });
-    throw error;
+    throw privateSourceFailure(error, telemetry);
   }
   if (telemetry) await recordOpenAiUsage({ ...telemetry, model, response, startedAt });
   const finishReason = response.status === "incomplete" && response.incomplete_details?.reason === "max_output_tokens"
@@ -102,6 +106,18 @@ function parseResponse(responseText?: string, finishReason?: string | null, outp
     if (error instanceof ModelJsonResponseError) throw new VideoModelResponseError(error.code, finishReason, outputTokens);
     throw error;
   }
+}
+
+function privateSourceFailure(error: unknown, telemetry?: MaterialsModelTelemetry) {
+  if (!telemetry?.containsPrivateSources) return error;
+  const status = error && typeof error === "object" && "status" in error ? Number(error.status) : undefined;
+  return Object.assign(new Error("Falló el proveedor de materiales documentales. No se registra contenido privado."), { ...(Number.isFinite(status) ? { status } : {}) });
+}
+async function checkSourceSnapshot(telemetry?: MaterialsModelTelemetry) {
+  if (!telemetry?.sourceSnapshotId) return;
+  if (!telemetry.supabase) throw new Error("Falta el contexto autorizado de fuentes.");
+  const current = await telemetry.supabase.rpc("course_source_snapshot_current", { p_snapshot: telemetry.sourceSnapshotId });
+  if (current.error || current.data !== true) throw new Error("SOURCE_GENERATION_STALE: Las fuentes cambiaron. Detén esta ejecución y actualiza antes de reintentar.");
 }
 
 function normalizeReasoningEffort(value: string): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {

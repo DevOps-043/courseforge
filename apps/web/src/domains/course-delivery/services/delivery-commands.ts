@@ -1,3 +1,4 @@
+import { readCourseSourcePolicy } from "../../course-sources/course-source-settings";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import { DELIVERY_LIMITS } from "../config/delivery.config";
@@ -100,6 +101,11 @@ export async function approveDelivery(admin: SupabaseClient, workspace: Delivery
   };
   if (operation === "PLAN") { document.planApproval = approval; document.materialsApproval = null; }
   else document.materialsApproval = approval;
+  const sourceSettings = await readCourseSourcePolicy(admin, workspace.artifact_id);
+  if (sourceSettings && sourceSettings.policy !== "WEB_ONLY") {
+    const sourceApproval = await admin.rpc("assert_course_source_delivery", { p_artifact: workspace.artifact_id, p_phase: operation });
+    if (sourceApproval.error) throw new Error("El contenido de sesión necesita respaldo documental vigente antes de aprobarse.");
+  }
   const { data, error } = await admin.rpc("approve_course_delivery", {
     p_artifact_id: workspace.artifact_id, p_organization_id: workspace.organization_id, p_revision: workspace.revision,
     p_document: document, p_syllabus: context.modules, p_nexus: context.nexus, p_materials: context.materials,

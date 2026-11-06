@@ -3,6 +3,9 @@
 import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { readCourseSourcePolicy } from "@/domains/course-sources/course-source-settings";
+import { CourseSourceError } from "@/domains/course-sources/course-source-error";
+import { SOURCE_GENERATION_LIMITS } from "@/domains/course-sources/course-source-generation";
 import { markArtifactGenerationFailed } from "../lib/artifact-generation-failure";
 import { isGenerationStale } from "@/lib/pipeline-generation-policy";
 import { getErrorMessage } from "@/lib/errors";
@@ -297,19 +300,27 @@ export async function updateArtifactContentAction(
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
   if (!authUser) return { success: false, error: "Unauthorized" };
-
-  const tenant = await resolveActiveTenantContext();
-  const activeOrgId = tenant?.organizationId ?? (await getActiveOrganizationId());
-  let query = supabase.from("artifacts").update(updates).eq("id", artifactId);
-  if (activeOrgId) {
-    query = query.eq("organization_id", activeOrgId);
+  const parsed = z.object({
+    nombres: z.array(z.string().max(500)).max(20).optional(),
+    objetivos: z.array(z.string().max(2000)).max(30).optional(),
+    descripcion: z.record(z.string(), z.unknown()).optional(),
+  }).strict().safeParse(updates);
+  if (!z.uuid().safeParse(artifactId).success || !parsed.success) return { success: false, error: "Los campos de edición no cumplen el contrato permitido." };
+  try {
+    if (JSON.stringify(parsed.data).length > SOURCE_GENERATION_LIMITS.outputCharacters) return { success: false, error: "El contenido editado supera el límite permitido." };
+    const authorized = await getAuthorizedArtifactAdmin(artifactId);
+    if (!authorized) return { success: false, error: "Curso no encontrado o sin permiso de edición." };
+    const policy = await readCourseSourcePolicy(authorized.admin, artifactId);
+    if (policy && policy.policy !== "WEB_ONLY") return { success: false, error: "Para cambiar contenido documental, usa Regenerar con tu retroalimentación. La nueva versión debe comprobar sus fuentes antes de guardarse." };
+    let query = authorized.admin.from("artifacts").update(parsed.data).eq("id", artifactId);
+    query = authorized.artifact.organization_id ? query.eq("organization_id", authorized.artifact.organization_id) : query.is("organization_id", null);
+    const result = await query.select("id").maybeSingle();
+    if (result.error || !result.data) return { success: false, error: "No se pudo guardar el contenido. Actualiza antes de reintentar." };
+    await markDownstreamDirtyAction(artifactId, 1, "Idea Central");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof CourseSourceError ? error.message : "No se pudo guardar el contenido de forma segura. Actualiza antes de reintentar." };
   }
-
-  const { error } = await query;
-  if (error) return { success: false, error: error.message };
-
-  await markDownstreamDirtyAction(artifactId, 1, "Idea Central");
-  return { success: true };
 }
 
 export async function deleteArtifactAction(artifactId: string) {

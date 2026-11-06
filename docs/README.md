@@ -2,7 +2,7 @@
 
 - [Contexto operativo del sistema](architecture/system-context.md)
 - [Identidad global del producto](architecture/product-branding.md)
-- [Fuentes documentales propias: contratos y estado de fase 1](architecture/course-owned-document-sources.md)
+- [Fuentes documentales propias: contratos y estado de implementación](architecture/course-owned-document-sources.md)
 - [Router de desarrollo](../AGENTS.md)
 - [Estándar maestro](standards/engineering-practices.md)
 - [Auditoría de deuda técnica: línea base, cobertura y seguimiento](../TECHNICAL_DEBT_AUDIT.md)

@@ -14,7 +14,7 @@ const successor = '20000000-0000-4000-8000-000000000002';
 const orphan = '20000000-0000-4000-8000-000000000003';
 const root = `/api/artifacts/${course}/sources`;
 async function main() {
-  const output = resolve('openspec/changes/course-owned-document-sources/reports/qa'); mkdirSync(output, { recursive: true });
+  const output = resolve(process.env.COURSE_SOURCE_QA_OUTPUT || 'openspec/changes/course-owned-document-sources/reports/qa'); mkdirSync(output, { recursive: true });
   const compiler = await compile(readFileSync('apps/web/src/app/globals.css', 'utf8'), { base: resolve('apps/web/src/app'), onDependency() {} });
   const scanner = new Scanner({ sources: [{ base: resolve('apps/web/src/domains/course-sources'), pattern: '*.tsx', negated: false }] });
   const css = compiler.build(scanner.scan());
@@ -38,6 +38,9 @@ async function main() {
         response.end(JSON.stringify({ documents })); return;
       }
       if(url.pathname.endsWith('/review')) {response.end(JSON.stringify({configured:true,policy:null,revision:0,approved:false,curriculumHash:'a'.repeat(32),planReady:false,lessons:[],evidence:[],associations:[]}));return;}
+      if(url.pathname.endsWith('/legacy')) {
+        response.end(JSON.stringify(request.method==='GET'?{sources:[{id:original,kind:'SYLLABUS_DOCUMENT',title:'Temario histórico.pdf',diagnostic:'El original no está disponible. Se creará un TXT derivado.'}]}:{document:documents[0],originalAvailable:false}));return;
+      }
       if (url.pathname.endsWith('/uploads')) {
         assert.equal(body.supersedesId,original);
         documents.push({id:successor,filename:body.filename,status:'RESERVED',supersedesId:body.supersedesId});
@@ -77,6 +80,9 @@ async function main() {
     await page.waitForFunction(()=>document.body.textContent.includes('sustituye'));
     await page.reload();await page.waitForSelector('summary');await page.click('summary');await page.waitForFunction(()=>document.body.textContent.includes('sustituye'));
     assert.equal(await page.$$eval('[aria-label="Versiones documentales"] li',items=>items.length),2);
+    await clickText('Consultar fuentes históricas');await page.waitForFunction(()=>document.body.textContent.includes('Temario histórico.pdf'));
+    page.once('dialog',dialog=>dialog.accept());await clickText('Importar a la biblioteca');
+    await page.waitForFunction(()=>document.body.textContent.includes('TXT derivado importado'));
     await page.screenshot({path:resolve(output,'desktop.png'),fullPage:true});
     await page.setViewport({width:375,height:900});await page.evaluate(()=>document.documentElement.classList.add('dark'));
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'La biblioteca no debe desbordar en móvil.');
@@ -88,7 +94,7 @@ async function main() {
     assert.ok(requests.some(request=>request.body?.action==='purge'));
     failList=true;await page.reload();await page.waitForSelector('summary');await page.click('summary');await page.waitForFunction(()=>document.body.textContent.includes('Biblioteca no disponible'));
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({replacement:true,reloadHistory:true,textEscaped:true,rejectedFormat:true,reconciliation:true,explicitPurgeConfirmation:true,mobileNoOverflow:true,externalRequests:false,screenshots:output}));
+    console.log(JSON.stringify({replacement:true,reloadHistory:true,textEscaped:true,rejectedFormat:true,legacyImport:true,reconciliation:true,explicitPurgeConfirmation:true,mobileNoOverflow:true,externalRequests:false,screenshots:output}));
   } finally {if(browser)await browser.close();await new Promise(done=>server.close(done));}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

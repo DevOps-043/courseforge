@@ -132,6 +132,39 @@ El sistema SHALL congelar política, versiones y fragmentos por ejecución, vali
 - **WHEN** el modelo devuelve una referencia inexistente o ajena a la lección o snapshot
 - **THEN** el material no se acepta como válido y se ofrece un diagnóstico seguro
 
+#### Scenario: Cita real pero respaldo rechazado
+- **WHEN** los IDs y citas existen pero la comprobación semántica detecta contenido sin respaldo
+- **THEN** el componente queda pendiente y se conservan otros componentes válidos
+- **AND** una decisión semántica desfavorable no activa otro modelo para obtener aprobación
+
+#### Scenario: Reintento de la misma ejecución
+- **WHEN** se repite la reserva de contexto para el mismo run, iteración o unidad con entradas idénticas
+- **THEN** se recupera el snapshot existente sin duplicar sus fragmentos
+- **AND** entradas diferentes para esa ejecución se rechazan
+
+#### Scenario: Inputs anteriores a la captura del contexto
+- **WHEN** un consumidor conserva objetivos, módulos o plan anteriores al currículo vigente
+- **THEN** no los vincula al fingerprint nuevo y se detiene antes de generar
+
+#### Scenario: Fallo de la primera generación de Base
+- **WHEN** la generación falla antes de obtener un recibo de evidencia
+- **THEN** Base registra el fallo terminal sin quedar atascada en generación
+- **AND** esa transición no modifica contenido ni permite aprobar una salida sin recibo
+
+#### Scenario: Temario importado versionado
+- **WHEN** se aprueba la cobertura documental de un temario importado
+- **THEN** la curación conserva la versión del temario vigente exigida por Materiales
+- **AND** una modificación posterior requiere revisar otra vez su cobertura
+
+#### Scenario: Respuesta tardía de producción
+- **WHEN** un job devuelve un asset después de cambiar la revisión o el contenido de su componente
+- **THEN** se rechaza su promoción y no se declara producción completa
+
+#### Scenario: Temario histórico sin original
+- **WHEN** el autor importa una fuente histórica que conserva texto pero carece de binario original
+- **THEN** se crea explícitamente un TXT derivado con procedencia y diagnóstico
+- **AND** requiere procesamiento y revisión antes de usarse como evidencia
+
 ### Requirement: Recuperación e idempotencia
 El sistema SHALL autorizar y verificar las cargas en servidor, limitar extracción y concurrencia, y permitir consultar efectos inciertos antes de repetirlos.
 

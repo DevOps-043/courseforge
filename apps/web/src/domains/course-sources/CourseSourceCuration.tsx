@@ -54,8 +54,8 @@ export function CourseSourceCuration({
       )}
       <p role="status">{message}</p>
       <p className="mt-3 text-sm">
-        La cobertura requiere revisión humana. La configuración queda guardada;
-        la generación desde estos documentos todavía no está habilitada.
+        La cobertura requiere revisión humana. Los materiales usan únicamente la
+        evidencia de la revisión aprobada y comprueban sus citas antes de guardarse.
       </p>
     </div>
   );

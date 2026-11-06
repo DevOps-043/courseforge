@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { assertCourseSourcePublication } from "../../course-sources/course-source-publication";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertProviderSupportsJobType } from "../providers/production-provider-registry";
 import {
@@ -154,11 +155,13 @@ export async function createOrReuseProductionJob(
   params: CreateProductionJobParams & { retryFailed?: boolean },
 ): Promise<ProductionJobRecord> {
   assertProviderSupportsJobType(params.provider, params.jobType);
+  const sourceVersion = await assertCourseSourcePublication(supabase, params.context.artifactId);
+  const idempotencyKey = sourceVersion ? `${params.idempotencyKey}:sources:${sourceVersion.revision}:${sourceVersion.fingerprint}` : params.idempotencyKey;
 
   let existingQuery = supabase
     .from("production_jobs")
     .select("id, attempt, output_snapshot, provider_job_id, status")
-    .eq("idempotency_key", params.idempotencyKey)
+    .eq("idempotency_key", idempotencyKey)
     .eq("job_type", params.jobType)
     .eq("provider", params.provider);
 
@@ -222,7 +225,7 @@ export async function createOrReuseProductionJob(
       artifact_id: params.context.artifactId,
       created_by: params.createdBy || null,
       estimated_cost_cents: params.estimatedCostCents ?? null,
-      idempotency_key: params.idempotencyKey,
+      idempotency_key: idempotencyKey,
       input_snapshot: params.inputSnapshot,
       job_type: params.jobType,
       lesson_id: params.context.lessonId,

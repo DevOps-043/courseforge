@@ -1,4 +1,6 @@
 import { Handler } from "@netlify/functions";
+import { prepareCourseGeneration, attestCourseGeneration, assertCourseGenerationCurrent } from "../../src/domains/course-sources/course-source-generation.service";
+import { courseSourcePrompt } from "../../src/domains/course-sources/course-source-generation";
 import { generateObject } from "ai";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
@@ -215,6 +217,7 @@ async function generateModulePlans(params: {
   attempt: number;
   organizationId?: string | null;
   supabase: SupabaseClient;
+  privateSources?: boolean;
 }) {
   const {
     artifact,
@@ -257,7 +260,8 @@ async function generateModulePlans(params: {
       prompt: `${finalSystemPrompt}\n\nMODULO ACTUAL: ${module.title}\n${finalContextPrompt}`,
       temperature,
     });
-  } catch (error) {
+  } catch (failure) {
+    const error = params.privateSources ? new Error("El proveedor no pudo generar el plan documental. No se registra su contenido.") : failure;
     await recordAiFailure({
       context: {
         artifactId,
@@ -396,7 +400,7 @@ export const handler: Handler = async (event) => {
         ),
       ]);
 
-    const contextPromptTemplate = buildInstructionalPlanContextPrompt({
+    const configuredContextPrompt = buildInstructionalPlanContextPrompt({
       configuredPrompt: contextPromptTemplateFromDb || instructionalPlanContextPromptDefault,
       customPrompt: body.customPrompt,
       iterationInstructions: body.iterationInstructions,
@@ -409,9 +413,11 @@ export const handler: Handler = async (event) => {
       body.iterationNumber,
     );
     activeIteration = iterationNumber;
+    const sourceContext = await prepareCourseGeneration(supabase, artifactId, "PLAN", null, undefined, `plan:${iterationNumber}`, { modules: syllabusRecord.modules });
+    const contextPromptTemplate = configuredContextPrompt + courseSourcePrompt(sourceContext);
     if (syllabusRecord.input_mode === "PROVIDED_SYLLABUS") {
       const { error: versionError } = await supabase.from("instructional_plans")
-        .update({ syllabus_content_version: syllabusRecord.content_version }).eq("artifact_id", artifactId).eq("iteration_count", iterationNumber);
+        .update({ syllabus_content_version: sourceContext?.syllabusVersion ?? syllabusRecord.content_version }).eq("artifact_id", artifactId).eq("iteration_count", iterationNumber);
       if (versionError) throw versionError;
     }
 
@@ -450,6 +456,7 @@ export const handler: Handler = async (event) => {
       );
 
       try {
+        await assertCourseGenerationCurrent(supabase, sourceContext);
         const moduleResult = await generateModulePlans({
           artifactId,
           attempt: iterationNumber,
@@ -461,6 +468,7 @@ export const handler: Handler = async (event) => {
           systemPromptTemplate,
           temperature: modelConfig.temperature,
           videoDurationPolicy,
+          privateSources: Boolean(sourceContext),
           organizationId: promptOrganizationId,
           supabase,
         });
@@ -510,9 +518,11 @@ export const handler: Handler = async (event) => {
       );
     }
 
+    const sourceEvidenceId = await attestCourseGeneration(supabase, sourceContext, allGeneratedPlans, [modelName, modelConfig.fallbackModel]);
     const { data: completedPlan, error: completionError } = await supabase
       .from("instructional_plans")
       .update({
+        ...(sourceEvidenceId ? { source_evidence_id: sourceEvidenceId, upstream_dirty: false, upstream_dirty_source: null } : {}),
         lesson_plans: allGeneratedPlans,
         blockers: allBlockers,
         state:

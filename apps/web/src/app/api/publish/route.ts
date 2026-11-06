@@ -1,3 +1,4 @@
+import { assertCourseSourcePublication, assertNoPrivateSourceReferences } from "@/domains/course-sources/course-source-publication";
 import { revalidatePath } from 'next/cache';
 import { getPublicationData } from '@/app/admin/artifacts/[id]/publish/actions';
 import { buildPublicationPayload } from '@/domains/publication/lib/publication-payload';
@@ -103,6 +104,11 @@ export async function POST(request: Request) {
             request: publicationRequest,
         });
 
+        const documentary = await assertCourseSourcePublication(admin, artifactId);
+        if (documentary) {
+            assertNoPrivateSourceReferences(payloadToSend);
+            Object.assign(payloadToSend.source, { source_revision: documentary.revision, source_fingerprint: documentary.fingerprint });
+        }
         const payloadHash = hashPublicationPayload(payloadToSend);
         const { data: queued, error: updateError } = await admin
             .from('publication_requests')

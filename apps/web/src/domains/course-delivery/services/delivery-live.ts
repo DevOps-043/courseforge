@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { assertCourseSourcePublication, assertNoPrivateSourceReferences } from "../../course-sources/course-source-publication";
 import { getOptionalServerEnvValue } from "../../../lib/server/env";
 import { requireDeliveryAccess } from "./delivery-access";
 import { readDeliveryContext,readDeliveryWorkspace } from "./delivery-repository";
@@ -40,6 +41,8 @@ export async function deliverLivePreparation(artifactId:string,revision:number,s
   if(workspace.revision!==revision||!deliveryReadiness(workspace.document,context).materialsReady)throw new Error("Aprueba y actualiza los materiales vigentes antes de entregar.");
   if(target.organization_slug!==tenant.organizationSlug)throw new Error("Elige una sesión de la organización activa.");
   const payload=buildEnginePreparation(workspace,sourceSessionId,target,tenant.userId);
+  const documentary=await assertCourseSourcePublication(admin,artifactId);
+  if(documentary)assertNoPrivateSourceReferences(payload);
   const result=await requestLearning(payload);
   if(result.delivered!==true||result.session_id!==target.session_id||result.engine_revision!==payload.manifest.revision)throw new Error("Learning devolvió una confirmación incompatible.");
   return {delivered:true,sessionId:target.session_id};
