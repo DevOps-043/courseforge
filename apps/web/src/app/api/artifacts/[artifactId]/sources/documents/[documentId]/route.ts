@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { requireCourseSourceAccess } from "@/domains/course-sources/course-source-access";
 import { CourseSourceRepository } from "@/domains/course-sources/course-source.repository";
-import { COURSE_SOURCE_BUCKET } from "@/domains/course-sources/course-source-policy";
+import { COURSE_SOURCE_BUCKET, COURSE_SOURCE_LIMITS } from "@/domains/course-sources/course-source-policy";
 import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function-client";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
 import { API_ERROR_CODE } from "@/lib/server/api-contract";
@@ -42,10 +42,15 @@ async function respond(request: Request, context: Context) {
       if (signed.error || !signed.data) throw new CourseSourceError(503, "No se pudo autorizar la descarga.");
       return apiSuccessResponse({ url: signed.data.signedUrl }, { requestId, headers });
     }
+    const cursor = z.coerce.number().int().min(0).max(100_000).safeParse(new URL(request.url).searchParams.get("from") ?? 0);
+    if (!cursor.success) throw new CourseSourceError(400, "Posición de lectura inválida.");
+    const pageSize = COURSE_SOURCE_LIMITS.fragmentPageSize;
     const fragments = await admin.from("course_source_fragments").select("ordinal,text_content,locator")
-      .eq("artifact_id", artifactId).eq("document_id", documentId).order("ordinal").limit(40);
+      .eq("artifact_id", artifactId).eq("document_id", documentId).gte("ordinal", cursor.data).order("ordinal").limit(pageSize + 1);
     if (fragments.error) throw new CourseSourceError(503, "No se pudo leer el texto.");
-    return apiSuccessResponse({ status: document.status, fragments: fragments.data }, { requestId, headers });
+    const rows = fragments.data ?? [];
+    return apiSuccessResponse({ status: document.status, fragments: rows.slice(0, pageSize),
+      nextOrdinal: rows[pageSize]?.ordinal ?? null }, { requestId, headers });
   } catch (error) {
     const unavailable = authorizationUnavailableResponse(error, requestId); if (unavailable) return unavailable;
     return apiErrorResponse({ requestId, headers, status: error instanceof CourseSourceError ? error.status : 503,

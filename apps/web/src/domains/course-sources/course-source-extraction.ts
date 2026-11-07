@@ -5,6 +5,7 @@ import { CourseSourceRepository } from "./course-source.repository";
 import { createSourceStorage } from "./course-source-storage";
 import { verifySourceUpload } from "./course-source-upload-verification";
 import { sourcePersistenceError } from "./course-source-error";
+import { COURSE_SOURCE_LIMITS } from "./course-source-policy";
 
 export function fragmentSourceText(text: string) {
   const fragmentSize = 2000;
@@ -39,10 +40,17 @@ export async function extractCourseSource(admin: SupabaseClient, artifactId: str
     const extracted = await extractSyllabusSourceDocument({
       name: document.filename, type: document.mime_type, size: blob.size,
       arrayBuffer: () => blob.arrayBuffer(),
-    });
+    }, { maxCharacters: COURSE_SOURCE_LIMITS.activeTextCharacters });
     diagnosticCode = "SOURCE_PERSIST_FAILED";
-    const result = await admin.rpc("process_course_source_document", { ...base, p_action: "complete", p_token: token,
-      p_fragments: fragmentSourceText(extracted.text) });
+    const fragments = fragmentSourceText(extracted.text);
+    const batchSize = COURSE_SOURCE_LIMITS.extractionBatchFragments;
+    for (let start = 0; start < fragments.length; start += batchSize) {
+      const staged = await admin.rpc("stage_course_source_extraction", { ...base, p_action: "append", p_token: token,
+        p_fragments: fragments.slice(start, start + batchSize) });
+      if (staged.error) sourcePersistenceError(staged.error);
+    }
+    const result = await admin.rpc("stage_course_source_extraction", { ...base, p_action: "publish", p_token: token,
+      p_count: fragments.length, p_characters: extracted.characterCount });
     if (result.error) sourcePersistenceError(result.error);
   } catch (error) {
     if (error instanceof SyllabusSourceTextError) diagnosticCode = error.reason;

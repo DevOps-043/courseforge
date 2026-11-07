@@ -52,7 +52,12 @@ async function main() {
         if(body.action==='inspect') response.end(JSON.stringify({observations:[{documentId:orphan,observation:'PRESENT'}]}));
         else { assert.equal(body.confirmDocumentId,orphan); response.end(JSON.stringify({purged:true})); } return;
       }
-      if(url.pathname.includes('/documents/') && request.method==='GET') { response.end(JSON.stringify({fragments:[{text_content:'Texto documental <script>sin ejecutar</script> y sección final verificada.'}]}));return; }
+      if(url.pathname.includes('/documents/') && request.method==='GET') {
+        const lastPage = url.searchParams.get('from') === '40';
+        response.end(JSON.stringify({fragments:[{text_content:lastPage
+          ? 'Sección final verificada.' : 'Texto documental <script>sin ejecutar</script>.'}],nextOrdinal:lastPage?null:40}));
+        return;
+      }
       response.end('{}'); return;
     }
     response.setHeader('Content-Type','text/html');response.end('<!doctype html><html lang="es"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/style.css"><body><main id="root" style="max-width:900px;margin:24px auto;padding:12px"></main><script src="/bundle.js"></script></body></html>');
@@ -69,6 +74,8 @@ async function main() {
     await page.waitForSelector('summary');await page.click('summary');await page.waitForFunction(()=>document.body.textContent.includes('Sustituir archivo'));
     const clickText=async text=>page.evaluate(label=>[...document.querySelectorAll('button')].find(button=>button.textContent===label).click(),text);
     await clickText('Ver texto');await page.waitForSelector('pre');assert.equal(await page.$eval('pre',element=>element.textContent.includes('<script>')),true);
+    await clickText('Siguiente');await page.waitForFunction(()=>document.querySelector('pre')?.textContent.includes('Sección final'));
+    await clickText('Anterior');await page.waitForFunction(()=>document.querySelector('pre')?.textContent.includes('<script>'));
     await clickText('Cerrar texto');await clickText('Sustituir archivo');
     const file=await page.$('input[type=file]');
     await file.uploadFile(resolve('apps/web/src/domains/course-sources/course-source-policy.ts'));

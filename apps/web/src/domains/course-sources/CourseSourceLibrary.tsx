@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { COURSE_SOURCE_FORMATS } from "./course-source-policy";
+import { COURSE_SOURCE_FORMATS, COURSE_SOURCE_LIMITS } from "./course-source-policy";
 import { reserveSourceUploadSchema } from "./course-source.schema";
 import { sourceJsonRequest as jsonRequest, uploadSourceBytes } from "./course-source.client";
 import { CourseSourceReconciliation } from "./CourseSourceReconciliation";
@@ -20,7 +20,8 @@ export function CourseSourceLibrary({ artifactId }: { artifactId: string }) {
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [text, setText] = useState("");
+  const [preview, setPreview] = useState<{ documentId: string; from: number; next: number | null; text: string } | null>(null);
+  const [reading, setReading] = useState(false);
   const [replacement, setReplacement] = useState<DocumentSummary | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const uploadController = useRef<AbortController | null>(null);
@@ -36,6 +37,18 @@ export function CourseSourceLibrary({ artifactId }: { artifactId: string }) {
   async function processDocument(documentId: string) {
     await jsonRequest(`${root}/documents/${documentId}`, {});
     setMessage("Extracción solicitada. Puedes recargar la página y consultar el estado.");
+  }
+  async function readText(documentId: string, from = 0) {
+    setReading(true);
+    try {
+      const result = await jsonRequest(`${root}/documents/${documentId}?from=${from}`);
+      setPreview({ documentId, from, next: result.nextOrdinal ?? null,
+        text: result.fragments.map((fragment: { text_content: string }) => fragment.text_content).join("") });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo consultar el texto.");
+    } finally {
+      setReading(false);
+    }
   }
   async function upload(files: File[]) {
     if (busy) return;
@@ -91,11 +104,20 @@ export function CourseSourceLibrary({ artifactId }: { artifactId: string }) {
       {document.status === "READY" && !documents.some(item => item.supersedesId === document.id && item.status !== "RETIRED") && <button type="button" disabled={busy} onClick={() => setReplacement(document)}>Sustituir archivo</button>}
       {document.status === "RESERVED" && <button disabled={busy} onClick={() => void jsonRequest(`${root}/uploads/confirm`, { documentId: document.id }).then(() => processDocument(document.id)).then(refresh).catch(error => setMessage(error.message))}>Confirmar carga</button>}
       {["UPLOADED", "FAILED", "PROCESSING"].includes(document.status) && document.canRetryExtraction !== false && <button disabled={busy} onClick={() => void processDocument(document.id).catch(error => setMessage(error.message))}>Procesar / recuperar</button>}
-      {document.status === "READY" && <button onClick={() => void jsonRequest(`${root}/documents/${document.id}`).then(result => setText(result.fragments.map((fragment: { text_content: string }) => fragment.text_content).join(""))).catch(error => setMessage(error.message))}>Ver texto</button>}
+      {document.status === "READY" && <button type="button" disabled={reading} onClick={() => void readText(document.id)}>Ver texto</button>}
       {document.status !== "RESERVED" && <button onClick={() => void jsonRequest(`${root}/documents/${document.id}?download=1`).then(result => { window.location.assign(result.url); }).catch(error => setMessage(error.message))}>Descargar original</button>}
       {!["RESERVED", "RETIRED"].includes(document.status) && <button onClick={() => { if (window.confirm("¿Retirar este documento de la biblioteca activa? Se conservará el original.")) void jsonRequest(`${root}/documents/${document.id}?action=retire`, {}).then(refresh).catch(error => setMessage(error.message)); }}>Retirar</button>}
     </li>)}</ul>
-    {text && <div><button onClick={() => setText("")}>Cerrar texto</button><pre className="max-h-96 overflow-auto whitespace-pre-wrap text-sm">{text}</pre></div>}
+    {preview && <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={reading} onClick={() => setPreview(null)}>Cerrar texto</button>
+        {preview.from > 0 && <button type="button" disabled={reading}
+          onClick={() => void readText(preview.documentId, Math.max(0, preview.from - COURSE_SOURCE_LIMITS.fragmentPageSize))}>Anterior</button>}
+        {preview.next !== null && <button type="button" disabled={reading}
+          onClick={() => { if (preview.next !== null) void readText(preview.documentId, preview.next); }}>Siguiente</button>}
+      </div>
+      <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-sm">{preview.text}</pre>
+    </div>}
     <CourseSourceReconciliation root={root} />
     <CourseSourceLegacyImport root={root} onImported={refresh} />
   </details>;

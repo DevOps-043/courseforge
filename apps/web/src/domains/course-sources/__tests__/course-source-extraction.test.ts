@@ -5,6 +5,25 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import JSZip from "jszip";
 import { extractCourseSource, fragmentSourceText } from "../course-source-extraction";
 import { COURSE_SOURCE_FORMATS } from "../course-source-policy";
+
+test("DOCX y TXT largos conservan la sección final con un presupuesto de laboratorio", async t => {
+  const text = "Procedimiento de acceso y excepción aplicable. ".repeat(4500) + "Sección final: solicitar autorización. 😀";
+  const archive = new JSZip();
+  archive.file("word/document.xml", `<w:document><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:document>`);
+  const docx = await archive.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  for (const file of [
+    new File([text], "largo.txt", { type: COURSE_SOURCE_FORMATS.txt }),
+    new File([Uint8Array.from(docx).buffer], "largo.docx", { type: COURSE_SOURCE_FORMATS.docx }),
+  ]) {
+    const started = performance.now();
+    const initialRss = process.memoryUsage().rss;
+    const extracted = await extractSyllabusSourceDocument(file, { maxCharacters: 250_000 });
+    assert.equal(extracted.text, text);
+    assert.equal(fragmentSourceText(extracted.text).map(fragment => fragment.text).join(""), text);
+    t.diagnostic(`${file.name}: ${file.size} bytes, ${text.length} unidades UTF-16, ${Math.round(performance.now() - started)} ms, delta RSS ${process.memoryUsage().rss - initialRss} bytes`);
+    await assert.rejects(extractSyllabusSourceDocument(file), /40,000/);
+  }
+});
 import { extractSyllabusSourceDocument } from "../../syllabus/lib/syllabus-document-extractor";
 
 test("fragmentación preserva todo el texto y localizadores posteriores al extracto histórico", () => {
@@ -58,7 +77,7 @@ test("TXT y DOCX llegan al commit documental sin depender del global File", asyn
       },
     } as unknown as SupabaseClient;
     await extractCourseSource(admin, document.artifact_id, document.id, document.organization_id);
-    assert.deepEqual(calls.map(call => call.p_action), ["reserve", "complete"]);
+    assert.deepEqual(calls.map(call => call.p_action), ["reserve", "append", "publish"]);
     assert.equal(calls[1].p_fragments?.map(fragment => fragment.text).join(""), text);
     assert.doesNotMatch(JSON.stringify(calls[1].p_fragments), /\\ud[89a-f][0-9a-f]{2}/i);
   }

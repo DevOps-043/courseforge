@@ -18,6 +18,7 @@ export class SyllabusSourceTextError extends Error {
 
 export async function extractSyllabusSourceDocument(
   file: Pick<File, "name" | "type" | "size" | "arrayBuffer">,
+  options: { maxCharacters: number } = { maxCharacters: SYLLABUS_SOURCE_DOCUMENT_MAX_CHARACTERS },
 ): Promise<SyllabusSourceDocument> {
   if (!file.name.trim() || file.name.length > 255) {
     throw new Error("El nombre del documento debe tener entre 1 y 255 caracteres.");
@@ -50,8 +51,8 @@ export async function extractSyllabusSourceDocument(
   }
 
   const normalizedText = normalizeDocumentText(text);
-  if (normalizedText.length > SYLLABUS_SOURCE_DOCUMENT_MAX_CHARACTERS) {
-    throw new SyllabusSourceTextError("TEXT_LIMIT", `${file.name}: el texto excede 40,000 caracteres. Divide el documento antes de subirlo; no se importará un temario parcial.`);
+  if (normalizedText.length > options.maxCharacters) {
+    throw new SyllabusSourceTextError("TEXT_LIMIT", `${file.name}: el texto excede ${options.maxCharacters.toLocaleString("en-US")} caracteres. Divide el documento antes de subirlo; no se importará un temario parcial.`);
   }
   if (normalizedText.length < MINIMUM_USABLE_CHARACTERS) {
     throw new SyllabusSourceTextError("INSUFFICIENT_TEXT",

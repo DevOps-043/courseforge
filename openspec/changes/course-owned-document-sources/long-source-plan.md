@@ -9,7 +9,15 @@ El autor debe poder usar un manual largo como una sola fuente y generar Base en 
 5. **Temario, Plan y Materiales.** Reutilizar el inventario vigente en Temario. Recuperar evidencia por módulo para Plan y consultar directamente las asociaciones aprobadas por lección para Materiales. Conservar el flujo corto y el histórico mediante compatibilidad explícita.
 6. **Piloto.** Probar con inicio, medio y final relevantes y cambiar un hecho obligatorio de posición. Inyectar timeout intermedio, pérdida de respuesta tras commit, leases simultáneos, cita falsa, división de lote, agotamiento y reemplazo de fuente. Medir costo, latencia y cobertura. Aplicar migración y desplegar coordinadamente tras autorización. Una reversión deshabilita nuevos runs largos y conserva sus checkpoints y originales.
 
-El primer hito de producto incluye los pasos 1–4. Los pasos 1 y 2 tienen implementación local. Los límites de producción y el contador por proveedor se fijarán con mediciones antes de conectar el job.
+El primer hito de producto incluye los pasos 1–4. Los pasos 1–3 tienen implementación local. La admisión de documentos largos se habilitará junto con Base por lotes en el paso 4. Los límites de producción y el contador por proveedor se fijarán antes de esa activación.
+
+## Ingesta y visor del paso 3
+
+La biblioteca define su propio límite de extracción, que sigue en 40,000 caracteres en el flujo activo. El importador de Temario conserva su límite por defecto. La migración `20261107030000_course_source_staged_extraction.sql` habilita escrituras privadas de hasta 16 fragmentos por llamada bajo el lease documental existente. El techo de 250,000 unidades UTF-16 del almacén temporal es un límite técnico de esta implementación y no equivale al límite de admisión.
+
+La confirmación exige secuencia íntegra, localizadores UTF-16 contiguos y totales declarados coherentes. Publica los fragmentos y READY juntos. Una escritura repetida con el mismo contenido es idempotente y el cambio de lease o estado limpia el área temporal. El visor solicita hasta 40 fragmentos por página mediante un cursor de ordinal, con el mismo control de acceso por curso.
+
+Aplicar las migraciones en orden antes de desplegar el worker actualizado. Si se revierte el worker, la RPC anterior de extracción sigue disponible. Los documentos largos permanecen deshabilitados hasta que la generación pueda consumirlos.
 
 ## Contrato de persistencia del paso 2
 
