@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { REVIEWER_ROLE_SET } from "@/lib/pipeline-constants";
+import { CourseSourceBaseStart } from "@/domains/course-sources/CourseSourceBaseStart";
 import type {
   ArtifactDisplayProfile,
   ArtifactEditedContent,
@@ -65,6 +66,12 @@ export function ArtifactBaseStage({
   onRegenerate,
   onContinue,
 }: ArtifactBaseStageProps) {
+  const hasReviewableContent = Boolean(
+    artifact.nombres?.length && artifact.objetivos?.length && artifact.descripcion?.texto?.trim(),
+  );
+  const documentaryDraft = artifact.course_id === `DOC-${artifact.id}`;
+  const initialDocumentaryBase = documentaryDraft &&
+    ["DRAFT", "ESCALATED"].includes(artifact.state) && !hasReviewableContent;
   return (
     <>
       {validation.results.filter((result) => result.code === "GENERATION_FAILED").map((result) => (
@@ -72,6 +79,9 @@ export function ArtifactBaseStage({
           {result.message}
         </div>
       ))}
+      {initialDocumentaryBase && <CourseSourceBaseStart artifactId={artifact.id}
+        initialDescription={artifact.generation_metadata?.original_input?.description}
+        onStarted={() => window.location.reload()} />}
       <div className="flex items-center gap-4">
         {["content", "validation"].map((tab) => (
           <button
@@ -221,7 +231,7 @@ export function ArtifactBaseStage({
             )}
           </SectionCard>
 
-          {REVIEWER_ROLE_SET.has(profile?.platform_role || "") && (
+          {(!documentaryDraft || hasReviewableContent) && REVIEWER_ROLE_SET.has(profile?.platform_role || "") && (
             <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 mt-8">
               <h3 className="text-gray-900 dark:text-white font-bold mb-4 flex items-center gap-2">
                 <Edit3 size={18} /> Revisión Fase 1 (QA)

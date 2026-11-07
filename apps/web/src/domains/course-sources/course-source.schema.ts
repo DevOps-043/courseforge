@@ -39,6 +39,8 @@ export const courseSourceDocumentSchema = z.object({
   status: z.enum(["RESERVED", "UPLOADED", "PROCESSING", "READY", "FAILED", "RETIRED"]),
   expires_at: z.string(), created_at: z.string(), uploaded_at: z.string().nullable(),
   supersedes_id: z.uuid().nullable().optional(),
+  diagnostic_code: z.string().nullable().optional(),
+  extraction_attempts: z.number().int().nonnegative().optional(),
 });
 export type CourseSourceDocument = z.infer<typeof courseSourceDocumentSchema>;
 
@@ -49,5 +51,8 @@ export function publicSourceDocument(document: CourseSourceDocument) {
     createdAt: document.created_at, uploadedAt: document.uploaded_at,
     expiresAt: document.expires_at,
     supersedesId: document.supersedes_id || null,
+    diagnosticCode: document.diagnostic_code ?? null,
+    canRetryExtraction: (document.extraction_attempts ?? 0) < 3 ||
+      (document.status === "FAILED" && document.extraction_attempts === 3 && document.diagnostic_code === "EXTRACTION_FAILED"),
   };
 }

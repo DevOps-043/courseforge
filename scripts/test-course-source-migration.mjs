@@ -60,6 +60,7 @@ async function database(generation = false) {
       begin update public.course_delivery_workspaces set document=$3,revision=revision+1 where artifact_id=(select artifact_id from public.course_delivery_runs where id=$1);return 1;end $$;
       grant execute on function commit_course_delivery_unit(uuid,uuid,jsonb,jsonb) to service_role;`);
     await db.exec(await readFile('supabase/migrations/20261106040000_course_source_generation.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261107010000_course_source_extraction_diagnostics.sql', 'utf8'));
   }
   await db.exec('set role service_role');
   return db;
@@ -224,6 +225,50 @@ test('extracción tiene lease único y completa fragmentos atómicamente sin ace
     await command('retire');
     assert.equal((await db.query('select status from course_source_documents')).rows[0].status, 'RETIRED');
     await assert.rejects(command('reserve'), /SOURCE_CONFLICT/);
+  } finally { await db.close(); }
+});
+
+test('la extracción registra un diagnóstico seguro y recupera una sola vez un fallo histórico agotado', async () => {
+  const db = await database(true);
+  try {
+    const course = await draft(db);
+    const entry = await reserve(db, course);
+    await confirm(db, entry);
+    const command = async (action, token = null, payload = []) => (await db.query(
+      'select process_course_source_document($1,$2,$3,$4,$5,$6::jsonb) as token',
+      [entry.id, course, organization, action, token, JSON.stringify(payload)])).rows[0].token;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await command('fail', await command('reserve'), { diagnosticCode: 'dato privado no admitido' });
+    }
+    const recovery = await command('reserve');
+    assert.ok(recovery);
+    assert.equal(await command('reserve'), null);
+    await command('fail', recovery, { diagnosticCode: 'SOURCE_PERSIST_FAILED' });
+    const stored = (await db.query('select status, diagnostic_code, extraction_attempts, extraction_token from course_source_documents')).rows[0];
+    assert.deepEqual(stored, { status: 'FAILED', diagnostic_code: 'SOURCE_PERSIST_FAILED', extraction_attempts: 4, extraction_token: null });
+    await assert.rejects(command('reserve'), /SOURCE_CONFLICT/);
+    await db.exec('set role authenticated');
+    await assert.rejects(command('reserve'), /permission denied/);
+  } finally { await db.close(); }
+});
+
+test('una publicación anterior se invalida sin revertir READY ni aceptar un envío obsoleto', async () => {
+  const db = await database(true);
+  try {
+    const course = await draft(db);
+    await db.query("update course_source_settings set policy='WEB_ONLY' where artifact_id=$1", [course]);
+    await db.query("insert into publication_requests(artifact_id,status) values($1,'READY')", [course]);
+    await db.query("update course_source_settings set policy='DOCUMENTS_ONLY',revision=revision+1 where artifact_id=$1", [course]);
+    const entry = await reserve(db, course);
+    await confirm(db, entry);
+    const command = async (action, token = null, fragments = []) => (await db.query(
+      'select process_course_source_document($1,$2,$3,$4,$5,$6::jsonb) as token',
+      [entry.id, course, organization, action, token, JSON.stringify(fragments)])).rows[0].token;
+    const fragment = { ordinal: 0, text: 'Documento aprobado para extracción 😀', sha256: 'a'.repeat(64), locator: { characterStart: 0 } };
+    await command('complete', await command('reserve'), [fragment]);
+    assert.equal((await db.query('select status from course_source_documents')).rows[0].status, 'READY');
+    assert.equal((await db.query('select upstream_dirty from publication_requests')).rows[0].upstream_dirty, true);
+    await assert.rejects(db.query("update publication_requests set status='SENT' where artifact_id=$1", [course]), /SOURCE_REVIEW_REQUIRED/);
   } finally { await db.close(); }
 });
 

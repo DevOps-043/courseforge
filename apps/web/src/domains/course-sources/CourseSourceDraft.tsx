@@ -1,8 +1,11 @@
 "use client";
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CourseSourceLibrary } from "./CourseSourceLibrary";
+import { CourseSourceBaseStart } from "./CourseSourceBaseStart";
 
-export function CourseSourceDraft() {
+export function CourseSourceDraft({ basePath = "/admin" }: { basePath?: string }) {
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [artifactId, setArtifactId] = useState("");
   const [error, setError] = useState("");
@@ -23,7 +26,8 @@ export function CourseSourceDraft() {
     <p className="my-2 text-sm">Guarda un borrador y carga tus archivos sin iniciar IA. Elige la política y procesa los documentos antes de generar la base del curso.</p>
     {!artifactId ? <div><input aria-label="Título del borrador documental" maxLength={300} value={title} onChange={event => setTitle(event.target.value)} className="rounded border p-2" />
       <button disabled={busy || !title.trim()} onClick={() => void createDraft()} className="ml-3 rounded border p-2">Crear borrador sin IA</button></div>
-      : <><p className="text-sm">Borrador guardado: {artifactId}. Puedes retomarlo desde la lista de cursos.</p><CourseSourceLibrary artifactId={artifactId} /></>}
+      : <><p className="text-sm">Borrador guardado. Puedes retomarlo desde la lista de cursos.</p><CourseSourceLibrary artifactId={artifactId} />
+        <CourseSourceBaseStart artifactId={artifactId} onStarted={() => router.push(`${basePath}/artifacts/${artifactId}`)} /></>}
     {error && <p role="alert">{error}</p>}
   </details>;
 }

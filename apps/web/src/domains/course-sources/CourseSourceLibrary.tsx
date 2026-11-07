@@ -7,8 +7,15 @@ import { CourseSourceReconciliation } from "./CourseSourceReconciliation";
 import { CourseSourceReviewPanel } from "./CourseSourceReviewPanel";
 import { CourseSourceLegacyImport } from "./CourseSourceLegacyImport";
 
-type DocumentSummary = { id: string; filename: string; status: string; supersedesId?: string | null };
-const STATUS_LABELS: Record<string, string> = { RESERVED: "Carga pendiente", UPLOADED: "Recibido", PROCESSING: "Procesando", READY: "Texto disponible", FAILED: "Extracción fallida: revisa el archivo o aplica OCR", RETIRED: "Retirado" };
+type DocumentSummary = { id: string; filename: string; status: string; supersedesId?: string | null; diagnosticCode?: string | null; canRetryExtraction?: boolean };
+const STATUS_LABELS: Record<string, string> = { RESERVED: "Carga pendiente", UPLOADED: "Recibido", PROCESSING: "Procesando", READY: "Texto disponible", FAILED: "No se pudo completar la extracción", RETIRED: "Retirado" };
+const EXTRACTION_DIAGNOSTICS: ReadonlyMap<string, string> = new Map([
+  ["SOURCE_READ_FAILED", "No se pudo leer el original almacenado. Intenta procesarlo otra vez."],
+  ["SOURCE_FORMAT_INVALID", "No se pudo interpretar el formato. Comprueba que el archivo se abra correctamente."],
+  ["TEXT_LIMIT", "El texto supera 40,000 caracteres. Divide el documento y carga las partes."],
+  ["INSUFFICIENT_TEXT", "Se necesitan al menos 50 caracteres de texto extraíble. Si el PDF es escaneado, aplica OCR."],
+  ["SOURCE_PERSIST_FAILED", "Se leyó el documento, pero no se pudo guardar el texto. Intenta procesarlo otra vez."],
+]);
 export function CourseSourceLibrary({ artifactId }: { artifactId: string }) {
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [message, setMessage] = useState("");
@@ -80,9 +87,10 @@ export function CourseSourceLibrary({ artifactId }: { artifactId: string }) {
     <p role="status" className="my-2 text-sm">{message}</p>
     <ul aria-label="Versiones documentales">{documents.map(document => <li key={document.id} className="flex flex-wrap items-center gap-3 border-b py-3">
       <span className="min-w-0 break-words">{document.filename} · {STATUS_LABELS[document.status] || document.status}{document.supersedesId && ` · sustituye ${documents.find(item => item.id === document.supersedesId)?.filename || document.supersedesId}`}</span>
+      {document.status === "FAILED" && <span className="text-sm">{EXTRACTION_DIAGNOSTICS.get(document.diagnosticCode ?? "")}{document.canRetryExtraction === false && " Se agotaron los intentos para esta versión."}</span>}
       {document.status === "READY" && !documents.some(item => item.supersedesId === document.id && item.status !== "RETIRED") && <button type="button" disabled={busy} onClick={() => setReplacement(document)}>Sustituir archivo</button>}
       {document.status === "RESERVED" && <button disabled={busy} onClick={() => void jsonRequest(`${root}/uploads/confirm`, { documentId: document.id }).then(() => processDocument(document.id)).then(refresh).catch(error => setMessage(error.message))}>Confirmar carga</button>}
-      {["UPLOADED", "FAILED", "PROCESSING"].includes(document.status) && <button disabled={busy} onClick={() => void processDocument(document.id).catch(error => setMessage(error.message))}>Procesar / recuperar</button>}
+      {["UPLOADED", "FAILED", "PROCESSING"].includes(document.status) && document.canRetryExtraction !== false && <button disabled={busy} onClick={() => void processDocument(document.id).catch(error => setMessage(error.message))}>Procesar / recuperar</button>}
       {document.status === "READY" && <button onClick={() => void jsonRequest(`${root}/documents/${document.id}`).then(result => setText(result.fragments.map((fragment: { text_content: string }) => fragment.text_content).join(""))).catch(error => setMessage(error.message))}>Ver texto</button>}
       {document.status !== "RESERVED" && <button onClick={() => void jsonRequest(`${root}/documents/${document.id}?download=1`).then(result => { window.location.assign(result.url); }).catch(error => setMessage(error.message))}>Descargar original</button>}
       {!["RESERVED", "RETIRED"].includes(document.status) && <button onClick={() => { if (window.confirm("¿Retirar este documento de la biblioteca activa? Se conservará el original.")) void jsonRequest(`${root}/documents/${document.id}?action=retire`, {}).then(refresh).catch(error => setMessage(error.message)); }}>Retirar</button>}

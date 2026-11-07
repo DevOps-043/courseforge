@@ -15,6 +15,7 @@ export interface ArtifactDescription {
 
 export interface ArtifactGenerationMetadata {
   search_queries?: string[];
+  original_input?: { description?: string };
   [key: string]: unknown;
 }
 

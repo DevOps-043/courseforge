@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import JSZip from "jszip";
 import {
   SYLLABUS_SOURCE_DOCUMENT_MAX_CHARACTERS,
@@ -9,8 +10,14 @@ const MINIMUM_USABLE_CHARACTERS = 50;
 const MAX_OFFICE_XML_BYTES = 10 * 1024 * 1024;
 const MAX_PPTX_SLIDES = 500;
 
+export class SyllabusSourceTextError extends Error {
+  constructor(readonly reason: "TEXT_LIMIT" | "INSUFFICIENT_TEXT", message: string) {
+    super(message);
+  }
+}
+
 export async function extractSyllabusSourceDocument(
-  file: File,
+  file: Pick<File, "name" | "type" | "size" | "arrayBuffer">,
 ): Promise<SyllabusSourceDocument> {
   if (!file.name.trim() || file.name.length > 255) {
     throw new Error("El nombre del documento debe tener entre 1 y 255 caracteres.");
@@ -44,17 +51,17 @@ export async function extractSyllabusSourceDocument(
 
   const normalizedText = normalizeDocumentText(text);
   if (normalizedText.length > SYLLABUS_SOURCE_DOCUMENT_MAX_CHARACTERS) {
-    throw new Error(`${file.name}: el texto excede 40,000 caracteres. Divide el documento antes de subirlo; no se importará un temario parcial.`);
+    throw new SyllabusSourceTextError("TEXT_LIMIT", `${file.name}: el texto excede 40,000 caracteres. Divide el documento antes de subirlo; no se importará un temario parcial.`);
   }
   if (normalizedText.length < MINIMUM_USABLE_CHARACTERS) {
-    throw new Error(
+    throw new SyllabusSourceTextError("INSUFFICIENT_TEXT",
       `${file.name}: no contiene suficiente texto extraíble. Si es un PDF escaneado, aplica OCR antes de subirlo.`,
     );
   }
 
   return {
     characterCount: normalizedText.length,
-    fileId: crypto.randomUUID(),
+    fileId: randomUUID(),
     filename: file.name,
     mimeType,
     sizeBytes: file.size,

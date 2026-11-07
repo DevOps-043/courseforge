@@ -59,6 +59,7 @@ interface GenerateArtifactFormData {
 }
 
 interface GenerateArtifactRequestBody {
+  documentary?: boolean;
   runId?: string;
   artifactId?: string;
   feedback?: string;
@@ -136,6 +137,7 @@ export const handler: Handler = async (event) => {
     }
 
     const sourceContext = await prepareCourseGeneration(serviceSupabase, artifactId, "BASE", null, undefined, runId);
+    if (body.documentary && !sourceContext) throw new Error("La política documental cambió antes de generar Base.");
     if (cloudStorageProvider) {
       try {
         if (!userId || !organizationId) {

@@ -155,7 +155,7 @@ export default function NewArtifactPage({
                     </div>
 
                     {/* Form Container */}
-                    <CourseSourceDraft />
+                    <CourseSourceDraft basePath={basePath} />
                     <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 md:p-8 shadow-xl">
                         {mode === 'ai' ? (
                             <div className="space-y-6">

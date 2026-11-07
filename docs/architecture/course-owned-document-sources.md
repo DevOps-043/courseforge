@@ -25,6 +25,12 @@ Cambiar política, asociaciones o disponibilidad de documentos invalida dependen
 
 La restricción temporal de F3 se sustituye en F4 por comprobación de contexto y recibos vigentes. Sin elección o documentos listos se bloquea el inicio documental; Materiales exige revisión aprobada. Los cursos históricos sin configuración y `WEB_ONLY` conservan generación. No se regenera por cambiar una política. La implementación local no equivale a activación desplegada.
 
+## Inicio de Base y recuperación de extracción
+
+En un borrador documental, guarda la política, comprueba al menos un archivo con «Texto disponible» e indica el propósito del curso en «Generar Base». La acción autoriza la organización y reserva la ejecución sobre el mismo artefacto. Una solicitud concurrente no genera otro curso ni reserva un segundo job. Puedes retomar el borrador desde su detalle y reintentar un fallo de Base con el propósito guardado.
+
+La migración `20261107010000_course_source_extraction_diagnostics.sql` sigue a F4. Conserva el lease y distingue fallos de lectura, formato, cantidad de texto y persistencia. Los fallos históricos genéricos con tres intentos tienen una recuperación adicional. Los fragmentos conservan los límites de caracteres Unicode completos y sus posiciones UTF-16. La invalidación puede marcar una solicitud de publicación anterior como desactualizada sin permitir cambios de estado ni envíos obsoletos. Aplica la migración antes de desplegar aplicación y workers de esta corrección.
+
 ## F4: generación con fuentes y comprobación de respaldo
 
 Migración aditiva `20261106040000_course_source_generation.sql`; servicios `course-source-generation.ts` y `course-source-generation.service.ts`. Base, Temario local/background/importado y Plan reciben el texto íntegro de todos los fragmentos READY dentro del presupuesto. No requieren aprobación curricular antes de que exista el plan. En ambos modos documentales se omite la investigación web de esas etapas: las búsquedas del modo mixto se realizan exclusivamente en curación para vacíos revisables. Los prompts configurados y feedback no conceden herramientas.

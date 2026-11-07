@@ -151,6 +151,21 @@ El sistema SHALL congelar política, versiones y fragmentos por ejecución, vali
 - **THEN** Base registra el fallo terminal sin quedar atascada en generación
 - **AND** esa transición no modifica contenido ni permite aprobar una salida sin recibo
 
+#### Scenario: Inicio sobre un borrador documental existente
+- **WHEN** el autor indica el propósito en un borrador autorizado con política documental y al menos un archivo READY
+- **THEN** se reserva una sola ejecución de Base sobre ese artefacto y se guarda su entrada para reintentar
+- **AND** una pérdida de la política documental antes del worker detiene la ejecución antes de investigar en web
+
+#### Scenario: Unicode y diagnóstico de extracción
+- **WHEN** un carácter suplementario coincide con el límite de un fragmento
+- **THEN** se conserva completo y se guarda con localizadores coherentes
+- **AND** un fallo de lectura o persistencia se distingue de un documento que carece de texto extraíble
+
+#### Scenario: Extracción con publicación anterior
+- **WHEN** extraer un documento cambia la revisión de un curso con una solicitud de publicación existente
+- **THEN** se guarda el texto y se marca la publicación como desactualizada
+- **AND** avanzar el envío exige fuentes vigentes
+
 #### Scenario: Temario importado versionado
 - **WHEN** se aprueba la cobertura documental de un temario importado
 - **THEN** la curación conserva la versión del temario vigente exigida por Materiales
