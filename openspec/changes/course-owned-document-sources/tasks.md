@@ -1,5 +1,7 @@
 # Etapas de implementación
 
+Ampliación para documentos largos: [ruta de implementación y recuperación por lotes](long-source-plan.md).
+
 Estado: fases 1–4 implementadas y verificadas localmente; migraciones remotas, despliegue y fases 5–6 pendientes. Evidencia de F4 en `reports/phase-4.md`. Completar en orden, con cambios pequeños y recuperables en el checkout principal. No crear worktrees.
 
 ## F0. Alcance y línea base
