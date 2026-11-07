@@ -61,6 +61,7 @@ async function database(generation = false) {
       grant execute on function commit_course_delivery_unit(uuid,uuid,jsonb,jsonb) to service_role;`);
     await db.exec(await readFile('supabase/migrations/20261106040000_course_source_generation.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261107010000_course_source_extraction_diagnostics.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261107020000_course_source_batch_runs.sql', 'utf8'));
   }
   await db.exec('set role service_role');
   return db;
@@ -371,6 +372,80 @@ async function generationFixture(db, seedBase = true) {
   }
   return {course,document,fragment,text,change,snapshot,attest};
 }
+
+test('lotes documentales conservan checkpoints, cercan leases y rechazan citas y revisiones obsoletas', async () => {
+  const db = await database(true);
+  try {
+    const { course, document, fragment, text, change } = await generationFixture(db, false);
+    const end = identifier();
+    await db.query('insert into course_source_fragments(id,artifact_id,document_id,ordinal,text_content,content_sha256,locator) values($1,$2,$3,1,$4,$5,$6)',
+      [end,course,document.id,'La excepción final requiere autorización expresa.','b'.repeat(64),{}]);
+    const revision = (await db.query('select revision from course_source_settings')).rows[0].revision;
+    const plan = [{fragmentIds:[fragment,end],requestTokens:100}];
+    const create = async (input=plan, org=organization) => (await db.query(
+      "select create_course_source_batch_run($1,$2,$3,$4,'test-v1',$5,now()+interval '1 hour',8,2,1000) as id",
+      [course,org,revision,'a'.repeat(64),JSON.stringify(input)])).rows[0].id;
+    await assert.rejects(create([{fragmentIds:[fragment],requestTokens:100}]), /SOURCE_BATCH_COVERAGE_INVALID/);
+    await assert.rejects(create(plan,otherOrganization), /SOURCE_NOT_FOUND/);
+    const run = await create();
+    assert.equal(await create(),run);
+    const command = async (action,path=null,lease=null,payload={},org=organization) => (await db.query(
+      'select command_course_source_batch($1,$2,$3,$4,$5,$6) as result',
+      [run,org,action,path,lease,JSON.stringify(payload)])).rows[0].result;
+    await assert.rejects(command('status',null,null,{},otherOrganization), /SOURCE_NOT_FOUND/);
+    const first = await command('claim');
+    assert.equal((await command('claim')).status,'BUSY');
+    assert.equal((await command('split',first.path,first.lease,{leftTokens:60,rightTokens:60})).status,'SPLIT');
+    const left = await command('claim');
+    assert.deepEqual(left.fragmentIds,[fragment]);
+    const findings = [{fragmentId:fragment,quote:text,finding:'Verificar identidad'}];
+    await assert.rejects(command('complete',left.path,left.lease,{findings:[{...findings[0],quote:'Una cita inventada del documento'}]}), /SOURCE_BATCH_FINDINGS_INVALID/);
+    assert.equal((await command('complete',left.path,left.lease,{findings})).status,'CONFIRMED');
+    assert.equal((await command('complete',left.path,left.lease,{findings})).status,'CONFIRMED');
+    assert.deepEqual((await command('read',left.path)).findings,findings);
+    const right = await command('claim');
+    assert.deepEqual(right.fragmentIds,[end]);
+    await db.exec('reset role; update course_source_batches set lease_until=now()-interval \'1 second\' where state=\'LEASED\'; set role service_role;');
+    const recovered = await command('claim');
+    assert.deepEqual(recovered.path,right.path);
+    assert.notEqual(recovered.lease,right.lease);
+    await assert.rejects(command('complete',right.path,right.lease,{findings:[]}), /SOURCE_CONFLICT/);
+    await command('complete',recovered.path,recovered.lease,{findings:[]});
+    assert.deepEqual(await command('status'),{status:'COMPLETE',confirmed:2,total:2,paused:0,attempts:4,reservedTokens:280});
+    await change('policy',{policy:'DOCUMENTS_AND_WEB'});
+    assert.equal((await command('status')).status,'STALE');
+    await assert.rejects(db.query('select * from course_source_batches'), /permission denied/);
+    await db.exec('set role authenticated');
+    await assert.rejects(command('status'), /permission denied/);
+  } finally { await db.close(); }
+});
+
+test('lotes documentales pausan un segundo fallo de salida y conservan el presupuesto al reanudar', async () => {
+  const db = await database(true);
+  try {
+    const {course,fragment} = await generationFixture(db,false);
+    const revision = (await db.query('select revision from course_source_settings')).rows[0].revision;
+    const run = (await db.query(
+      "select create_course_source_batch_run($1,$2,$3,$4,'test-v1',$5,now()+interval '1 hour',3,0,300) as id",
+      [course,organization,revision,'a'.repeat(64),JSON.stringify([{fragmentIds:[fragment],requestTokens:100}])])).rows[0].id;
+    const command = async (action,path=null,lease=null,payload={}) => (await db.query(
+      'select command_course_source_batch($1,$2,$3,$4,$5,$6) as result',
+      [run,organization,action,path,lease,JSON.stringify(payload)])).rows[0].result;
+    const first = await command('claim');
+    assert.equal((await command('fail',first.path,first.lease,{diagnostic:'INVALID_OUTPUT'})).status,'PENDING');
+    assert.equal((await command('claim')).status,'NO_AVAILABLE_BATCH');
+    await db.exec("reset role; update course_source_batches set retry_after=now(); set role service_role;");
+    const correction = await command('claim');
+    assert.equal(correction.correctionUsed,true);
+    assert.equal((await command('fail',correction.path,correction.lease,{diagnostic:'INVALID_OUTPUT'})).status,'PAUSED');
+    assert.equal((await command('status')).status,'PAUSED');
+    assert.equal((await command('resume',correction.path)).status,'PENDING');
+    const resumed = await command('claim');
+    await command('fail',resumed.path,resumed.lease,{diagnostic:'INVALID_OUTPUT'});
+    assert.equal((await command('resume',resumed.path)).status,'BUDGET_EXHAUSTED');
+    assert.equal((await command('status')).reservedTokens,300);
+  } finally { await db.close(); }
+});
 
 test('F4: el fallo inicial de Base termina sin recibo y no permite aprobar ni sustituir contenido',async()=>{
   const db=await database(true);
