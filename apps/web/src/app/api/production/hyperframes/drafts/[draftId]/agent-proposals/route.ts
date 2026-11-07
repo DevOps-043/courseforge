@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { proposeCompositionEdits, CompositionAgentProposalError, compositionAgentProposalInputSchema } from "@/domains/production/composition-editor/composition-agent.service";
+import { respondToCompositionEditRequest, CompositionAgentProposalError, compositionAgentProposalInputSchema } from "@/domains/production/composition-editor/composition-agent.service";
 import { getCurrentCompositionDocument } from "@/domains/production/composition-editor/composition-document.service";
 import { persistCompositionAgentProposal, CompositionAgentProposalStoreError } from "@/domains/production/composition-editor/composition-agent-proposal-store.service";
 import { authorizeCompositionAgentRequest, compositionAgentStoreErrorResponse } from "./_route-support";
@@ -7,11 +7,11 @@ import { API_ERROR_CODE, parseJsonRequest } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 
-const MAX_COMPOSITION_AGENT_PROPOSAL_REQUEST_BYTES = 8 * 1024;
+const MAX_COMPOSITION_AGENT_PROPOSAL_REQUEST_BYTES = 48 * 1024;
 
 interface RouteContext { params: Promise<{ draftId: string }>; }
 
-/** Produces an unpersisted, allow-listed proposal for the currently saved document version. */
+/** Returns a conversational reply or stores a pending proposal for the saved version. */
 export async function POST(request: Request, context: RouteContext) {
   const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   const logger = createOperationalLogger("production.hyperframes.agent_proposals", { correlationId: requestId });
@@ -22,13 +22,16 @@ export async function POST(request: Request, context: RouteContext) {
     const current = await getCurrentCompositionDocument({ draftId, organizationId: authorization.organizationId, supabase: authorization.admin });
     const parsed = await parseJsonRequest(request, compositionAgentProposalInputSchema, MAX_COMPOSITION_AGENT_PROPOSAL_REQUEST_BYTES);
     if (!parsed.success) return apiErrorResponse({ code: parsed.reason === "too_large" ? API_ERROR_CODE.payloadTooLarge : API_ERROR_CODE.invalidRequest, message: parsed.reason === "too_large" ? "La solicitud excede el tamaño permitido." : "La solicitud de asistencia no es válida.", requestId, status: parsed.reason === "too_large" ? 413 : 400 });
-    const proposal = await proposeCompositionEdits({
+    const proposal = await respondToCompositionEditRequest({
       baseDocumentHash: current.documentHash,
       document: current.document,
       input: parsed.data,
       organizationId: authorization.organizationId,
       supabase: authorization.admin,
     });
+    if ("reply" in proposal) {
+      return apiSuccessResponse({ data: { reply: proposal.reply, documentHash: current.documentHash } }, { requestId });
+    }
     const { model, recovery, ...envelope } = proposal;
     const persisted = await persistCompositionAgentProposal({
       draftId,

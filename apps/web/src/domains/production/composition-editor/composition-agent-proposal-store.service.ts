@@ -6,6 +6,7 @@ import {
 } from "./composition-agent-proposal.types";
 import { simulateCompositionAgentOperations } from "./composition-agent-simulation.service";
 import {
+  getCompositionDocumentByHash,
   getCurrentCompositionDocument,
   hashCompositionDocument,
 } from "./composition-document.service";
@@ -164,9 +165,11 @@ export async function undoStoredCompositionAgentProposal(params: ProposalLookupP
     );
   }
 
+  const original = await getCompositionDocumentByHash({ ...params, documentHash: stored.baseDocumentHash });
   const { document: nextDocument, documentHash: nextHash } = prepareCompositionAgentProposalUndo({
     appliedDocument: current.document,
     envelope: stored.envelope,
+    originalDocument: original.document,
   });
 
   let request = params.supabase.rpc("undo_video_composition_agent_proposal", {
@@ -272,8 +275,9 @@ export function prepareCompositionAgentProposalApplication(params: {
 export function prepareCompositionAgentProposalUndo(params: {
   appliedDocument: CompositionEditorDocument;
   envelope: CompositionAgentProposalEnvelope;
+  originalDocument?: CompositionEditorDocument;
 }) {
-  const document = applyCompositionEditorPatches(
+  const document = params.originalDocument ?? applyCompositionEditorPatches(
     params.appliedDocument,
     params.envelope.inverseOperations,
     "USER",

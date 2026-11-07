@@ -84,6 +84,28 @@ test("rejects malformed or type-overriding compact provider arguments", () => {
   }));
 });
 
+test("accepts a clarification only in the conversational flow", () => {
+  const output = { operations: [], summary: "¿Qué clip quieres ajustar?" };
+  assert.deepEqual(normalizeCompactCompositionAgentModelOutput(output, true), { reply: output.summary });
+  assert.throws(() => normalizeCompactCompositionAgentModelOutput(output));
+  assert.equal(getCompositionAgentProviderJsonSchema(true).properties.operations.minItems, 0);
+});
+
+test("decodes new editor operations and rejects operations outside the executable catalog", () => {
+  const patch = normalizeCompactCompositionAgentModelOutput({
+    operations: [
+      { argumentsJson: '{"clipId":"audio-clip","volume":0.5}', type: "clip.volume" },
+      { argumentsJson: '{"settings":{"masterVolume":0.8}}', type: "audio-mix.update" },
+    ],
+    summary: "Reduciré el volumen del clip y de la composición.",
+  });
+  assert.deepEqual(patch.operations.map(({ type }) => type), ["clip.volume", "audio-mix.update"]);
+  assert.throws(() => normalizeCompactCompositionAgentModelOutput({
+    operations: [{ argumentsJson: '{"clipId":"visual-clip"}', type: "clip.remove" }],
+    summary: "Eliminaré el clip.",
+  }), /requiere una acción manual explícita/);
+});
+
 test("builds strict JSON Schema requests for OpenAI and Gemini", () => {
   const schema = getCompositionAgentJsonSchema();
   const openAi = buildOpenAiCompositionProposalRequest({ model: "gpt-5", prompt: "mueve", temperature: 0.2 });

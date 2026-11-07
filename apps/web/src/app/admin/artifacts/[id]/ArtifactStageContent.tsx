@@ -1,20 +1,14 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
+import dynamic from "next/dynamic";
 import { DeliveryStagePanel } from "@/domains/course-delivery/components/DeliveryStagePanel";
 import type { CourseDeliveryController } from "@/domains/course-delivery/hooks/useCourseDelivery";
-import { SyllabusGenerationContainer } from "@/domains/syllabus/components/SyllabusGenerationContainer";
-import { InstructionalPlanGenerationContainer } from "@/domains/plan/components/InstructionalPlanGenerationContainer";
-import { SourcesCurationGenerationContainer } from "@/domains/curation/components/SourcesCurationGenerationContainer";
-import { MaterialsForm } from "@/domains/materials/components/MaterialsForm";
-import { VisualProductionContainer } from "@/domains/materials/components/VisualProductionContainer";
-import { PostproductionAssemblyContainer } from "@/domains/materials/components/PostproductionAssemblyContainer";
 import type {
   PublicationProfile,
   PublicationRequestRecord,
   PublicationVideoLesson,
 } from "@/domains/publication/types/publication.types";
-import PublicationClientView from "./publish/PublicationClientView";
 import { ArtifactBaseStage } from "./ArtifactBaseStage";
 import { CourseSourceLibrary } from "@/domains/course-sources/CourseSourceLibrary";
 import { CourseSourceCuration } from "@/domains/course-sources/CourseSourceCuration";
@@ -24,6 +18,18 @@ import type {
   ArtifactValidationReport,
   ArtifactViewRecord,
 } from "./artifact-view.types";
+
+function StageLoading() {
+  return <div role="status" className="flex min-h-40 items-center justify-center text-sm text-gray-500">Cargando etapa…</div>;
+}
+
+const SyllabusGenerationContainer = dynamic(() => import("@/domains/syllabus/components/SyllabusGenerationContainer").then((module) => module.SyllabusGenerationContainer), { loading: StageLoading });
+const InstructionalPlanGenerationContainer = dynamic(() => import("@/domains/plan/components/InstructionalPlanGenerationContainer").then((module) => module.InstructionalPlanGenerationContainer), { loading: StageLoading });
+const SourcesCurationGenerationContainer = dynamic(() => import("@/domains/curation/components/SourcesCurationGenerationContainer").then((module) => module.SourcesCurationGenerationContainer), { loading: StageLoading });
+const MaterialsForm = dynamic(() => import("@/domains/materials/components/MaterialsForm").then((module) => module.MaterialsForm), { loading: StageLoading });
+const VisualProductionContainer = dynamic(() => import("@/domains/materials/components/VisualProductionContainer").then((module) => module.VisualProductionContainer), { loading: StageLoading });
+const PostproductionAssemblyContainer = dynamic(() => import("@/domains/materials/components/PostproductionAssemblyContainer").then((module) => module.PostproductionAssemblyContainer), { loading: StageLoading });
+const PublicationClientView = dynamic(() => import("./publish/PublicationClientView"), { loading: StageLoading });
 
 interface ArtifactStageContentProps {
   delivery: CourseDeliveryController;

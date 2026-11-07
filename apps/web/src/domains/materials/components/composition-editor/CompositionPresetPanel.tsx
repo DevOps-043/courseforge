@@ -30,6 +30,7 @@ export type AppliedCompositionPreset = {
 export function CompositionPresetPanel({
   activePreview,
   busy,
+  creationDiagnostics,
   entries,
   lastApplied,
   loading,
@@ -44,12 +45,13 @@ export function CompositionPresetPanel({
 }: {
   activePreview: CompositionPresetPreviewState | null;
   busy: boolean;
+  creationDiagnostics?: string[] | null;
   entries: CompositionPresetCatalogEntry[];
   lastApplied: AppliedCompositionPreset | null;
   loading: boolean;
   onApply: () => Promise<void>;
   onClose: () => void;
-  onCreate: (input: { description: string; instruction?: string; mode: "INSTRUCTIONS" | "MANUAL"; name: string }) => Promise<void>;
+  onCreate: (input: { description: string; instruction?: string; mode: "INSTRUCTIONS" | "MANUAL"; name: string }) => Promise<boolean>;
   onDismiss: () => Promise<void>;
   onPreview: (presetId: string) => Promise<void>;
   onReload: () => Promise<void>;
@@ -69,12 +71,13 @@ export function CompositionPresetPanel({
     if (name.trim().length < 3 || (mode === "INSTRUCTIONS" && instruction.trim().length < 3)) return;
     setCreating(true);
     try {
-      await onCreate({
+      const created = await onCreate({
         description: description.trim(),
         ...(mode === "INSTRUCTIONS" ? { instruction: instruction.trim() } : {}),
         mode,
         name: name.trim(),
       });
+      if (!created) return;
       setName("");
       setDescription("");
       setInstruction("");
@@ -119,6 +122,10 @@ export function CompositionPresetPanel({
 
             <section className="mt-6 border-t border-slate-200 pt-5 dark:border-white/10">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Crear preset</h3>
+              {creationDiagnostics && <div role="status" className="mt-3 rounded-lg border border-cyan-300 p-3 text-xs text-slate-700 dark:text-slate-200">
+                <p>Preset guardado. Los medios y el contenido de cada lección se conservan al aplicarlo.</p>
+                {creationDiagnostics.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-4">{[...new Set(creationDiagnostics)].map(message => <li key={message}>{message}</li>)}</ul>}
+              </div>}
               <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1 dark:border-white/10 dark:bg-white/5" role="group" aria-label="Modo de creación del preset">
                 <button
                   type="button"

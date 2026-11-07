@@ -1,5 +1,7 @@
 import type { CompositionEditorDocument } from "./composition-document.types";
+import { compositionClipHasConfigurableAudio, resolveCompositionClipDefaultVolume } from "./composition-clip-audio.service";
 import { COMPOSITION_MOTION_MAX_ANIMATIONS, COMPOSITION_MOTION_PRESET_IDS } from "./composition-motion.types";
+import { resolveCompositionPreviewMediaFit } from "./composition-preview-visual-state";
 
 export const COMPOSITION_AGENT_READ_LIMITS = Object.freeze({
   maxClips: 500,
@@ -91,20 +93,31 @@ export function buildCompositionAgentReadSnapshot(document: CompositionEditorDoc
 /** Projection shared by the legacy context and the authorized tool session. */
 export function projectCompositionAgentReadDocument(document: CompositionEditorDocument) {
   assertCompositionAgentReadDocumentLimits(document);
+  const tracksById = new Map(document.tracks.map((track) => [track.id, track]));
   return {
-    audioMix: document.audioMix,
+    audioMix: { ...document.audioMix, masterVolume: document.audioMix.masterVolume ?? 1 },
     canvas: document.canvas,
     extraLayerDepths: document.extraLayerDepths || [],
-    clips: document.clips.map((clip) => ({
-      durationSeconds: clip.durationSeconds,
-      hidden: clip.hidden,
-      id: clip.id,
-      kind: clip.kind,
-      label: clip.label,
-      layout: clip.layout,
-      startSeconds: clip.startSeconds,
-      trackId: clip.trackId,
-    })),
+    clips: document.clips.map((clip) => {
+      const track = tracksById.get(clip.trackId);
+      return {
+        ...(compositionClipHasConfigurableAudio(clip, track) ? {
+          fadeInSeconds: clip.fadeInSeconds ?? 0,
+          fadeOutSeconds: clip.fadeOutSeconds ?? 0,
+          hasConfigurableAudio: true,
+          volume: clip.volume ?? resolveCompositionClipDefaultVolume(clip, track),
+        } : {}),
+        ...((clip.kind === "VIDEO" || clip.kind === "IMAGE") ? { mediaFit: resolveCompositionPreviewMediaFit(clip, track) } : {}),
+        durationSeconds: clip.durationSeconds,
+        hidden: clip.hidden,
+        id: clip.id,
+        kind: clip.kind,
+        label: clip.label,
+        layout: clip.layout,
+        startSeconds: clip.startSeconds,
+        trackId: clip.trackId,
+      };
+    }),
     motion: document.motion.animations.map((animation) => ({
       id: animation.id,
       keyframeCount: animation.keyframes.length,

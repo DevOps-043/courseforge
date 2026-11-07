@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { HYPERFRAMES_RENDER_PROFILE_IDS } from "./hyperframes-render-profiles";
+import { HYPERFRAMES_RENDER_FORMATS, HYPERFRAMES_RENDER_PROFILE_IDS, HYPERFRAMES_RENDER_RESOLUTIONS } from "./hyperframes-render-profiles";
 import { ANIMATED_DECK_APPEARANCES } from "../animated-deck/animated-deck-appearance.service";
 
 export const HYPERFRAMES_CLOUD_ARCHIVE_LIMIT_BYTES = 200 * 1024 * 1024;
@@ -78,12 +78,15 @@ export const hyperframesAnimatedDeckSourceSchema = z.object({
 }).strict();
 
 export const hyperframesRenderProfileSchema = z.object({
-  format: z.literal("mp4").default("mp4"),
+  format: z.enum(HYPERFRAMES_RENDER_FORMATS).default("mp4"),
   fps: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(60)]),
   id: z.enum(HYPERFRAMES_RENDER_PROFILE_IDS).optional(),
   quality: z.enum(["draft", "standard", "high"]),
-  resolution: z.literal("1080p").default("1080p"),
-}).strict();
+  resolution: z.enum(HYPERFRAMES_RENDER_RESOLUTIONS).default("1080p"),
+}).strict().refine(({ format, resolution }) => format !== "mov" || resolution !== "4k", {
+  message: "HeyGen solo admite 4K en MP4.",
+  path: ["resolution"],
+});
 
 /** Persisted alongside a revision so render preflight can be reproduced. */
 export const hyperframesRevisionManifestSchema = z

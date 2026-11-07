@@ -3,6 +3,7 @@ import { COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS } from "./composition-documen
 import { COMPOSITION_MOTION_PRESET_IDS } from "./composition-motion.types";
 import { compositionEditorPatchRequestSchema } from "./editor-patch.types";
 import { COMPOSITION_LAYER_DEPTH_LIMIT, COMPOSITION_LAYER_MIN } from "./composition-layer-depth";
+import { assertCompositionAgentOperationsAllowed, COMPOSITION_AGENT_ALLOWED_OPERATION_TYPES, COMPOSITION_AGENT_MAX_OPERATIONS } from "./composition-agent-policy.service";
 
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
 const secondsSchema = z.number().finite().min(0).max(COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS);
@@ -51,7 +52,7 @@ const modelOperationSchema = z.discriminatedUnion("type", [
   }).strict(),
 ]);
 
-/** Provider-facing schema: every key is required; unused partial values are null. */
+/** Expanded schema for legacy consumers. Provider requests use the compact schema below. */
 export const compositionAgentModelOutputSchema = z.object({
   operations: z.array(modelOperationSchema).min(1).max(12),
   summary: z.string().trim().min(3).max(300),
@@ -67,7 +68,9 @@ const compositionAgentLooseEnvelopeSchema = z.object({
 /** Converts the strict provider contract into the narrower persisted patch contract. */
 export function normalizeCompositionAgentModelOutput(input: unknown) {
   const output = compositionAgentLooseEnvelopeSchema.parse(stripNullValues(input));
-  return compositionEditorPatchRequestSchema.parse({ ...output, source: "AGENT" });
+  const patch = compositionEditorPatchRequestSchema.parse({ ...output, source: "AGENT" });
+  assertCompositionAgentOperationsAllowed(patch.operations);
+  return patch;
 }
 
 export function getCompositionAgentJsonSchema() {
@@ -77,11 +80,7 @@ export function getCompositionAgentJsonSchema() {
 }
 
 /** Provider-safe envelope; the decoded payload is still validated by the authoritative Zod union. */
-export function getCompositionAgentProviderJsonSchema() {
-  const operationTypes = [
-    "animation.add-preset", "animation.update-timing", "audio-mix.update",
-    "clip.duration", "clip.layout", "clip.move", "clip.visibility", "track.update",
-  ];
+export function getCompositionAgentProviderJsonSchema(allowReply = false) {
   return {
     additionalProperties: false,
     properties: {
@@ -90,14 +89,14 @@ export function getCompositionAgentProviderJsonSchema() {
           additionalProperties: false,
           properties: {
             argumentsJson: { description: "JSON object with the operation fields except type.", type: "string" },
-            type: { enum: operationTypes, type: "string" },
+            type: { enum: COMPOSITION_AGENT_ALLOWED_OPERATION_TYPES, type: "string" },
           },
           propertyOrdering: ["type", "argumentsJson"],
           required: ["type", "argumentsJson"],
           type: "object",
         },
-        maxItems: 12,
-        minItems: 1,
+        maxItems: COMPOSITION_AGENT_MAX_OPERATIONS,
+        minItems: allowReply ? 0 : 1,
         type: "array",
       },
       summary: { type: "string" },
@@ -109,14 +108,17 @@ export function getCompositionAgentProviderJsonSchema() {
 }
 
 /** Decodes the compact provider envelope before authoritative Zod validation. */
-export function normalizeCompactCompositionAgentModelOutput(input: unknown) {
+export function normalizeCompactCompositionAgentModelOutput(input: unknown): ReturnType<typeof normalizeCompositionAgentModelOutput>;
+export function normalizeCompactCompositionAgentModelOutput(input: unknown, allowReply: boolean): ReturnType<typeof normalizeCompositionAgentModelOutput> | { reply: string };
+export function normalizeCompactCompositionAgentModelOutput(input: unknown, allowReply = false) {
   const envelope = z.object({
     operations: z.array(z.object({
       argumentsJson: z.string().min(2).max(4_000),
       type: z.string().min(1).max(80),
-    }).strict()).min(1).max(12),
+    }).strict()).min(allowReply ? 0 : 1).max(COMPOSITION_AGENT_MAX_OPERATIONS),
     summary: z.string().trim().min(3).max(300),
   }).strict().parse(input);
+  if (envelope.operations.length === 0) return { reply: envelope.summary };
   const operations = envelope.operations.map((operation) => {
     const args = JSON.parse(operation.argumentsJson) as unknown;
     if (!args || typeof args !== "object" || Array.isArray(args) || "type" in args) {

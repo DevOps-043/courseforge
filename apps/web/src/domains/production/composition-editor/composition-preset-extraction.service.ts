@@ -1,3 +1,6 @@
+import { captureCompositionPresetMotion } from "./composition-preset-motion";
+import { resolveCompositionPresetRole, selectCompositionPresetTracks } from "./composition-preset-selectors";
+import { resolveCompositionPreviewMediaFit } from "./composition-preview-visual-state";
 import type {
   CompositionClip,
   CompositionEditorDocument,
@@ -13,10 +16,10 @@ import {
   type CompositionPresetVariant,
 } from "./composition-preset.types";
 
-const ADJACENCY_TOLERANCE_SECONDS = 0.08;
+const ADJACENCY_TOLERANCE_SECONDS = 0.000001;
 
 export type CompositionPresetExtractionDiagnostic = {
-  code: "CUSTOM_TRACK_SKIPPED" | "NON_PRESET_ANIMATION_SKIPPED";
+  code: "CUSTOM_TRACK_SKIPPED" | "NON_PRESET_ANIMATION_SKIPPED" | "SOURCE_BOUND_SETTINGS_PRESERVED" | "DOCUMENT_STRUCTURE_PRESERVED" | "CONTENT_STYLING_PRESERVED";
   entityId: string;
   message: string;
 };
@@ -31,33 +34,45 @@ export function extractCompositionPresetDefinition(document: CompositionEditorDo
 } {
   const diagnostics: CompositionPresetExtractionDiagnostic[] = [];
   const trackById = new Map(document.tracks.map((track) => [track.id, track]));
-  const clipsByRole = new Map<CompositionTrackRole, CompositionClip[]>();
-
+  const clipsBySlot = new Map<string, { semanticRole: CompositionTrackRole; trackIndex: number; clips: CompositionClip[] }>();
   for (const clip of document.clips) {
     const track = trackById.get(clip.trackId);
-    const semanticRole = resolveSemanticRole(track);
+    const semanticRole = track ? resolveCompositionPresetRole(track) : null;
     if (!semanticRole) {
-      diagnostics.push({
-        code: "CUSTOM_TRACK_SKIPPED",
-        entityId: clip.id,
-        message: `Se omitió ${clip.label} porque su track no declara un rol semántico reutilizable.`,
-      });
+      diagnostics.push({ code: "CUSTOM_TRACK_SKIPPED", entityId: clip.id,
+        message: "Se omitió un clip porque su pista no declara un rol semántico reutilizable." });
       continue;
     }
-    const clips = clipsByRole.get(semanticRole) || [];
-    clips.push(clip);
-    clipsByRole.set(semanticRole, clips);
+    const trackIndex = selectCompositionPresetTracks(document, semanticRole).findIndex(candidate => candidate.id === clip.trackId);
+    const key = semanticRole + ":" + trackIndex + ":" + clip.kind;
+    const slot = clipsBySlot.get(key) ?? { semanticRole, trackIndex, clips: [] };
+    slot.clips.push(clip);
+    clipsBySlot.set(key, slot);
+    if (clip.sourceOffsetSeconds || clip.playbackRate !== undefined || clip.freezeTailSeconds !== undefined || clip.volumeEnvelope?.length) {
+      diagnostics.push({ code: "SOURCE_BOUND_SETTINGS_PRESERVED", entityId: clip.id,
+        message: "El recorte de fuente, velocidad, congelación y envolvente de volumen pertenecen al medio original; se conservarán los del destino." });
+    }
+    if (((clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS") && clip.source.style.fontAssetId)
+      || (clip.source.type === "NATIVE_CAPTIONS" && clip.source.cues.some(cue => cue.effects || cue.emphasis?.length))) {
+      diagnostics.push({ code: "CONTENT_STYLING_PRESERVED", entityId: clip.id,
+        message: "Las fuentes privadas, los efectos por frase y los énfasis ligados al texto se conservan en el destino." });
+    }
   }
-
-  const rules = [...clipsByRole.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([semanticRole, clips]) => buildRule({ diagnostics, document, semanticRole, clips, trackById }));
+  if (document.groups?.length || document.transitions?.items.length || document.htmlEditing?.items.length) {
+    diagnostics.push({ code: "DOCUMENT_STRUCTURE_PRESERVED", entityId: "document",
+      message: "Las agrupaciones, transiciones y revisiones HTML dependen de la lección; el preset conserva las del destino." });
+  }
+  const rules = [...clipsBySlot.entries()].sort(([left], [right]) => left.localeCompare(right))
+    .map(([, slot]) => buildRule({ document, ...slot, trackById }));
   if (rules.length === 0) throw new Error("La edición no contiene tracks semánticos que puedan convertirse en preset.");
 
   return {
     definition: compositionDynamicPresetDefinitionSchema.parse({
       audioMix: {
+        masterVolume: document.audioMix.masterVolume ?? 1,
         ducking: {
+          targetRole: document.audioMix.ducking.targetRole,
+          triggerRoles: [...document.audioMix.ducking.triggerRoles],
           attackSeconds: document.audioMix.ducking.attackSeconds,
           duckedVolumeRatio: document.audioMix.ducking.duckedVolumeRatio,
           enabled: document.audioMix.ducking.enabled,
@@ -73,9 +88,9 @@ export function extractCompositionPresetDefinition(document: CompositionEditorDo
 
 function buildRule(params: {
   clips: CompositionClip[];
-  diagnostics: CompositionPresetExtractionDiagnostic[];
   document: CompositionEditorDocument;
   semanticRole: CompositionTrackRole;
+  trackIndex: number;
   trackById: Map<string, CompositionTrack>;
 }): CompositionPresetSlotRule {
   const clips = [...params.clips].sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
@@ -83,12 +98,13 @@ function buildRule(params: {
   const rangeEnd = Math.max(...clips.map((clip) => clip.startSeconds + clip.durationSeconds));
   const sourceTrack = params.trackById.get(clips[0]!.trackId)!;
   return {
-    id: `slot-${params.semanticRole.toLowerCase()}`,
+    id: `slot-${params.semanticRole.toLowerCase()}-${params.trackIndex}-${clips[0]!.kind.toLowerCase().replaceAll("_", "-")}`,
     minItems: 0,
     replaceAnimations: true,
     selector: {
       kinds: [...new Set(clips.map((clip) => clip.kind))],
       semanticRole: params.semanticRole,
+      trackIndex: params.trackIndex,
     },
     timing: {
       endRatio: clampRatio(rangeEnd / params.document.canvas.durationSeconds),
@@ -96,41 +112,33 @@ function buildRule(params: {
       startRatio: clampRatio(rangeStart / params.document.canvas.durationSeconds),
     },
     trackSettings: {
-      hidden: sourceTrack.hidden,
-      muted: sourceTrack.muted,
-      volume: sourceTrack.volume,
+      hidden: sourceTrack.hidden ?? false,
+      muted: sourceTrack.muted ?? false,
+      volume: sourceTrack.volume ?? 1,
     },
-    variants: clips.slice(0, 24).map((clip) => buildVariant(clip, params.document, params.diagnostics)),
+    variants: clips.map((clip) => buildVariant(clip, params.document, sourceTrack)),
   };
 }
 
 function buildVariant(
   clip: CompositionClip,
   document: CompositionEditorDocument,
-  diagnostics: CompositionPresetExtractionDiagnostic[],
+  track: CompositionTrack,
 ): CompositionPresetVariant {
-  const animations = document.motion.animations
-    .filter((animation) => animation.target.clipId === clip.id)
-    .flatMap((animation) => {
-      if (!animation.preset) {
-        diagnostics.push({
-          code: "NON_PRESET_ANIMATION_SKIPPED",
-          entityId: animation.id,
-          message: `Se omitió ${animation.id}; solo las animaciones basadas en presets son parametrizables.`,
-        });
-        return [];
-      }
-      return [{
-        cycles: animation.preset.parameters?.cycles || 1,
-        durationRatio: clampPositiveRatio(animation.timing.durationSeconds / clip.durationSeconds),
-        intensity: animation.preset.parameters?.intensity || 1,
-        offsetRatio: clampRatio(animation.timing.offsetSeconds / clip.durationSeconds),
-        presetId: animation.preset.id,
-      }];
-    });
   const crop = clip.crop ? resolveCompositionCropInsets(clip.crop, clip.layout) : null;
   return {
-    animations,
+    animations: [],
+    motion: captureCompositionPresetMotion(clip, document),
+    startRatio: clip.startSeconds / document.canvas.durationSeconds,
+    durationRatio: clip.durationSeconds / document.canvas.durationSeconds,
+    fadeInRatio: (clip.fadeInSeconds ?? 0) / clip.durationSeconds,
+    fadeOutRatio: (clip.fadeOutSeconds ?? 0) / clip.durationSeconds,
+    colorGrading: clip.colorGrading ? structuredClone(clip.colorGrading) : null,
+    ...((clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS") ? {
+      textStyle: portableTextStyle(clip.source.style),
+      preserveTargetFont: Boolean(clip.source.style.fontAssetId),
+    } : {}),
+    ...(clip.source.type === "NATIVE_CAPTIONS" ? { captionEffects: clip.source.effects ? structuredClone(clip.source.effects) : null } : {}),
     ...(crop ? {
       crop: {
         bottomRatio: clampRatio(crop.bottom / clip.layout.height),
@@ -153,8 +161,8 @@ function buildVariant(
         zIndex: clip.layout.zIndex,
       },
     } : {}),
-    ...(clip.mediaFit ? { mediaFit: clip.mediaFit } : {}),
-    ...(clip.volume !== undefined ? { volume: clip.volume } : {}),
+    ...((clip.kind === "IMAGE" || clip.kind === "VIDEO") ? { mediaFit: resolveCompositionPreviewMediaFit(clip, track) } : {}),
+    volume: clip.volume ?? 1,
   };
 }
 
@@ -164,7 +172,7 @@ function detectTimingMode(clips: CompositionClip[], canvasDurationSeconds: numbe
     return clip.startSeconds <= ADJACENCY_TOLERANCE_SECONDS
       && clip.startSeconds + clip.durationSeconds >= canvasDurationSeconds - ADJACENCY_TOLERANCE_SECONDS
       ? "STACK"
-      : "PRESERVE";
+      : "PATTERN";
   }
   const sorted = [...clips].sort((left, right) => left.startSeconds - right.startSeconds);
   const isSequence = sorted.slice(1).every((clip, index) => {
@@ -176,18 +184,14 @@ function detectTimingMode(clips: CompositionClip[], canvasDurationSeconds: numbe
     Math.abs(clip.startSeconds - sorted[0]!.startSeconds) <= ADJACENCY_TOLERANCE_SECONDS
     && Math.abs(clip.durationSeconds - sorted[0]!.durationSeconds) <= ADJACENCY_TOLERANCE_SECONDS
   ));
-  return sameWindow ? "STACK" : isSequence ? "SEQUENCE" : "PRESERVE";
+  return sameWindow ? "STACK" : isSequence ? "SEQUENCE" : "PATTERN";
 }
 
-function resolveSemanticRole(track: CompositionTrack | undefined): CompositionTrackRole | null {
-  if (track?.semanticRole) return track.semanticRole;
-  const candidate = track?.id.toUpperCase();
-  return candidate === "DECK" || candidate === "AVATAR" || candidate === "VOICE" || candidate === "MUSIC"
-    || candidate === "BROLL" || candidate === "VISUAL" || candidate === "OVERLAY"
-    ? candidate
-    : null;
+function portableTextStyle(style: import("./composition-text-layer.types").CompositionTextLayerStyle) {
+  const portable = structuredClone(style);
+  delete portable.fontAssetId;
+  return portable;
 }
 
 function clampRatio(value: number) { return Math.max(0, Math.min(1, value)); }
-function clampPositiveRatio(value: number) { return Math.max(0.0001, Math.min(1, value)); }
 

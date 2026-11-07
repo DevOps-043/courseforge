@@ -1,4 +1,6 @@
 import type { CompositionEditorDocument } from "./composition-document.types";
+import { resolveCompositionClipDefaultVolume } from "./composition-clip-audio.service";
+import { resolveCompositionPreviewMediaFit } from "./composition-preview-visual-state";
 import { applyCompositionEditorPatches, CompositionEditorPatchError } from "./editor-patch.service";
 import {
   compositionEditorPatchOperationSchema,
@@ -65,6 +67,20 @@ function buildInverseOperation(
     case "clip.visibility": {
       const clip = findClip(document, operation.clipId);
       return { clipId: clip.id, hidden: clip.hidden, type: "clip.visibility" };
+    }
+    case "clip.volume": {
+      const clip = findClip(document, operation.clipId);
+      const track = document.tracks.find((candidate) => candidate.id === clip.trackId);
+      return { clipId: clip.id, volume: clip.volume ?? resolveCompositionClipDefaultVolume(clip, track), type: operation.type };
+    }
+    case "clip.audio-fades": {
+      const clip = findClip(document, operation.clipId);
+      return { clipId: clip.id, fadeInSeconds: clip.fadeInSeconds ?? 0, fadeOutSeconds: clip.fadeOutSeconds ?? 0, type: operation.type };
+    }
+    case "clip.media-fit": {
+      const clip = findClip(document, operation.clipId);
+      const track = document.tracks.find((candidate) => candidate.id === clip.trackId);
+      return { clipId: clip.id, mediaFit: resolveCompositionPreviewMediaFit(clip, track), type: operation.type };
     }
     case "track.update": {
       const track = document.tracks.find((candidate) => candidate.id === operation.trackId);

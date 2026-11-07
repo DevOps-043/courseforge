@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { proposeCompositionEdits, CompositionAgentProposalError } from "@/domains/production/composition-editor/composition-agent.service";
 import { getCurrentCompositionDocument } from "@/domains/production/composition-editor/composition-document.service";
-import { applyCompositionEditorPatches } from "@/domains/production/composition-editor/editor-patch.service";
-import { extractCompositionPresetDefinition } from "@/domains/production/composition-editor/composition-preset-extraction.service";
+import { captureCompositionPreset } from "@/domains/production/composition-editor/composition-preset-capture.service";
 import { compositionPresetCreateRequestSchema } from "@/domains/production/composition-editor/composition-preset.types";
 import { createStoredCompositionPreset, CompositionPresetStoreError } from "@/domains/production/composition-editor/composition-preset-store.service";
 import {
@@ -48,18 +47,25 @@ export async function POST(request: Request, context: RouteContext) {
         409,
       );
     }
-    let patternSource = current.document;
+    const extracted = await captureCompositionPreset({
+      document: current.document,
+      ...(body.mode === "INSTRUCTIONS" ? { propose: async () => {
+        const proposal = await proposeCompositionEdits({
+          baseDocumentHash: current.documentHash,
+          document: current.document,
+          input: { instruction: body.instruction },
+          organizationId: authorization.organizationId,
+          supabase: authorization.admin,
+        });
+        return proposal.operations;
+      } } : {}),
+    });
     if (body.mode === "INSTRUCTIONS") {
-      const proposal = await proposeCompositionEdits({
-        baseDocumentHash: current.documentHash,
-        document: current.document,
-        input: { instruction: body.instruction },
-        organizationId: authorization.organizationId,
-        supabase: authorization.admin,
-      });
-      patternSource = applyCompositionEditorPatches(current.document, proposal.operations, "AGENT");
+      const latest = await getCurrentCompositionDocument({ draftId, organizationId: authorization.organizationId, supabase: authorization.admin });
+      if (latest.documentHash !== current.documentHash) {
+        throw new CompositionPresetStoreError("La edición cambió durante la preparación del preset. Vuelve a crearlo desde la versión actual.", "COMPOSITION_PRESET_VERSION_CONFLICT", 409);
+      }
     }
-    const extracted = extractCompositionPresetDefinition(patternSource);
     const data = await createStoredCompositionPreset({
       definition: extracted.definition,
       description: body.description,

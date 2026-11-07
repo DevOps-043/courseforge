@@ -178,11 +178,11 @@ function buildCompositionAgentRepairPrompt(originalPrompt: string, error: unknow
   const issues = error instanceof CompositionAgentValidationError
     ? error.issues.slice(0, 6).map((issue) => `${issue.code}${issue.entityId ? ` (${issue.entityId})` : ""}: ${issue.message}`)
     : [`${recoveryErrorCode(error)}: ${safeRecoveryMessage(error)}`];
-  return `${originalPrompt}\nRECOVERY_INSTRUCTION: La propuesta anterior fue descartada y no se aplicó. Genera una propuesta completa nueva corrigiendo exclusivamente estos errores:\n- ${issues.join("\n- ")}\nNo repitas una operación inválida, no agregues cambios no solicitados y usa únicamente IDs presentes en el contexto.`;
+  return `${originalPrompt}\nRECOVERY_INSTRUCTION: La propuesta anterior fue descartada y no se aplicó. Corrige estos errores según el contrato de salida:\n- ${issues.join("\n- ")}\nNo repitas una operación inválida, no agregues cambios no solicitados y usa únicamente IDs presentes en el contexto.`;
 }
 
 function buildCompositionAgentFallbackPrompt(originalPrompt: string, error: unknown) {
-  return `${originalPrompt}\nFALLBACK_INSTRUCTION: El modelo principal no pudo producir una propuesta utilizable (${recoveryErrorCode(error)}). Genera una propuesta completa desde cero, mínima y ajustada estrictamente al contrato y a los IDs del contexto.`;
+  return `${originalPrompt}\nFALLBACK_INSTRUCTION: El modelo principal no produjo una salida utilizable (${recoveryErrorCode(error)}). Responde desde cero según el contrato de salida y los IDs del contexto.`;
 }
 
 function recoveryErrorCode(error: unknown) {

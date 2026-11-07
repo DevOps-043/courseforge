@@ -4,6 +4,10 @@ import {
   type CompositionEditorDocument,
 } from "./composition-document.types";
 import { createCompositionPresetAnimation } from "./composition-motion-preset.service";
+import { selectCompositionPresetTracks } from "./composition-preset-selectors";
+import { materializeCompositionPresetMotion } from "./composition-preset-motion";
+import { applyCompositionPresetAppearance } from "./composition-preset-appearance";
+import { COMPOSITION_LAYER_MAX } from "./composition-layer-depth";
 import {
   compositionDynamicPresetDefinitionSchema,
   type CompositionDynamicPresetDefinition,
@@ -20,7 +24,7 @@ export class CompositionPresetApplicationError extends Error {
 }
 
 export type CompositionPresetApplicationWarning = {
-  code: "AUDIO_TIMING_PRESERVED" | "LOCKED_TRACK_SKIPPED" | "OPTIONAL_SLOT_EMPTY" | "VISUAL_LAYER_OBSCURED";
+  code: "AUDIO_TIMING_PRESERVED" | "SOURCE_TIMING_PRESERVED" | "PATTERN_TIMING_PRESERVED" | "LOCKED_TRACK_SKIPPED" | "OPTIONAL_SLOT_EMPTY" | "VISUAL_LAYER_OBSCURED";
   message: string;
   ruleId: string;
 };
@@ -35,14 +39,13 @@ export function applyCompositionPresetDefinition(params: {
   const warnings: CompositionPresetApplicationWarning[] = [];
   const appliedRuleByClipId = new Map<string, string>();
   let affectedClipCount = 0;
-  let affectedTrackCount = 0;
+  const affectedTrackIds = new Set<string>();
   let generatedAnimationCount = 0;
 
   for (const rule of definition.rules) {
-    const trackIds = new Set(next.tracks
-      .filter((track) => track.semanticRole === rule.selector.semanticRole || track.id.toUpperCase() === rule.selector.semanticRole)
-      .map((track) => track.id));
-    const matchingTracks = next.tracks.filter((track) => trackIds.has(track.id));
+    const roleTracks = selectCompositionPresetTracks(next, rule.selector.semanticRole);
+    const matchingTracks = rule.selector.trackIndex === undefined ? roleTracks : roleTracks.slice(rule.selector.trackIndex, rule.selector.trackIndex + 1);
+    const trackIds = new Set(matchingTracks.map(track => track.id));
     const matchingClips = next.clips
       .filter((clip) => trackIds.has(clip.trackId) && rule.selector.kinds.includes(clip.kind))
       .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
@@ -68,9 +71,13 @@ export function applyCompositionPresetDefinition(params: {
     for (const track of matchingTracks) {
       if (track.locked || !rule.trackSettings) continue;
       Object.assign(track, rule.trackSettings);
-      affectedTrackCount += 1;
+      affectedTrackIds.add(track.id);
     }
     const timings = resolveRuleTimings(rule, editableClips, next);
+    if (rule.timing.mode === "PATTERN" && editableClips.length !== rule.variants.length) {
+      warnings.push({ code: "PATTERN_TIMING_PRESERVED", ruleId: rule.id,
+        message: "El patrón tiene otra cantidad de elementos; se conserva el timing del destino." });
+    }
     const editableClipIds = new Set(editableClips.map((clip) => clip.id));
     editableClipIds.forEach((clipId) => appliedRuleByClipId.set(clipId, rule.id));
     if (rule.replaceAnimations) {
@@ -81,8 +88,10 @@ export function applyCompositionPresetDefinition(params: {
       const timingWasPreserved = applyVariant(clip, variant, timings[index], next);
       if (timingWasPreserved) {
         warnings.push({
-          code: "AUDIO_TIMING_PRESERVED",
-          message: `Se conservó el timing de ${clip.label}: el preset excedía la duración disponible de su audio.`,
+          code: timingWasPreserved,
+          message: timingWasPreserved === "AUDIO_TIMING_PRESERVED"
+            ? `Se conservó el timing de ${clip.label}: el preset excedía la duración disponible de su audio.`
+            : `Se conservó el timing de ${clip.label} para respetar su fuente, contenido o transiciones.`,
           ruleId: rule.id,
         });
       }
@@ -95,7 +104,7 @@ export function applyCompositionPresetDefinition(params: {
           );
         }
         next.motion.animations.push(createCompositionPresetAnimation({
-          animationId: createAnimationId(rule.id, index, animationIndex),
+          animationId: createAnimationId(rule.id, index, animationIndex, next),
           clipDurationSeconds: clip.durationSeconds,
           clipId: clip.id,
           cycles: animation.cycles,
@@ -107,13 +116,24 @@ export function applyCompositionPresetDefinition(params: {
         }));
         generatedAnimationCount += 1;
       });
+      for (const [animationIndex, animation] of (variant.motion ?? []).entries()) {
+        if (next.motion.animations.length >= 200) {
+          throw new CompositionPresetApplicationError("El preset generaría más animaciones de las permitidas.", "COMPOSITION_PRESET_ANIMATION_LIMIT", 409);
+        }
+        next.motion.animations.push(materializeCompositionPresetMotion({ animation, clip, document: next,
+          id: createAnimationId(rule.id, index, animationIndex, next) }));
+        generatedAnimationCount += 1;
+      }
       affectedClipCount += 1;
     });
   }
 
   if (definition.audioMix) {
+    if (definition.audioMix.masterVolume !== undefined) next.audioMix.masterVolume = definition.audioMix.masterVolume;
     next.audioMix.ducking = { ...next.audioMix.ducking, ...definition.audioMix.ducking };
   }
+  const extraDepths = next.clips.map(clip => clip.layout.zIndex).filter(depth => depth > COMPOSITION_LAYER_MAX);
+  if (extraDepths.length) next.extraLayerDepths = [...new Set([...(next.extraLayerDepths ?? []), ...extraDepths])].sort((left, right) => left - right);
   warnings.push(...findVisualLayerObscurationWarnings(next, appliedRuleByClipId));
   let document: CompositionEditorDocument;
   try {
@@ -127,7 +147,7 @@ export function applyCompositionPresetDefinition(params: {
   if (affectedClipCount === 0) {
     throw new CompositionPresetApplicationError("El preset no encontró elementos editables.", "COMPOSITION_PRESET_NO_EFFECT", 409);
   }
-  return { affectedClipCount, affectedTrackCount, document, generatedAnimationCount, warnings };
+  return { affectedClipCount, affectedTrackCount: affectedTrackIds.size, document, generatedAnimationCount, warnings };
 }
 
 /**
@@ -193,6 +213,13 @@ function resolveRuleTimings(
   document: CompositionEditorDocument,
 ): Array<{ durationSeconds: number; startSeconds: number } | undefined> {
   if (rule.timing.mode === "PRESERVE") return clips.map(() => undefined);
+  if (rule.timing.mode === "PATTERN") {
+    if (clips.length !== rule.variants.length) return clips.map(() => undefined);
+    return clips.map((_, index) => ({
+      startSeconds: rule.variants[index]!.startRatio! * document.canvas.durationSeconds,
+      durationSeconds: rule.variants[index]!.durationRatio! * document.canvas.durationSeconds,
+    }));
+  }
   const startFrame = Math.round(rule.timing.startRatio * document.canvas.durationSeconds * document.canvas.fps);
   const endFrame = Math.round(rule.timing.endRatio * document.canvas.durationSeconds * document.canvas.fps);
   const availableFrames = endFrame - startFrame;
@@ -249,7 +276,12 @@ function applyVariant(
     && clip.sourceDurationSeconds !== undefined
     && (clip.sourceOffsetSeconds || 0) + timing.durationSeconds > clip.sourceDurationSeconds + 0.001,
   );
-  if (timing && !timingWouldExceedAudioSource) {
+  const sourceTimingBound = Boolean(timing && (
+    clip.playbackRate !== undefined || clip.freezeTailSeconds !== undefined
+    || document.transitions?.items.some(transition => transition.fromClipId === clip.id || transition.toClipId === clip.id)
+    || clip.source.type === "NATIVE_CAPTIONS"
+  ));
+  if (timing && !timingWouldExceedAudioSource && !sourceTimingBound) {
     clip.startSeconds = timing.startSeconds;
     clip.durationSeconds = timing.durationSeconds;
     clip.timingSource = "USER_EDITED";
@@ -282,9 +314,15 @@ function applyVariant(
   }
   if (variant.mediaFit && (clip.kind === "IMAGE" || clip.kind === "VIDEO")) clip.mediaFit = variant.mediaFit;
   if (variant.volume !== undefined) clip.volume = variant.volume;
-  return timingWouldExceedAudioSource;
+  applyCompositionPresetAppearance(clip, variant);
+  return timingWouldExceedAudioSource ? "AUDIO_TIMING_PRESERVED" as const
+    : sourceTimingBound ? "SOURCE_TIMING_PRESERVED" as const : null;
 }
 
-function createAnimationId(ruleId: string, clipIndex: number, animationIndex: number) {
-  return `motion-preset-${ruleId.replace(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 72)}-${clipIndex + 1}-${animationIndex + 1}`;
+function createAnimationId(ruleId: string, clipIndex: number, animationIndex: number, document: CompositionEditorDocument) {
+  const base = `motion-preset-${ruleId.replace(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 72)}-${clipIndex + 1}-${animationIndex + 1}`;
+  const usedIds = new Set(document.motion.animations.map(animation => animation.id));
+  let id = base;
+  for (let suffix = 2; usedIds.has(id); suffix += 1) id = `${base}-${suffix}`;
+  return id;
 }

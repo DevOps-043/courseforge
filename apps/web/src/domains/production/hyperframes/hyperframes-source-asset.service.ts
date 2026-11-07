@@ -1,3 +1,4 @@
+import { synchronizeHyperframesSourceBatches } from "./hyperframes-source-sync-batches";
 import { loadStandaloneHtmlDecks } from "../standalone/standalone-html.service";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
@@ -395,103 +396,114 @@ export async function syncHyperframesSourceAssetsFromProduction(params: {
   const animatedDeck = await loadStandaloneHtmlDecks({ componentId: params.componentId, organizationId: params.organizationId, supabase: params.supabase, legacy: extractHyperframesAnimatedDeck(component?.assets) });
   let synchronized = 0;
   const skipped: string[] = [];
-  for (const reference of collectInternalMaterialAssetReferences(component?.assets)) {
-    const stored = parseStoredPath(reference.storagePath);
-    const existing = await findActiveSourceAssetByStorage({
-      componentId: params.componentId,
-      organizationId: params.organizationId,
-      storageBucket: stored.storageBucket,
-      storagePath: reference.storagePath,
-      supabase: params.supabase,
-    });
-    const metadata = await getStoredFileMetadata(params.supabase, stored);
-    const inferredMimeType = mimeTypeFromFileName(reference.fileName || stored.fileName);
-    const mimeType = metadata.mimeType
-      || (inferredMimeType !== "application/octet-stream" ? inferredMimeType : reference.mimeType)
-      || "application/octet-stream";
-    if (!isSupportedHyperframesSourceMime(mimeType)) {
-      skipped.push(reference.storagePath);
-      continue;
-    }
-    let bytes: Uint8Array | null = null;
-    let fileSizeBytes = metadata.fileSizeBytes;
-    if (!fileSizeBytes) {
-      bytes = await downloadStoredAssetBytes(params.supabase, stored);
-      fileSizeBytes = bytes.byteLength;
-    }
-    if (!fileSizeBytes) {
-      skipped.push(reference.storagePath);
-      continue;
-    }
-    const synchronizedMetadata = buildSynchronizedSourceMetadata(reference, stored.fileName);
-    if (
-      existing?.id
-      && existing.file_size_bytes === fileSizeBytes
-      && existing.mime_type === mimeType
-      && existing.checksum
-      && isHyperframesSourceDurationCurrent(existing.duration_milliseconds, existing.duration_seconds, reference.durationSeconds)
-      && isRecord(existing.metadata)
-      && isHyperframesSourceMetadataCurrent(existing.metadata, reference, stored.fileName)
-    ) continue;
-
-    bytes = bytes || await downloadStoredAssetBytes(params.supabase, stored);
-    const checksum = createHash("sha256").update(bytes).digest("hex");
-    const assetRecord = {
-      artifact_id: context.artifactId,
-      asset_type: PRODUCTION_ASSET_TYPES.SOURCE_MEDIA,
-      checksum,
-      content: { imported_from: "production_step" },
-      created_by: params.createdBy,
-      ...(reference.durationSeconds ? {
-        duration_milliseconds: Math.round(reference.durationSeconds * 1_000),
-        duration_seconds: Math.round(reference.durationSeconds),
-      } : {}),
-      file_size_bytes: fileSizeBytes,
-      lesson_id: context.lessonId,
-      material_component_id: context.componentId,
-      material_lesson_id: context.materialLessonId,
-      metadata: synchronizedMetadata,
-      mime_type: mimeType,
-      module_id: context.moduleId,
-      organization_id: params.organizationId,
-      provider: "manual",
-      public_url: reference.publicUrl,
-      qa_status: PRODUCTION_QA_STATUSES.GENERATED,
-      storage_bucket: stored.storageBucket,
-      storage_path: reference.storagePath,
-    };
-    if (existing?.id) {
-      const { error: writeError } = await params.supabase
-        .from("production_assets")
-        .update(assetRecord)
-        .eq("id", existing.id);
-      if (writeError) throw writeError;
-    } else {
-      const { error: insertError } = await params.supabase
-        .from("production_assets")
-        .insert(assetRecord);
-      if (insertError && !isUniqueViolation(insertError)) throw insertError;
-      if (insertError) {
-        // Another preparation request registered the same Storage object after
-        // our read. Update that canonical winner so this request still applies
-        // the current role, scene identity and measured duration.
-        const concurrent = await findActiveSourceAssetByStorage({
+  await synchronizeHyperframesSourceBatches(
+    collectInternalMaterialAssetReferences(component?.assets),
+    async (reference) => {
+      const stored = parseStoredPath(reference.storagePath);
+      const checks = await Promise.allSettled([
+        findActiveSourceAssetByStorage({
           componentId: params.componentId,
           organizationId: params.organizationId,
           storageBucket: stored.storageBucket,
           storagePath: reference.storagePath,
           supabase: params.supabase,
-        });
-        if (!concurrent?.id) throw insertError;
-        const { error: recoveryError } = await params.supabase
+        }),
+        getStoredFileMetadata(params.supabase, stored),
+      ]);
+      const [existing, metadata] = checks;
+      if (existing.status === "rejected") throw existing.reason;
+      if (metadata.status === "rejected") throw metadata.reason;
+      return { reference, stored, existing: existing.value, metadata: metadata.value };
+    },
+    async ({ reference, stored, existing, metadata }) => {
+      const inferredMimeType = mimeTypeFromFileName(reference.fileName || stored.fileName);
+      const mimeType = metadata.mimeType
+        || (inferredMimeType !== "application/octet-stream" ? inferredMimeType : reference.mimeType)
+        || "application/octet-stream";
+      if (!isSupportedHyperframesSourceMime(mimeType)) {
+        skipped.push(reference.storagePath);
+        return;
+      }
+      let bytes: Uint8Array | null = null;
+      let fileSizeBytes = metadata.fileSizeBytes;
+      if (!fileSizeBytes) {
+        bytes = await downloadStoredAssetBytes(params.supabase, stored);
+        fileSizeBytes = bytes.byteLength;
+      }
+      if (!fileSizeBytes) {
+        skipped.push(reference.storagePath);
+        return;
+      }
+      const synchronizedMetadata = buildSynchronizedSourceMetadata(reference, stored.fileName);
+      if (
+        existing?.id
+        && existing.file_size_bytes === fileSizeBytes
+        && existing.mime_type === mimeType
+        && existing.checksum
+        && isHyperframesSourceDurationCurrent(existing.duration_milliseconds, existing.duration_seconds, reference.durationSeconds)
+        && isRecord(existing.metadata)
+        && isHyperframesSourceMetadataCurrent(existing.metadata, reference, stored.fileName)
+      ) return;
+
+      bytes = bytes || await downloadStoredAssetBytes(params.supabase, stored);
+      const checksum = createHash("sha256").update(bytes).digest("hex");
+      const assetRecord = {
+        artifact_id: context.artifactId,
+        asset_type: PRODUCTION_ASSET_TYPES.SOURCE_MEDIA,
+        checksum,
+        content: { imported_from: "production_step" },
+        created_by: params.createdBy,
+        ...(reference.durationSeconds ? {
+          duration_milliseconds: Math.round(reference.durationSeconds * 1_000),
+          duration_seconds: Math.round(reference.durationSeconds),
+        } : {}),
+        file_size_bytes: fileSizeBytes,
+        lesson_id: context.lessonId,
+        material_component_id: context.componentId,
+        material_lesson_id: context.materialLessonId,
+        metadata: synchronizedMetadata,
+        mime_type: mimeType,
+        module_id: context.moduleId,
+        organization_id: params.organizationId,
+        provider: "manual",
+        public_url: reference.publicUrl,
+        qa_status: PRODUCTION_QA_STATUSES.GENERATED,
+        storage_bucket: stored.storageBucket,
+        storage_path: reference.storagePath,
+      };
+      if (existing?.id) {
+        const { error: writeError } = await params.supabase
           .from("production_assets")
           .update(assetRecord)
-          .eq("id", concurrent.id);
-        if (recoveryError) throw recoveryError;
+          .eq("id", existing.id);
+        if (writeError) throw writeError;
+      } else {
+        const { error: insertError } = await params.supabase
+          .from("production_assets")
+          .insert(assetRecord);
+        if (insertError && !isUniqueViolation(insertError)) throw insertError;
+        if (insertError) {
+          // Another preparation request registered the same Storage object after
+          // our read. Update that canonical winner so this request still applies
+          // the current role, scene identity and measured duration.
+          const concurrent = await findActiveSourceAssetByStorage({
+            componentId: params.componentId,
+            organizationId: params.organizationId,
+            storageBucket: stored.storageBucket,
+            storagePath: reference.storagePath,
+            supabase: params.supabase,
+          });
+          if (!concurrent?.id) throw insertError;
+          const { error: recoveryError } = await params.supabase
+            .from("production_assets")
+            .update(assetRecord)
+            .eq("id", concurrent.id);
+          if (recoveryError) throw recoveryError;
+        }
       }
-    }
-    synchronized += 1;
-  }
+      synchronized += 1;
+    },
+  );
   return {
     animatedDeck: animatedDeck ? {
       animationCount: animatedDeck.slides.reduce((total, slide) => total + slide.animationCount, 0),

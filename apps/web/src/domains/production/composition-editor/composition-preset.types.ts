@@ -5,10 +5,17 @@ import {
   COMPOSITION_TRACK_ROLES,
 } from "./composition-document.types";
 import { COMPOSITION_MOTION_PRESET_IDS } from "./composition-motion.types";
+import { compositionAnimationSchema, compositionMotionKeyframeSchema } from "./composition-motion.types";
+import { compositionColorGradingSchema } from "./composition-color-grading.types";
+import { compositionTextLayerStyleSchema } from "./composition-text-layer.types";
+import { compositionCaptionEffectsSchema } from "./composition-caption-effects.types";
+import { COMPOSITION_LAYER_DEPTH_LIMIT } from "./composition-layer-depth";
+import { COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS } from "./composition-document.types.constants";
 
-export const COMPOSITION_PRESET_SCHEMA_VERSION = 1 as const;
+export const LEGACY_COMPOSITION_PRESET_SCHEMA_VERSION = 1 as const;
+export const COMPOSITION_PRESET_SCHEMA_VERSION = 2 as const;
 export const COMPOSITION_PRESET_SOURCE_KINDS = ["INSTRUCTIONS", "MANUAL", "SYSTEM"] as const;
-export const COMPOSITION_PRESET_TIMING_MODES = ["PRESERVE", "SEQUENCE", "STACK"] as const;
+export const COMPOSITION_PRESET_TIMING_MODES = ["PRESERVE", "SEQUENCE", "STACK", "PATTERN"] as const;
 
 const normalizedRatioSchema = z.number().finite().min(0).max(1);
 const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
@@ -22,6 +29,24 @@ export const compositionPresetMotionSchema = z.object({
 }).strict();
 
 export const compositionPresetVariantSchema = z.object({
+  colorGrading: compositionColorGradingSchema.nullable().optional(),
+  fadeInRatio: normalizedRatioSchema.optional(),
+  fadeOutRatio: normalizedRatioSchema.optional(),
+  textStyle: compositionTextLayerStyleSchema.omit({ fontAssetId: true }).optional(),
+  preserveTargetFont: z.boolean().optional(),
+  captionEffects: compositionCaptionEffectsSchema.nullable().optional(),
+  startRatio: normalizedRatioSchema.optional(),
+  durationRatio: z.number().finite().positive().max(1).optional(),
+  // Sin IDs ni fuentes: x/y son desplazamientos relativos al canvas.
+  motion: z.array(z.object({
+    anchor: z.enum(["CLIP_START", "CLIP_END"]),
+    durationRatio: z.number().finite().positive().max(1),
+    offsetRatio: normalizedRatioSchema,
+    propertyGroup: z.enum(["OPACITY", "POSITION", "ROTATION", "SCALE"]),
+    keyframes: z.array(compositionMotionKeyframeSchema).min(2).max(50),
+    loopCycleRatio: z.number().finite().positive().max(1000).optional(),
+    preset: compositionAnimationSchema.shape.preset,
+  }).strict()).max(200).optional(),
   mask: compositionVisualMaskSchema.optional(),
   animations: z.array(compositionPresetMotionSchema).max(8).default([]),
   crop: z.object({
@@ -30,16 +55,16 @@ export const compositionPresetVariantSchema = z.object({
     rightRatio: normalizedRatioSchema,
     topRatio: normalizedRatioSchema,
   }).strict().optional(),
-  durationWeight: z.number().finite().positive().max(100).default(1),
+  durationWeight: z.number().finite().positive().max(COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS).default(1),
   hidden: z.boolean().default(false),
   layout: z.object({
-    heightRatio: z.number().finite().positive().max(4),
+    heightRatio: z.number().finite().positive().max(8192),
     opacity: z.number().finite().min(0).max(1),
     rotation: z.number().finite().min(-360).max(360),
-    widthRatio: z.number().finite().positive().max(4),
-    xRatio: z.number().finite().min(-4).max(4),
-    yRatio: z.number().finite().min(-4).max(4),
-    zIndex: z.number().int().min(-100).max(100),
+    widthRatio: z.number().finite().positive().max(8192),
+    xRatio: z.number().finite().min(-8192).max(8192),
+    yRatio: z.number().finite().min(-8192).max(8192),
+    zIndex: z.number().int().min(-100).max(COMPOSITION_LAYER_DEPTH_LIMIT),
   }).strict().optional(),
   mediaFit: z.enum(COMPOSITION_MEDIA_FIT_MODES).optional(),
   volume: z.number().finite().min(0).max(1).optional(),
@@ -50,6 +75,7 @@ export const compositionPresetSlotRuleSchema = z.object({
   minItems: z.number().int().min(0).max(500).default(0),
   replaceAnimations: z.boolean().default(true),
   selector: z.object({
+    trackIndex: z.number().int().min(0).max(31).optional(),
     kinds: z.array(z.enum(["AUDIO", "CAPTION", "DECK_SLIDE", "IMAGE", "TEXT", "VIDEO"])).min(1).max(6),
     semanticRole: z.enum(COMPOSITION_TRACK_ROLES),
   }).strict(),
@@ -63,20 +89,23 @@ export const compositionPresetSlotRuleSchema = z.object({
     muted: z.boolean().optional(),
     volume: z.number().finite().min(0).max(1).optional(),
   }).strict().optional(),
-  variants: z.array(compositionPresetVariantSchema).min(1).max(24),
+  variants: z.array(compositionPresetVariantSchema).min(1).max(500),
 }).strict();
 
 export const compositionDynamicPresetDefinitionSchema = z.object({
   audioMix: z.object({
+    masterVolume: z.number().finite().min(0).max(1).optional(),
     ducking: z.object({
       attackSeconds: z.number().finite().min(0).max(5),
       duckedVolumeRatio: z.number().finite().min(0).max(1),
       enabled: z.boolean(),
       releaseSeconds: z.number().finite().min(0).max(5),
+      targetRole: z.literal("MUSIC").optional(),
+      triggerRoles: z.array(z.enum(["VOICE", "AVATAR"])).min(1).max(2).optional(),
     }).strict(),
   }).strict().optional(),
-  rules: z.array(compositionPresetSlotRuleSchema).min(1).max(24),
-  schemaVersion: z.literal(COMPOSITION_PRESET_SCHEMA_VERSION),
+  rules: z.array(compositionPresetSlotRuleSchema).min(1).max(192),
+  schemaVersion: z.union([z.literal(LEGACY_COMPOSITION_PRESET_SCHEMA_VERSION), z.literal(COMPOSITION_PRESET_SCHEMA_VERSION)]),
 }).strict().superRefine((definition, context) => {
   const ruleIds = new Set<string>();
   const selectors = new Set<string>();
@@ -85,11 +114,20 @@ export const compositionDynamicPresetDefinitionSchema = z.object({
       context.addIssue({ code: "custom", message: `El id de slot ${rule.id} está duplicado.`, path: ["rules", index, "id"] });
     }
     ruleIds.add(rule.id);
-    const selectorKey = `${rule.selector.semanticRole}:${[...rule.selector.kinds].sort().join(",")}`;
+    const selectorKey = `${rule.selector.semanticRole}:${rule.selector.trackIndex ?? "all"}:${[...rule.selector.kinds].sort().join(",")}`;
     if (selectors.has(selectorKey)) {
       context.addIssue({ code: "custom", message: "Dos slots no pueden seleccionar exactamente los mismos clips.", path: ["rules", index, "selector"] });
     }
     selectors.add(selectorKey);
+    if (rule.timing.mode === "PATTERN" && rule.variants.some(variant => variant.startRatio === undefined || variant.durationRatio === undefined)) {
+      context.addIssue({ code: "custom", message: "Cada variante del patrón requiere inicio y duración relativos.", path: ["rules", index, "variants"] });
+    }
+  }
+  if (definition.rules.reduce((total, rule) => total + rule.variants.length, 0) > 500) {
+    context.addIssue({ code: "custom", message: "El preset excede el límite de 500 variantes." });
+  }
+  if (definition.rules.reduce((total, rule) => total + rule.variants.reduce((count, variant) => count + (variant.motion?.length ?? 0) + variant.animations.length, 0), 0) > 200) {
+    context.addIssue({ code: "custom", message: "El preset excede el límite de 200 animaciones." });
   }
 });
 

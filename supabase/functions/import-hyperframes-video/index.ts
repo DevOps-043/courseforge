@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { getOrganizationHyperframesApiKey } from "../_shared/credentials.ts";
 import { getHyperframesRender, HeygenHttpError } from "../_shared/heygen.ts";
 import { importRetryDelaySeconds, isPermanentProviderFailure } from "../_shared/hyperframes-retry-policy.ts";
-import { readVideoProbeSize, readVideoRangeBytes } from "../_shared/hyperframes-video-range.ts";
+import { readVideoProbeSize, readVideoRangeBytes, resolveHyperframesVideoMimeType } from "../_shared/hyperframes-video-range.ts";
 import { authorizeWorker, jsonResponse, logEvent, methodNotAllowed } from "../_shared/http.ts";
 import { rpc } from "../_shared/supabase.ts";
 import {
@@ -89,6 +89,9 @@ async function processImport(claim: ImportClaim): Promise<void> {
     if (source.size > MAX_FINAL_VIDEO_BYTES) throw new TerminalImportError("Final video exceeds the 2 GiB storage limit.");
     if (claim.source_size_bytes && claim.source_size_bytes !== source.size) {
       throw new TerminalImportError("HeyGen video size changed during resumable import.");
+    }
+    if (claim.source_content_type && claim.source_content_type !== source.contentType) {
+      throw new TerminalImportError("HeyGen video content type changed during resumable import.");
     }
     const extension = source.contentType === "video/webm" ? "webm"
       : source.contentType === "video/quicktime" ? "mov"
@@ -186,7 +189,8 @@ async function probeSource(
     redirect: "error",
     signal: AbortSignal.timeout(20_000),
   });
-  const contentType = normalizeContentType(response.headers.get("content-type"), url, providerFormat);
+  const contentType = resolveHyperframesVideoMimeType(response.headers.get("content-type"), url, providerFormat);
+  if (!contentType) throw new TerminalImportError("HeyGen returned an unsupported final-video content type.");
   let size: number;
   try {
     size = readVideoProbeSize(response, TUS_CHUNK_BYTES);
@@ -217,24 +221,6 @@ function assertSafeVideoUrl(rawUrl: string): void {
   if (url.protocol !== "https:" || !ALLOWED_VIDEO_HOSTS.some((host) => hostname === host || hostname.endsWith(`.${host}`))) {
     throw new TerminalImportError("HeyGen returned an untrusted video URL.");
   }
-}
-
-function normalizeContentType(
-  header: string | null,
-  url: string,
-  providerFormat?: "mp4" | "webm" | "mov",
-): string {
-  const contentType = (header || "").split(";", 1)[0]!.trim().toLowerCase();
-  if (["video/mp4", "video/webm", "video/quicktime"].includes(contentType)) return contentType;
-  if (contentType === "application/octet-stream") {
-    if (providerFormat === "webm") return "video/webm";
-    if (providerFormat === "mov") return "video/quicktime";
-    if (providerFormat === "mp4") return "video/mp4";
-    return url.toLowerCase().includes(".webm") ? "video/webm"
-      : url.toLowerCase().includes(".mov") ? "video/quicktime"
-      : "video/mp4";
-  }
-  throw new TerminalImportError("HeyGen returned an unsupported final-video content type.");
 }
 
 function safeMessage(error: unknown): string {

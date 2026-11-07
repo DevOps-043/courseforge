@@ -7,9 +7,13 @@ import type { CompositionEditorPatchOperation } from "./editor-patch.types";
 
 const CLIP_FIELDS = [
   "durationSeconds",
+  "fadeInSeconds",
+  "fadeOutSeconds",
   "hidden",
+  "mediaFit",
   "startSeconds",
   "trackId",
+  "volume",
 ] as const;
 const LAYOUT_FIELDS = [
   "height",
@@ -47,7 +51,7 @@ export function buildCompositionAgentDiff(
     const next = afterClips.get(clipId);
     if (!previous || !next) continue;
     for (const field of CLIP_FIELDS) {
-      addChange(changes, "CLIP", clipId, `/clips/${clipId}/${field}`, previous[field], next[field]);
+      addChange(changes, "CLIP", clipId, `/clips/${clipId}/${field}`, previous[field] ?? null, next[field] ?? null);
     }
     for (const field of LAYOUT_FIELDS) {
       addChange(changes, "CLIP", clipId, `/clips/${clipId}/layout/${field}`, previous.layout[field], next.layout[field]);

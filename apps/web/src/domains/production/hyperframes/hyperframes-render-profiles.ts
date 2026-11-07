@@ -2,12 +2,17 @@ export const HYPERFRAMES_RENDER_PROFILE_IDS = [
   "preview",
   "balanced",
   "high",
+  "preview-24",
+  "high-4k",
+  "mov-editing",
 ] as const;
 
 export type HyperframesRenderProfileId = typeof HYPERFRAMES_RENDER_PROFILE_IDS[number];
-export type HyperframesRenderFormat = "mp4";
+export const HYPERFRAMES_RENDER_FORMATS = ["mp4", "mov"] as const;
+export const HYPERFRAMES_RENDER_RESOLUTIONS = ["1080p", "4k"] as const;
+export type HyperframesRenderFormat = typeof HYPERFRAMES_RENDER_FORMATS[number];
 export type HyperframesRenderQuality = "draft" | "standard" | "high";
-export type HyperframesRenderResolution = "1080p";
+export type HyperframesRenderResolution = typeof HYPERFRAMES_RENDER_RESOLUTIONS[number];
 
 export type HyperframesRenderSettings = {
   format: HyperframesRenderFormat;
@@ -22,18 +27,13 @@ export type HyperframesRenderProfile = HyperframesRenderSettings & {
   label: string;
 };
 
-/**
- * Safe presets for Courseforge compositions that contain avatar footage.
- * HeyGen documents 25 FPS for avatar output. The accepted source assets are
- * capped below 2K, so exposing 4K would add cost without source detail and can
- * require an Enterprise entitlement.
- */
+/** Perfiles de salida. El perfil Estándar conserva la cadencia del lienzo editorial. */
 export const HYPERFRAMES_RENDER_PROFILES: readonly HyperframesRenderProfile[] = [
   {
     description: "Menor fidelidad para revisar composición y sincronización.",
     format: "mp4",
-    fps: 25,
-    id: "preview",
+    fps: 24,
+    id: "preview-24",
     label: "Borrador",
     quality: "draft",
     resolution: "1080p",
@@ -48,11 +48,20 @@ export const HYPERFRAMES_RENDER_PROFILES: readonly HyperframesRenderProfile[] = 
     resolution: "1080p",
   },
   {
-    description: "Mayor fidelidad de codificación; puede tardar más en procesarse.",
+    description: "Salida 4K con mayor tiempo y costo de render en HeyGen.",
     format: "mp4",
-    fps: 25,
-    id: "high",
+    fps: 30,
+    id: "high-4k",
     label: "Alta calidad",
+    quality: "high",
+    resolution: "4k",
+  },
+  {
+    description: "Archivo para edición externa. Puede ocupar mucho más espacio que MP4.",
+    format: "mov",
+    fps: 25,
+    id: "mov-editing",
+    label: "MOV para edición",
     quality: "high",
     resolution: "1080p",
   },
@@ -60,10 +69,17 @@ export const HYPERFRAMES_RENDER_PROFILES: readonly HyperframesRenderProfile[] = 
 
 export const DEFAULT_HYPERFRAMES_RENDER_PROFILE_ID: HyperframesRenderProfileId = "balanced";
 
+const ALL_RENDER_PROFILES: readonly HyperframesRenderProfile[] = [
+  ...HYPERFRAMES_RENDER_PROFILES,
+  { ...HYPERFRAMES_RENDER_PROFILES[0]!, id: "preview", fps: 25, label: "Borrador anterior" },
+  { ...HYPERFRAMES_RENDER_PROFILES[2]!, id: "high", fps: 25, resolution: "1080p",
+    label: "Alta calidad anterior", description: "Perfil histórico conservado para esta revisión." },
+];
+
 export function getHyperframesRenderProfile(
   id: HyperframesRenderProfileId,
 ): HyperframesRenderProfile {
-  return HYPERFRAMES_RENDER_PROFILES.find((profile) => profile.id === id)
+  return ALL_RENDER_PROFILES.find((profile) => profile.id === id)
     || HYPERFRAMES_RENDER_PROFILES[1]!;
 }
 
@@ -71,7 +87,7 @@ export function findHyperframesRenderProfile(
   settings: Partial<HyperframesRenderSettings> | null | undefined,
 ): HyperframesRenderProfile | null {
   if (!settings) return null;
-  return HYPERFRAMES_RENDER_PROFILES.find((profile) => (
+  return ALL_RENDER_PROFILES.find((profile) => (
     profile.format === settings.format
     && profile.fps === settings.fps
     && profile.quality === settings.quality

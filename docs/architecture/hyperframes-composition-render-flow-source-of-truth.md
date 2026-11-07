@@ -498,6 +498,25 @@ duplicar uploads o cobros. Referencias:
 - [Contrato oficial de variables y medios](https://github.com/heygen-com/hyperframes/blob/main/skills/hyperframes-core/references/variables-and-media.md)
 - [Pipeline oficial de render y mezcla](https://github.com/heygen-com/hyperframes/blob/main/docs/packages/producer.mdx)
 
+El perfil Estándar conserva MP4 a 1080p y 25 FPS. Borrador solicita MP4
+a 1080p y 24 FPS, Alta calidad solicita MP4 a 4K y 30 FPS, y MOV para
+edición solicita 1080p y 25 FPS. La cadencia del lienzo sigue en 25 FPS.
+Las revisiones históricas de Borrador y Alta calidad conservan su selección
+original. El snapshot congela las cuatro opciones y el despacho rechaza
+parámetros distintos a los congelados.
+
+El historial de Entrega se abre en la capa modal nativa del navegador para
+evitar el recorte de la biblioteca y del timeline. La lista desplaza su
+contenido dentro del diálogo y cerrar devuelve el foco a Versiones.
+
+El importador reanudable conserva `video/quicktime` y `final.mov`. El perfil
+MOV se mantiene en resolución nativa porque HeyGen reserva 4K para MP4.
+El presupuesto considera el tamaño estimado de ProRes y el límite real de
+importación de 2 GiB. La descarga usa el asset importado. El pipeline de
+integridad y conformidad persistida de videos finales continúa especializado
+en MP4. La comparación local de video exportado usa el FPS de salida para
+ubicar los cuadros y reduce 4K a la resolución editorial para comparar.
+
 HyperFrames extrae audio desde el `src` escrito en el HTML. Por eso
 `materializeHyperframesRenderMedia` debe reemplazar cada binding `cf_asset_*`
 por una URL HTTPS firmada antes del upload, conservar el binding declarativo y
@@ -658,6 +677,32 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-06: presets de composición escriben V2 y conservan lectura V1. Manual
+  y agente comparten captura; el editor confirma autosave/cola y recuperación
+  antes de usar el hash guardado. La UI conserva el formulario en errores y
+  muestra diagnósticos. Se separan rol/pista/tipo y se capturan color, fades,
+  capas ampliadas, motion personalizado, estilo nativo y mezcla completa sin
+  copiar medios ni texto. Las fuentes, recortes, velocidad/congelación,
+  envolventes, grupos, transiciones y HTML del destino permanecen propios.
+  Política exhaustiva por campo en `composition-preset-field-policy.ts`;
+  pruebas en `composition-preset.service.test.ts` y QA local del panel con
+  `npm run qa:composition-preset-capture --workspace=apps/web`.
+  Contrato, límites y rollback:
+  [captura de presets](../../openspec/changes/fix-composition-preset-capture/design.md).
+
+- 2026-11-06: apertura del editor solapa el contenedor de composición con la
+  sincronización. Biblioteca y preparación del borrador se solicitan después de
+  sincronizar, en paralelo; el editor se monta cuando ambas terminan. La
+  biblioteca sigue cargando si falla el borrador. Las comprobaciones de registro
+  y Storage se agrupan en lotes de cuatro referencias; descargas, checksum y
+  escrituras permanecen secuenciales. Se preservan filtros tenant/componente,
+  detección de cambios y recuperación de unicidad. Sin caché de documentos ni
+  cambios de proveedor. Código en `HyperframesCompositionPanel.tsx` y
+  `hyperframes-source-asset.service.ts`; pruebas de orquestación y concurrencia en
+  `hyperframes-editor-preparation.client.test.ts` y
+  `hyperframes-source-sync-batches.test.ts`. Alcance y evidencia:
+  [optimización de carga](../../openspec/changes/optimize-editor-loading/proposal.md).
 
 - 2026-11-06: generación documental integra recibos de respaldo y vigencia en
   `production_jobs`/`production_assets`, con revisión, fingerprint y hash del
@@ -872,6 +917,23 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - 2026-09-04: documento creado; incidente SFX diagnosticado; auditoria completa
   de documento, preview, snapshot ZIP, entrega remota y provider; plan de seis
   fases definido. No se implementaron aun las correcciones.
+
+## Asistencia conversacional de edición
+
+El chat del editor nativo envía la solicitud, el clip seleccionado y hasta
+cuatro mensajes recientes. El servidor usa la versión guardada y proyecta
+identidad editorial, tiempos, controles disponibles y sus valores. Cuando falta
+un dato, una respuesta con cero operaciones devuelve texto al chat y no crea
+una propuesta. El historial sirve para interpretar el turno y carece de
+autoridad sobre la composición.
+
+El catálogo permite proponer volumen maestro, volumen y fundidos individuales
+en clips con audio configurable, y encuadre de imágenes y videos. Las propuestas
+pasan por el esquema del editor, la lista de operaciones autorizadas, la
+simulación y el diff. Aplicar exige confirmación y la versión de base. Deshacer
+exige que la versión aplicada siga vigente y recupera la base inmutable por
+hash dentro de la misma organización y borrador. El flujo de generación de
+presets por instrucciones sigue requiriendo una propuesta con operaciones.
 
 ## Capas visuales adicionales
 

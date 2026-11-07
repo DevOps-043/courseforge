@@ -1,5 +1,5 @@
 import {
-  COMPOSITION_PRESET_SCHEMA_VERSION,
+  LEGACY_COMPOSITION_PRESET_SCHEMA_VERSION,
   compositionDynamicPresetDefinitionSchema,
   type CompositionPresetCatalogEntry,
   type CompositionDynamicPresetDefinition,
@@ -57,7 +57,7 @@ function builtIn(params: { description: string; id: string; name: string; rules:
     definition: compositionDynamicPresetDefinitionSchema.parse({
       audioMix: { ducking: { attackSeconds: 0.2, duckedVolumeRatio: 0.35, enabled: true, releaseSeconds: 0.35 } },
       rules: params.rules,
-      schemaVersion: COMPOSITION_PRESET_SCHEMA_VERSION,
+      schemaVersion: LEGACY_COMPOSITION_PRESET_SCHEMA_VERSION,
     }),
     description: params.description,
     id: params.id,

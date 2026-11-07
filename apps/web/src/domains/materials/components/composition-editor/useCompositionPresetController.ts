@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { CompositionPresetCatalogEntry } from "@/domains/production/composition-editor/composition-preset.types";
 import {
   COMPOSITION_VERSION_FALLBACK_HEADER,
@@ -30,6 +30,8 @@ export function useCompositionPresetController({ agentProposalActive, draftId, g
   const [presetBusy, setPresetBusy] = useState(false);
   const [presetPreview, setPresetPreview] = useState<CompositionPresetPreviewState | null>(null);
   const [lastAppliedPreset, setLastAppliedPreset] = useState<AppliedCompositionPreset | null>(null);
+  const [presetCreationDiagnostics, setPresetCreationDiagnostics] = useState<string[] | null>(null);
+  const creatingRef = useRef(false);
 
   const loadRecoverablePresetApplication = useCallback(async () => {
     try {
@@ -57,8 +59,13 @@ export function useCompositionPresetController({ agentProposalActive, draftId, g
   }, [onError]);
 
   const createCompositionPreset = useCallback(async (input: { description: string; instruction?: string; mode: "INSTRUCTIONS" | "MANUAL"; name: string }) => {
+    setPresetCreationDiagnostics(null);
     const currentPayload = getCurrentPayload();
-    if (!currentPayload || presetBusy || saving) return;
+    if (!currentPayload || presetBusy || saving || creatingRef.current || isSaveInFlight() || agentProposalActive || presetPreview) {
+      onError("Confirma los cambios o propuestas pendientes antes de crear un preset.");
+      return false;
+    }
+    creatingRef.current = true;
     setPresetBusy(true);
     onError(null);
     try {
@@ -67,15 +74,19 @@ export function useCompositionPresetController({ agentProposalActive, draftId, g
         headers: { "Content-Type": "application/json", "If-Match": formatCompositionDocumentEtag(currentPayload.documentHash), [COMPOSITION_VERSION_FALLBACK_HEADER]: currentPayload.documentHash },
         method: "POST",
       });
-      const body = await readCompositionApiResponse<{ error?: string }>(response, "No se pudo crear el preset.");
-      if (!response.ok) throw new Error(body.error || "No se pudo crear el preset.");
+      const body = await readCompositionApiResponse<{ data?: { id: string; diagnostics: Array<{ message: string }> }; error?: string }>(response, "No se pudo crear el preset.");
+      if (!response.ok || !body.data?.id) throw new Error(body.error || "No se pudo crear el preset.");
+      setPresetCreationDiagnostics(body.data.diagnostics?.map(diagnostic => diagnostic.message) ?? []);
       await loadCompositionPresets();
+      return true;
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : "No se pudo crear el preset.");
+      return false;
     } finally {
+      creatingRef.current = false;
       setPresetBusy(false);
     }
-  }, [draftId, getCurrentPayload, loadCompositionPresets, onError, presetBusy, saving]);
+  }, [agentProposalActive, draftId, getCurrentPayload, isSaveInFlight, loadCompositionPresets, onError, presetBusy, presetPreview, saving]);
 
   const previewCompositionPreset = useCallback(async (presetId: string) => {
     const currentPayload = getCurrentPayload();
@@ -159,5 +170,5 @@ export function useCompositionPresetController({ agentProposalActive, draftId, g
     }
   }, [draftId, getCurrentPayload, isSaveInFlight, lastAppliedPreset, onDocumentApplied, onError, onSavingChange, presetBusy]);
 
-  return { applyCompositionPresetPreview, createCompositionPreset, dismissCompositionPresetPreview, lastAppliedPreset, loadCompositionPresets, loadRecoverablePresetApplication, presetBusy, presetCatalogLoading, presetEntries, presetPanelOpen, presetPreview, previewCompositionPreset, setLastAppliedPreset, setPresetPanelOpen, undoLastCompositionPreset };
+  return { applyCompositionPresetPreview, createCompositionPreset, dismissCompositionPresetPreview, lastAppliedPreset, loadCompositionPresets, loadRecoverablePresetApplication, presetBusy, presetCatalogLoading, presetCreationDiagnostics, presetEntries, presetPanelOpen, presetPreview, previewCompositionPreset, setLastAppliedPreset, setPresetPanelOpen, undoLastCompositionPreset };
 }

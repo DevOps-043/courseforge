@@ -5,6 +5,8 @@ const MEBIBYTE = 1024 * 1024;
 const RECOMMENDED_SEGMENT_SECONDS = 10 * 60;
 const RECOMMENDED_SEGMENT_BYTES = 1536 * MEBIBYTE;
 const CONTAINER_OVERHEAD_FACTOR = 1.08;
+// Referencia de ProRes 4444 a 1080p y 30 FPS. El proveedor usa bitrate variable.
+const MOV_BASE_BITRATE_BITS_PER_SECOND = 330_000_000;
 
 const VIDEO_BITRATE_BITS_PER_SECOND: Record<HyperframesRenderSettings["quality"], number> = {
   draft: 3_500_000,
@@ -27,7 +29,10 @@ export function estimateHyperframesRenderBudget(params: {
   renderProfile: HyperframesRenderSettings;
 }): HyperframesRenderBudget {
   const durationSeconds = Math.max(0, params.durationSeconds);
-  const bitrate = VIDEO_BITRATE_BITS_PER_SECOND[params.renderProfile.quality];
+  const { format, fps, quality, resolution } = params.renderProfile;
+  const bitrate = format === "mov"
+    ? MOV_BASE_BITRATE_BITS_PER_SECOND * fps / 30
+    : VIDEO_BITRATE_BITS_PER_SECOND[quality] * (resolution === "4k" ? 4 : 1) * fps / 25;
   const estimatedOutputBytes = Math.ceil((durationSeconds * bitrate / 8) * CONTAINER_OVERHEAD_FACTOR);
   const secondsBySize = Math.max(
     1,

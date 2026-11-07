@@ -28,6 +28,16 @@ export function classifyCompositionAgentRisk(
       case "clip.duration":
         raise("MEDIUM", "Modifica la duración visible de un clip.");
         break;
+      case "clip.volume":
+        if (operation.volume === 0) raise("HIGH", "Silencia el audio de un clip.");
+        else raise("MEDIUM", "Modifica el volumen de un clip.");
+        break;
+      case "clip.audio-fades":
+        raise("MEDIUM", "Modifica los fundidos de audio de un clip.");
+        break;
+      case "clip.media-fit":
+        reasons.add("Modifica el encuadre de una imagen o un video.");
+        break;
       case "clip.visibility":
         if (operation.hidden) raise("HIGH", "Oculta contenido de la composición.");
         else reasons.add("Vuelve a mostrar contenido existente.");

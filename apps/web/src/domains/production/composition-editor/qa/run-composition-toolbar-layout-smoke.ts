@@ -116,6 +116,37 @@ async function main() {
     await browser.client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: 20, y: 20, button: "left", clickCount: 1 });
     await compositionQaDelay(100);
     if (await evaluate("Boolean(document.querySelector('[role=menu]'))")) throw new Error("Outside pointer failed to close tools");
+    for (const viewport of [{ width: 1365, height: 768 }, { width: 390, height: 420 }]) {
+      await browser.client.send("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
+      await evaluate(`(() => {
+        const trigger = document.querySelector('[aria-haspopup="dialog"]');
+        trigger.focus(); trigger.click();
+      })()`);
+      await compositionQaDelay(260);
+      if (!await evaluate(`(() => {
+        const dialog = document.querySelector("dialog:modal");
+        if (!dialog) return false;
+        const bounds = dialog.getBoundingClientRect();
+        const close = dialog.querySelector('button').getBoundingClientRect();
+        const list = dialog.querySelectorAll('button')[1].parentElement.parentElement;
+        return bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight
+          && list.scrollHeight > list.clientHeight
+          && dialog.contains(document.activeElement)
+          && dialog.contains(document.elementFromPoint(close.left + close.width / 2, close.top + close.height / 2));
+      })()`)) throw new Error("El historial de Entrega quedó recortado o detrás del editor.");
+      if (viewport.width === 1365) {
+        await browser.client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+        await browser.client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+      } else {
+        await browser.client.send("Input.dispatchMouseEvent", { type: "mousePressed", x: 4, y: 4, button: "left", clickCount: 1 });
+        await browser.client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: 4, y: 4, button: "left", clickCount: 1 });
+      }
+      await compositionQaDelay(100);
+      if (!await evaluate("!document.querySelector('dialog:modal') && document.activeElement?.getAttribute('aria-haspopup') === 'dialog'")) {
+        throw new Error(`Cerrar versiones no devolvió el foco a Entrega (${viewport.width}px). ${await evaluate("JSON.stringify({ open: Boolean(document.querySelector('dialog:modal')), focus: document.activeElement?.tagName })")}`);
+      }
+    }
+    process.stdout.write("Historial de Entrega visible sobre el editor y cierre con foco restaurado en dos tamaños de viewport.\n");
     process.stdout.write("Barra sin solapes (<=52px), Guías con texto visible, apertura/creación/cierre sin pérdida, foco/Escape y menú/historial: aprobado en 6 anchos, con inspector abierto y cerrado.\n");
   } finally { await browser.close(); }
 }

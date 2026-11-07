@@ -5,11 +5,13 @@ import { useCompositionStudioControls } from "@/domains/materials/components/com
 import styles from "@/domains/materials/components/composition-editor/CompositionStudio.module.css";
 import { CompositionReferenceGuidesPanel } from "@/domains/materials/components/composition-editor/CompositionReferenceGuidesPanel";
 import { useCompositionReferenceGuides } from "@/domains/materials/components/composition-editor/useCompositionReferenceGuides";
+import { CompositionDeliveryPanel } from "@/domains/materials/components/composition-editor/CompositionDeliveryPanel";
 
 function Fixture() {
   const controls = useCompositionStudioControls();
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [deliveryHistoryOpen, setDeliveryHistoryOpen] = useState(false);
   const [referenceGuidesOpen, setReferenceGuidesOpen] = useState(false);
   const referenceGuidesPanelId = useId();
   const { state: referenceGuides, setState: setReferenceGuides, storageError } = useCompositionReferenceGuides("toolbar-qa");
@@ -39,7 +41,22 @@ function Fixture() {
   };
   return <div className={styles.studio} style={{ height: "100vh" }}>
     <div className={`${styles.editorGrid} ${inspectorOpen ? styles.editorGridWithInspector : ""}`}>
-      <aside className={styles.library}>Biblioteca</aside>
+      <aside className={styles.library}>
+        <div className={styles.libraryBody}>
+          <CompositionDeliveryPanel
+            assembly={null} busy={false} compact diagnostics={null} durationSeconds={10} error={null}
+            history={Array.from({ length: 30 }, (_, index) => ({
+              id: String(index), documentHash: "a".repeat(64), documentVersion: index + 1, revisionNumber: index + 1,
+              createdAt: "2026-01-01T00:00:00Z", isActive: false, isCurrentDocument: false,
+              projectArchiveSizeBytes: 1024, renderProfile: null, renderProfileId: null,
+            }))}
+            historyOpen={deliveryHistoryOpen} importStatus="NONE" notice={null}
+            onApprove={noop} onDeleteAndRender={noop} onHistoryToggle={() => setDeliveryHistoryOpen((open) => !open)}
+            onPrepare={noop} onProfileChange={noop} onRender={noop} onRestore={noop}
+            priorCompletedVideo={false} providerStatus={null} renderStatus="idle" selectedRenderProfileId="balanced"
+          />
+        </div>
+      </aside>
       <section ref={previewRef} data-preview className={styles.previewPanel}>
         <CompositionPreviewToolbar {...props} />
         {referenceGuidesOpen && <CompositionReferenceGuidesPanel panelId={referenceGuidesPanelId} state={referenceGuides} canvas={props.canvas}

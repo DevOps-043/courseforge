@@ -2082,23 +2082,23 @@
   line-height: 1.4;
 }
 
-.snapshotBackdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 100018;
-  border: 0;
+.snapshotHistory::backdrop {
   background: rgb(1 6 11 / 0.48);
   backdrop-filter: blur(0.45rem);
 }
 
 .snapshotHistory {
   position: fixed;
-  top: 5.5rem;
+  top: min(5.5rem, 12dvh);
   right: 1rem;
-  bottom: 4.75rem;
-  z-index: 100019;
-  display: flex;
+  bottom: min(4.75rem, 10dvh);
+  left: auto;
   width: min(28rem, calc(100vw - 2rem));
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--studio-border-active);
@@ -2110,6 +2110,10 @@
   box-shadow: 0 2.5rem 7rem rgb(0 0 0 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.06);
   backdrop-filter: blur(1.5rem) saturate(125%);
   animation: snapshot-panel-in 220ms var(--engine-ease) both;
+}
+
+.snapshotHistory[open] {
+  display: flex;
 }
 
 .snapshotHistoryHeader {

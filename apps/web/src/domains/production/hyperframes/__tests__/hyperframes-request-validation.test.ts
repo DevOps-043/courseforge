@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { z } from "zod";
+import { hyperframesRenderProfileSchema } from "../hyperframes.types";
+import { estimateHyperframesRenderBudget } from "../hyperframes-render-budget.service";
 import {
   resolveHyperframesSnapshotRenderProfile,
   summarizeHyperframesValidationIssues,
@@ -78,13 +80,20 @@ test("keeps the render profile bound to the immutable snapshot", () => {
   );
 });
 
-test("exposes only avatar-safe user profiles and keeps high quality selectable", () => {
+test("exposes distinct output levels and keeps historical profiles reproducible", () => {
   assert.deepEqual(
     HYPERFRAMES_RENDER_PROFILES.map(({ format, fps, resolution }) => ({ format, fps, resolution })),
-    HYPERFRAMES_RENDER_PROFILES.map(() => ({ format: "mp4", fps: 25, resolution: "1080p" })),
+    [
+      { format: "mp4", fps: 24, resolution: "1080p" },
+      { format: "mp4", fps: 25, resolution: "1080p" },
+      { format: "mp4", fps: 30, resolution: "4k" },
+      { format: "mov", fps: 25, resolution: "1080p" },
+    ],
   );
   assert.equal(getHyperframesRenderProfile("balanced").quality, "standard");
   assert.equal(getHyperframesRenderProfile("high").quality, "high");
+  assert.equal(getHyperframesRenderProfile("high").resolution, "1080p");
+  assert.equal(getHyperframesRenderProfile("preview").fps, 25);
   assert.deepEqual(toHyperframesRenderSettings(getHyperframesRenderProfile("balanced")), {
     format: "mp4",
     fps: 25,
@@ -95,6 +104,26 @@ test("exposes only avatar-safe user profiles and keeps high quality selectable",
     "id" in toHyperframesRenderSettings(getHyperframesRenderProfile("balanced")),
     false,
   );
+});
+
+test("pins new provider settings and rejects MOV with 4K", () => {
+  const mov = toHyperframesRenderSettings(getHyperframesRenderProfile("mov-editing"));
+  const high = toHyperframesRenderSettings(getHyperframesRenderProfile("high-4k"));
+  assert.deepEqual(hyperframesRenderProfileSchema.parse(mov), mov);
+  assert.deepEqual(hyperframesRenderProfileSchema.parse(high), high);
+  assert.equal(hyperframesRenderProfileSchema.safeParse({ ...mov, resolution: "4k" }).success, false);
+  assert.deepEqual(resolveHyperframesSnapshotRenderProfile({}, mov), { data: mov, success: true });
+  assert.equal(resolveHyperframesSnapshotRenderProfile({ format: "mp4" }, mov).success, false);
+  assert.equal(resolveHyperframesSnapshotRenderProfile({ resolution: "1080p" }, high).success, false);
+});
+
+test("estimates more bytes for 4K and blocks MOV estimates over the storage limit", () => {
+  const estimate = (id: "high" | "high-4k" | "mov-editing") => estimateHyperframesRenderBudget({
+    durationSeconds: 120,
+    renderProfile: getHyperframesRenderProfile(id),
+  });
+  assert.ok(estimate("high-4k").estimatedOutputBytes > estimate("high").estimatedOutputBytes);
+  assert.equal(estimate("mov-editing").requiresSegmentation, true);
 });
 
 test("removes manifest-only metadata before resolving a provider request", () => {

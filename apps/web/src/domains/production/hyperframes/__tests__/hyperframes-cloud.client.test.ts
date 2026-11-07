@@ -99,6 +99,30 @@ describe("HyperFrames Cloud client", () => {
     });
   });
 
+  it("sends MOV and 4K profiles as distinct render options", async () => {
+    const sent: Record<string, unknown>[] = [];
+    const client = new HyperframesCloudClient({
+      apiKey: "test-key-123456",
+      fetchImpl: async (_input, init) => {
+        sent.push(JSON.parse(String(init?.body)));
+        return jsonResponse({ data: { render_id: "hfr_profile" } }, 202);
+      },
+    });
+    await client.createRender({
+      aspectRatio: "16:9", assetId: "asst_123", idempotencyKey: "hf:render:mov",
+      format: "mov", fps: 25, quality: "high", resolution: "1080p",
+    });
+    await client.createRender({
+      aspectRatio: "9:16", assetId: "asst_123", idempotencyKey: "hf:render:4k",
+      format: "mp4", fps: 30, quality: "high", resolution: "4k",
+    });
+    assert.deepEqual(sent.map(({ aspect_ratio, format, fps, quality, resolution }) =>
+      ({ aspect_ratio, format, fps, quality, resolution })), [
+      { aspect_ratio: "16:9", format: "mov", fps: 25, quality: "high", resolution: "1080p" },
+      { aspect_ratio: "9:16", format: "mp4", fps: 30, quality: "high", resolution: "4k" },
+    ]);
+  });
+
   it("rejects oversized provider JSON before parsing it", async () => {
     const client = new HyperframesCloudClient({
       apiKey: "test-key-123456",

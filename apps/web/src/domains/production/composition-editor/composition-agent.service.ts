@@ -29,20 +29,24 @@ export class CompositionAgentProposalError extends Error {
 }
 
 export const compositionAgentProposalInputSchema = z.object({
-  instruction: z.string().trim().min(3).max(1_500),
+  history: z.array(z.object({
+    role: z.enum(["assistant", "user"]),
+    text: z.string().trim().min(1).max(1_500),
+  }).strict()).max(4).optional(),
+  instruction: z.string().trim().min(1).max(1_500),
   selectedClipId: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i).nullable().optional(),
 }).strict();
 
 export type CompositionAgentProposalInput = z.infer<typeof compositionAgentProposalInputSchema>;
 
 /** Generates a constrained proposal; persistence always remains a separate approval action. */
-export async function proposeCompositionEdits(params: {
+export async function respondToCompositionEditRequest(params: {
   baseDocumentHash: string;
   document: CompositionEditorDocument;
   input: unknown;
   organizationId: string;
   supabase: Parameters<typeof getHyperframesGenerationSettings>[0]["supabase"];
-}) {
+}, allowReply = true) {
   const input = compositionAgentProposalInputSchema.parse(params.input);
   const settings = await getHyperframesGenerationSettings({
     organizationId: params.organizationId,
@@ -62,13 +66,16 @@ export async function proposeCompositionEdits(params: {
   const context = buildCompositionAgentContext(params.document, selected?.id || null);
   try {
     const prompt = buildCompositionProposalPrompt({
+      allowReply,
       context,
+      history: input.history,
       instruction: input.instruction,
       selectedClipId: selected?.id || null,
     });
     const recovered = await recoverCompositionAgentProposal({
       attempt: async (attempt) => {
         const patch = await requestCompositionAgentPatch({
+          allowReply,
           apiKey: attempt.apiKey,
           model: attempt.model,
           prompt: attempt.prompt,
@@ -76,6 +83,7 @@ export async function proposeCompositionEdits(params: {
           temperature: attempt.temperature,
           timeoutMs: attempt.timeoutMs,
         });
+        if ("reply" in patch) return patch;
         if (!COMPOSITION_MOTION_ENABLED && patch.operations.some((operation) => isCompositionMotionOperation(operation.type))) {
           throw new CompositionAgentProposalError("La edición de animaciones está deshabilitada temporalmente.", 409);
         }
@@ -134,6 +142,12 @@ export async function proposeCompositionEdits(params: {
     });
     throw new CompositionAgentProposalError("El agente no produjo una propuesta de edici\u00f3n v\u00e1lida. Puedes ajustar la instrucci\u00f3n y reintentar.", 422);
   }
+}
+
+export async function proposeCompositionEdits(params: Parameters<typeof respondToCompositionEditRequest>[0]) {
+  const result = await respondToCompositionEditRequest(params, false);
+  if ("reply" in result) throw new CompositionAgentProposalError("Se requiere una propuesta de edición.", 422);
+  return result;
 }
 
 function resolveModelRuntime(model: string, required: boolean): CompositionAgentModelRuntime | null {

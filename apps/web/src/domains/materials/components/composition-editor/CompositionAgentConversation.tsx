@@ -2,13 +2,14 @@ import { APP_CONFIG } from "../../../../config/app";
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Send } from "lucide-react";
 import type { CompositionAgentProposal } from "./composition-studio.types";
+import type { CompositionAgentConversationMessage } from "./useCompositionAgentProposalController";
 import styles from "./CompositionStudio.module.css";
 
 interface CompositionAgentConversationProps {
   lastAppliedProposal: CompositionAgentProposal | null;
   onApprove: () => void;
   onDismiss: () => void;
-  onPropose: (instruction: string) => Promise<void>;
+  onPropose: (instruction: string, history: CompositionAgentConversationMessage[]) => Promise<{ reply: string | null } | null>;
   onUndo: () => void;
   proposal: CompositionAgentProposal | null;
   proposing: boolean;
@@ -16,12 +17,13 @@ interface CompositionAgentConversationProps {
 }
 
 export function CompositionAgentConversation({ lastAppliedProposal, onApprove, onDismiss, onPropose, onUndo, proposal, proposing, saving }: CompositionAgentConversationProps) {
-  type Message = { id: string; role: "assistant" | "user"; text: string };
+  type Message = CompositionAgentConversationMessage & { id: string };
   const [instruction, setInstruction] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     { id: "welcome", role: "assistant", text: "Cuéntame qué deseas modificar. Primero revisaré la composición y te explicaré el plan. Sólo aplicaré cambios cuando los confirmes." },
   ]);
   const proposalId = useRef<string | null>(null);
+  const sending = useRef(false);
 
   useEffect(() => {
     if (!proposal || proposalId.current === proposal.proposalId) return;
@@ -40,10 +42,25 @@ export function CompositionAgentConversation({ lastAppliedProposal, onApprove, o
 
   const send = async () => {
     const text = instruction.trim();
-    if (text.length < 3 || proposing || proposal) return;
-    setMessages((current) => [...current, { id: `user-${Date.now()}`, role: "user", text }]);
+    if (!text || sending.current || proposing || proposal) return;
+    sending.current = true;
+    const id = Date.now();
+    const history = messages.filter((message) => message.id !== "welcome").slice(-4)
+      .map(({ role, text }) => ({ role, text }));
+    setMessages((current) => [...current, { id: `user-${id}`, role: "user", text }]);
     setInstruction("");
-    await onPropose(text);
+    try {
+      const result = await onPropose(text, history);
+      if (!result) {
+        setMessages((current) => current.filter((message) => message.id !== `user-${id}`));
+        setInstruction((current) => current || text);
+      } else if (result.reply) {
+        const reply = result.reply;
+        setMessages((current) => [...current, { id: `reply-${id}`, role: "assistant", text: reply }]);
+      }
+    } finally {
+      sending.current = false;
+    }
   };
 
   const reject = () => {
@@ -69,7 +86,7 @@ export function CompositionAgentConversation({ lastAppliedProposal, onApprove, o
     <div className="border-t border-slate-200 bg-white p-2 dark:border-white/10 dark:bg-[#101720]">
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-1.5 transition focus-within:border-[var(--engine-accent)] focus-within:ring-2 focus-within:ring-[var(--engine-accent)]/15 dark:border-white/15 dark:bg-slate-950">
         <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} maxLength={1500} rows={2} placeholder="Pide un cambio para la composición..." className="w-full resize-none bg-transparent px-1 py-0 text-xs leading-4 text-slate-900 outline-none placeholder:text-slate-400 dark:text-white" />
-        <div className="mt-0.5 flex items-center justify-between gap-2"><span className="text-[9px] text-slate-400">Enter para enviar · Shift + Enter para salto</span><button type="button" aria-label="Enviar mensaje" disabled={proposing || Boolean(proposal) || instruction.trim().length < 3} onClick={() => void send()} className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--engine-primary)] text-white transition hover:bg-[#0d2f4d] disabled:cursor-not-allowed disabled:opacity-40"><Send size={12} /></button></div>
+        <div className="mt-0.5 flex items-center justify-between gap-2"><span className="text-[9px] text-slate-400">Enter para enviar · Shift + Enter para salto</span><button type="button" aria-label="Enviar mensaje" disabled={proposing || Boolean(proposal) || !instruction.trim()} onClick={() => void send()} className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--engine-primary)] text-white transition hover:bg-[#0d2f4d] disabled:cursor-not-allowed disabled:opacity-40"><Send size={12} /></button></div>
       </div>
     </div>
   </section>;

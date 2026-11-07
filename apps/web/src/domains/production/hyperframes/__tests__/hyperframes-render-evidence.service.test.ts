@@ -64,6 +64,17 @@ test("el importador TUS actual no emite checksum y no puede certificar el MP4", 
   assert.deepEqual(evidence.failures, ["final_video_checksum_missing"]);
 });
 
+test("reconoce la ruta y el MIME de MOV sin acreditar un checksum ausente", () => {
+  const input = fixture();
+  input.revision.manifest.conformance_contract.renderProfile.format = "mov";
+  input.asset.mime_type = "video/quicktime";
+  input.asset.storage_path = input.asset.storage_path.replace(/\.mp4$/, ".mov");
+  input.asset.checksum = "";
+  assert.deepEqual(assessHyperframesRenderEvidence(input).failures, ["final_video_checksum_missing"]);
+  input.asset.mime_type = "video/mp4";
+  assert.deepEqual(assessHyperframesRenderEvidence(input).failures, ["final_asset_mismatch", "final_video_checksum_missing"]);
+});
+
 test("un checksum sin marca del verificador de Storage no acredita los bytes finales", () => {
   const input = fixture();
   delete (input.asset.metadata as Record<string, unknown>).integrity_method;

@@ -23,6 +23,8 @@ interface UseCompositionAgentProposalControllerOptions {
   selectedClipId: string | null;
 }
 
+export type CompositionAgentConversationMessage = { role: "assistant" | "user"; text: string };
+
 export function useCompositionAgentProposalController({
   draftId,
   getCurrentPayload,
@@ -39,28 +41,39 @@ export function useCompositionAgentProposalController({
   const [lastAppliedAgentProposal, setLastAppliedAgentProposal] = useState<CompositionAgentProposal | null>(null);
   const [proposing, setProposing] = useState(false);
 
-  const requestAgentProposal = useCallback(async (instruction: string, presetPreviewActive = false) => {
+  const requestAgentProposal = useCallback(async (
+    instruction: string,
+    history: CompositionAgentConversationMessage[],
+    presetPreviewActive = false,
+  ) => {
     const currentPayload = getCurrentPayload();
-    if (!currentPayload) return;
+    if (!currentPayload) return null;
     if (presetPreviewActive) {
       onError("Confirma o descarta el preset antes de solicitar otra edición.");
-      return;
+      return null;
     }
     setProposing(true);
     onError(null);
     try {
       const response = await fetch(`/api/production/hyperframes/drafts/${draftId}/agent-proposals`, {
-        body: JSON.stringify({ instruction, selectedClipId }),
+        body: JSON.stringify({ history, instruction, selectedClipId }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
-      const body = await readCompositionApiResponse<{ data?: CompositionAgentProposal; error?: string }>(response, "No se pudo preparar la propuesta.");
+      const body = await readCompositionApiResponse<{
+        data?: CompositionAgentProposal | { documentHash: string; reply: string };
+        error?: string;
+      }>(response, "No se pudo preparar la propuesta.");
       if (!response.ok || !body.data) throw new Error(body.error || "No se pudo preparar la propuesta.");
-      if (body.data.documentHash !== currentPayload.documentHash) throw new Error("La composición cambió antes de recibir la propuesta. Vuelve a solicitarla.");
-      setLastAppliedAgentProposal(null);
+      if (body.data.documentHash !== currentPayload.documentHash || getCurrentPayload()?.documentHash !== currentPayload.documentHash) {
+        throw new Error("La composición cambió antes de recibir la respuesta. Vuelve a solicitarla.");
+      }
+      if ("reply" in body.data) return { reply: body.data.reply };
       setAgentProposal(body.data);
+      return { reply: null };
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : "No se pudo preparar la propuesta.");
+      return null;
     } finally {
       setProposing(false);
     }

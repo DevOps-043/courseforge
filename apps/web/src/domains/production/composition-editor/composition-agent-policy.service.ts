@@ -11,10 +11,13 @@ export const COMPOSITION_AGENT_ALLOWED_OPERATION_TYPES = [
   "animation.add-preset",
   "animation.update-timing",
   "audio-mix.update",
+  "clip.audio-fades",
   "clip.duration",
   "clip.layout",
+  "clip.media-fit",
   "clip.move",
   "clip.visibility",
+  "clip.volume",
   "track.update",
 ] as const satisfies ReadonlyArray<CompositionEditorPatchOperation["type"]>;
 

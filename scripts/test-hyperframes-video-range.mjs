@@ -1,8 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readVideoProbeSize, readVideoRangeBytes } from "../supabase/functions/_shared/hyperframes-video-range.ts";
+import { readVideoProbeSize, readVideoRangeBytes, resolveHyperframesVideoMimeType } from "../supabase/functions/_shared/hyperframes-video-range.ts";
 
 const bytes = new Uint8Array([1, 2, 3, 4]);
+
+test("reconoce MOV en la respuesta de HeyGen y usa solo el path como fallback", () => {
+  const url = "https://cdn.heygen.com/final.MOV?token=video.webm";
+  assert.equal(resolveHyperframesVideoMimeType("video/quicktime; version=1", url), "video/quicktime");
+  assert.equal(resolveHyperframesVideoMimeType("application/octet-stream", url), "video/quicktime");
+  assert.equal(resolveHyperframesVideoMimeType("application/octet-stream", "https://cdn.heygen.com/file", "mov"), "video/quicktime");
+  assert.equal(resolveHyperframesVideoMimeType("application/octet-stream", "https://cdn.heygen.com/final.mp4?token=video.mov"), "video/mp4");
+  assert.equal(resolveHyperframesVideoMimeType("text/html", url), null);
+});
 
 test("acepta un probe 206 exacto y una respuesta completa pequeña", () => {
   assert.equal(readVideoProbeSize(new Response(bytes.slice(0, 1), {

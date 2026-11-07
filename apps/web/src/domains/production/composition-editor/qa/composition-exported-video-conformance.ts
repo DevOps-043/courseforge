@@ -7,7 +7,7 @@ import { RenderInternals } from "@remotion/renderer";
 import { z } from "zod";
 import { evaluateExportedVideoConformanceStatus, type ExportedAudioPresenceStatus } from "./composition-exported-conformance-gate";
 export { evaluateExportedVideoConformanceStatus } from "./composition-exported-conformance-gate";
-import { compositionConformanceContractSchema, type CompositionConformanceReport } from "../composition-preview-render-conformance";
+import { compositionConformanceContractSchema, type CompositionConformanceContract, type CompositionConformanceReport } from "../composition-preview-render-conformance";
 import { measureCompositionConformanceDirectories, compositionConformanceCaptureMetadataSchema } from "./composition-conformance-files";
 import { parseExportedAudioSignal, type ExportedAudioSignal } from "./composition-exported-audio-signal";
 import { evaluateExportedAudioLoudness, measureExportedAudioLoudness, type ExportedAudioLoudnessPolicyId, type ExportedAudioLoudnessReport } from "./composition-exported-audio-loudness";
@@ -27,6 +27,7 @@ import {assertConformanceJobActive} from "./composition-conformance-job-lease";
 import {createControlledProcessEnvironment} from "./composition-controlled-process-environment";
 import {pinComparisonTools} from "./composition-comparison-tool-integrity";
 import {resolveSdrCheckpointFilter, assertSdrCheckpointStreamProfile} from "./composition-sdr-checkpoint-decoder";
+import { COMPOSITION_CANVAS_FORMATS, resolveCompositionCanvasFormat } from "../composition-canvas-format";
 import type {ComparisonProcessPorts} from "./composition-comparison-process-ports";
 import {requiresControlledExecutorIntervention} from "./composition-controlled-execution-fence";
 
@@ -133,6 +134,22 @@ export function parseExportedFrameTimes(stdout: string, frameIndexes: number[], 
   return { checkpointTimes: frameIndexes.map((index) => times[index]!), frameCount: times.length, maxTimelineDriftFrames };
 }
 
+export function planExportedVideoCheckpoints(contract: Pick<CompositionConformanceContract, "canvas" | "checkpoints" | "renderProfile">) {
+  const is4k = contract.renderProfile.resolution === "4k";
+  const nativePreset = is4k ? COMPOSITION_CANVAS_FORMATS[resolveCompositionCanvasFormat(contract.canvas)] : null;
+  const fps = contract.renderProfile.fps;
+  const frameCount = Math.ceil(contract.canvas.durationSeconds * fps);
+  return {
+    fps,
+    frameCount,
+    width: nativePreset ? nativePreset.width * 2 : contract.canvas.width,
+    height: nativePreset ? nativePreset.height * 2 : contract.canvas.height,
+    frameIndexes: contract.checkpoints.map(({ timeSeconds }) =>
+      Math.min(frameCount - 1, Math.round(timeSeconds * fps))),
+    downscale: is4k,
+  };
+}
+
 export async function compareExportedVideoWithPreview(params: {
   audioReferencePath?: string;
   audioReferenceMetadataPath?: string;
@@ -206,7 +223,10 @@ export async function compareExportedVideoWithPreview(params: {
     audioSignal = parseExportedAudioSignal(stderr);
     audioStatus = audioSignal.signalAboveFloor ? "SIGNAL_ABOVE_FLOOR_NOT_FULLY_EVALUATED" : "REQUIRED_AUDIO_BELOW_FLOOR";
   }
-  if (probe.width !== contract.canvas.width || probe.height !== contract.canvas.height) throw new Error("EXPORTED_VIDEO_DIMENSIONS_MISMATCH");
+  const output = planExportedVideoCheckpoints(contract);
+  if (probe.width !== output.width || probe.height !== output.height) {
+    throw new Error("EXPORTED_VIDEO_DIMENSIONS_MISMATCH");
+  }
   if (Math.abs(probe.fps - contract.renderProfile.fps) > 0.001) throw new Error("EXPORTED_VIDEO_FPS_MISMATCH");
   if (Math.abs(probe.durationSeconds - contract.canvas.durationSeconds) > 1 / contract.renderProfile.fps) {
     throw new Error("EXPORTED_VIDEO_DURATION_MISMATCH");
@@ -230,20 +250,27 @@ export async function compareExportedVideoWithPreview(params: {
   try {
     assertConformanceJobActive(params.signal);
     const indexes = contract.checkpoints.map((checkpoint) => checkpoint.frameIndex);
+    const uniqueOutputIndexes = [...new Set(output.frameIndexes)];
     const frameProbe = await execute(ffprobePath, [
       "-v", "error", "-select_streams", "v:0", "-show_entries", "frame=best_effort_timestamp_time",
       "-of", "csv=p=0", resolve(params.videoPath),
     ], { maxBuffer: 64 * 1024 * 1024, timeout: VIDEO_DECODE_TIMEOUT_MS, windowsHide: true });
-    const timeline = parseExportedFrameTimes(frameProbe.stdout, indexes, {
-      expectedFrameCount: Math.ceil(contract.canvas.durationSeconds * contract.renderProfile.fps),
-      fps: contract.renderProfile.fps,
+    const timeline = parseExportedFrameTimes(frameProbe.stdout, uniqueOutputIndexes, {
+      expectedFrameCount: output.frameCount,
+      fps: output.fps,
       maxTemporalDriftFrames: contract.thresholds.maxTemporalDriftFrames,
     });
+    const outputTimes = new Map(uniqueOutputIndexes.map((index, position) => [index, timeline.checkpointTimes[position]!]));
+    const checkpointTimes = output.frameIndexes.map((index) => outputTimes.get(index)!);
+    const frameFilter = [
+      checkpointFilter,
+      output.downscale ? `scale=${contract.canvas.width}:${contract.canvas.height}:flags=area` : null,
+    ].filter(Boolean).join(",");
     for (let position = 0; position < indexes.length; position += 1) {
       await execute(ffmpegPath, [
         "-hide_banner", "-nostdin", "-loglevel", "error", "-i", resolve(params.videoPath),
-        "-map", "0:v:0", "-an", "-ss", String(timeline.checkpointTimes[position]), "-frames:v", "1",
-        ...(checkpointFilter ? ["-vf", checkpointFilter] : []),
+        "-map", "0:v:0", "-an", "-ss", String(checkpointTimes[position]), "-frames:v", "1",
+        ...(frameFilter ? ["-vf", frameFilter] : []),
         join(workDirectory, `frame-${indexes[position]}.png`),
       ], { maxBuffer: 128 * 1024, timeout: VIDEO_DECODE_TIMEOUT_MS, windowsHide: true });
     }
@@ -251,7 +278,7 @@ export async function compareExportedVideoWithPreview(params: {
       colorTags,
       ...(native ? {textParity: native.nativeEvidence.textEvidence} : {}),
       documentHash: receipt.documentHash,
-      frames: indexes.map((frameIndex, position) => ({ frameIndex, timeSeconds: timeline.checkpointTimes[position] })),
+      frames: indexes.map((frameIndex, position) => ({ frameIndex, timeSeconds: checkpointTimes[position]! })),
     });
     await writeFile(metadataPath, JSON.stringify(renderMetadata), "utf8");
     const measuredVisual = await measureCompositionConformanceDirectories({

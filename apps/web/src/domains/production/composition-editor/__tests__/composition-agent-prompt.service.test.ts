@@ -35,12 +35,23 @@ test("documents the allow-listed depth and ducking operations for the agent", ()
   });
   const selectedClipId = document.clips[0]!.id;
   const prompt = buildCompositionProposalPrompt({
+    allowReply: true,
     context: buildCompositionAgentContext(document),
-    instruction: "Pon el video delante y reduce la música durante la voz",
+    history: [
+      { role: "user", text: "Baja el volumen." },
+      { role: "assistant", text: "¿Qué porcentaje de volumen maestro quieres?" },
+    ],
+    instruction: "80%",
     selectedClipId,
   });
 
   assert.match(prompt, /audio-mix\.update/);
+  assert.match(prompt, /operations: \[\]/);
+  assert.match(prompt, /¿Qué porcentaje de volumen maestro quieres\?/);
+  assert.match(prompt, /Solicitud del usuario: 80%/);
+  assert.match(prompt, /masterVolume/);
+  assert.match(prompt, /clip\.audio-fades/);
+  assert.match(prompt, /clip\.media-fit/);
   assert.match(prompt, /layout\.zIndex/);
   assert.match(prompt, /track\.order no controla/);
   assert.match(prompt, /entero entre 0 y 10/);

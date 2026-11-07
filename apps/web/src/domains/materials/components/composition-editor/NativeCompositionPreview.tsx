@@ -3366,6 +3366,27 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     catch (caught) { setAssemblyError(caught instanceof Error ? caught.message : "No se pudo aprobar el ensamble."); }
     finally { setAssembling(false); }
   }
+  const loadRenderRecovery = useCallback(async () => {
+    const response = await fetch(
+      `/api/production/hyperframes/renders?compositionId=${encodeURIComponent(compositionId)}`,
+      { cache: "no-store" },
+    );
+    const body = await readCompositionApiResponse<{
+      data?: CompositionRenderRecoveryState | null;
+      error?: string;
+    }>(response, "No se pudo recuperar el render pendiente.");
+    if (!response.ok) throw new Error(body.error || "No se pudo recuperar el render pendiente.");
+    const recovery = body.data || null;
+    setRenderRecovery(recovery);
+    return recovery;
+  }, [compositionId]);
+
+  const refreshCompletedRender = useCallback(() => {
+    void loadRenderRecovery().catch(() => {
+      setAssemblyError("El render terminó, pero no se pudo cargar la descarga. Vuelve a abrir el editor para recuperarla.");
+    });
+  }, [loadRenderRecovery]);
+
   const pollAssemblyRender = useCallback(async (requestId: string) => {
     if (renderPollInFlightRef.current) return;
     renderPollInFlightRef.current = true;
@@ -3380,6 +3401,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         setRenderStatus("cancelled"); setRenderRequestId(null); setAssemblyError(null);
       } else if (body.data.action === "COMPLETED") {
         setRenderStatus("completed"); setRenderRequestId(null); setAssemblyError(null);
+        refreshCompletedRender();
       } else if (body.data.action === "FAIL") {
         setRenderStatus("failed");
         setRenderRequestId(null);
@@ -3395,31 +3417,22 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     } finally {
       renderPollInFlightRef.current = false;
     }
-  }, []);
+  }, [refreshCompletedRender]);
 
   const recoverActiveRender = useCallback(async () => {
-    const response = await fetch(
-      `/api/production/hyperframes/renders?compositionId=${encodeURIComponent(compositionId)}`,
-      { cache: "no-store" },
-    );
-    const body = await readCompositionApiResponse<{
-      data?: CompositionRenderRecoveryState | null;
-      error?: string;
-    }>(response, "No se pudo recuperar el render pendiente.");
-    if (!response.ok) throw new Error(body.error || "No se pudo recuperar el render pendiente.");
-    setRenderRecovery(body.data || null);
-    setDiagnosticRequestId(body.data?.activeRender?.id || body.data?.latestRender?.id || null);
-    if (!body.data?.activeRender?.id) return false;
+    const recovery = await loadRenderRecovery();
+    setDiagnosticRequestId(recovery?.activeRender?.id || recovery?.latestRender?.id || null);
+    if (!recovery?.activeRender?.id) return false;
 
-    const requestId = body.data.activeRender.id;
-    setRenderImportStatus(body.data.activeRender.importStatus || "NONE");
+    const requestId = recovery.activeRender.id;
+    setRenderImportStatus(recovery.activeRender.importStatus || "NONE");
     setRenderRequestId(requestId);
-    setRenderProviderStatus(body.data.activeRender.providerStatus);
+    setRenderProviderStatus(recovery.activeRender.providerStatus);
     setRenderStatus("rendering");
     setAssemblyError(null);
     void pollAssemblyRender(requestId);
     return true;
-  }, [compositionId, pollAssemblyRender]);
+  }, [loadRenderRecovery, pollAssemblyRender]);
 
   useEffect(() => {
     if (!assembly || !renderRecovery || renderRecovery.activeRender) return;
@@ -3488,6 +3501,9 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     };
   }, [recoverActiveRender]);
 
+  const completedRenderRevisionId = renderRecovery?.completedVideo?.compositionRevisionId;
+  const activeRenderRevisionId = assembly?.revisionId;
+
   useEffect(() => {
     if (!renderRequestId) return;
     const supabase = createBrowserSupabaseClient();
@@ -3513,6 +3529,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         setAssemblyError(null);
         if (!completionNotified) {
           completionNotified = true;
+          refreshCompletedRender();
           onVideoCompletedRef.current?.();
         }
       } else if (providerStatus === "FAILED" || importStatus === "FAILED") {
@@ -3585,7 +3602,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
       window.clearInterval(refreshTimer);
       void supabase.removeChannel(channel);
     };
-  }, [renderRecovery?.completedVideo, renderRequestId]);
+  }, [refreshCompletedRender, renderRecovery?.completedVideo, renderRequestId]);
 
   async function submitNativeAssemblyRender(options: { forceNewAttempt?: boolean } = {}) {
     const selectedProfile = getHyperframesRenderProfile(selectedRenderProfileId);
@@ -3701,6 +3718,8 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
           onRegistered:signal => loadSnapshotHistory(signal,{preserveRenderProfile:true})}} />}
       canvas={payload?.document.canvas}
       compact
+      completedAssetId={activeRenderRevisionId && completedRenderRevisionId === activeRenderRevisionId
+        ? renderRecovery?.completedVideo?.assetId : undefined}
       assembly={assembly}
       busy={assembling}
       durationSeconds={duration}
@@ -3783,7 +3802,15 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         loading={presetCatalogLoading}
         onApply={applyCompositionPresetPreview}
         onClose={() => setPresetPanelOpen(false)}
-        onCreate={createCompositionPreset}
+        onCreate={async (input) => {
+          let created = false;
+          try {
+            await runNativeBypass(async () => { created = await createCompositionPreset(input); });
+          } catch {
+            setSaveError("No se pudo confirmar la edición antes de guardar el preset. Revisa los cambios pendientes.");
+          }
+          return created;
+        }}
         onDismiss={dismissCompositionPresetPreview}
         onPreview={async (presetId) => { if (await autosaveCoordinatorRef.current.flush()) await previewCompositionPreset(presetId); }}
         onReload={loadCompositionPresets}
@@ -4107,7 +4134,21 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
             {inspectorTab === "properties" && <CompositionInspector canvasWidth={payload.document.canvas.width} canvasHeight={payload.document.canvas.height} extraLayerDepths={payload.document.extraLayerDepths} animations={selectedClip ? payload.document.motion.animations.filter((animation) => animation.target.clipId === selectedClip.id) : []} clip={selectedClip} colorGradingStatus={selectedHfId ? colorGradingStatuses[selectedHfId] || null : null} componentId={componentId} track={selectedClip ? payload.document.tracks.find((track) => track.id === selectedClip.trackId) || null : null} cropModeEnabled={visualCropEnabled} saving={saving} editingDisabled={localEditingBlocked} separatingAudio={separatingAudio} separatingAudioProgress={separatingAudioProgress} sourcePreviewUrl={selectedSourcePreviewUrl} selectedAnimationId={selectedAnimationId} onAnimationSelect={(id) => { if (id && selectedClip) selectAnimation(id, selectedClip.hfId); else setSelectedAnimationId(null); }} onDetachAudio={separateSelectedVideoAudio} onPatch={savePatch} onPreviewColorGrading={(hfId, colorGrading) => postPreviewMessage({ type: "courseforge-composition-preview-color-grading", hfId, colorGrading })} onPreviewMask={(hfId, mask, reset) => postPreviewMessage({ type: "courseforge-composition-preview-mask", hfId, mask, reset })} onPreviewPosition={(hfId, position) => postPreviewMessage({ type: "courseforge-composition-preview-position", hfId, position })} onPreviewCrop={(hfId, crop) => postPreviewMessage({ type: "courseforge-composition-preview-crop", hfId, crop })} onRemove={removeClipFromTimeline} />}
             {inspectorTab === "selection" && <CompositionSelectionPanel canCreateNestedGroups={payload.capabilities?.canCreateNestedGroups ?? false} canPaste={canPasteTimelineClipboard} document={payload.document} editingGroupId={editingTimelineGroupId} frameStep={timelineFrameStep} keyboardEditMode={timelineKeyboardEditMode} onAlign={(alignment, target) => void alignTimelineSelection(alignment, target)} onClear={clearTimelineSelection} onCopy={copyTimelineSelection} onToggleGroupSelection={toggleTimelineGroupSelection} onCreateGroup={() => createTimelineGroup()} onNestSelection={() => createTimelineGroup("NESTED")} canNestTimeline={payload.capabilities?.canNestTimeline ?? false} onDelete={() => void deleteTimelineSelection(false)} onDistribute={(axis) => void distributeTimelineSelection(axis)} onDuplicate={() => void duplicateTimelineSelection()} onEnterGroup={enterTimelineGroup} onExitGroup={exitTimelineGroup} onFrameStepChange={changeTimelineFrameStep} onInspectClip={(hfId) => selectClip(hfId, true)} onKeyboardEditModeChange={changeTimelineKeyboardEditMode} onPaste={() => void pasteTimelineClipboard()} onRippleDelete={() => void deleteTimelineSelection(true)} onRoll={(edge, deltaFrames) => void rollTimelineSelection(edge, deltaFrames)} onSlide={(deltaFrames) => void slideTimelineSelection(deltaFrames)} onUngroup={ungroupTimelineSelection} saving={localEditingBlocked} selectedClipIds={selectedTimelineClipIds} selectedGroupId={selectedTimelineGroupId} />}
             {inspectorTab === "transitions" && <TransitionControls document={payload.document} onAdd={(transition) => void savePatch([{ transition, type: "transition.add" }], `Añadió ${transition.type} entre dos clips.`)} onRemove={(transitionId) => void savePatch([{ transitionId, type: "transition.remove" }], "Quitó una transición entre clips.")} onSelect={selectTransition} onUpdate={(transitionId, settings) => void savePatch([{ settings, transitionId, type: "transition.update" }], "Ajustó una transición entre clips.")} saving={localEditingBlocked} selectedTransitionId={activeSelectedTransitionId} />}
-            {inspectorTab === "assistant" && <CompositionAgentConversation lastAppliedProposal={lastAppliedAgentProposal} proposal={agentProposal} proposing={proposing} saving={saving} onDismiss={() => void dismissAgentProposal()} onPropose={async (instruction) => { if (await autosaveCoordinatorRef.current.flush()) await requestAgentProposal(instruction, Boolean(presetPreview)); }} onApprove={() => void approveAgentProposal()} onUndo={() => void undoLastAgentProposal()} />}
+            <div className={inspectorTab === "assistant" ? "contents" : "hidden"}>
+              <CompositionAgentConversation
+                lastAppliedProposal={lastAppliedAgentProposal}
+                onApprove={() => void approveAgentProposal()}
+                onDismiss={() => void dismissAgentProposal()}
+                onPropose={async (instruction, history) => {
+                  if (!(await autosaveCoordinatorRef.current.flush())) return null;
+                  return requestAgentProposal(instruction, history, Boolean(presetPreview));
+                }}
+                onUndo={() => void undoLastAgentProposal()}
+                proposal={agentProposal}
+                proposing={proposing}
+                saving={saving}
+              />
+            </div>
           </div>
         </aside>}
       </div>

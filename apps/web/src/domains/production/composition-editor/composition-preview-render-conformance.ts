@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { CompositionEditorDocument } from "./composition-document.types";
 import { compositionDocumentHasAudibleMedia } from "./composition-clip-audio.service";
-import type { HyperframesRenderSettings } from "../hyperframes/hyperframes-render-profiles";
+import { HYPERFRAMES_RENDER_FORMATS, HYPERFRAMES_RENDER_RESOLUTIONS, type HyperframesRenderSettings } from "../hyperframes/hyperframes-render-profiles";
 import { COMPOSITION_SSIM_POLICY } from "./composition-visual-metrics-policy";
 import { textParityContractSchema, textRegionReportSchema } from "./composition-text-parity-contract";
 import { DECK_TEXT_PLAN_POLICY, deckTextPlanSchema, deckTextNodeMetricId, selectDeckTextCheckpointClips } from "./composition-deck-text-plan";
@@ -52,10 +52,10 @@ const compositionConformanceContractV1Schema = z.object({
   compilerContract: z.literal("courseforge-composition-preview-compiler-v1"),
   documentHash: hashSchema,
   renderProfile: z.object({
-    format: z.literal("mp4"),
+    format: z.enum(HYPERFRAMES_RENDER_FORMATS),
     fps: z.number().int().positive(),
     quality: z.string().min(1),
-    resolution: z.literal("1080p"),
+    resolution: z.enum(HYPERFRAMES_RENDER_RESOLUTIONS),
   }).passthrough(),
   schemaVersion: z.literal(1),
   thresholds: compositionConformanceThresholdsSchema,
@@ -88,6 +88,9 @@ export const compositionConformanceContractSchema = z.discriminatedUnion("schema
   compositionConformanceContractV3Schema,
   compositionConformanceContractV4Schema,
 ]).superRefine((contract, context) => {
+  if (contract.renderProfile.format === "mov" && contract.renderProfile.resolution === "4k") {
+    context.addIssue({ code: "custom", path: ["renderProfile", "resolution"], message: "HeyGen solo admite 4K en MP4." });
+  }
   if (contract.schemaVersion === 4 && contract.renderExecution?.sdrConversionPolicy && !contract.colorTagPolicy)
     context.addIssue({code: "custom", message: "CONFORMANCE_SDR_COLOR_TAG_POLICY_REQUIRED"});
   if (contract.schemaVersion === 4 && contract.deckTextPaintMaskPolicy && !contract.deckTextPlan)

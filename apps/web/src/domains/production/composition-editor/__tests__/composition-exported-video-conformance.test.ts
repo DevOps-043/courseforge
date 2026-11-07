@@ -16,6 +16,7 @@ import {
   exportedVideoReceiptSchema,
   parseExportedFrameTimes,
   parseExportedVideoProbe,
+  planExportedVideoCheckpoints,
 } from "../qa/composition-exported-video-conformance";
 
 const runFile = promisify(execFile);
@@ -63,6 +64,19 @@ test("requiere evidencia temporal completa y recibo ligado al archivo", () => {
   assert.equal(exportedVideoReceiptSchema.safeParse({ documentHash: "a".repeat(64), videoSha256: "b".repeat(64), untrusted: true }).success, false);
 });
 
+test("planea los cuadros de salida a partir del tiempo editorial para 4K y 24 FPS", () => {
+  const canvas = { durationSeconds: 2, fps: 25 as const, height: 1080, width: 1920 };
+  const checkpoints = [0, 25, 49].map((frameIndex) => ({
+    frameIndex, reasons: ["test"], timeSeconds: frameIndex / canvas.fps,
+  }));
+  assert.deepEqual(planExportedVideoCheckpoints({
+    canvas, checkpoints, renderProfile: { format: "mp4", fps: 30, quality: "high", resolution: "4k" },
+  }), { fps: 30, frameCount: 60, width: 3840, height: 2160, frameIndexes: [0, 30, 59], downscale: true });
+  assert.deepEqual(planExportedVideoCheckpoints({
+    canvas, checkpoints, renderProfile: { format: "mp4", fps: 24, quality: "draft", resolution: "1080p" },
+  }), { fps: 24, frameCount: 48, width: 1920, height: 1080, frameIndexes: [0, 24, 47], downscale: false });
+});
+
 test("compara un MP4 local y detecta corrupción visual y recibo incorrecto", async () => {
   const directory = await mkdtemp(join(tmpdir(), "courseforge-export-test-"));
   const ffmpeg = RenderInternals.getExecutablePath({ binariesDirectory: null, indent: false, logLevel: "error", type: "ffmpeg" });
@@ -100,6 +114,20 @@ test("compara un MP4 local y detecta corrupción visual y recibo incorrecto", as
     assert.equal(passing.provenance, "LOCAL_RECEIPT_NOT_AUTHENTICATED");
     assert.equal(passing.audioStatus, "EXPECTATION_UNKNOWN");
     const contract = JSON.parse(await readFile(contractPath, "utf8")) as Record<string, unknown>;
+    const scaledPath = join(directory, "scaled.mp4");
+    const scaledReceiptPath = join(directory, "scaled-receipt.json");
+    await runFile(ffmpeg, ["-hide_banner", "-loglevel", "error", "-i", videoPath,
+      "-vf", "scale=3840:2160,fps=30", "-c:v", "libx264", "-preset", "ultrafast",
+      "-threads", "2", "-pix_fmt", "yuv420p", scaledPath], { timeout: 30_000 });
+    await writeFile(scaledReceiptPath, JSON.stringify({
+      documentHash, videoSha256: createHash("sha256").update(await readFile(scaledPath)).digest("hex"),
+    }));
+    await writeFile(contractPath, JSON.stringify({
+      ...contract, renderProfile: { format: "mp4", fps: 30, quality: "high", resolution: "4k" },
+    }));
+    const scaled = await compareExportedVideoWithPreview({ ...input, videoPath: scaledPath, renderReceiptPath: scaledReceiptPath });
+    assert.equal(scaled.video.frameCount, 60);
+    assert.equal(scaled.visual.status, "PASS");
     await writeFile(contractPath, JSON.stringify({ ...contract, audio: { required: true }, schemaVersion: 2 }));
     const missingAudio = await compareExportedVideoWithPreview(input);
     assert.equal(missingAudio.visual.status, "PASS");

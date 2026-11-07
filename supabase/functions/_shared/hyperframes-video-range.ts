@@ -1,3 +1,18 @@
+const VIDEO_MIME_TYPES = { mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm" } as const;
+type VideoFormat = keyof typeof VIDEO_MIME_TYPES;
+
+export function resolveHyperframesVideoMimeType(header: string | null, url: string, providerFormat?: VideoFormat) {
+  const contentType = (header ?? "").split(";", 1)[0]!.trim().toLowerCase();
+  const explicitType = Object.values(VIDEO_MIME_TYPES).find((mime) => mime === contentType);
+  if (explicitType) return explicitType;
+  if (contentType !== "application/octet-stream") return null;
+  if (providerFormat && Object.hasOwn(VIDEO_MIME_TYPES, providerFormat)) return VIDEO_MIME_TYPES[providerFormat];
+  const pathname = new URL(url).pathname.toLowerCase();
+  if (pathname.endsWith(".mov")) return VIDEO_MIME_TYPES.mov;
+  if (pathname.endsWith(".webm")) return VIDEO_MIME_TYPES.webm;
+  return VIDEO_MIME_TYPES.mp4;
+}
+
 /** Validates the provider's byte identity before a resumable Storage upload. */
 export function readVideoProbeSize(response: Response, maximumUnrangedBytes: number): number {
   if (response.status === 206) {

@@ -1,5 +1,7 @@
 "use client";
 
+import { prepareHyperframesEditor } from "../../production/hyperframes/hyperframes-editor-preparation.client";
+
 import { APP_CONFIG } from "../../../config/app";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clapperboard, Film, Loader2, RefreshCw, Sparkles } from "lucide-react";
@@ -127,10 +129,11 @@ export function HyperframesCompositionPanel({
       : "Hay assets bloqueados que requieren corrección antes de generar el preview.";
   }, [blockedAssets]);
 
-  const fetchAssets = useCallback(async () => {
+  const fetchAssets = useCallback(async (isCurrent: () => boolean = () => true) => {
     const response = await fetch(`/api/production/hyperframes/assets?componentId=${encodeURIComponent(componentId)}&t=${Date.now()}`, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "No se pudieron actualizar los assets del editor.");
+    if (!isCurrent()) return [] as VideoAsset[];
     setHtmlAssets((payload.htmlClips || []).map((clip: NonNullable<CompositionStudioAsset["deckClip"]>) => ({
       id: clip.id, label: clip.label, deckClip: clip, mimeType: "text/html", durationSeconds: 5,
       isEditable: true, valid: true, previewUrl: null, sizeLabel: "HTML", sourceLabel: "Diapositiva HTML",
@@ -152,6 +155,7 @@ export function HyperframesCompositionPanel({
     setSyncWarning(null);
     setAnimatedDeck(null);
     setAssets([]);
+    setHtmlAssets([]);
     setComposition(null);
     setDraftId(null);
     setDraftDocumentVersion(null);
@@ -160,61 +164,60 @@ export function HyperframesCompositionPanel({
     setPendingHeygenClipCount(0);
     sceneAssetFingerprintRef.current = null;
     try {
-      try {
-        const syncResponse = await fetch("/api/production/hyperframes/assets/sync", {
-          body: JSON.stringify({ componentId }),
-          headers: { "Content-Type": "application/json" },
-          method: "POST",
-        });
-        const syncPayload = await syncResponse.json();
-        if (!isCurrentPreparation()) return;
-        if (!syncResponse.ok) throw new Error(syncPayload.error || "No se pudieron actualizar los assets de Producción.");
-        setAnimatedDeck(syncPayload.data?.animatedDeck || null);
-        setPendingHeygenClipCount(Number(syncPayload.data?.heygenPendingClipCount) || 0);
-      } catch (error) {
-        if (!isCurrentPreparation()) return;
-        const message = error instanceof Error ? error.message : "No se pudieron actualizar los assets de Producción.";
-        setSyncWarning(message);
-        // Existing registry rows remain usable. A failed refresh must not hide
-        // the library or prevent an already traceable composition from opening.
-        toast.warning(`${message} Se usarán los assets ya vinculados.`);
-      }
-
-      // Asset visibility must not depend on creating the editable draft. If a
-      // draft needs repair, the author still sees exactly what Production sent.
-      setPreparationStep("LOADING_ASSETS");
-      const nextAssets = await fetchAssets();
-      if (!isCurrentPreparation()) return;
-      setAssets(nextAssets);
-
-      setPreparationStep("PREPARING_COMPOSITION");
-      const compositionResponse = await fetch("/api/production/hyperframes/compositions", {
-        body: JSON.stringify({ componentId, name: componentTitle }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
+      const preparedDraft = await prepareHyperframesEditor({
+        synchronize: async () => {
+          try {
+            const syncResponse = await fetch("/api/production/hyperframes/assets/sync", {
+              body: JSON.stringify({ componentId }),
+              headers: { "Content-Type": "application/json" },
+              method: "POST",
+            });
+            const syncPayload = await syncResponse.json();
+            if (!isCurrentPreparation()) return;
+            if (!syncResponse.ok) throw new Error(syncPayload.error || "No se pudieron actualizar los assets de Producción.");
+            setAnimatedDeck(syncPayload.data?.animatedDeck || null);
+            setPendingHeygenClipCount(Number(syncPayload.data?.heygenPendingClipCount) || 0);
+          } catch (error) {
+            if (!isCurrentPreparation()) return;
+            const message = error instanceof Error ? error.message : "No se pudieron actualizar los assets de Producción.";
+            setSyncWarning(message);
+            toast.warning(message + " Se usarán los assets ya vinculados.");
+          }
+        },
+        prepareComposition: async () => {
+          const response = await fetch("/api/production/hyperframes/compositions", {
+            body: JSON.stringify({ componentId, name: componentTitle }),
+            headers: { "Content-Type": "application/json" },
+            method: "POST",
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "No se pudo preparar la composición.");
+          return payload.data as VideoComposition;
+        },
+        loadAssets: async () => {
+          if (!isCurrentPreparation()) return;
+          setPreparationStep("LOADING_ASSETS");
+          const nextAssets = await fetchAssets(isCurrentPreparation);
+          if (isCurrentPreparation()) setAssets(nextAssets);
+        },
+        openDraft: async (nextComposition) => {
+          if (!isCurrentPreparation()) return;
+          setComposition(nextComposition);
+          setRevisionId(nextComposition.active_revision_id || null);
+          setPreparationStep("OPENING_EDITOR");
+          const response = await fetch("/api/production/hyperframes/compositions/" + nextComposition.id + "/draft", { method: "POST" });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "No se pudo preparar el proyecto de edición.");
+          if (!isCurrentPreparation()) return;
+          return payload.data as { draftId: string; documentVersion: number };
+        },
       });
-      const compositionPayload = await compositionResponse.json();
-      if (!isCurrentPreparation()) return;
-      if (!compositionResponse.ok) throw new Error(compositionPayload.error || "No se pudo preparar la composición.");
-      const nextComposition = compositionPayload.data as VideoComposition;
-      setComposition(nextComposition);
-      setRevisionId(nextComposition.active_revision_id || null);
-
-      setPreparationStep("OPENING_EDITOR");
-      const draftResponse = await fetch(`/api/production/hyperframes/compositions/${nextComposition.id}/draft`, {
-        method: "POST",
-      });
-      const draftPayload = await draftResponse.json();
-      if (!isCurrentPreparation()) return;
-      if (!draftResponse.ok) {
-        const message = draftPayload.error || "No se pudo preparar el proyecto de edición.";
-        setEditorError(message);
-        toast.error(message);
-        return;
+      // Montar el editor solo cuando también está disponible su biblioteca.
+      if (isCurrentPreparation() && preparedDraft) {
+        setDraftId(preparedDraft.draftId);
+        setDraftDocumentVersion(preparedDraft.documentVersion);
+        setPreparationStep("READY");
       }
-      setDraftId(draftPayload.data.draftId as string);
-      setDraftDocumentVersion(draftPayload.data.documentVersion as number);
-      setPreparationStep("READY");
     } catch (error) {
       if (!isCurrentPreparation()) return;
       const message = error instanceof Error ? error.message : "No se pudo abrir el estudio de video.";

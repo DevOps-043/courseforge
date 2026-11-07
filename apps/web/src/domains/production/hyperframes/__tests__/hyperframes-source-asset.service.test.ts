@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   collectInternalMaterialAssetReferences,
   extractHyperframesAnimatedDeck,
@@ -10,7 +11,92 @@ import {
   isRecoverableManualVoiceRegistryAsset,
   isSupportedHyperframesSourceMime,
   shouldExposeProductionRegistryAsset,
+  syncHyperframesSourceAssetsFromProduction,
 } from "../hyperframes-source-asset.service";
+
+function sourceSyncFixture() {
+  const registry: Record<string, unknown>[] = [];
+  const writes: Record<string, unknown>[] = [];
+  let downloads = 0;
+  let duration = 2;
+  const assets = () => ({ voice_audio: {
+    storage_path: "production-assets/voice/narracion.mp3", duration,
+  } });
+  const client = {
+    from(table: string) {
+      let selection = "";
+      const filters = new Map<string, unknown>();
+      const query = {
+        select(value: string) { selection = value; return query; },
+        eq(key: string, value: unknown) { filters.set(key, value); return query; },
+        neq() { return query; },
+        contains() { return query; },
+        order() { return query; },
+        limit() { return query; },
+        async single() {
+          assert.equal(table, "material_components");
+          return { error: null, data: selection === "assets" ? { assets: assets() } : {
+            id: "componente", type: "VIDEO_THEORETICAL", assets: assets(),
+            material_lesson_id: "lección-material",
+            material_lessons: { lesson_id: "lección", materials: {
+              artifact_id: "artefacto", artifacts: { organization_id: "empresa" },
+            } },
+          } };
+        },
+        async maybeSingle() {
+          assert.equal(filters.get("organization_id"), "empresa");
+          assert.equal(filters.get("material_component_id"), "componente");
+          assert.equal(filters.get("storage_bucket"), "production-assets");
+          assert.equal(filters.get("storage_path"), "production-assets/voice/narracion.mp3");
+          return { error: null, data: registry[0] || null };
+        },
+        async insert(record: Record<string, unknown>) {
+          writes.push(record);
+          registry.push({ ...record, id: "medio" });
+          return { error: null };
+        },
+        update(record: Record<string, unknown>) {
+          writes.push(record);
+          registry[0] = { ...record, id: "medio" };
+          return query;
+        },
+        then(resolve: (result: { data: unknown[]; error: null }) => unknown) {
+          return Promise.resolve({ data: [], error: null }).then(resolve);
+        },
+      };
+      return query;
+    },
+    storage: { from() { return {
+      async list() { return { error: null, data: [{ name: "narracion.mp3", metadata: { size: 3, mimetype: "audio/mpeg" } }] }; },
+      async download() { downloads += 1; return { error: null, data: new Blob(["voz"]) }; },
+    }; } },
+  } as unknown as SupabaseClient;
+  return { client, writes, getDownloads: () => downloads, setDuration: (value: number) => { duration = value; } };
+}
+
+it("sincronización por lotes conserva integridad e idempotencia y detecta cambios de duración", async () => {
+  const fixture = sourceSyncFixture();
+  const params = { componentId: "componente", createdBy: "autor", organizationId: "empresa", supabase: fixture.client };
+  assert.equal((await syncHyperframesSourceAssetsFromProduction(params)).synchronized, 1);
+  assert.equal(fixture.getDownloads(), 1);
+  assert.equal(typeof fixture.writes[0].checksum, "string");
+  assert.equal((await syncHyperframesSourceAssetsFromProduction(params)).synchronized, 0);
+  assert.equal(fixture.getDownloads(), 1);
+  assert.equal(fixture.writes.length, 1);
+  fixture.setDuration(2.345);
+  assert.equal((await syncHyperframesSourceAssetsFromProduction(params)).synchronized, 1);
+  assert.equal(fixture.writes[1].duration_milliseconds, 2345);
+  assert.equal(fixture.getDownloads(), 2);
+});
+
+it("rechaza sincronización de otra empresa antes de consultar Storage", async () => {
+  const fixture = sourceSyncFixture();
+  await assert.rejects(syncHyperframesSourceAssetsFromProduction({
+    componentId: "componente", createdBy: "autor", organizationId: "otra-empresa", supabase: fixture.client,
+  }), /no pertenece a la empresa activa/);
+  assert.equal(fixture.getDownloads(), 0);
+  assert.deepEqual(fixture.writes, []);
+});
 
 describe("HyperFrames source assets", () => {
   it("only exposes renderable media from the internal asset registry", () => {

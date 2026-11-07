@@ -7,7 +7,6 @@ import { hashCompositionDocument } from "./composition-document.service";
 import { applyCompositionPresetDefinition } from "./composition-preset-application.service";
 import { BUILT_IN_COMPOSITION_PRESETS, findBuiltInCompositionPreset } from "./composition-preset-builtins";
 import {
-  COMPOSITION_PRESET_SCHEMA_VERSION,
   compositionDynamicPresetDefinitionSchema,
   type CompositionDynamicPresetDefinition,
   type CompositionPresetCatalogEntry,
@@ -88,7 +87,7 @@ export async function createStoredCompositionPreset(params: StoreParams & {
     p_instruction: params.instruction || null,
     p_name: params.name,
     p_organization_id: params.organizationId,
-    p_schema_version: COMPOSITION_PRESET_SCHEMA_VERSION,
+    p_schema_version: definition.schemaVersion,
     p_source_document_hash: params.sourceDocumentHash,
     p_source_kind: params.sourceKind,
   });

@@ -55,6 +55,43 @@ test("fails closed when a persisted inverse no longer returns to the base hash",
   );
 });
 
+test("proposes audio and framing edits and restores unset legacy fields from the original revision", () => {
+  const { document } = fixture();
+  const clip = document.clips.find((candidate) => candidate.kind === "VIDEO")!;
+  assert.equal(clip.source.type, "PRODUCTION_ASSET");
+  if (clip.source.type !== "PRODUCTION_ASSET") throw new Error("Se esperaba un recurso de producción.");
+  clip.source.hasAudio = true;
+  delete clip.mediaFit;
+  const baseDocumentHash = hashCompositionDocument(document);
+  const envelope = buildCompositionAgentProposal({
+    baseDocumentHash,
+    document,
+    patch: {
+      operations: [
+        { clipId: clip.id, type: "clip.volume", volume: 0.5 },
+        { clipId: clip.id, fadeInSeconds: 1, fadeOutSeconds: 1, type: "clip.audio-fades" },
+        { clipId: clip.id, mediaFit: "CONTAIN", type: "clip.media-fit" },
+        { settings: { masterVolume: 0.8 }, type: "audio-mix.update" },
+      ],
+      source: "AGENT",
+      summary: "Ajustaré el audio y el encuadre del video.",
+    },
+    proposalId: "00000000-0000-4000-8000-000000000099",
+  });
+  assert.deepEqual(envelope.diff.map((change) => change.path.split("/").at(-1)), [
+    "fadeInSeconds", "fadeOutSeconds", "mediaFit", "volume", "masterVolume",
+  ]);
+  const applied = prepareCompositionAgentProposalApplication({ baseDocumentHash, document, envelope });
+  assert.throws(() => prepareCompositionAgentProposalUndo({ appliedDocument: applied.document, envelope }), /versión original/);
+  const undone = prepareCompositionAgentProposalUndo({ appliedDocument: applied.document, envelope, originalDocument: document });
+  assert.deepEqual(undone.document, document);
+  assert.equal(undone.documentHash, baseDocumentHash);
+
+  const track = document.tracks.find(({ id }) => id === clip.trackId)!;
+  track.locked = true;
+  assert.throws(() => prepareCompositionAgentProposalApplication({ baseDocumentHash, document, envelope }), /bloqueado/);
+});
+
 test("persists bounded recovery metadata with the final model only", async () => {
   const { envelope } = fixture();
   let inserted: Record<string, unknown> | null = null;

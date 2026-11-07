@@ -77,14 +77,16 @@ export function assessHyperframesRenderEvidence(input: {
     failures.push("job_revision_mismatch");
   }
   const expectedVideoPath = `production-videos/organizations/${organizationId}/artifacts/`;
-  const expectedRenderSuffix = `/renders/${request.id}/final.mp4`;
+  const format = contract.success ? contract.data.renderProfile.format : "mp4";
+  const expectedRenderSuffix = `/renders/${request.id}/final.${format}`;
+  const expectedMimeType = format === "mov" ? "video/quicktime" : "video/mp4";
   if (!asset || !job || asset.production_job_id !== job.id || asset.organization_id !== organizationId
     || asset.provider !== "hyperframes" || asset.asset_type !== "FINAL_VIDEO"
     || asset.metadata?.render_request_id !== request.id || asset.metadata?.provider_render_id !== request.provider_render_id
     || (job.output_snapshot?.final_video as Record<string, unknown> | undefined)?.asset_id !== asset.id
     || asset.storage_bucket !== "production-videos" || !asset.storage_path?.startsWith(expectedVideoPath)
     || !asset.storage_path.endsWith(expectedRenderSuffix)
-    || asset.mime_type !== "video/mp4" || !asset.file_size_bytes || asset.file_size_bytes <= 0) {
+    || asset.mime_type !== expectedMimeType || !asset.file_size_bytes || asset.file_size_bytes <= 0) {
     failures.push("final_asset_mismatch");
   }
   const hasVerifiedChecksum = Boolean(asset?.checksum && /^[a-f0-9]{64}$/.test(asset.checksum)

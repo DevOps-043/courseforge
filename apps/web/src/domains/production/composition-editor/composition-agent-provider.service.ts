@@ -20,14 +20,14 @@ export class CompositionAgentProviderError extends Error {
   }
 }
 
-export function buildOpenAiCompositionProposalRequest(params: { model: string; prompt: string; temperature: number }) {
+export function buildOpenAiCompositionProposalRequest(params: { allowReply?: boolean; model: string; prompt: string; temperature: number }) {
   const request: Record<string, unknown> = {
     input: params.prompt,
     model: params.model,
     text: {
       format: {
         name: "composition_edit_proposal",
-        schema: getCompositionAgentProviderJsonSchema(),
+        schema: getCompositionAgentProviderJsonSchema(params.allowReply),
         strict: true,
         type: "json_schema",
       },
@@ -37,15 +37,16 @@ export function buildOpenAiCompositionProposalRequest(params: { model: string; p
   return request;
 }
 
-export function buildGeminiCompositionProposalConfig(temperature: number) {
+export function buildGeminiCompositionProposalConfig(temperature: number, allowReply = false) {
   return {
-    responseJsonSchema: getCompositionAgentProviderJsonSchema(),
+    responseJsonSchema: getCompositionAgentProviderJsonSchema(allowReply),
     responseMimeType: "application/json",
     temperature,
   };
 }
 
 export async function requestCompositionAgentPatch(params: {
+  allowReply: boolean;
   apiKey: string;
   model: string;
   prompt: string;
@@ -74,19 +75,19 @@ export async function requestCompositionAgentPatch(params: {
     throw new CompositionAgentProviderError("El proveedor devolvió JSON inválido.", "PROVIDER_INVALID_JSON", params.provider);
   }
   try {
-    return normalizeCompactCompositionAgentModelOutput(parsed);
+    return normalizeCompactCompositionAgentModelOutput(parsed, params.allowReply);
   } catch {
     throw new CompositionAgentProviderError("La salida no cumple el contrato de edición.", "PROVIDER_INVALID_OUTPUT", params.provider);
   }
 }
 
-async function requestGeminiProposal(params: { apiKey: string; model: string; prompt: string; temperature: number; timeoutMs?: number }) {
+async function requestGeminiProposal(params: { allowReply: boolean; apiKey: string; model: string; prompt: string; temperature: number; timeoutMs?: number }) {
   const client = new GoogleGenAI({ apiKey: params.apiKey });
   const result = await client.models.generateContent({
     model: params.model,
     contents: [{ role: "user", parts: [{ text: encodeCompositionAgentPrompt(params.prompt) }] }],
     config: {
-      ...buildGeminiCompositionProposalConfig(params.temperature),
+      ...buildGeminiCompositionProposalConfig(params.temperature, params.allowReply),
       abortSignal: AbortSignal.timeout(providerTimeout(params.timeoutMs)),
     },
   });
@@ -94,7 +95,7 @@ async function requestGeminiProposal(params: { apiKey: string; model: string; pr
   return result.text;
 }
 
-async function requestOpenAiProposal(params: { apiKey: string; model: string; prompt: string; temperature: number; timeoutMs?: number }) {
+async function requestOpenAiProposal(params: { allowReply: boolean; apiKey: string; model: string; prompt: string; temperature: number; timeoutMs?: number }) {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: { Authorization: `Bearer ${params.apiKey}`, "Content-Type": "application/json" },
