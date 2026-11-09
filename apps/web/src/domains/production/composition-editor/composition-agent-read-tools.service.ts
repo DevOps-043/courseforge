@@ -98,6 +98,9 @@ export function projectCompositionAgentReadDocument(document: CompositionEditorD
     audioMix: { ...document.audioMix, masterVolume: document.audioMix.masterVolume ?? 1 },
     canvas: document.canvas,
     extraLayerDepths: document.extraLayerDepths || [],
+    groups: (document.groups ?? []).map(({ id, label, clipIds, childGroupIds, timelineMode }) => ({
+      id, label, clipIds, childGroupIds, timelineMode,
+    })),
     clips: document.clips.map((clip) => {
       const track = tracksById.get(clip.trackId);
       return {

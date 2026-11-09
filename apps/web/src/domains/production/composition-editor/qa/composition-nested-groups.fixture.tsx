@@ -33,8 +33,12 @@ function Fixture() {
         setSelectedHfId(document.clips.find(clip => next.has(clip.id))?.hfId ?? null);
       }}
       onNestSelection={() => {
-        const selection = resolveCompositionGroupSelection(document, selectedClipIds, editingGroupId);
-        if (selection) setDocument(applyCompositionEditorPatches(document, [{ ...selection, type: "group.create", groupId: "nested-parent", label: "Secuencia", timelineMode: "NESTED" }]));
+        const selection = resolveCompositionGroupSelection(document, selectedClipIds, editingGroupId, "NESTED");
+        if (!selection) return;
+        const [groupId] = selection.childGroupIds;
+        setDocument(applyCompositionEditorPatches(document, groupId && !selection.clipIds.length && selection.childGroupIds.length === 1
+          ? [{ type: "group.nest", groupId }]
+          : [{ ...selection, type: "group.create", groupId: "nested-parent", label: "Secuencia", timelineMode: "NESTED" }]));
       }}
       frameStep={1} keyboardEditMode="SLIDE" onAlign={noop} onClear={noop} onCopy={noop} onCreateGroup={() => {
         const selection = resolveCompositionGroupSelection(document, selectedClipIds, editingGroupId);

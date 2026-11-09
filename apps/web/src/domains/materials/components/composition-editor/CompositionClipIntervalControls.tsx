@@ -33,7 +33,11 @@ export function CompositionClipIntervalControls({ clip, disabled, onRemoveInterv
     setError(null);
     setNotice(null);
     setActivity("REMOVE");
-    try { await onRemoveInterval(clip.startSeconds + first, clip.startSeconds + last); }
+    try {
+      if (!await onRemoveInterval(clip.startSeconds + first, clip.startSeconds + last)) {
+        setError("No se confirmó el corte. Revisa el mensaje del editor antes de volver a intentarlo.");
+      }
+    }
     catch { setError("No se pudo guardar el intervalo. Revisa el estado de guardado e inténtalo nuevamente."); }
     finally { setActivity("IDLE"); }
   }

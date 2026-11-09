@@ -14,7 +14,7 @@ import type { CompositionEditorPatchRequest } from "./editor-patch.types";
 import { normalizeCompositionTrackTopology } from "./composition-track-registry";
 import { COMPOSITION_MOTION_ENABLED, isCompositionMotionOperation } from "./composition-motion.config";
 import { buildCompositionAgentDiff } from "./composition-agent-diff.service";
-import { assertCompositionAgentOperationsAllowed, CompositionAgentPolicyError } from "./composition-agent-policy.service";
+import { assertCompositionAgentOperationsAllowed, CompositionAgentPolicyError, isCompositionAgentGroupingOperation } from "./composition-agent-policy.service";
 import { validateCompositionAgentSimulation, CompositionAgentValidationError } from "./composition-agent-validation.service";
 import { normalizeCompositionDocumentLayerDepths } from "./composition-layer-depth";
 import { readReadyLinkedSoundEffectAssetIds } from "./composition-sound-effect-assets.service";
@@ -188,6 +188,9 @@ export async function applyAndAppendCompositionDocumentPatches(params: {
   let nextDocument: CompositionEditorDocument;
   try {
     const enforceAgentPolicy = params.patch.source === "AGENT" && params.auditSource !== "SYSTEM";
+    if (params.patch.operations.some(operation => operation.type === "group.restore" || (enforceAgentPolicy && isCompositionAgentGroupingOperation(operation)))) {
+      throw new CompositionDocumentError("La agrupación asistida solo se aplica desde una propuesta confirmada.");
+    }
     if (enforceAgentPolicy) {
       assertCompositionAgentOperationsAllowed(params.patch.operations);
     }

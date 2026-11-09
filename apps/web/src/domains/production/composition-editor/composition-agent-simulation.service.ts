@@ -37,6 +37,9 @@ function buildInverseOperation(
   operation: CompositionEditorPatchOperation,
 ): CompositionEditorPatchOperation {
   switch (operation.type) {
+    case "group.create":
+    case "group.ungroup":
+      return { groups: document.groups, type: "group.restore" };
     case "clip.move": {
       const clip = findClip(document, operation.clipId);
       return {

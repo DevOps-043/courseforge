@@ -1,5 +1,5 @@
 import { COMPOSITION_LAYER_MAX, COMPOSITION_LAYER_DEPTH_LIMIT } from "./composition-layer-depth";
-import { resolveCompositionGroupClipIds, validateCompositionGroupGraph } from "./composition-group-hierarchy";
+import { buildCompositionGroupIndex, resolveCompositionGroupClipIds, validateCompositionGroupGraph } from "./composition-group-hierarchy";
 import { ungroupCompositionGroup, wrapCompositionGroup } from "./composition-group.service";
 import { HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT } from "./html-editing/html-editing-reference.contract";
 import { retainCompositionNativeFragment } from "./composition-native-fragment.service";
@@ -255,6 +255,8 @@ export function ensureCanvasDurationForClipPatches(
       wrapCompositionGroupOrThrow(projection, operation);
       groups = projection.groups ?? [];
       groupingVersion = projection.groupingVersion;
+    } else if (operation.type === "group.restore") {
+      groups = structuredClone(operation.groups ?? []);
     } else if (operation.type === "group.ungroup") {
       groups = normalizeCompositionGroups(ungroupCompositionGroup(groups, operation.groupId), [...timings.keys()].map(id => ({ id }))) ?? [];
     } else if (operation.type === "group.add-clips") {
@@ -621,17 +623,43 @@ export function applyCompositionEditorPatches(
       continue;
     }
 
-    if (operation.type.startsWith("group.") && source !== "USER") {
+    const assistedGrouping = source === "AGENT" && (operation.type === "group.create" || operation.type === "group.ungroup");
+    if (operation.type.startsWith("group.") && source !== "USER" && !assistedGrouping) {
       throw new CompositionEditorPatchError("La edición de grupos requiere una acción explícita del usuario.");
     }
     if (operation.type === "group.create") {
+      if (assistedGrouping) {
+        const index = buildCompositionGroupIndex(next.groups);
+        if (operation.timelineMode || operation.childGroupIds?.length || operation.clipIds.some(id => index.parentByClipId.has(id))) {
+          throw new CompositionEditorPatchError("El asistente solo puede agrupar clips sueltos de la raíz.");
+        }
+        assertAssistedGroupTracksEditable(next, operation.clipIds);
+      }
       wrapCompositionGroupOrThrow(next, operation);
       continue;
     }
+    if (operation.type === "group.nest") {
+      const group = findCompositionGroupOrThrow(next, operation.groupId);
+      group.timelineMode = "NESTED";
+      next.groupingVersion = 2;
+      continue;
+    }
     if (operation.type === "group.ungroup") {
-      findCompositionGroupOrThrow(next, operation.groupId);
+      const group = findCompositionGroupOrThrow(next, operation.groupId);
+      if (assistedGrouping) {
+        const index = buildCompositionGroupIndex(next.groups);
+        if (group.timelineMode || group.childGroupIds?.length || index.parentByGroupId.has(group.id)) {
+          throw new CompositionEditorPatchError("El asistente solo puede desagrupar grupos visibles simples de la raíz.");
+        }
+        assertAssistedGroupTracksEditable(next, group.clipIds);
+      }
       next.groups = ungroupCompositionGroup(next.groups!, operation.groupId);
       normalizeDocumentGroups(next);
+      continue;
+    }
+    if (operation.type === "group.restore") {
+      if (operation.groups === undefined) delete next.groups;
+      else next.groups = structuredClone(operation.groups);
       continue;
     }
     if (operation.type === "group.add-clips") {
@@ -956,8 +984,12 @@ export function applyCompositionEditorPatches(
       if (currentTrack.locked) throw new CompositionEditorPatchError("No puedes eliminar un intervalo de un track bloqueado.");
       assertDerivableClip(clip);
       const clipEnd = clip.startSeconds + clip.durationSeconds;
-      const rangeStartSeconds = Math.max(clip.startSeconds, quantizeToDocumentFrame(operation.startSeconds, next.canvas.fps));
-      const rangeEndSeconds = Math.min(clipEnd, quantizeToDocumentFrame(operation.endSeconds, next.canvas.fps));
+      const rangeStartSeconds = operation.startSeconds <= clip.startSeconds + CLIP_BOUNDARY_EPSILON_SECONDS
+        ? clip.startSeconds
+        : Math.max(clip.startSeconds, quantizeToDocumentFrame(operation.startSeconds, next.canvas.fps));
+      const rangeEndSeconds = operation.endSeconds >= clipEnd - CLIP_BOUNDARY_EPSILON_SECONDS
+        ? clipEnd
+        : Math.min(clipEnd, quantizeToDocumentFrame(operation.endSeconds, next.canvas.fps));
       if (
         operation.startSeconds < clip.startSeconds - CLIP_BOUNDARY_EPSILON_SECONDS ||
         operation.endSeconds > clipEnd + CLIP_BOUNDARY_EPSILON_SECONDS ||
@@ -969,7 +1001,7 @@ export function applyCompositionEditorPatches(
       const rightDuration = clipEnd - rangeEndSeconds;
       const minimumClipDuration = minimumDerivedClipDuration(next.canvas.fps);
       if (rangeEndSeconds - rangeStartSeconds < minimumClipDuration - CLIP_BOUNDARY_EPSILON_SECONDS) {
-        throw new CompositionEditorPatchError("El intervalo debe durar al menos un frame.");
+        throw new CompositionEditorPatchError("El intervalo debe durar al menos 50 ms o un fotograma, lo que sea mayor.");
       }
       const removesFromStart = leftDuration < minimumClipDuration;
       const removesThroughEnd = rightDuration < minimumClipDuration;
@@ -980,32 +1012,31 @@ export function applyCompositionEditorPatches(
       }
 
       if (removesFromStart) {
-        const retainedDuration = quantizeToDocumentFrame(rightDuration, next.canvas.fps);
+        const sourceStart = rangeEndSeconds - clip.startSeconds;
         applyDerivedAnimationsOrThrow(next, {
           animations: next.motion.animations,
           clipDurationSeconds: clip.durationSeconds,
           clipId: clip.id,
           segments: [{
             sourceEndSeconds: clip.durationSeconds,
-            sourceStartSeconds: rangeEndSeconds - clip.startSeconds,
-            targetClipDurationSeconds: retainedDuration,
+            sourceStartSeconds: sourceStart,
+            targetClipDurationSeconds: rightDuration,
             targetClipId: clip.id,
           }],
         }, "intervalo");
-        retainCompositionNativeFragment(clip, rangeEndSeconds - clip.startSeconds, clip.durationSeconds);
-        clip.durationSeconds = retainedDuration;
+        retainCompositionNativeFragment(clip, sourceStart, clip.durationSeconds);
+        clip.durationSeconds = rightDuration;
         clip.sourceOffsetSeconds = normalizeVideoSourceOffset(
           clip,
-          quantizeToDocumentFrame((clip.sourceOffsetSeconds || 0) + (rangeEndSeconds - clip.startSeconds), next.canvas.fps),
+          (clip.sourceOffsetSeconds || 0) + sourceStart,
         );
         if (clip.source.type === "NATIVE_TEXT" || clip.source.type === "NATIVE_CAPTIONS") delete clip.sourceOffsetSeconds;
-        clip.startSeconds = quantizeToDocumentFrame(operation.ripple ? clip.startSeconds : rangeEndSeconds, next.canvas.fps);
+        clip.startSeconds = operation.ripple ? clip.startSeconds : rangeEndSeconds;
         clip.timingSource = "USER_EDITED";
         continue;
       }
 
       if (removesThroughEnd) {
-        const retainedDuration = quantizeToDocumentFrame(leftDuration, next.canvas.fps);
         applyDerivedAnimationsOrThrow(next, {
           animations: next.motion.animations,
           clipDurationSeconds: clip.durationSeconds,
@@ -1013,12 +1044,12 @@ export function applyCompositionEditorPatches(
           segments: [{
             sourceEndSeconds: leftDuration,
             sourceStartSeconds: 0,
-            targetClipDurationSeconds: retainedDuration,
+            targetClipDurationSeconds: leftDuration,
             targetClipId: clip.id,
           }],
         }, "intervalo");
-        retainCompositionNativeFragment(clip, 0, retainedDuration);
-        clip.durationSeconds = retainedDuration;
+        retainCompositionNativeFragment(clip, 0, leftDuration);
+        clip.durationSeconds = leftDuration;
         clip.timingSource = "USER_EDITED";
         continue;
       }
@@ -1031,20 +1062,14 @@ export function applyCompositionEditorPatches(
       const rightClip = structuredClone(clip);
       rightClip.id = operation.newClipId;
       rightClip.hfId = operation.newHfId;
-      rightClip.durationSeconds = quantizeToDocumentFrame(rightDuration, next.canvas.fps);
+      const sourceStart = rangeEndSeconds - clip.startSeconds;
+      rightClip.durationSeconds = rightDuration;
       rightClip.sourceOffsetSeconds = normalizeVideoSourceOffset(
         clip,
-        quantizeToDocumentFrame(
-          (clip.sourceOffsetSeconds || 0) + (rangeEndSeconds - clip.startSeconds),
-          next.canvas.fps,
-        ),
+        (clip.sourceOffsetSeconds || 0) + sourceStart,
       );
-      rightClip.startSeconds = quantizeToDocumentFrame(
-        operation.ripple ? rangeStartSeconds : rangeEndSeconds,
-        next.canvas.fps,
-      );
+      rightClip.startSeconds = operation.ripple ? rangeStartSeconds : rangeEndSeconds;
       rightClip.timingSource = "USER_EDITED";
-      const leftClipDuration = quantizeToDocumentFrame(leftDuration, next.canvas.fps);
       applyDerivedAnimationsOrThrow(next, {
         animations: next.motion.animations,
         clipDurationSeconds: clip.durationSeconds,
@@ -1053,20 +1078,20 @@ export function applyCompositionEditorPatches(
           {
             sourceEndSeconds: leftDuration,
             sourceStartSeconds: 0,
-            targetClipDurationSeconds: leftClipDuration,
+            targetClipDurationSeconds: leftDuration,
             targetClipId: clip.id,
           },
           {
             sourceEndSeconds: clip.durationSeconds,
-            sourceStartSeconds: rangeEndSeconds - clip.startSeconds,
+            sourceStartSeconds: sourceStart,
             targetClipDurationSeconds: rightClip.durationSeconds,
             targetClipId: rightClip.id,
           },
         ],
       }, "intervalo");
-      retainCompositionNativeFragment(rightClip, rangeEndSeconds - clip.startSeconds, clip.durationSeconds);
-      retainCompositionNativeFragment(clip, 0, leftClipDuration);
-      clip.durationSeconds = leftClipDuration;
+      retainCompositionNativeFragment(rightClip, sourceStart, clip.durationSeconds);
+      retainCompositionNativeFragment(clip, 0, leftDuration);
+      clip.durationSeconds = leftDuration;
       clip.timingSource = "USER_EDITED";
       next.clips.push(rightClip);
       transferOutgoingTransitionsToDerivedClip(next.transitions, clip.id, rightClip.id);
@@ -1360,6 +1385,14 @@ export function applyCompositionEditorPatches(
   }
   assertDocumentTransitionsOrThrow(parsed.data);
   return parsed.data;
+}
+
+function assertAssistedGroupTracksEditable(document: CompositionEditorDocument, clipIds: string[]) {
+  const lockedTrackIds = new Set(document.tracks.filter(track => track.locked).map(track => track.id));
+  const memberIds = new Set(clipIds);
+  if (document.clips.some(clip => memberIds.has(clip.id) && lockedTrackIds.has(clip.trackId))) {
+    throw new CompositionEditorPatchError("El asistente no puede cambiar la agrupación de clips en pistas bloqueadas.");
+  }
 }
 
 function minimumDerivedClipDuration(fps: number) {

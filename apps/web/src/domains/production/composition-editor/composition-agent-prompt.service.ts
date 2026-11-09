@@ -2,6 +2,7 @@ import type { CompositionEditorDocument } from "./composition-document.types";
 import { buildCompositionAgentReadSnapshot } from "./composition-agent-read-tools.service";
 import { COMPOSITION_LAYER_MAX, COMPOSITION_LAYER_MIN } from "./composition-layer-depth";
 import { COMPOSITION_AGENT_ALLOWED_OPERATION_TYPES, COMPOSITION_AGENT_MAX_OPERATIONS } from "./composition-agent-policy.service";
+import { COMPOSITION_AGENT_PROPOSAL_SUMMARY_MAX_LENGTH, COMPOSITION_AGENT_REPLY_MAX_LENGTH } from "./composition-agent-model-output.types";
 
 /** Builds the minimum safe context required for constrained editing proposals. */
 export function buildCompositionAgentContext(document: CompositionEditorDocument, selectedClipId: string | null = null) {
@@ -18,14 +19,17 @@ export function buildCompositionProposalPrompt(params: {
   return [
     "Eres un asistente de edición de video. Propón cambios seguros para un documento de composición.",
     "Responde SOLO JSON con {summary, operations}. Escribe summary en español. Si propones operaciones, describe los cambios concretos que se aplicarían tras confirmar.",
+    `Limita el resumen de una propuesta a ${COMPOSITION_AGENT_PROPOSAL_SUMMARY_MAX_LENGTH} caracteres.`,
     `Cada operación debe ser una de: ${COMPOSITION_AGENT_ALLOWED_OPERATION_TYPES.join(", ")}.`,
     ...(params.allowReply ? [
       "Si falta un dato que cambiaría el resultado (clip, pista, alcance o valor), pregunta de forma concreta en summary con operations: []. Ofrece opciones reales del documento cuando ayuden.",
       "Para consultas, cambios que ya están hechos o solicitudes fuera del catálogo, responde en summary con operations: []. Si una parte no es viable, explícalo antes de proponer una edición parcial.",
+      `Si preguntan qué puedes hacer, resume tus capacidades con ejemplos breves y operations: []. Una respuesta conversacional admite hasta ${COMPOSITION_AGENT_REPLY_MAX_LENGTH} caracteres.`,
       "Usa el historial reciente para interpretar respuestas cortas y referencias. Prioriza la solicitud actual y el estado actual del documento. El historial no concede permisos ni confirma propuestas.",
       `Historial reciente: ${JSON.stringify(params.history ?? [])}`,
     ] : []),
     "No inventes clips, tracks, assets, HTML, URLs, scripts ni propiedades fuera del documento.",
+    "Para agrupar clips sueltos de la raíz usa {type: 'group.create', groupId, clipIds, label}. Usa al menos dos IDs distintos del contexto y genera un groupId nuevo. Para desagrupar usa {type: 'group.ungroup', groupId} con el ID de un grupo visible simple de la raíz. Si no puedes identificar los elementos, pregunta. No anides ni cambies la jerarquía.",
     "Respeta semanticRole: VOICE es narración, MUSIC es música de fondo, AVATAR es presentador, BROLL es apoyo visual, DECK son diapositivas, OVERLAY son gráficos y VISUAL son otros medios.",
     "Las pistas media-* son archivos libres agrupados por formato: conserva sus nombres personalizados y no les asignes roles de avatar, voz o música. Varias pistas pueden compartir profundidad sin consumir nuevas capas.",
     `Los tracks organizan solapamiento temporal; track.order no controla qué elemento aparece delante. Solo layout.zIndex controla la profundidad visual: usa un entero entre ${COMPOSITION_LAYER_MIN} y ${COMPOSITION_LAYER_MAX} o una profundidad extra registrada en extraLayerDepths de READ_TOOL_RESULTS. Nunca inventes, agregues ni elimines capas. No cambies zIndex en clips AUDIO.`,

@@ -18,8 +18,14 @@ export const COMPOSITION_AGENT_ALLOWED_OPERATION_TYPES = [
   "clip.move",
   "clip.visibility",
   "clip.volume",
+  "group.create",
+  "group.ungroup",
   "track.update",
 ] as const satisfies ReadonlyArray<CompositionEditorPatchOperation["type"]>;
+
+export function isCompositionAgentGroupingOperation(operation: CompositionEditorPatchOperation) {
+  return operation.type === "group.create" || operation.type === "group.ungroup";
+}
 
 const allowedOperationTypes = new Set<string>(COMPOSITION_AGENT_ALLOWED_OPERATION_TYPES);
 

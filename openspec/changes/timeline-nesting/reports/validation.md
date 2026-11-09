@@ -86,3 +86,25 @@ No hay rasterización ni recorte/efectos sobre el contenedor. Para recortar se
 abre su contenido. El rango se calcula sobre las unidades seleccionadas, sin
 capturar otros clips que se crucen temporalmente. Durante rollback deshabilitar
 la creación y conservar lectores/migración mientras existan documentos con modo.
+
+## Seguimiento del 2026-11-07
+
+Anidar un único grupo completo conserva su ID y sus miembros. La operación
+`group.nest` utiliza el guardado versionado y la capacidad de anidación
+existentes. En Chromium se verificó que «Agrupar selección» queda deshabilitado
+para ese caso, «Anidar selección» muestra un bloque, los clips ajenos siguen
+visibles y el bloque se puede abrir tras recargar el documento del fixture.
+
+- `npm run test:composition-nested-groups`: 24 pruebas aprobadas.
+- `npm run test:composition-nested-groups:sql`: 7 pruebas aprobadas en PGlite.
+- `npm run qa:composition-nested-groups --workspace=apps/web`: exit 0 con
+  Chromium headless y persistencia en memoria.
+- `npm run test:hyperframes --workspace=apps/web` y `npm run typecheck`: exit 0.
+- ESLint dirigido: 0 errores y 17 avisos en código ajeno al cambio.
+- `npm run docs:check` y validación estricta de `timeline-nesting`: exit 0.
+- `npm run verify:pr`: exit 0 fuera del sandbox. El primer intento falló porque
+  el sandbox impidió inicializar los repositorios temporales del arnés. El lint
+  global del reintento terminó con cero errores y cero diferencias con el baseline.
+
+La verificación corresponde al checkout local. El entorno de la captura requiere
+despliegue compatible y confirmación de la capacidad SQL para guardar el modo.

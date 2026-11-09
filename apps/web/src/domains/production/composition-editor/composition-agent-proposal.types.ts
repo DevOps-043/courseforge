@@ -14,7 +14,7 @@ export const compositionAgentFieldChangeSchema = z.object({
   after: z.unknown(),
   before: z.unknown(),
   entityId: z.string().trim().min(1).max(160),
-  entityType: z.enum(["ANIMATION", "AUDIO_MIX", "CLIP", "TRACK"]),
+  entityType: z.enum(["ANIMATION", "AUDIO_MIX", "CLIP", "GROUP", "TRACK"]),
   path: z.string().trim().min(1).max(300),
 }).strict();
 

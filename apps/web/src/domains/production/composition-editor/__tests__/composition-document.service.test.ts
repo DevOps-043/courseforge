@@ -392,6 +392,20 @@ test("persiste y recarga grupos como parte del documento versionado", async () =
     },
   };
 
+  await assert.rejects(() => applyAndAppendCompositionDocumentPatches({
+    draftId: DRAFT_ID,
+    expectedDocumentHash: storedHash,
+    organizationId: ORGANIZATION_ID,
+    patch: {
+      operations: [{ clipIds, groupId: "group-round-trip", type: "group.create" }],
+      source: "AGENT",
+      summary: "Agrupará dos diapositivas.",
+    },
+    supabase: saveClient as never,
+    userId: "00000000-0000-4000-8000-000000000001",
+  }), /propuesta confirmada/);
+  assert.equal(Boolean(appendedDocument), false);
+
   const saved = await applyAndAppendCompositionDocumentPatches({
     draftId: DRAFT_ID,
     expectedDocumentHash: storedHash,

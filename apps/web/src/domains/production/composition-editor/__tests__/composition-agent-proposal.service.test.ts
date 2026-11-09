@@ -47,6 +47,33 @@ test("rejects destructive manual operations even though the general patch schema
   );
 });
 
+test("agrupa y desagrupa con confirmación, diff y reversión exacta", () => {
+  const document = createDocument({ assetCount: 2 });
+  const operation = { clipIds: document.clips.map(clip => clip.id), groupId: "group-agent", type: "group.create" } as const;
+  const proposal = buildProposal(document, [operation]);
+  const grouped = applyCompositionEditorPatches(document, proposal.operations, "AGENT");
+  assert.deepEqual(grouped.clips, document.clips);
+  assert.equal(proposal.diff[0]?.entityType, "GROUP");
+  assert.ok(proposal.affectedRanges.length);
+  assert.equal(proposal.risk.requiresConfirmation, true);
+  assert.deepEqual(applyCompositionEditorPatches(grouped, proposal.inverseOperations, "USER"), document);
+
+  const ungroup = buildProposal(grouped, [{ groupId: "group-agent", type: "group.ungroup" }]);
+  const ungrouped = applyCompositionEditorPatches(grouped, ungroup.operations, "AGENT");
+  assert.deepEqual(ungrouped.clips, document.clips);
+  assert.equal(ungroup.diff[0]?.after, null);
+  assert.deepEqual(applyCompositionEditorPatches(ungrouped, ungroup.inverseOperations, "USER"), grouped);
+  assert.throws(() => buildProposal(grouped, [{ ...operation, groupId: "group-duplicate" }]), /clips sueltos/);
+  assert.throws(() => buildProposal(document, [{ ...operation, timelineMode: "NESTED" }]), /clips sueltos/);
+  assert.throws(() => buildProposal(document, [{ type: "group.restore", groups: [] }]), CompositionAgentPolicyError);
+
+  const nested = applyCompositionEditorPatches(document, [{ ...operation, timelineMode: "NESTED" }]);
+  assert.throws(() => buildProposal(nested, ungroup.operations), /grupos visibles simples/);
+  const locked = structuredClone(grouped);
+  locked.tracks.find(track => track.id === locked.clips[0]?.trackId)!.locked = true;
+  assert.throws(() => buildProposal(locked, ungroup.operations), /pistas bloqueadas/);
+});
+
 test("rejects a newly introduced overlap on the same track", () => {
   const document = createDocument({ assetCount: 2 });
   const secondClip = document.clips[1]!;

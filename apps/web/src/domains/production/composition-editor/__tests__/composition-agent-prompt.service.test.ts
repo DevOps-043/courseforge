@@ -47,6 +47,9 @@ test("documents the allow-listed depth and ducking operations for the agent", ()
 
   assert.match(prompt, /audio-mix\.update/);
   assert.match(prompt, /operations: \[\]/);
+  assert.match(prompt, /hasta 1200 caracteres/);
+  assert.match(prompt, /group\.create/);
+  assert.match(prompt, /group\.ungroup/);
   assert.match(prompt, /¿Qué porcentaje de volumen maestro quieres\?/);
   assert.match(prompt, /Solicitud del usuario: 80%/);
   assert.match(prompt, /masterVolume/);

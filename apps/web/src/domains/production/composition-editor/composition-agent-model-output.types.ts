@@ -9,6 +9,9 @@ const editorIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,127}$/i);
 const secondsSchema = z.number().finite().min(0).max(COMPOSITION_DOCUMENT_MAX_DURATION_SECONDS);
 const nullableBoolean = z.boolean().nullable();
 const nullableNumber = z.number().finite().nullable();
+export const COMPOSITION_AGENT_PROPOSAL_SUMMARY_MAX_LENGTH = 300;
+export const COMPOSITION_AGENT_REPLY_MAX_LENGTH = 1_200;
+const proposalSummary = z.string().trim().min(3).max(COMPOSITION_AGENT_PROPOSAL_SUMMARY_MAX_LENGTH);
 
 const nullableLayoutSchema = z.object({
   height: nullableNumber,
@@ -55,14 +58,14 @@ const modelOperationSchema = z.discriminatedUnion("type", [
 /** Expanded schema for legacy consumers. Provider requests use the compact schema below. */
 export const compositionAgentModelOutputSchema = z.object({
   operations: z.array(modelOperationSchema).min(1).max(12),
-  summary: z.string().trim().min(3).max(300),
+  summary: proposalSummary,
 }).strict();
 
 export type CompositionAgentModelOutput = z.infer<typeof compositionAgentModelOutputSchema>;
 
 const compositionAgentLooseEnvelopeSchema = z.object({
   operations: z.array(z.unknown()).min(1).max(12),
-  summary: z.string().trim().min(3).max(300),
+  summary: proposalSummary,
 }).strict();
 
 /** Converts the strict provider contract into the narrower persisted patch contract. */
@@ -99,7 +102,12 @@ export function getCompositionAgentProviderJsonSchema(allowReply = false) {
         minItems: allowReply ? 0 : 1,
         type: "array",
       },
-      summary: { type: "string" },
+      summary: {
+        description: allowReply
+          ? `Hasta ${COMPOSITION_AGENT_REPLY_MAX_LENGTH} caracteres para respuestas sin operaciones; hasta ${COMPOSITION_AGENT_PROPOSAL_SUMMARY_MAX_LENGTH} para propuestas.`
+          : `Hasta ${COMPOSITION_AGENT_PROPOSAL_SUMMARY_MAX_LENGTH} caracteres.`,
+        type: "string",
+      },
     },
     propertyOrdering: ["operations", "summary"],
     required: ["operations", "summary"],
@@ -116,7 +124,7 @@ export function normalizeCompactCompositionAgentModelOutput(input: unknown, allo
       argumentsJson: z.string().min(2).max(4_000),
       type: z.string().min(1).max(80),
     }).strict()).min(allowReply ? 0 : 1).max(COMPOSITION_AGENT_MAX_OPERATIONS),
-    summary: z.string().trim().min(3).max(300),
+    summary: allowReply ? z.string().trim().min(3).max(COMPOSITION_AGENT_REPLY_MAX_LENGTH) : proposalSummary,
   }).strict().parse(input);
   if (envelope.operations.length === 0) return { reply: envelope.summary };
   const operations = envelope.operations.map((operation) => {

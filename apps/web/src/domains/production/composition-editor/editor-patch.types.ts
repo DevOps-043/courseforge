@@ -1,6 +1,6 @@
 import { compositionVisualMaskSchema } from "./composition-visual-mask";
 import { COMPOSITION_LAYER_MAX, COMPOSITION_LAYER_DEPTH_LIMIT } from "./composition-layer-depth";
-import { COMPOSITION_MAX_CLIPS } from "./composition-group-hierarchy";
+import { COMPOSITION_MAX_CLIPS, COMPOSITION_MAX_GROUPS } from "./composition-group-hierarchy";
 import { z } from "zod";
 import { compositionCaptionEffectsSchema } from "./composition-caption-effects.types";
 import { compositionVolumeEnvelopeSchema } from "./composition-volume-envelope";
@@ -9,6 +9,7 @@ import {
   COMPOSITION_DURATION_SOURCES,
   compositionClipSchema,
   compositionEditorDocumentSchema,
+  compositionGroupSchema,
   compositionLayoutPatchSchema,
   compositionLayoutSchema,
   compositionTrackSchema,
@@ -264,6 +265,13 @@ const groupUngroupOperationSchema = z.object({
   type: z.literal("group.ungroup"),
 }).strict();
 
+const groupNestOperationSchema = groupUngroupOperationSchema.extend({ type: z.literal("group.nest") });
+
+const groupRestoreOperationSchema = z.object({
+  groups: z.array(compositionGroupSchema).max(COMPOSITION_MAX_GROUPS).optional(),
+  type: z.literal("group.restore"),
+}).strict();
+
 const groupAddClipsOperationSchema = z.object({
   clipIds: z.array(editorIdSchema).min(1).max(499),
   groupId: editorIdSchema,
@@ -455,6 +463,8 @@ export const compositionEditorPatchOperationSchema = z.union([
   groupMoveOperationSchema,
   groupRemoveClipsOperationSchema,
   groupUngroupOperationSchema,
+  groupNestOperationSchema,
+  groupRestoreOperationSchema,
   trackUpdateOperationSchema,
 ]);
 

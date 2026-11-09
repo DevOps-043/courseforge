@@ -4,6 +4,7 @@ import type {
   CompositionAgentFieldChange,
 } from "./composition-agent-proposal.types";
 import type { CompositionEditorPatchOperation } from "./editor-patch.types";
+import { resolveCompositionGroupBounds } from "./composition-group.service";
 
 const CLIP_FIELDS = [
   "durationSeconds",
@@ -44,6 +45,17 @@ export function buildCompositionAgentDiff(
   after: CompositionEditorDocument,
 ): CompositionAgentFieldChange[] {
   const changes: CompositionAgentFieldChange[] = [];
+  const beforeGroups = new Map(before.groups?.map(group => [group.id, group]));
+  const afterGroups = new Map(after.groups?.map(group => [group.id, group]));
+  for (const id of sortedUnion(beforeGroups.keys(), afterGroups.keys())) {
+    const previous = beforeGroups.get(id);
+    const next = afterGroups.get(id);
+    const previousMembership = previous ? { clipIds: previous.clipIds, label: previous.label ?? null } : null;
+    const nextMembership = next ? { clipIds: next.clipIds, label: next.label ?? null } : null;
+    if (JSON.stringify(previousMembership) !== JSON.stringify(nextMembership)) {
+      addChange(changes, "GROUP", id, `/groups/${id}`, previousMembership, nextMembership);
+    }
+  }
   const beforeClips = new Map(before.clips.map((clip) => [clip.id, clip]));
   const afterClips = new Map(after.clips.map((clip) => [clip.id, clip]));
   for (const clipId of sortedUnion(beforeClips.keys(), afterClips.keys())) {
@@ -125,6 +137,11 @@ export function buildCompositionAgentAffectedRanges(params: {
 }): CompositionAgentAffectedRange[] {
   const ranges: CompositionAgentAffectedRange[] = [];
   for (const operation of params.operations) {
+    if (operation.type === "group.create" || operation.type === "group.ungroup") {
+      const bounds = resolveCompositionGroupBounds(operation.type === "group.create" ? params.after : params.before, operation.groupId);
+      if (bounds) addRange(ranges, bounds.startSeconds, bounds.endSeconds);
+      continue;
+    }
     if (operation.type === "animation.add-preset" || operation.type === "animation.update-timing") {
       const beforeAnimation = operation.type === "animation.update-timing"
         ? params.before.motion.animations.find((animation) => animation.id === operation.animationId)

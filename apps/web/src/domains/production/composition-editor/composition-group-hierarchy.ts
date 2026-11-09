@@ -113,6 +113,7 @@ export function resolveCompositionGroupAtLevel(
 
 export function resolveCompositionGroupSelection(
   document: { groups?: CompositionGroupNode[] }, selectedClipIds: ReadonlySet<string>, editingGroupId: string | null = null,
+  timelineMode?: "NESTED",
 ): { clipIds: string[]; childGroupIds: string[] } | null {
   const index = buildCompositionGroupIndex(document.groups);
   const clipIds: string[] = [];
@@ -128,7 +129,10 @@ export function resolveCompositionGroupSelection(
       clipIds.push(clipId);
     }
   }
-  return clipIds.length + childGroupIds.size >= 2 ? { clipIds, childGroupIds: [...childGroupIds] } : null;
+  const selection = { clipIds, childGroupIds: [...childGroupIds] };
+  if (clipIds.length + childGroupIds.size >= 2) return selection;
+  const [groupId] = selection.childGroupIds;
+  return timelineMode === "NESTED" && groupId && !index.groupsById.get(groupId)?.timelineMode ? selection : null;
 }
 
 export function compositionGroupsChildrenFirst(groups: readonly CompositionGroupNode[]): CompositionGroupNode[] {

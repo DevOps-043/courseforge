@@ -19,6 +19,13 @@ const baseDocument = createInitialCompositionDocument({ animatedDeck: null, asse
 const cases = [["inicio", 0, 2], ["centro", 1, 2], ["final", 2, 4]].map(([label, start, end]) => ({ label,
   document: applyCompositionEditorPatches(baseDocument, [{ type: "clip.remove-range", clipId: baseDocument.clips[0].id,
     startSeconds: start, endSeconds: end, ripple: true, newClipId: "right", newHfId: "right-hf" }]) }));
+const fractionalDocument = structuredClone(baseDocument);
+const fractionalClip = fractionalDocument.clips[0];
+fractionalClip.durationSeconds = 3.99;
+fractionalClip.sourceDurationSeconds = 3.99;
+cases.push({ label: "fin entre fotogramas", document: applyCompositionEditorPatches(fractionalDocument, [{
+  type: "clip.remove-range", clipId: fractionalClip.id, startSeconds: 0, endSeconds: 2, ripple: true,
+}]) });
 const source = `
 import React, {useState} from 'react';
 import {createRoot} from 'react-dom/client';

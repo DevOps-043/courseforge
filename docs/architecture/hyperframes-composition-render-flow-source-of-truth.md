@@ -111,6 +111,10 @@ del envio y se incorpora solamente a la copia desechable que recibe HeyGen.
   de capturar el clip confirmado. Una cola vacía después de un error no habilita
   exportar ediciones pendientes. Los controles respetan `localEditingBlocked` y
   las pistas bloqueadas sin retirar los accesos de grupos anidados.
+  El corte ajusta los puntos interiores a fotogramas y conserva el extremo
+  fuente original de cada tramo restante. La descarga resuelve el asset del
+  clip confirmado por el endpoint autorizado del borrador, incluso si no figura
+  en la página actual de la biblioteca.
 
 - Intros y outros (2026-10-30): los accesos Editar intro/outro de la timeline
   abren el inspector compartido de capas, transformación y animaciones. Reaplicar
@@ -678,6 +682,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-11-09. La eliminación de intervalos conserva los bordes fuente entre
+  fotogramas y la descarga del fragmento confirmado usa el endpoint autorizado
+  del borrador, con independencia de la página de biblioteca cargada.
+
 - 2026-11-06: presets de composición escriben V2 y conservan lectura V1. Manual
   y agente comparten captura; el editor confirma autosave/cola y recuperación
   antes de usar el hash guardado. La UI conserva el formulario en errores y
@@ -964,8 +972,15 @@ una reversión debe conservar lectores compatibles. Evidencia y límites:
 ### Agrupar y anidar en la línea del tiempo
 
 Agrupar mantiene los clips visibles y coordina su selección y movimiento.
-Anidar selección crea un grupo con `timelineMode: "NESTED"` y `groupingVersion: 2`;
-la ausencia del modo conserva el comportamiento y hash históricos. El timeline
+El asistente puede proponer agrupar clips sueltos de la raíz o desagrupar un
+grupo visible simple de ese nivel. La simulación verifica las pistas bloqueadas,
+la propuesta muestra el cambio de pertenencia y el guardado exige confirmación.
+Las consultas del asistente admiten hasta 1 200 caracteres con cero operaciones.
+Los resúmenes de propuestas conservan el límite de 300.
+Anidar selección crea un grupo con `timelineMode: "NESTED"` y `groupingVersion: 2`
+al seleccionar dos o más unidades. Si se selecciona un único grupo visible
+completo, `group.nest` activa el modo sobre el mismo grupo y conserva su jerarquía.
+La ausencia del modo conserva el comportamiento y hash históricos. El timeline
 oculta las hojas y muestra un único bloque en una fila editorial propia, desde
 el inicio mínimo al final máximo de la selección, incluyendo huecos internos.
 Solo incorpora unidades completas seleccionadas del mismo nivel, sin capturar

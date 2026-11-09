@@ -3,16 +3,24 @@ import type { CompositionClip } from "./composition-document.types";
 
 /** Lee el medio vigente después del guardado; una cola vacía también puede contener un fallo. */
 export async function prepareClipExportSource(params: {
+  draftId: string;
   flush: () => Promise<boolean>;
   waitForIdle: () => Promise<void>;
-  readCurrentSource: () => { clip: CompositionClip | null; sourceUrl: string | null; hasPendingChanges: boolean };
+  readCurrentSource: () => { clip: CompositionClip | null; hasPendingChanges: boolean };
 }): Promise<{ clip: CompositionClip; sourceUrl: string }> {
   if (!await params.flush()) throw new Error("Guarda los cambios pendientes antes de descargar.");
   await params.waitForIdle();
   const source = params.readCurrentSource();
   if (source.hasPendingChanges) throw new Error("Resuelve los cambios pendientes o la recuperación antes de descargar.");
-  if (!source.clip || !source.sourceUrl) throw new Error("El medio seleccionado no está disponible. Renueva el preview.");
-  return { clip: structuredClone(source.clip), sourceUrl: source.sourceUrl };
+  if (source.clip?.source.type !== "PRODUCTION_ASSET") {
+    throw new Error("El medio seleccionado no está disponible. Selecciona un clip de video o audio de la biblioteca.");
+  }
+  const assetId = encodeURIComponent(source.clip.source.productionAssetId);
+  const draftId = encodeURIComponent(params.draftId);
+  return {
+    clip: structuredClone(source.clip),
+    sourceUrl: `/api/production/hyperframes/drafts/${draftId}/assets/${assetId}`,
+  };
 }
 
 /** Bounds even chunked responses whose Content-Length is absent or incorrect. */

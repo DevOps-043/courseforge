@@ -56,6 +56,10 @@ export function classifyCompositionAgentRisk(
       case "clip.layout":
         reasons.add("Modifica únicamente el layout de un clip.");
         break;
+      case "group.create":
+      case "group.ungroup":
+        reasons.add("Cambia la agrupación editorial de los clips.");
+        break;
       case "animation.add-preset":
       case "animation.update-timing":
         reasons.add("Modifica motion declarativo y reversible.");

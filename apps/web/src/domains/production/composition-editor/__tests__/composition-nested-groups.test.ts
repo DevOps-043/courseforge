@@ -39,6 +39,26 @@ test("anidar colapsa un rango con huecos y conserva el documento de reproducció
   assert.equal(resolveCompositionTimelineNesting(restored, null).containers.length, 0);
 });
 
+test("un grupo visible completo se anida sobre su mismo ID y conserva sus miembros", () => {
+  const { flat, ids, nested: hierarchy } = tree();
+  const selected = new Set(ids.slice(0, 2));
+  assert.equal(resolveCompositionGroupSelection(flat, selected), null);
+  assert.equal(resolveCompositionGroupSelection(flat, new Set(ids.slice(0, 1)), null, "NESTED"), null);
+  assert.deepEqual(resolveCompositionGroupSelection(flat, selected, null, "NESTED"), { clipIds: [], childGroupIds: ["group-a"] });
+  for (const [before, parent] of [[flat, null], [hierarchy, "group-parent"]] as const) {
+    assert.deepEqual(resolveCompositionGroupSelection(before, selected, parent, "NESTED"), { clipIds: [], childGroupIds: ["group-a"] });
+    const operation = { type: "group.nest", groupId: "group-a" } as const;
+    const after = applyCompositionEditorPatches(before, [operation]);
+    assert.deepEqual(after, { ...before, groupingVersion: 2, groups: before.groups?.map(group =>
+      group.id === "group-a" ? { ...group, timelineMode: "NESTED" } : group) });
+    assert.equal(resolveCompositionGroupSelection(after, selected, parent, "NESTED"), null);
+    assert.deepEqual(resolveCompositionTimelineNesting(after, parent).containers.map(item => item.group.id), ["group-a"]);
+    assert.deepEqual(resolveCompositionTimelineNesting(after, "group-a").clips.map(clip => clip.id), [...selected]);
+    assert.throws(() => assertCompositionGroupingWrite({ before, after, clientVersion: "2", canCreateNestedGroups: true }), /no está habilitada/);
+    assert.doesNotThrow(() => assertCompositionGroupingWrite({ before, after, clientVersion: "2", canCreateNestedGroups: true, canNestTimeline: true }));
+  }
+});
+
 test("grupos ordinarios no colapsan y las anidaciones se proyectan por nivel", () => {
   const { flat, ids } = tree();
   assert.equal(resolveCompositionTimelineNesting(flat, null).clips.length, flat.clips.length);

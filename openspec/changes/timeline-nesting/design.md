@@ -7,6 +7,8 @@
   agrupación visible y conserva hashes históricos.
 - Alcance del rango: miembros seleccionados completos del mismo nivel. Los huecos
   interiores cuentan en la duración; no se incorporan clips ajenos a la selección.
+- Un único grupo visible completo se convierte con `group.nest` sobre su ID.
+  Se conserva la jerarquía y se usa la misma capacidad de persistencia.
 - Proyección: cada contenedor visible ocupa su propia fila; sus hojas se ocultan
   hasta abrirlo. Un grupo ordinario puede contener anidaciones visibles.
 - No objetivos: rasterizar, crear archivos de video intermedios, recortar o aplicar

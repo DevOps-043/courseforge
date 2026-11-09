@@ -46,6 +46,24 @@ test("exporta el offset acumulado tras recortes sucesivos", () => {
   assert.deepEqual([plan.start, plan.end], [3, 8]);
 });
 
+for (const kind of ["VIDEO", "AUDIO"] as const) {
+  test(`conserva la ventana fuente de ${kind} con bordes entre fotogramas`, () => {
+    const document = fixture();
+    const clip = document.clips[0];
+    clip.kind = kind;
+    clip.startSeconds = 4.018;
+    clip.sourceOffsetSeconds = 0.012;
+    clip.sourceDurationSeconds = 10.025;
+    clip.durationSeconds = 10.013;
+    const edited = applyCompositionEditorPatches(document, [{ type: "clip.remove-range", clipId: clip.id,
+      startSeconds: 7, endSeconds: 10, ripple: true, newClipId: "right", newHfId: "right-hf" }]);
+    const [left, right] = edited.clips.map(buildCompositionClipExportPlan);
+    assert.ok(Math.abs(left.end - 2.994) < 1e-9);
+    assert.ok(Math.abs(right.start - 5.994) < 1e-9);
+    assert.ok(Math.abs(right.end - 10.025) < 1e-9);
+  });
+}
+
 test("la descarga espera la confirmación del recorte local y captura sus offsets vigentes", async () => {
   const initial = { document: fixture(), documentHash: "a".repeat(64) };
   const edits = new CompositionLocalEdits<typeof initial>();
@@ -64,8 +82,9 @@ test("la descarga espera la confirmación del recorte local y captura sus offset
     return true;
   });
   let reads = 0;
-  const download = prepareClipExportSource({ flush: async () => true, waitForIdle: () => queue.whenIdle(),
-    readCurrentSource: () => { reads++; return { clip: current.document.clips[0], sourceUrl: "/medio", hasPendingChanges: edits.active }; },
+  const draftId = "22222222-2222-4222-8222-222222222222";
+  const download = prepareClipExportSource({ draftId, flush: async () => true, waitForIdle: () => queue.whenIdle(),
+    readCurrentSource: () => { reads++; return { clip: current.document.clips[0], hasPendingChanges: edits.active }; },
   });
   await Promise.resolve();
   assert.equal(reads, 0, "No se obtiene una fuente antes de confirmar la cola.");
@@ -73,6 +92,7 @@ test("la descarga espera la confirmación del recorte local y captura sus offset
   const source = await download;
   assert.equal(await saved, true);
   const plan = buildCompositionClipExportPlan(source.clip);
+  assert.equal(source.sourceUrl, `/api/production/hyperframes/drafts/${draftId}/assets/11111111-1111-4111-8111-111111111111`);
   assert.deepEqual([plan.start, plan.end], [2, 10]);
   assert.notEqual(source.clip, current.document.clips[0], "La exportación conserva su copia del clip confirmado.");
 });
@@ -87,8 +107,8 @@ test("una cola vacía tras fallar el guardado no permite descargar la proyecció
   const queue = new CompositionSaveQueue<() => Promise<boolean>>(command => command());
   await queue.enqueue(async () => false);
   assert.equal(queue.snapshot().status, "IDLE");
-  await assert.rejects(prepareClipExportSource({ flush: async () => true, waitForIdle: () => queue.whenIdle(),
-    readCurrentSource: () => ({ clip: admitted.payload.document.clips[0], sourceUrl: "/medio", hasPendingChanges: edits.active }),
+  await assert.rejects(prepareClipExportSource({ draftId: "draft", flush: async () => true, waitForIdle: () => queue.whenIdle(),
+    readCurrentSource: () => ({ clip: admitted.payload.document.clips[0], hasPendingChanges: edits.active }),
   }), /recuperación/);
 });
 

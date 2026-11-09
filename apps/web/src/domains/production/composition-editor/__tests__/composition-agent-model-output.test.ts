@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  COMPOSITION_AGENT_REPLY_MAX_LENGTH,
   getCompositionAgentJsonSchema,
   getCompositionAgentProviderJsonSchema,
   normalizeCompactCompositionAgentModelOutput,
@@ -89,6 +90,16 @@ test("accepts a clarification only in the conversational flow", () => {
   assert.deepEqual(normalizeCompactCompositionAgentModelOutput(output, true), { reply: output.summary });
   assert.throws(() => normalizeCompactCompositionAgentModelOutput(output));
   assert.equal(getCompositionAgentProviderJsonSchema(true).properties.operations.minItems, 0);
+});
+
+test("separa el límite conversacional del resumen de una edición", () => {
+  const summary = "a".repeat(COMPOSITION_AGENT_REPLY_MAX_LENGTH);
+  assert.deepEqual(normalizeCompactCompositionAgentModelOutput({ operations: [], summary }, true), { reply: summary });
+  assert.throws(() => normalizeCompactCompositionAgentModelOutput({ operations: [], summary: summary + "a" }, true));
+  assert.throws(() => normalizeCompactCompositionAgentModelOutput({
+    operations: [{ argumentsJson: '{"clipId":"visual-clip","hidden":true}', type: "clip.visibility" }],
+    summary,
+  }, true));
 });
 
 test("decodes new editor operations and rejects operations outside the executable catalog", () => {

@@ -1730,13 +1730,16 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     inspectTimelineSelection();
   };
   const createTimelineGroup = (timelineMode?: "NESTED") => {
-    const currentDocument = payloadRef.current?.document;
-    if (!currentDocument) return;
-    const selection = resolveCompositionGroupSelection(currentDocument, selectedTimelineClipIds, editingTimelineGroupId);
+    const current = payloadRef.current;
+    if (!current || localEditingBlocked || (timelineMode && !current.capabilities?.canNestTimeline)) return;
+    const selection = resolveCompositionGroupSelection(current.document, selectedTimelineClipIds, editingTimelineGroupId, timelineMode);
     if (!selection) return;
+    if (timelineMode && !selection.clipIds.length && selection.childGroupIds.length === 1) {
+      void savePatch([{ groupId: selection.childGroupIds[0]!, type: "group.nest" }], "Anidó el grupo en un clip editable.");
+      return;
+    }
     const nested = selection.childGroupIds.length > 0 || editingTimelineGroupId !== null;
-    if (nested && !payloadRef.current?.capabilities?.canCreateNestedGroups) return;
-    if (timelineMode && !payloadRef.current?.capabilities?.canNestTimeline) return;
+    if (nested && !current.capabilities?.canCreateNestedGroups) return;
     void savePatch([{ ...selection, ...(timelineMode ? { timelineMode } : {}), groupId: `group-${crypto.randomUUID()}`, type: "group.create" }], timelineMode ? "Anidó la selección en un clip editable." : "Agrupó los elementos seleccionados.");
   };
   const enterTimelineGroup = () => {
@@ -3017,16 +3020,6 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
     }
     const rangeStart = explicitRange?.startSeconds ?? Math.min(removalRangeStart!.seconds, seconds);
     const rangeEnd = explicitRange?.endSeconds ?? Math.max(removalRangeStart!.seconds, seconds);
-    const clipEnd = selectedClip.startSeconds + selectedClip.durationSeconds;
-    const minimumRange = Math.max(0.05, 1 / (payloadRef.current?.document.canvas.fps || 30));
-    if (rangeStart < selectedClip.startSeconds - 0.001 || rangeEnd > clipEnd + 0.001) {
-      setSaveError(`El intervalo debe quedar entre ${formatCompositionTimecode(selectedClip.startSeconds)} y ${formatCompositionTimecode(clipEnd)}, que son los límites de ${selectedClip.label}.`);
-      return false;
-    }
-    if (rangeEnd - rangeStart < minimumRange - 0.001) {
-      setSaveError("El intervalo debe durar al menos 50 ms o un frame, lo que sea mayor.");
-      return false;
-    }
     const identity = createDerivedClipIdentity(selectedClip.id);
     const saved = await savePatch([{
       clipId: selectedClip.id,
@@ -3046,25 +3039,24 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
         clearSelection();
       } else {
         selectClip(nextSelectedClip.hfId);
+        seek(nextSelectedClip.startSeconds);
       }
-      seek(rangeStart);
     }
     return saved;
   }
 
   async function prepareSelectedClipExport() {
     return prepareClipExportSource({
+      draftId,
       flush: () => autosaveCoordinatorRef.current.flush(),
       waitForIdle: () => saveQueueRef.current?.whenIdle() ?? Promise.resolve(),
       readCurrentSource: () => {
         const currentPayload = payloadRef.current;
         const clip = currentPayload?.document.clips.find(candidate => candidate.hfId === selectedHfId) ?? null;
-        const assetId = clip?.source.type === "PRODUCTION_ASSET" ? clip.source.productionAssetId : null;
-        const source = assets.find(asset => asset.id === assetId && asset.valid);
         const hasPendingChanges = !currentPayload || localEditsRef.current.active
           || resolveCompositionRecovery(window.localStorage, draftId, currentPayload.documentHash).status !== "NONE"
           || readCompositionPendingEdits(window.localStorage, draftId).length > 0;
-        return { clip, sourceUrl: source?.previewUrl ?? null, hasPendingChanges };
+        return { clip, hasPendingChanges };
       },
     });
   }

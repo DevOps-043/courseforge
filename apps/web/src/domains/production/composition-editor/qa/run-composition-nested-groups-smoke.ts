@@ -110,6 +110,17 @@ async function main() {
     await evaluate(client, "document.querySelector('button[data-nested-group-id]').click()");
     await evaluate(client, "[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Desanidar').click()");
     await waitFor(client, `${state}.groups.length === 2 && document.querySelectorAll('button[data-clip-id]').length === 4`);
+    const nestButton = "[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Anidar selección')";
+    await evaluate(client, "[...document.querySelectorAll('[role=toolbar] button')].find(button=>button.textContent.trim()==='Limpiar').click()");
+    await waitFor(client, `${state}.selected.length === 0`);
+    await evaluate(client, "document.querySelector('[aria-label=\"Seleccionar grupo Grupo A\"]').click()");
+    await waitFor(client, `${state}.selected.length === 2 && ${nestButton}.disabled === false`);
+    assert.equal(await evaluate(client, `${groupButton}.disabled`), true);
+    await evaluate(client, `${nestButton}.click()`);
+    await waitFor(client, `${state}.groups.length === 2 && document.querySelector('[data-nested-group-id="group-a"]') !== null && document.querySelectorAll('button[data-clip-id]:not([data-nested-group-id])').length === 2`);
+    await evaluate(client, "document.querySelector('#reload').click()");
+    await evaluate(client, "document.querySelector('[data-nested-group-id=\"group-a\"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))");
+    await waitFor(client, `${state}.editingGroupId === 'group-a' && document.querySelectorAll('button[data-clip-id]').length === 2`);
     await writeFile(resolve(directory, "screenshot.png"), await captureCompositionQaScreenshot(client));
     process.stdout.write("QA Chromium: Grupos accesible, diagnóstico de capacidad, selección física Shift/Ctrl y múltiple, casillas de grupos completos, agrupación jerárquica, anidación, movimiento, Enter/Escape y recuperación correctas.\n");
   } finally { await browser.close(); }
