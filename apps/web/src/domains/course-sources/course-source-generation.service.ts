@@ -209,17 +209,17 @@ export async function prepareCourseGeneration(
   };
   if (useBaseBatches) {
     const { purpose, model, deadline } = baseBatch;
-    const plan = planBaseBatches(purpose, sources);
+    const { batches, limits, findingsPerBatch } = planBaseBatches(purpose, sources);
     const { data: batchRun, error: batchError } = await admin.rpc("create_course_source_batch_run", {
       p_artifact: artifactId, p_organization: settings.organization_id, p_revision: settings.revision,
-      p_purpose_hash: sourceTextHash(JSON.stringify({ purpose, model })), p_planner: BASE_BATCH_LIMITS.planner, p_plan: plan,
+      p_purpose_hash: sourceTextHash(JSON.stringify({ purpose, model })), p_planner: limits.planner, p_plan: batches,
       p_deadline: new Date(Date.now() + BASE_BATCH_LIMITS.lifetimeMs).toISOString(),
-      p_attempts: BASE_BATCH_LIMITS.attempts, p_splits: BASE_BATCH_LIMITS.splits, p_tokens: BASE_BATCH_LIMITS.totalUnits,
+      p_attempts: limits.attempts, p_splits: limits.splits, p_tokens: limits.totalUnits,
     });
     if (batchError) sourcePersistenceError(batchError);
     const batchScope = { p_run: batchRun, p_organization: settings.organization_id };
     context.sources = await readBaseBatches({
-      purpose, sources, deadline, resume: true,
+      purpose, sources, deadline, resume: true, findingsPerBatch,
       command: async (action, path, lease, payload) => {
         const { data, error: commandError } = await admin.rpc("command_course_source_batch", {
           ...batchScope, p_action: action, p_path: path ?? null, p_lease: lease ?? null, p_payload: payload ?? {},

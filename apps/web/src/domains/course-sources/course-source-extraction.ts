@@ -7,20 +7,33 @@ import { verifySourceUpload } from "./course-source-upload-verification";
 import { sourcePersistenceError } from "./course-source-error";
 import { COURSE_SOURCE_LIMITS } from "./course-source-policy";
 
-export function fragmentSourceText(text: string) {
+export function* fragmentSourceText(text: string) {
   const fragmentSize = 2000;
-  const fragments = [];
+  let ordinal = 0;
   for (let start = 0; start < text.length;) {
     let end = Math.min(start + fragmentSize, text.length);
     const nextUnit = text.charCodeAt(end);
     if (nextUnit >= 0xdc00 && nextUnit <= 0xdfff) end -= 1;
     const content = text.slice(start, end);
-    fragments.push({ ordinal: fragments.length, text: content,
+    yield { ordinal: ordinal++, text: content,
       sha256: createHash("sha256").update(content).digest("hex"),
-      locator: { characterStart: start, characterEnd: end } });
+      locator: { characterStart: start, characterEnd: end } };
     start = end;
   }
-  return fragments;
+}
+
+function* sourceExtractionBatches(text: string) {
+  const fragments = fragmentSourceText(text);
+  while (true) {
+    const batch = [];
+    for (let index = 0; index < COURSE_SOURCE_LIMITS.extractionBatchFragments; index++) {
+      const fragment = fragments.next();
+      if (fragment.done) break;
+      batch.push(fragment.value);
+    }
+    if (!batch.length) return;
+    yield batch;
+  }
 }
 
 export async function extractCourseSource(admin: SupabaseClient, artifactId: string, documentId: string, organizationId: string) {
@@ -45,16 +58,19 @@ export async function extractCourseSource(admin: SupabaseClient, artifactId: str
       arrayBuffer: () => blob.arrayBuffer(),
     }, { maxCharacters: textLimitUnits });
     diagnosticCode = "SOURCE_PERSIST_FAILED";
-    const fragments = fragmentSourceText(extracted.text);
-    const batchSize = COURSE_SOURCE_LIMITS.extractionBatchFragments;
-    for (let start = 0; start < fragments.length; start += batchSize) {
+    let fragmentCount = 0;
+    for (const batch of sourceExtractionBatches(extracted.text)) {
       const staged = await admin.rpc("stage_course_source_extraction", { ...base, p_action: "append", p_token: token,
-        p_fragments: fragments.slice(start, start + batchSize) });
+        p_fragments: batch });
       if (staged.error) sourcePersistenceError(staged.error);
+      fragmentCount += batch.length;
     }
     const result = await admin.rpc("stage_course_source_extraction", { ...base, p_action: "publish", p_token: token,
-      p_count: fragments.length, p_characters: extracted.characterCount });
-    if (result.error) sourcePersistenceError(result.error);
+      p_count: fragmentCount, p_characters: extracted.characterCount });
+    if (result.error) {
+      if (result.error.message === "SOURCE_COURSE_TEXT_LIMIT") diagnosticCode = "COURSE_TEXT_LIMIT";
+      sourcePersistenceError(result.error);
+    }
   } catch (error) {
     if (error instanceof SyllabusSourceTextError) diagnosticCode = error.reason;
     const failure = await admin.rpc("process_course_source_document", {

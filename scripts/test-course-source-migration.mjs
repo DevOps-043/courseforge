@@ -65,6 +65,7 @@ async function database(generation = false) {
     await db.exec(await readFile('supabase/migrations/20261107030000_course_source_staged_extraction.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261109020000_course_source_base_batch_progress.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261110020000_expand_course_source_extraction.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261110030000_split_long_course_sources.sql', 'utf8'));
   }
   await db.exec('set role service_role');
   return db;
@@ -525,11 +526,11 @@ test('ingesta larga publica el texto completo de forma atómica y rechaza lotes 
     const course = await draft(db);
     const entry = await reserve(db,course);
     await confirm(db,entry);
-    const lease = (await db.query("select process_course_source_document($1,$2,$3,'reserve',null) as token",
+    const lease = (await db.query("select process_course_source_document($1,$2,$3,'reserve',null,'{\"textLimitUnits\":1200000}') as token",
       [entry.id,course,organization])).rows[0].token;
-    const pieces = Array.from({length:300},(_,ordinal)=>{
+    const pieces = Array.from({length:600},(_,ordinal)=>{
       const ending = ' 😀 sección final';
-      const text = ordinal===299 ? 'x'.repeat(2000-ending.length)+ending : 'x'.repeat(2000);
+      const text = ordinal===599 ? 'x'.repeat(2000-ending.length)+ending : 'x'.repeat(2000);
       return {ordinal,text,sha256:createHash('sha256').update(text).digest('hex'),
         locator:{characterStart:ordinal*2000,characterEnd:ordinal*2000+text.length}};
     });
@@ -544,11 +545,26 @@ test('ingesta larga publica el texto completo de forma atómica y rechaza lotes 
     await assert.rejects(stage('publish'), /SOURCE_BATCH_INCOMPLETE/);
     assert.equal((await db.query('select count(*)::integer as count from course_source_fragments')).rows[0].count,0);
     for (let start=16;start<pieces.length;start+=16) await stage('append',pieces.slice(start,start+16));
-    await assert.rejects(stage('publish',null,lease,organization,600001), /SOURCE_BATCH_INVALID/);
+    await assert.rejects(stage('publish',null,lease,organization,1200001), /SOURCE_BATCH_INVALID/);
     await stage('publish');
     await stage('publish');
     assert.equal((await db.query("select string_agg(text_content,'' order by ordinal) as text from course_source_fragments")).rows[0].text,text);
     assert.equal((await db.query('select status from course_source_documents')).rows[0].status,'READY');
+    const extra = await reserve(db,course);
+    await confirm(db,extra);
+    const extraLease = (await db.query("select process_course_source_document($1,$2,$3,'reserve',null) as token",
+      [extra.id,course,organization])).rows[0].token;
+    const extraText = 'y'.repeat(50);
+    const extraFragments = [{ordinal:0,text:extraText,sha256:createHash('sha256').update(extraText).digest('hex'),
+      locator:{characterStart:0,characterEnd:extraText.length}}];
+    await db.query("select stage_course_source_extraction($1,$2,$3,$4,'append',$5::jsonb)",
+      [extra.id,course,organization,extraLease,JSON.stringify(extraFragments)]);
+    const publishExtra = () => db.query("select stage_course_source_extraction($1,$2,$3,$4,'publish',null,1,50)",
+      [extra.id,course,organization,extraLease]);
+    await assert.rejects(publishExtra(), /SOURCE_COURSE_TEXT_LIMIT/);
+    assert.equal((await db.query('select count(*)::integer as count from course_source_fragments where document_id=$1',[extra.id])).rows[0].count,0);
+    await db.query("select process_course_source_document($1,$2,$3,'retire',null)",[entry.id,course,organization]);
+    await publishExtra();
     await assert.rejects(db.query('select * from course_source_extraction_batches'), /permission denied/);
     await db.exec('set role authenticated');
     await assert.rejects(stage('publish'), /permission denied/);
@@ -576,6 +592,12 @@ test('una versión agotada por el tope anterior puede reservar una vez con el l�
     await assert.rejects(command('reserve',null,{textLimitUnits:600000}), /SOURCE_CONFLICT/);
     assert.deepEqual((await db.query('select extraction_attempts,extraction_text_limit from course_source_documents')).rows[0],
       {extraction_attempts:4,extraction_text_limit:600000});
+    const largerRecovery = await command('reserve',null,{textLimitUnits:1200000});
+    assert.ok(largerRecovery);
+    await command('fail',largerRecovery,{diagnosticCode:'TEXT_LIMIT'});
+    await assert.rejects(command('reserve',null,{textLimitUnits:1200000}), /SOURCE_CONFLICT/);
+    assert.deepEqual((await db.query('select extraction_attempts,extraction_text_limit from course_source_documents')).rows[0],
+      {extraction_attempts:5,extraction_text_limit:1200000});
   } finally { await db.close(); }
 });
 

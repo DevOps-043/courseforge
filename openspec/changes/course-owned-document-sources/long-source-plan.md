@@ -28,6 +28,12 @@ La biblioteca y la migración `20261110020000_expand_course_source_extraction.sq
 
 La reserva del intento guarda el límite aplicado. Una versión agotada por `TEXT_LIMIT` obtiene una recuperación al aumentar el límite, conservando el contador y el original. El worker anterior conserva su ruta de reserva y no consume la recuperación reservada a una capacidad superior. Aplicar la migración antes de desplegar la aplicación y el worker ampliados. La reversión de aplicación y worker conserva originales, fragmentos y el último límite registrado. [Verificación de la ampliación](reports/expanded-source-admission.md).
 
+### División automática con presupuesto por curso
+
+Un original puede ocupar todo el presupuesto de 1,200,000 unidades UTF-16 de texto activo de su curso. El worker entrega tramos de hasta 16 fragmentos ordenados sin construir una segunda colección con todo el documento. PostgreSQL serializa la publicación por curso, comprueba el presupuesto acumulado y publica los tramos juntos. Una sustitución puede reutilizar la capacidad del predecesor que retira en esa misma transacción. Conservar el original si la extracción o la publicación se rechazan. Los parsers siguen sujetos a los límites de archivo y formato y la normalización entrega texto en memoria.
+
+Base conserva la versión del plan para conjuntos de hasta 64 lotes y usa un plan de hasta 224 lotes cuando esa capacidad no basta. Ambos mantienen el mismo presupuesto por llamada. El plan ampliado acota el costo acumulado y la cantidad de citas por lote, de manera que el texto de la evidencia comprobada cabe en el contexto final. Aplicar la migración `20261110030000_split_long_course_sources.sql` antes de desplegar la aplicación y el worker. Revertir el worker conserva el original y los fragmentos publicados. Temario y Plan por alcance conservan su entrega separada. [Verificación de la división](reports/automatic-source-splitting.md).
+
 La activación exige un piloto de carga a Materiales con fuentes de varios tamaños. Colocar reglas diferentes al principio, en medio y al final, desplazar una regla obligatoria entre secciones y verificar que su cita llega al material correspondiente. Inyectar fallo intermedio y reemplazo concurrente. Medir límites, cobertura, costo y latencia antes de ampliar la admisión. Los [resultados de la revisión local](reports/long-source-reference-review.md) separan la evidencia medida de lo pendiente.
 
 ## Base por lotes del paso 4

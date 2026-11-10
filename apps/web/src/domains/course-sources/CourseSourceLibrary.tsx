@@ -13,6 +13,7 @@ const EXTRACTION_DIAGNOSTICS: ReadonlyMap<string, string> = new Map([
   ["SOURCE_READ_FAILED", "No se pudo leer el original almacenado. Intenta procesarlo otra vez."],
   ["SOURCE_FORMAT_INVALID", "No se pudo interpretar el formato. Comprueba que el archivo se abra correctamente."],
   ["TEXT_LIMIT", "El texto superó el límite de extracción del último intento."],
+  ["COURSE_TEXT_LIMIT", "El curso alcanzó su presupuesto de texto. Retira una fuente que ya no necesites y vuelve a procesar el original."],
   ["INSUFFICIENT_TEXT", "Se necesitan al menos 50 caracteres de texto extraíble. Si el PDF es escaneado, aplica OCR."],
   ["SOURCE_PERSIST_FAILED", "Se leyó el documento, pero no se pudo guardar el texto. Intenta procesarlo otra vez."],
 ]);
@@ -89,7 +90,7 @@ export function CourseSourceLibrary({ artifactId }: { artifactId: string }) {
   return <details aria-busy={busy} className="mb-5 rounded-xl border border-gray-300 bg-[var(--engine-surface)] p-4 font-sans dark:border-white/20 [&_button]:min-h-10 [&_button]:rounded-md [&_button]:border [&_button]:border-gray-300 [&_button]:px-3 [&_button]:py-2 [&_button]:text-sm [&_button]:font-medium [&_button]:disabled:opacity-50 [&_button]:hover:bg-gray-100 dark:[&_button]:border-white/20 dark:[&_button]:hover:bg-white/10">
     <summary className="cursor-pointer font-semibold">Mis documentos del curso</summary>
     <CourseSourceReviewPanel artifactId={artifactId} policyOnly />
-    <p className="my-3 text-sm">PDF, DOCX, PPTX o TXT · 15 MB y hasta {COURSE_SOURCE_LIMITS.activeTextCharacters.toLocaleString("es-MX")} unidades de texto por archivo. Se extrae texto sin OCR. Las primeras etapas usan los documentos listos; para Materiales debes aprobar su cobertura por objetivo y tema.</p>
+    <p className="my-3 text-sm">PDF, DOCX, PPTX o TXT · 15 MB por archivo y hasta {COURSE_SOURCE_LIMITS.activeTextCharacters.toLocaleString("es-MX")} unidades de texto activo por curso. El sistema divide el texto internamente y extrae sin OCR. Para Materiales, aprueba la cobertura por objetivo y tema.</p>
     {replacement && <p role="status">Sustituyendo: {replacement.filename}. El original se conserva hasta que termine la extracción. <button type="button" disabled={busy} onClick={() => setReplacement(null)}>Cancelar sustitución</button></p>}
     <label className="block rounded border border-dashed p-4" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (!busy) void upload(Array.from(event.dataTransfer.files)); }}>
       <span className="mb-2 block">Selecciona o arrastra tus archivos</span>

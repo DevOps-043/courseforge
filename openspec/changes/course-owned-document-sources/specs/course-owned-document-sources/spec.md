@@ -48,6 +48,11 @@ El sistema SHALL admitir originales largos dentro de presupuestos medidos y reut
 - **THEN** las etapas estructurales consultan evidencia por alcance y la selección mantiene procedencia y revisión
 - **AND** superar el presupuesto de admisión produce un diagnóstico medible sin truncar ni publicar fragmentos parciales
 
+#### Scenario: Un original ocupa el presupuesto del curso
+- **WHEN** el texto extraído de un original supera 600,000 unidades y cabe en el presupuesto de 1,200,000 unidades UTF-16 activas del curso
+- **THEN** se guarda en tramos internos bajo un solo original y se publica el conjunto completo en orden
+- **AND** una publicación concurrente que exceda el saldo del curso conserva su original y devuelve el diagnóstico de cuota sin publicar fragmentos
+
 #### Scenario: El archivo menciona una página externa
 - **WHEN** una URL aparece como cita o ejemplo dentro del texto aportado
 - **THEN** la mención conserva su procedencia documental y el modo exclusivo no consulta la página
@@ -165,7 +170,7 @@ El sistema SHALL congelar política, versiones y fragmentos por ejecución, vali
 - **THEN** no los vincula al fingerprint nuevo y se detiene antes de generar
 
 #### Scenario: Base usa un documento largo del taller
-- **WHEN** la biblioteca procesa un documento de hasta 600,000 unidades UTF-16 que supera el contexto directo de Base y cumple su presupuesto de lotes
+- **WHEN** la biblioteca procesa un documento que supera el contexto directo de Base y cumple los presupuestos del curso y de lotes
 - **THEN** conserva íntegro el texto extraído y el job recorre todos sus fragmentos en lotes acotados
 - **AND** la redacción y la verificación usan citas literales de lotes confirmados mientras el manifiesto identifica la revisión completa
 

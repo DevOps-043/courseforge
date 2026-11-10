@@ -5,12 +5,14 @@ import { BASE_BATCH_LIMITS, planBaseBatches, readBaseBatches } from "../course-s
 import type { GenerationSource } from "../course-source-generation";
 
 test("el presupuesto de Base admite el máximo de un archivo con texto multibyte", () => {
-  const sources: GenerationSource[] = Array.from({ length: 125 }, () => ({
+  const sources: GenerationSource[] = Array.from({ length: 600 }, () => ({
     id: randomUUID(), kind: "DOCUMENT", title: "Manual", locator: {}, text: "文".repeat(2000), hash: "hash",
   }));
-  const plan = planBaseBatches("文".repeat(3000), sources);
+  const { batches: plan, limits, findingsPerBatch } = planBaseBatches("文".repeat(3000), sources);
   assert.deepEqual(plan.flatMap(batch => batch.fragmentIds), sources.map(source => source.id));
-  assert.ok(plan.reduce((total, batch) => total + batch.requestTokens, 0) < BASE_BATCH_LIMITS.totalUnits);
+  assert.equal(limits.planner, "base-evidence-v2");
+  assert.ok(plan.reduce((total, batch) => total + batch.requestTokens, 0) < limits.totalUnits);
+  assert.ok(findingsPerBatch > 0 && findingsPerBatch < 4);
 });
 
 test("Base recorre el documento largo y al recuperar el lote intermedio conserva el avance", async () => {
@@ -19,7 +21,8 @@ test("Base recorre el documento largo y al recuperar el lote intermedio conserva
     text: `Regla ${index}: requiere autorización expresa. `.padEnd(2000, "a"), hash: "hash",
   }));
   const purpose = "Preparar taller de seguridad";
-  const plan = planBaseBatches(purpose, sources);
+  const { batches: plan, limits } = planBaseBatches(purpose, sources);
+  assert.equal(limits.planner, BASE_BATCH_LIMITS.planner);
   assert.deepEqual(plan.flatMap(batch => batch.fragmentIds), sources.map(source => source.id));
   assert.ok(plan.every(batch => batch.requestTokens <= BASE_BATCH_LIMITS.requestUnits));
   const confirmed = new Map<number, unknown[]>();
