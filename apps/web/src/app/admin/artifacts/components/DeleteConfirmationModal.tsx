@@ -7,6 +7,7 @@ interface DeleteConfirmationModalProps {
   onConfirm: () => void;
   artifactTitle: string;
   isDeleting: boolean;
+  error: string | null;
 }
 
 export function DeleteConfirmationModal({
@@ -15,11 +16,13 @@ export function DeleteConfirmationModal({
   onConfirm,
   artifactTitle,
   isDeleting,
+  error,
 }: DeleteConfirmationModalProps) {
   return (
     <EngineDialog
       isOpen={isOpen}
-      onClose={() => { if (!isDeleting) onClose(); }}
+      onClose={onClose}
+      closeDisabled={isDeleting}
       size="compact"
       eyebrow="Acción irreversible"
       title="Eliminar artefacto"
@@ -49,8 +52,10 @@ export function DeleteConfirmationModal({
     >
       <div className="space-y-4">
         <p className="text-sm leading-6 text-[var(--engine-text-muted)]">
-          Se eliminarán permanentemente el artefacto y todos sus datos asociados.
+          Se eliminarán permanentemente el artefacto y sus datos vinculados que admiten borrado.
+          Las fuentes documentales registradas bloquean esta acción.
         </p>
+        {error && <p role="alert" className="text-sm text-red-600 dark:text-red-300">{error}</p>}
         <div className="rounded-2xl border border-[var(--engine-border)] bg-[var(--engine-surface-soft)] p-4">
           <p className="mb-1 font-[var(--font-system-label)] text-[0.56rem] font-semibold uppercase tracking-[0.11em] text-[var(--engine-text-muted)]">Artefacto seleccionado</p>
           <p className="line-clamp-3 text-sm font-medium text-[var(--engine-text)]">{artifactTitle}</p>

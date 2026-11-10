@@ -95,7 +95,13 @@ La transferencia muestra progreso por bytes y permite cancelar XHR; la reserva q
 
 Sin purga automática ni borrado de documentos UPLOADED/READY/RETIRED o fragmentos. El historial y las reservas conciliadas siguen contando en cuotas; no se declara una liberación de presupuesto antes de reconciliar datos/retención de forma separada. Para una carga huérfana fuera de una reserva conocida no se ofrece borrado general del bucket: debe investigarse administrativamente antes de autorizar un efecto.
 
-No se ejecutó purga de datos reales al desarrollar esta funcionalidad. En despliegue, el operador debe usar primero inspección, revisar el ID/curso/retención y autorizar cada purga desde el control separado. Mantener el historial de conciliación durante la vida del curso; las fuentes consumidas no tienen borrado automático. Cualquier política de eliminación de curso completo requiere un cambio específico.
+No se ejecutó purga de datos reales al desarrollar esta funcionalidad. En despliegue, el operador debe usar primero inspección, revisar el ID/curso/retención y autorizar cada purga desde el control separado. Mantener el historial de conciliación durante la vida del curso; las fuentes consumidas no tienen borrado automático.
+
+La eliminación del artefacto usa una transacción. Un borrador sin archivos
+puede eliminarse con su configuración. Se conserva la clave de creación para
+rechazar reintentos y mantener la cuota. Reservas,
+originales registrados y dependencias protegidas bloquean el borrado y
+conservan el curso. Véase el [contrato de eliminación](../../openspec/changes/fix-artifact-deletion/design.md).
 
 ## Responsabilidades
 

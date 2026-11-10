@@ -83,6 +83,82 @@ async function confirm(db, entry, overrides = {}) {
     [entry.artifact_id, input.org, input.actor, entry.id, input.hash, input.bytes])).rows[0].entry;
 }
 
+async function installArtifactDeletion(db) {
+  await db.exec(`reset role;
+    grant delete on artifacts to anon, authenticated;
+    create table pipeline_events(artifact_id uuid references artifacts(id));
+    create table syllabus_source_documents(artifact_id uuid references artifacts(id) on delete cascade);`);
+  await db.exec(await readFile('supabase/migrations/20261109010000_atomic_artifact_deletion.sql', 'utf8'));
+}
+
+async function deleteArtifact(db, artifactId, organizationId = organization) {
+  const { rows } = await db.query('select public.delete_artifact_for_organization($1,$2) as result', [artifactId, organizationId]);
+  return rows[0].result;
+}
+
+test('el borrado atómico elimina un borrador documental vacío y mantiene el aislamiento', async () => {
+  const db = await database(true);
+  try {
+    const course = await draft(db);
+    const otherCourse = await draft(db, key, otherOrganization);
+    await db.exec('reset role');
+    await assert.rejects(db.query('delete from artifacts where id=$1', [course]),
+      { code: '23503', constraint: 'course_source_settings_artifact_id_fkey' });
+    await installArtifactDeletion(db);
+    await db.exec('set role authenticated');
+    await assert.rejects(db.query('delete from artifacts where id=$1', [course]), { code: '42501' });
+    await assert.rejects(deleteArtifact(db, course), { code: '42501' });
+    await db.exec('reset role; set role service_role');
+    assert.equal(await deleteArtifact(db, course, otherOrganization), 'NOT_FOUND');
+    assert.equal(await deleteArtifact(db, course), 'DELETED');
+    assert.equal(await deleteArtifact(db, course), 'NOT_FOUND');
+    assert.deepEqual((await db.query('select artifact_id from course_source_settings')).rows, [{ artifact_id: otherCourse }]);
+    assert.deepEqual((await db.query('select artifact_id, requested_title from course_source_drafts where organization_id=$1', [organization])).rows,
+      [{ artifact_id: null, requested_title: 'Eliminado' }]);
+    await assert.rejects(draft(db), /SOURCE_CONFLICT/);
+    assert.deepEqual((await db.query('select id from artifacts')).rows, [{ id: otherCourse }]);
+
+    const legacyCourse = identifier();
+    await db.exec('reset role');
+    await db.query("insert into artifacts(id, organization_id, idea_central) values($1,$2,'Curso histórico')", [legacyCourse, organization]);
+    await db.query('insert into pipeline_events values($1)', [legacyCourse]);
+    const material = (await db.query('insert into materials(artifact_id) values($1) returning id', [legacyCourse])).rows[0].id;
+    const lesson = (await db.query('insert into material_lessons(materials_id) values($1) returning id', [material])).rows[0].id;
+    await db.query('insert into material_components(material_lesson_id) values($1)', [lesson]);
+    await db.exec('set role service_role');
+    assert.equal(await deleteArtifact(db, legacyCourse), 'DELETED');
+    assert.deepEqual((await db.query('select id from artifacts')).rows, [{ id: otherCourse }]);
+    assert.equal((await db.query('select id from material_components where material_lesson_id=$1', [lesson])).rows.length, 0);
+  } finally { await db.close(); }
+});
+
+test('el borrado atómico protege reservas, originales y dependencias imprevistas', async () => {
+  const db = await database(true);
+  try {
+    const reservedCourse = await draft(db);
+    await reserve(db, reservedCourse);
+    const legacyCourse = identifier();
+    const blockedCourse = await draft(db, identifier());
+    await installArtifactDeletion(db);
+    await db.query("insert into artifacts(id, organization_id, idea_central) values($1,$2,'Curso histórico')", [legacyCourse, organization]);
+    await db.query('insert into syllabus_source_documents values($1)', [legacyCourse]);
+    await db.exec('create table protected_dependency(artifact_id uuid references artifacts(id))');
+    await db.query('insert into protected_dependency values($1)', [blockedCourse]);
+    await db.query('insert into publication_requests(artifact_id) values($1)', [blockedCourse]);
+    await db.query('insert into syllabus(artifact_id) values($1)', [blockedCourse]);
+    await db.exec('set role service_role');
+    assert.equal(await deleteArtifact(db, reservedCourse), 'HAS_SOURCE_DOCUMENTS');
+    assert.equal(await deleteArtifact(db, legacyCourse), 'HAS_SOURCE_DOCUMENTS');
+    await assert.rejects(deleteArtifact(db, blockedCourse), { code: '23503' });
+    for (const table of ['publication_requests', 'syllabus', 'course_source_settings', 'course_source_drafts']) {
+      assert.equal((await db.query(`select artifact_id from ${table} where artifact_id=$1`, [blockedCourse])).rows.length, 1);
+    }
+    assert.equal((await db.query('select artifact_id from course_source_documents where artifact_id=$1', [reservedCourse])).rows.length, 1);
+    await db.exec('reset role');
+    assert.equal((await db.query('select artifact_id from syllabus_source_documents where artifact_id=$1', [legacyCourse])).rows.length, 1);
+  } finally { await db.close(); }
+});
+
 test('borrador idempotente conserva DRAFT sin metadata de generación', async () => {
   const db = await database();
   try {

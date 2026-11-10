@@ -70,3 +70,69 @@ describe("frontera privilegiada de artefactos", () => {
     assert.equal(f.queries.length, 0);
   });
 });
+
+describe("eliminación de artefactos", () => {
+  const artifactId = "40000000-0000-4000-8000-000000000001";
+  const organizationId = "50000000-0000-4000-8000-000000000001";
+
+  function deletionFixture() {
+    const state = { platformRole: "ADMIN", tenantAvailable: true, outcome: "DELETED", databaseError: null as null | { code: string; message: string } };
+    const calls: Array<[string, Record<string, string>]> = [];
+    let privilegedClients = 0;
+    class AuthorityUnavailable extends Error {}
+    const action = load<typeof import("../../../domains/artifacts/actions/delete-artifact.action")>(
+      "src/domains/artifacts/actions/delete-artifact.action.ts",
+      {
+        "@/lib/pipeline-constants": { REVIEWER_ROLE_SET: new Set(["ADMIN", "ARQUITECTO", "SUPERADMIN"]) },
+        "@/lib/server/tenant-context": {
+          TenantContextLookupError: AuthorityUnavailable,
+          resolveActiveTenantContext: async () => {
+            if (!state.tenantAvailable) throw new AuthorityUnavailable();
+            return { organizationId, platformRole: state.platformRole };
+          },
+        },
+        "@/lib/server/auth-identity-error": { AuthIdentityLookupError: AuthorityUnavailable },
+        "@/lib/server/operational-logger": { resolveCorrelationId: () => "referencia", createOperationalLogger: () => ({ warn() {} }) },
+        "@/lib/server/artifact-action-auth": { getServiceRoleClient: () => {
+          privilegedClients++;
+          return { rpc: async (name: string, parameters: Record<string, string>) => {
+            calls.push([name, { ...parameters }]);
+            return { data: state.outcome, error: state.databaseError };
+          } };
+        } },
+      },
+    );
+    return { state, action, calls, privilegedClients: () => privilegedClients };
+  }
+
+  it("rechaza UUID inválido, rol sin permiso y autoridad caída antes de construir el cliente privilegiado", async () => {
+    const f = deletionFixture();
+    assert.equal((await f.action.deleteArtifactAction("inválido")).success, false);
+    f.state.platformRole = "CONSTRUCTOR";
+    assert.equal((await f.action.deleteArtifactAction(artifactId)).success, false);
+    f.state.tenantAvailable = false;
+    assert.equal((await f.action.deleteArtifactAction(artifactId)).success, false);
+    assert.equal(f.privilegedClients(), 0);
+  });
+
+  it("envía la organización resuelta en servidor y solo confirma la respuesta DELETED", async () => {
+    const f = deletionFixture();
+    assert.equal((await f.action.deleteArtifactAction(artifactId)).success, true);
+    assert.deepEqual(f.calls, [["delete_artifact_for_organization", {
+      p_artifact_id: artifactId, p_organization_id: organizationId,
+    }]]);
+    for (const outcome of ["NOT_FOUND", "HAS_SOURCE_DOCUMENTS", "DESCONOCIDO"]) {
+      f.state.outcome = outcome;
+      assert.equal((await f.action.deleteArtifactAction(artifactId)).success, false);
+    }
+  });
+
+  it("presenta un bloqueo sin exponer el detalle de PostgreSQL", async () => {
+    const f = deletionFixture();
+    f.state.databaseError = { code: "23503", message: "Detalle SQL interno" };
+    const result = await f.action.deleteArtifactAction(artifactId);
+    assert.ok(!result.success);
+    assert.match(result.error, /datos vinculados.*referencia/i);
+    assert.doesNotMatch(result.error, /Detalle SQL interno/);
+  });
+});

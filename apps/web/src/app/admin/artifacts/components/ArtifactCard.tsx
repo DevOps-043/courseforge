@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { FileStack, MoreHorizontal } from "lucide-react";
-import { toast } from "sonner";
-import { deleteArtifactAction } from "@/domains/artifacts/actions/artifact.actions";
+import { deleteArtifactAction } from "@/domains/artifacts/actions/delete-artifact.action";
 import type { Artifact, ArtifactViewMode } from "../artifacts-list.types";
 import {
   artifactStatusConfig,
@@ -64,9 +63,11 @@ export function ArtifactCard({
   position,
 }: ArtifactCardProps) {
   const [showMenu, setShowMenu] = useState(false);
-  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const progress = getArtifactProgress(artifact);
   const normalizeReadyForQa = basePath === "/admin" || basePath.endsWith("/admin");
@@ -74,32 +75,41 @@ export function ArtifactCard({
   const description = getArtifactDescription(artifact.descripcion);
   const artifactTitle = getArtifactTitle(artifact.idea_central);
 
-  const handleMenuClick = (event: React.MouseEvent) => {
+  const handleMenuClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
 
-    const rect = event.currentTarget.getBoundingClientRect();
-    setMenuPosition({ x: rect.right, y: rect.bottom + 4 });
+    setMenuAnchor(event.currentTarget.getBoundingClientRect());
     setShowMenu(true);
   };
 
+  const closeMenu = () => {
+    setShowMenu(false);
+    menuTriggerRef.current?.focus({ preventScroll: true });
+  };
+
+  const openDeleteModal = () => {
+    setDeleteError(null);
+    setShowDeleteModal(true);
+  };
+
   const handleDeleteConfirm = async () => {
+    if (isDeleting) return;
+    setDeleteError(null);
     setIsDeleting(true);
 
     try {
       const result = await deleteArtifactAction(artifact.id);
 
       if (!result.success) {
-        console.error("Error deleting artifact:", result.error);
-        toast.error(`Error al eliminar el artefacto: ${result.error}`);
+        setDeleteError(result.error);
         return;
       }
 
       setShowDeleteModal(false);
       onDelete(artifact.id);
-    } catch (error) {
-      console.error("Error deleting artifact:", error);
-      toast.error("Error inesperado al eliminar el artefacto");
+    } catch {
+      setDeleteError("No se pudo confirmar la eliminación. Actualiza la lista antes de reintentar.");
     } finally {
       setIsDeleting(false);
     }
@@ -132,7 +142,10 @@ export function ArtifactCard({
             <span aria-hidden="true" />
           </Link>
           <button
+            ref={menuTriggerRef}
             type="button"
+            aria-haspopup="menu"
+            aria-expanded={showMenu}
             aria-label={`Abrir acciones de ${artifactTitle}`}
             className={`engine-icon-button ${styles.menuButton} !top-1/2 -translate-y-1/2`}
             onClick={handleMenuClick}
@@ -143,9 +156,9 @@ export function ArtifactCard({
 
         <ArtifactDropdownMenu
           isOpen={showMenu}
-          onClose={() => setShowMenu(false)}
-          onDelete={() => setShowDeleteModal(true)}
-          position={menuPosition}
+          onClose={closeMenu}
+          onDelete={openDeleteModal}
+          anchor={menuAnchor}
         />
 
         <DeleteConfirmationModal
@@ -154,6 +167,7 @@ export function ArtifactCard({
           onConfirm={handleDeleteConfirm}
           artifactTitle={artifactTitle}
           isDeleting={isDeleting}
+          error={deleteError}
         />
       </>
     );
@@ -197,7 +211,10 @@ export function ArtifactCard({
           </article>
         </Link>
         <button
+          ref={menuTriggerRef}
           type="button"
+          aria-haspopup="menu"
+          aria-expanded={showMenu}
           aria-label={`Abrir acciones de ${artifactTitle}`}
           className={`engine-icon-button ${styles.menuButton}`}
           onClick={handleMenuClick}
@@ -208,9 +225,9 @@ export function ArtifactCard({
 
       <ArtifactDropdownMenu
         isOpen={showMenu}
-        onClose={() => setShowMenu(false)}
-        onDelete={() => setShowDeleteModal(true)}
-        position={menuPosition}
+        onClose={closeMenu}
+        onDelete={openDeleteModal}
+        anchor={menuAnchor}
       />
 
       <DeleteConfirmationModal
@@ -219,6 +236,7 @@ export function ArtifactCard({
         onConfirm={handleDeleteConfirm}
         artifactTitle={artifactTitle}
         isDeleting={isDeleting}
+        error={deleteError}
       />
     </>
   );
