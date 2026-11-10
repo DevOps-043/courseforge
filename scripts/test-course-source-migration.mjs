@@ -64,6 +64,7 @@ async function database(generation = false) {
     await db.exec(await readFile('supabase/migrations/20261107020000_course_source_batch_runs.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261107030000_course_source_staged_extraction.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261109020000_course_source_base_batch_progress.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261110020000_expand_course_source_extraction.sql', 'utf8'));
   }
   await db.exec('set role service_role');
   return db;
@@ -526,15 +527,16 @@ test('ingesta larga publica el texto completo de forma atómica y rechaza lotes 
     await confirm(db,entry);
     const lease = (await db.query("select process_course_source_document($1,$2,$3,'reserve',null) as token",
       [entry.id,course,organization])).rows[0].token;
-    const pieces = Array.from({length:65},(_,ordinal)=>{
-      const text = ordinal===64 ? 'x'.repeat(1980)+' 😀 sección final' : 'x'.repeat(2000);
+    const pieces = Array.from({length:300},(_,ordinal)=>{
+      const ending = ' 😀 sección final';
+      const text = ordinal===299 ? 'x'.repeat(2000-ending.length)+ending : 'x'.repeat(2000);
       return {ordinal,text,sha256:createHash('sha256').update(text).digest('hex'),
         locator:{characterStart:ordinal*2000,characterEnd:ordinal*2000+text.length}};
     });
     const text = pieces.map(piece=>piece.text).join('');
-    const stage = (action, fragments=null, token=lease, org=organization) => db.query(
+    const stage = (action, fragments=null, token=lease, org=organization, units=text.length) => db.query(
       'select stage_course_source_extraction($1,$2,$3,$4,$5,$6,$7,$8)',
-      [entry.id,course,org,token,action,fragments&&JSON.stringify(fragments),pieces.length,text.length]);
+      [entry.id,course,org,token,action,fragments&&JSON.stringify(fragments),pieces.length,units]);
     await assert.rejects(stage('append',pieces.slice(0,16),lease,otherOrganization), /SOURCE_NOT_FOUND/);
     await assert.rejects(stage('append',pieces.slice(0,16),identifier()), /SOURCE_CONFLICT/);
     await stage('append',pieces.slice(0,16));
@@ -542,6 +544,7 @@ test('ingesta larga publica el texto completo de forma atómica y rechaza lotes 
     await assert.rejects(stage('publish'), /SOURCE_BATCH_INCOMPLETE/);
     assert.equal((await db.query('select count(*)::integer as count from course_source_fragments')).rows[0].count,0);
     for (let start=16;start<pieces.length;start+=16) await stage('append',pieces.slice(start,start+16));
+    await assert.rejects(stage('publish',null,lease,organization,600001), /SOURCE_BATCH_INVALID/);
     await stage('publish');
     await stage('publish');
     assert.equal((await db.query("select string_agg(text_content,'' order by ordinal) as text from course_source_fragments")).rows[0].text,text);
@@ -549,6 +552,30 @@ test('ingesta larga publica el texto completo de forma atómica y rechaza lotes 
     await assert.rejects(db.query('select * from course_source_extraction_batches'), /permission denied/);
     await db.exec('set role authenticated');
     await assert.rejects(stage('publish'), /permission denied/);
+  } finally { await db.close(); }
+});
+
+test('una versión agotada por el tope anterior puede reservar una vez con el límite ampliado', async () => {
+  const db = await database(true);
+  try {
+    const course = await draft(db);
+    const entry = await reserve(db, course);
+    await confirm(db, entry);
+    const command = async (action, token = null, payload = []) => (await db.query(
+      'select process_course_source_document($1,$2,$3,$4,$5,$6::jsonb) as token',
+      [entry.id,course,organization,action,token,JSON.stringify(payload)])).rows[0].token;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await command('fail', await command('reserve'), {diagnosticCode:'TEXT_LIMIT'});
+    }
+    await assert.rejects(command('reserve'), /SOURCE_CONFLICT/);
+    await assert.rejects(command('reserve',null,{textLimitUnits:600001}), /SOURCE_CONFLICT/);
+    const recovered = await command('reserve',null,{textLimitUnits:600000});
+    assert.ok(recovered);
+    assert.equal(await command('reserve',null,{textLimitUnits:600000}),null);
+    await command('fail',recovered,{diagnosticCode:'TEXT_LIMIT'});
+    await assert.rejects(command('reserve',null,{textLimitUnits:600000}), /SOURCE_CONFLICT/);
+    assert.deepEqual((await db.query('select extraction_attempts,extraction_text_limit from course_source_documents')).rows[0],
+      {extraction_attempts:4,extraction_text_limit:600000});
   } finally { await db.close(); }
 });
 

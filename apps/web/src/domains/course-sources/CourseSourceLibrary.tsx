@@ -7,12 +7,12 @@ import { CourseSourceReconciliation } from "./CourseSourceReconciliation";
 import { CourseSourceReviewPanel } from "./CourseSourceReviewPanel";
 import { CourseSourceLegacyImport } from "./CourseSourceLegacyImport";
 
-type DocumentSummary = { id: string; filename: string; status: string; supersedesId?: string | null; diagnosticCode?: string | null; canRetryExtraction?: boolean };
+type DocumentSummary = { id: string; filename: string; status: string; supersedesId?: string | null; diagnosticCode?: string | null; extractionTextLimit?: number | null; canRetryExtraction?: boolean };
 const STATUS_LABELS: Record<string, string> = { RESERVED: "Carga pendiente", UPLOADED: "Recibido", PROCESSING: "Procesando", READY: "Texto disponible", FAILED: "No se pudo completar la extracción", RETIRED: "Retirado" };
 const EXTRACTION_DIAGNOSTICS: ReadonlyMap<string, string> = new Map([
   ["SOURCE_READ_FAILED", "No se pudo leer el original almacenado. Intenta procesarlo otra vez."],
   ["SOURCE_FORMAT_INVALID", "No se pudo interpretar el formato. Comprueba que el archivo se abra correctamente."],
-  ["TEXT_LIMIT", "El texto supera el límite de extracción. Si el rechazo es anterior a la ampliación, vuelve a procesar el archivo. Si persiste, divide el documento."],
+  ["TEXT_LIMIT", "El texto superó el límite de extracción del último intento."],
   ["INSUFFICIENT_TEXT", "Se necesitan al menos 50 caracteres de texto extraíble. Si el PDF es escaneado, aplica OCR."],
   ["SOURCE_PERSIST_FAILED", "Se leyó el documento, pero no se pudo guardar el texto. Intenta procesarlo otra vez."],
 ]);
@@ -89,7 +89,7 @@ export function CourseSourceLibrary({ artifactId }: { artifactId: string }) {
   return <details aria-busy={busy} className="mb-5 rounded-xl border border-gray-300 bg-[var(--engine-surface)] p-4 font-sans dark:border-white/20 [&_button]:min-h-10 [&_button]:rounded-md [&_button]:border [&_button]:border-gray-300 [&_button]:px-3 [&_button]:py-2 [&_button]:text-sm [&_button]:font-medium [&_button]:disabled:opacity-50 [&_button]:hover:bg-gray-100 dark:[&_button]:border-white/20 dark:[&_button]:hover:bg-white/10">
     <summary className="cursor-pointer font-semibold">Mis documentos del curso</summary>
     <CourseSourceReviewPanel artifactId={artifactId} policyOnly />
-    <p className="my-3 text-sm">PDF, DOCX, PPTX o TXT · 15 MB por archivo. Se extrae texto sin OCR. Las primeras etapas usan los documentos listos; para Materiales debes aprobar su cobertura por objetivo y tema.</p>
+    <p className="my-3 text-sm">PDF, DOCX, PPTX o TXT · 15 MB y hasta {COURSE_SOURCE_LIMITS.activeTextCharacters.toLocaleString("es-MX")} unidades de texto por archivo. Se extrae texto sin OCR. Las primeras etapas usan los documentos listos; para Materiales debes aprobar su cobertura por objetivo y tema.</p>
     {replacement && <p role="status">Sustituyendo: {replacement.filename}. El original se conserva hasta que termine la extracción. <button type="button" disabled={busy} onClick={() => setReplacement(null)}>Cancelar sustitución</button></p>}
     <label className="block rounded border border-dashed p-4" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (!busy) void upload(Array.from(event.dataTransfer.files)); }}>
       <span className="mb-2 block">Selecciona o arrastra tus archivos</span>
@@ -100,7 +100,12 @@ export function CourseSourceLibrary({ artifactId }: { artifactId: string }) {
     <p role="status" className="my-2 text-sm">{message}</p>
     <ul aria-label="Versiones documentales">{documents.map(document => <li key={document.id} className="flex flex-wrap items-center gap-3 border-b py-3">
       <span className="min-w-0 break-words">{document.filename} · {STATUS_LABELS[document.status] || document.status}{document.supersedesId && ` · sustituye ${documents.find(item => item.id === document.supersedesId)?.filename || document.supersedesId}`}</span>
-      {document.status === "FAILED" && <span className="text-sm">{EXTRACTION_DIAGNOSTICS.get(document.diagnosticCode ?? "")}{document.canRetryExtraction === false && " Se agotaron los intentos para esta versión."}</span>}
+      {document.status === "FAILED" && <span className="text-sm">
+        {document.diagnosticCode === "TEXT_LIMIT" && document.extractionTextLimit
+          ? `El texto superó el límite de ${document.extractionTextLimit.toLocaleString("es-MX")} unidades del último intento.`
+          : EXTRACTION_DIAGNOSTICS.get(document.diagnosticCode ?? "")}
+        {document.canRetryExtraction === false && " Se agotaron los intentos para esta versión."}
+      </span>}
       {document.status === "READY" && !documents.some(item => item.supersedesId === document.id && item.status !== "RETIRED") && <button type="button" disabled={busy} onClick={() => setReplacement(document)}>Sustituir archivo</button>}
       {document.status === "RESERVED" && <button disabled={busy} onClick={() => void jsonRequest(`${root}/uploads/confirm`, { documentId: document.id }).then(() => processDocument(document.id)).then(refresh).catch(error => setMessage(error.message))}>Confirmar carga</button>}
       {["UPLOADED", "FAILED", "PROCESSING"].includes(document.status) && document.canRetryExtraction !== false && <button disabled={busy} onClick={() => void processDocument(document.id).catch(error => setMessage(error.message))}>Procesar / recuperar</button>}

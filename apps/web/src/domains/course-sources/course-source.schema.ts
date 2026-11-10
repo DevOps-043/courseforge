@@ -41,6 +41,7 @@ export const courseSourceDocumentSchema = z.object({
   supersedes_id: z.uuid().nullable().optional(),
   diagnostic_code: z.string().nullable().optional(),
   extraction_attempts: z.number().int().nonnegative().optional(),
+  extraction_text_limit: z.number().int().positive().nullable().optional(),
 });
 export type CourseSourceDocument = z.infer<typeof courseSourceDocumentSchema>;
 
@@ -52,7 +53,12 @@ export function publicSourceDocument(document: CourseSourceDocument) {
     expiresAt: document.expires_at,
     supersedesId: document.supersedes_id || null,
     diagnosticCode: document.diagnostic_code ?? null,
+    extractionTextLimit: document.extraction_text_limit ?? null,
     canRetryExtraction: (document.extraction_attempts ?? 0) < 3 ||
-      (document.status === "FAILED" && document.extraction_attempts === 3 && document.diagnostic_code === "EXTRACTION_FAILED"),
+      (document.status === "FAILED" && (
+        (document.extraction_attempts === 3 && document.diagnostic_code === "EXTRACTION_FAILED") ||
+        (document.diagnostic_code === "TEXT_LIMIT" &&
+          (document.extraction_text_limit ?? 0) < COURSE_SOURCE_LIMITS.activeTextCharacters)
+      )),
   };
 }

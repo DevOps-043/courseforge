@@ -27,7 +27,10 @@ export async function extractCourseSource(admin: SupabaseClient, artifactId: str
   const document = await new CourseSourceRepository(admin, { organizationId, userId: "" }).get(artifactId, documentId);
   if (!document) throw new Error("Documento no autorizado.");
   const base = { p_document: documentId, p_artifact: artifactId, p_organization: organizationId };
-  const reservation = await admin.rpc("process_course_source_document", { ...base, p_action: "reserve", p_token: null });
+  const textLimitUnits = COURSE_SOURCE_LIMITS.activeTextCharacters;
+  const reservation = await admin.rpc("process_course_source_document", {
+    ...base, p_action: "reserve", p_token: null, p_fragments: { textLimitUnits },
+  });
   if (reservation.error) sourcePersistenceError(reservation.error);
   if (!reservation.data) return;
   const token = reservation.data as string;
@@ -40,7 +43,7 @@ export async function extractCourseSource(admin: SupabaseClient, artifactId: str
     const extracted = await extractSyllabusSourceDocument({
       name: document.filename, type: document.mime_type, size: blob.size,
       arrayBuffer: () => blob.arrayBuffer(),
-    }, { maxCharacters: COURSE_SOURCE_LIMITS.activeTextCharacters });
+    }, { maxCharacters: textLimitUnits });
     diagnosticCode = "SOURCE_PERSIST_FAILED";
     const fragments = fragmentSourceText(extracted.text);
     const batchSize = COURSE_SOURCE_LIMITS.extractionBatchFragments;
@@ -57,7 +60,11 @@ export async function extractCourseSource(admin: SupabaseClient, artifactId: str
     const failure = await admin.rpc("process_course_source_document", {
       ...base, p_action: "fail", p_token: token, p_fragments: { diagnosticCode },
     });
-    console.warn("[Fuentes] Falló la extracción documental", { artifactId, documentId, diagnosticCode, estadoGuardado: !failure.error });
+    console.warn("[Fuentes] Falló la extracción documental", {
+      artifactId, documentId, diagnosticCode, estadoGuardado: !failure.error, textLimitUnits,
+      ...(error instanceof SyllabusSourceTextError && error.measuredUnits !== undefined
+        ? { measuredUnits: error.measuredUnits } : {}),
+    });
     throw new Error("No se pudo completar la extracción documental.");
   }
 }

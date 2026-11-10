@@ -11,7 +11,7 @@ const MAX_OFFICE_XML_BYTES = 10 * 1024 * 1024;
 const MAX_PPTX_SLIDES = 500;
 
 export class SyllabusSourceTextError extends Error {
-  constructor(readonly reason: "TEXT_LIMIT" | "INSUFFICIENT_TEXT", message: string) {
+  constructor(readonly reason: "TEXT_LIMIT" | "INSUFFICIENT_TEXT", message: string, readonly measuredUnits?: number) {
     super(message);
   }
 }
@@ -52,7 +52,7 @@ export async function extractSyllabusSourceDocument(
 
   const normalizedText = normalizeDocumentText(text);
   if (normalizedText.length > options.maxCharacters) {
-    throw new SyllabusSourceTextError("TEXT_LIMIT", `${file.name}: el texto excede ${options.maxCharacters.toLocaleString("en-US")} caracteres. Divide el documento antes de subirlo; no se importará un temario parcial.`);
+    throw new SyllabusSourceTextError("TEXT_LIMIT", `${file.name}: el texto excede ${options.maxCharacters.toLocaleString("en-US")} caracteres. Divide el documento antes de subirlo; no se importará un temario parcial.`, normalizedText.length);
   }
   if (normalizedText.length < MINIMUM_USABLE_CHARACTERS) {
     throw new SyllabusSourceTextError("INSUFFICIENT_TEXT",

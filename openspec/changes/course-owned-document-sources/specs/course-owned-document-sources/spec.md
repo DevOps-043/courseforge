@@ -165,9 +165,14 @@ El sistema SHALL congelar política, versiones y fragmentos por ejecución, vali
 - **THEN** no los vincula al fingerprint nuevo y se detiene antes de generar
 
 #### Scenario: Base usa un documento largo del taller
-- **WHEN** la biblioteca procesa un documento de hasta 250,000 unidades UTF-16 que supera el contexto directo de Base
+- **WHEN** la biblioteca procesa un documento de hasta 600,000 unidades UTF-16 que supera el contexto directo de Base y cumple su presupuesto de lotes
 - **THEN** conserva íntegro el texto extraído y el job recorre todos sus fragmentos en lotes acotados
 - **AND** la redacción y la verificación usan citas literales de lotes confirmados mientras el manifiesto identifica la revisión completa
+
+#### Scenario: Reprocesamiento tras ampliar el límite
+- **WHEN** un documento agotó sus intentos con `TEXT_LIMIT` y se solicita extracción con un límite superior
+- **THEN** el worker con la capacidad nueva puede reservar un intento adicional sobre el original existente
+- **AND** el contador histórico se conserva y el mismo límite no permite repetir esa recuperación
 
 #### Scenario: Base reanuda una lectura documental interrumpida
 - **WHEN** el autor reintenta con el mismo propósito, revisión y modelo tras un fallo recuperable

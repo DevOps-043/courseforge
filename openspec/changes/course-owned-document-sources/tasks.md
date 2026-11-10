@@ -57,6 +57,7 @@ Salida: curso nuevo basado en archivos llega a Materiales revisables y al flujo 
 
 ## Extensión para documentos largos
 - [x] Clasificar el documento real de referencia y medir la planificación sin llamadas externas.
+- [x] Ampliar a 600,000 unidades por original y probar la recuperación de una versión agotada, el texto íntegro en PostgreSQL aislado y el registro del plan de Base con el TXT real.
 - [ ] Fijar el presupuesto de admisión y almacenamiento por archivo y por curso con mediciones por formato. Implementar ingesta íntegra y consultas paginadas con diagnóstico medible.
 - [ ] Hacer reutilizable el inventario de evidencia entre Base y las rutas de Temario, incluida la compatibilidad de la importación de estructura.
 - [ ] Seleccionar y verificar evidencia por módulo en Plan. Consultar en Materiales las asociaciones aprobadas de la lección sin cargar el catálogo completo.
