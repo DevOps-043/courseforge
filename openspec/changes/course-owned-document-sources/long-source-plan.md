@@ -34,6 +34,8 @@ Un original puede ocupar todo el presupuesto de 1,200,000 unidades UTF-16 de tex
 
 Base conserva la versión del plan para conjuntos de hasta 64 lotes y usa un plan de hasta 224 lotes cuando esa capacidad no basta. Ambos mantienen el mismo presupuesto por llamada. El plan ampliado acota el costo acumulado y la cantidad de citas por lote, de manera que el texto de la evidencia comprobada cabe en el contexto final. Aplicar la migración `20261110030000_split_long_course_sources.sql` antes de desplegar la aplicación y el worker. Revertir el worker conserva el original y los fragmentos publicados. Temario y Plan por alcance conservan su entrega separada. [Verificación de la división](reports/automatic-source-splitting.md).
 
+Aplicar también `20261110040000_align_base_source_snapshot_budget.sql` para que la RPC de snapshot admita el manifiesto completo de Base. La sustitución conserva firma, permisos y validación de referencias. Temario, Plan y Materiales conservan sus presupuestos de snapshot. La corrección solo requiere actualizar la base con el lector de lotes vigente. Si se revierte la corrección, restaurar la definición anterior de la RPC mediante una migración de reversión. Los snapshots ya registrados se conservan.
+
 La activación exige un piloto de carga a Materiales con fuentes de varios tamaños. Colocar reglas diferentes al principio, en medio y al final, desplazar una regla obligatoria entre secciones y verificar que su cita llega al material correspondiente. Inyectar fallo intermedio y reemplazo concurrente. Medir límites, cobertura, costo y latencia antes de ampliar la admisión. Los [resultados de la revisión local](reports/long-source-reference-review.md) separan la evidencia medida de lo pendiente.
 
 ## Base por lotes del paso 4

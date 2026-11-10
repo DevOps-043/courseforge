@@ -66,6 +66,7 @@ async function database(generation = false) {
     await db.exec(await readFile('supabase/migrations/20261109020000_course_source_base_batch_progress.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261110020000_expand_course_source_extraction.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261110030000_split_long_course_sources.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261110040000_align_base_source_snapshot_budget.sql', 'utf8'));
   }
   await db.exec('set role service_role');
   return db;
@@ -550,6 +551,34 @@ test('ingesta larga publica el texto completo de forma atómica y rechaza lotes 
     await stage('publish');
     assert.equal((await db.query("select string_agg(text_content,'' order by ordinal) as text from course_source_fragments")).rows[0].text,text);
     assert.equal((await db.query('select status from course_source_documents')).rows[0].status,'READY');
+
+    const curriculum = (await db.query('select course_source_curriculum($1) as context', [course])).rows[0].context;
+    const settings = async () => (await db.query('select revision from course_source_settings where artifact_id=$1', [course])).rows[0];
+    await db.query("select change_course_source_review($1,$2,$3,$4,$5,'policy','{\"policy\":\"DOCUMENTS_ONLY\"}')",
+      [course, organization, actor, (await settings()).revision, curriculum.hash]);
+    const { revision } = await settings();
+    const { rows: manifest } = await db.query(`select id, document_id as "documentId", 'DOCUMENT' as kind,
+      content_sha256 as hash, locator, $2::text as title from course_source_fragments where artifact_id=$1 order by ordinal`, [course, entry.filename]);
+    const execution = identifier();
+    const contextHash = createHash('sha256').update(text).digest('hex');
+    const snapshot = async (stage, org = organization) => (await db.query(`select snapshot_course_source_generation(
+      $1,$2,$3,$4,$5,course_source_generation_fingerprint($1,$4),null,$6,$7::jsonb) as id`,
+    [course, org, execution, stage, revision, contextHash, JSON.stringify(manifest)])).rows[0].id;
+    await assert.rejects(snapshot('BASE', otherOrganization), /SOURCE_NOT_FOUND/);
+    const baseSnapshot = await snapshot('BASE');
+    assert.ok(baseSnapshot);
+    assert.equal(await snapshot('BASE'), baseSnapshot);
+    for (const phase of ['SYLLABUS', 'PLAN']) await assert.rejects(snapshot(phase), /SOURCE_CONTEXT_BUDGET/);
+    const plan = [];
+    for (let index = 0; index < manifest.length; index += 3) {
+      plan.push({ fragmentIds: manifest.slice(index, index + 3).map(({ id }) => id), requestTokens: 10_000 });
+    }
+    const batch = (await db.query(`select create_course_source_batch_run($1,$2,$3,$4,'base-evidence-v2',$5::jsonb,
+      now()+interval '1 hour',320,12,9000000) as id`, [course, organization, revision, contextHash, JSON.stringify(plan)])).rows[0].id;
+    const progress = (await db.query('select read_course_source_base_batch_progress($1,$2,$3) as result', [batch, course, organization])).rows[0].result;
+    assert.equal(progress.total, 200);
+    assert.equal(progress.status, 'ACTIVE');
+
     const extra = await reserve(db,course);
     await confirm(db,extra);
     const extraLease = (await db.query("select process_course_source_document($1,$2,$3,'reserve',null) as token",
