@@ -10,6 +10,11 @@ El sistema SHALL ofrecer un borrador autorizado en estado DRAFT y reservas idemp
 - **THEN** se verifica la recepción en servidor y se guarda UPLOADED, sin declarar READY
 - **AND** otra organización o actor no puede confirmar la reserva
 
+#### Scenario: El adaptador reconstruye la URL de una mutación documental
+- **WHEN** una mutación documental del mismo origen llega por un proxy con una URL interna distinta de la URL pública
+- **THEN** el servidor reconoce el origen HTTPS válido con la señal `Sec-Fetch-Site: same-origin` del navegador y comprueba la autorización habitual
+- **AND** rechaza solicitudes entre orígenes, incluso entre subdominios del mismo sitio, con un código distinto de una denegación por rol
+
 #### Scenario: Reintento y cuota
 - **WHEN** se repite la misma clave con los mismos campos
 - **THEN** se recupera el mismo borrador o documento sin duplicarlo

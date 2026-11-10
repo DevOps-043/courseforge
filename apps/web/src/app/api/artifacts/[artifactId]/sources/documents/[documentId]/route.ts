@@ -6,6 +6,7 @@ import { dispatchBackgroundFunctionJson } from "@/lib/server/background-function
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
 import { API_ERROR_CODE } from "@/lib/server/api-contract";
 import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
+import { rejectCrossOriginMutation } from "@/lib/server/mutation-request-origin";
 import { resolveCorrelationId } from "@/lib/server/operational-logger";
 import { CourseSourceError } from "@/domains/course-sources/course-source-error";
 
@@ -18,8 +19,10 @@ async function respond(request: Request, context: Context) {
   try {
     const { artifactId, documentId } = await context.params;
     if (!z.uuid().safeParse(artifactId).success || !z.uuid().safeParse(documentId).success) throw new CourseSourceError(400, "Identificador inválido.");
-    if (request.method === "POST" && (request.headers.get("sec-fetch-site") === "cross-site"
-      || (request.headers.get("origin") && request.headers.get("origin") !== new URL(request.url).origin))) throw new CourseSourceError(403, "Origen no autorizado.");
+    if (request.method === "POST") {
+      const rejectedOrigin = rejectCrossOriginMutation(request, { requestId, headers });
+      if (rejectedOrigin) return rejectedOrigin;
+    }
     const { tenant, admin } = await requireCourseSourceAccess(artifactId);
     const document = await new CourseSourceRepository(admin, tenant).get(artifactId, documentId);
     if (!document) throw new CourseSourceError(404, "Documento no encontrado.");

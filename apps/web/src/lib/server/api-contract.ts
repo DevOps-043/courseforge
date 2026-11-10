@@ -6,6 +6,7 @@ export const API_ERROR_CODE = {
   dependencyUnavailable: "DEPENDENCY_UNAVAILABLE",
   internalError: "INTERNAL_ERROR",
   invalidRequest: "INVALID_REQUEST",
+  originForbidden: "ORIGIN_FORBIDDEN",
   payloadTooLarge: "PAYLOAD_TOO_LARGE",
   providerError: "PROVIDER_ERROR",
   rateLimited: "RATE_LIMITED",

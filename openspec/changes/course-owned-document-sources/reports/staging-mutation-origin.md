@@ -1,0 +1,9 @@
+# Rechazo de origen al crear un borrador en staging
+
+El POST de navegador a `/api/artifacts/drafts` devolvió `403` con el mensaje de origen y el código genérico `ROLE_FORBIDDEN`. El código de la ruta produce ese mensaje antes de resolver sesión y organización. La captura del navegador indica origen y destino iguales, con `Sec-Fetch-Site: same-origin`. Una prueba posterior en staging con cuerpo vacío, mismo origen y sin sesión alcanzó autenticación y devolvió `401 AUTH_REQUIRED`. La URL interna que recibió el handler durante la solicitud original no se observó.
+
+La regresión local simula una URL interna de proxy distinta de la del navegador. Las mutaciones documentales comparten la comprobación. Si el navegador indica `same-origin`, se admite una discrepancia con la URL interna para un origen HTTPS bien formado y se comprueban los permisos habituales. Los orígenes cruzados, incluidos los subdominios del mismo sitio, y los orígenes opacos se rechazan antes de tocar repositorios o Storage. La comprobación no depende de encabezados reenviados. `ORIGIN_FORBIDDEN` distingue el rechazo de origen de la falta de rol.
+
+La señal de navegador se apoya en [Fetch Metadata](https://www.w3.org/TR/fetch-metadata/#sec-fetch-site) y en los [encabezados reservados del estándar Fetch](https://fetch.spec.whatwg.org/#forbidden-request-header). Para verificar el despliegue, abrir un borrador documental desde staging con una sesión autorizada y comprobar que el flujo continúa a política y carga. La prueba local no reutilizó cookies ni creó borradores en staging.
+
+Pasaron las 64 pruebas del dominio de fuentes, la suite de límites de seguridad y OpenSpec estricto. La regresión confirma que con URL reconstruida la sesión ausente todavía recibe `401` y el rol denegado sigue recibiendo `403 ROLE_FORBIDDEN`.

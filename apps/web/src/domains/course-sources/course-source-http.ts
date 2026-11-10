@@ -3,6 +3,7 @@ import { listLegacySources, importLegacySource, legacySourceImportSchema } from 
 import { API_ERROR_CODE, parseJsonRequest } from "../../lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "../../lib/server/api-response";
 import { authorizationUnavailableResponse } from "../../lib/server/authorization-unavailable-response";
+import { rejectCrossOriginMutation } from "../../lib/server/mutation-request-origin";
 import { createOperationalLogger, resolveCorrelationId } from "../../lib/server/operational-logger";
 import { requireCourseSourceAccess } from "./course-source-access";
 import { COURSE_SOURCE_LIMITS } from "./course-source-policy";
@@ -22,9 +23,10 @@ export async function courseSourceHttp(request: Request, operation: Operation, a
       if (request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
         throw new CourseSourceError(415, "La solicitud debe usar application/json.");
       }
-      const origin = request.headers.get("origin");
-      if (request.headers.get("sec-fetch-site") === "cross-site" || (origin && origin !== new URL(request.url).origin)) {
-        throw new CourseSourceError(403, "El origen de la solicitud no está autorizado.");
+      const rejectedOrigin = rejectCrossOriginMutation(request, { requestId, headers });
+      if (rejectedOrigin) {
+        createOperationalLogger("fuentes.http", { correlationId: requestId }).warn("fuentes.origen_rechazado", { operation });
+        return rejectedOrigin;
       }
     }
     if (operation !== "draft" && !z.uuid().safeParse(artifactId).success) throw new CourseSourceError(400, "Identificador de curso inválido.");

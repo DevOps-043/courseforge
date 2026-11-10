@@ -6,6 +6,7 @@ import * as policy from "../course-source-policy";
 import * as errors from "../course-source-error";
 import * as contract from "../../../lib/server/api-contract";
 import * as responses from "../../../lib/server/api-response";
+import * as mutationOrigin from "../../../lib/server/mutation-request-origin";
 import { AuthIdentityLookupError } from "../../../lib/server/auth-identity-error";
 import { TenantContextLookupError } from "../../../lib/server/tenant-context-error";
 
@@ -42,6 +43,7 @@ function fixture(stage: "allowed" | "anonymous" | "role" | "foreign" | "unavaila
       "./course-source-legacy": {},
       "../../lib/server/api-contract": contract, "../../lib/server/api-response": responses,
       "../../lib/server/authorization-unavailable-response": mapper, "../../lib/server/operational-logger": logger,
+      "../../lib/server/mutation-request-origin": mutationOrigin,
       "./course-source-access": access, "./course-source-policy": policy, "./course-source-error": errors,
       "./course-source.repository": { CourseSourceRepository: Repository },
       "./course-source.service": { CourseSourceService: class { constructor() { effects.push("service"); } } },
@@ -102,11 +104,29 @@ test("mutaciones rechazan formularios y origen cruzado antes de consultar autori
     { "Content-Type": "text/plain" },
     { "Content-Type": "application/json", Origin: "https://otro.invalid" },
     { "Content-Type": "application/json", "Sec-Fetch-Site": "cross-site" },
+    { "Content-Type": "application/json", Origin: "https://example.invalid", "Sec-Fetch-Site": "same-site" },
+    { "Content-Type": "application/json", Origin: "null", "Sec-Fetch-Site": "same-origin" },
+    { "Content-Type": "application/json", Origin: "https://otro.invalid", "X-Forwarded-Host": "otro.invalid" },
   ];
   for (const headers of cases) {
     const f = fixture(); const result = await f.respond(new Request("https://example.invalid", {
       method: "POST", headers, body: JSON.stringify({ idempotencyKey: course, title: "Curso" }),
     }), "draft");
     assert.ok([403, 415].includes(result.status)); assert.deepEqual(f.effects, []);
+    if (result.status === 403) assert.equal((await result.json()).code, "ORIGIN_FORBIDDEN");
+  }
+});
+
+test("un navegador del mismo origen llega a autorización cuando el proxy reconstruye la URL", async () => {
+  for (const [stage, status] of [["allowed", 200], ["anonymous", 401], ["role", 403]] as const) {
+    const f = fixture(stage);
+    const result = await f.respond(new Request("http://localhost:3000/api/artifacts/drafts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "https://staging.example.invalid", "Sec-Fetch-Site": "same-origin" },
+      body: JSON.stringify({ idempotencyKey: course, title: "Curso" }),
+    }), "draft");
+    assert.equal(result.status, status);
+    assert.deepEqual(f.effects, stage === "allowed" ? ["admin", "repository", "draft"] : []);
+    if (stage === "role") assert.equal((await result.json()).code, "ROLE_FORBIDDEN");
   }
 });

@@ -4,6 +4,7 @@ import { load } from "../../../app/login/__tests__/source-test-loader";
 import { CourseSourceError } from "../course-source-error";
 import * as contract from "../../../lib/server/api-contract";
 import * as responses from "../../../lib/server/api-response";
+import * as mutationOrigin from "../../../lib/server/mutation-request-origin";
 import { sourceReviewCommandSchema } from "../course-source-review.schema";
 import { COURSE_SOURCE_LIMITS } from "../course-source-policy";
 const id = "10000000-0000-4000-8000-000000000001";
@@ -47,6 +48,7 @@ function fixture(role = "CONSTRUCTOR", denied?: number) {
       "@/domains/course-sources/course-source-policy": { COURSE_SOURCE_LIMITS },
     "@/lib/server/api-contract": contract,
     "@/lib/server/api-response": responses,
+    "@/lib/server/mutation-request-origin": mutationOrigin,
     "@/lib/server/authorization-unavailable-response": {
       authorizationUnavailableResponse: () => null,
     },
