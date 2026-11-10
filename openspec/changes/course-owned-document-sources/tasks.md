@@ -55,6 +55,14 @@ Salida: un solo criterio de cobertura decide en todos los consumidores, sin salt
 
 Salida: curso nuevo basado en archivos llega a Materiales revisables y al flujo de entrega vigente, con procedencia e invalidación demostrables.
 
+## Extensión para documentos largos
+- [x] Clasificar el documento real de referencia y medir la planificación sin llamadas externas.
+- [ ] Fijar el presupuesto de admisión y almacenamiento por archivo y por curso con mediciones por formato. Implementar ingesta íntegra y consultas paginadas con diagnóstico medible.
+- [ ] Hacer reutilizable el inventario de evidencia entre Base y las rutas de Temario, incluida la compatibilidad de la importación de estructura.
+- [ ] Seleccionar y verificar evidencia por módulo en Plan. Consultar en Materiales las asociaciones aprobadas de la lección sin cargar el catálogo completo.
+- [ ] Probar archivos con y sin menciones web. Verificar cero consultas en modo exclusivo y validación y aprobación en Curaduría antes de usar evidencia web en modo mixto.
+- [ ] Validar documentos largos hasta Materiales, reintentos, cambios de revisión y regresiones de talleres cortos. Activar después de comprobar el consumo y la cobertura, siguiendo F6.
+
 ## F5. QA, seguridad y documentación
 - [ ] Unitarias de políticas, cobertura documental/web/mixta, fragmentación, selección de contexto y validación de citas.
 - [ ] Integración HTTP/Storage/jobs con archivo real por formato, persistencia, duplicados, errores y recuperación tras timeout.

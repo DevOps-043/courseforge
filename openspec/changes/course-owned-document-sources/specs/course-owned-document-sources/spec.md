@@ -35,6 +35,24 @@ El sistema SHALL permitir cargar y reutilizar PDF textual, DOCX, PPTX y TXT desd
 - **WHEN** los bytes reales, contenido extraído, MIME o estructura incumplen el contrato
 - **THEN** se rechaza el archivo sin truncar silenciosamente ni aprobar contenido parcial
 
+### Requirement: Talleres con originales largos
+El sistema SHALL admitir originales largos dentro de presupuestos medidos y reutilizar evidencia versionada desde Base hasta Materiales, conservando los originales como archivos individuales y la trazabilidad de cada cita.
+
+#### Scenario: La evidencia relevante está al final del original
+- **WHEN** un autor autorizado aporta un documento largo válido y una regla relevante aparece en su última sección
+- **THEN** el sistema recorre todos los fragmentos, recupera la regla para el objetivo o tema correspondiente y permite verificar la cita contra el original
+- **AND** Materiales recibe el contexto aprobado de la lección, acotado a su presupuesto
+
+#### Scenario: El curso contiene varios originales largos
+- **WHEN** el total de texto no cabe en una llamada pero cumple el presupuesto de trabajo del curso
+- **THEN** las etapas estructurales consultan evidencia por alcance y la selección mantiene procedencia y revisión
+- **AND** superar el presupuesto de admisión produce un diagnóstico medible sin truncar ni publicar fragmentos parciales
+
+#### Scenario: El archivo menciona una página externa
+- **WHEN** una URL aparece como cita o ejemplo dentro del texto aportado
+- **THEN** la mención conserva su procedencia documental y el modo exclusivo no consulta la página
+- **AND** en modo mixto solo una evidencia web validada en Curaduría, asociada al requisito y aprobada en su revisión, puede respaldar Materiales con procedencia web
+
 ### Requirement: Sustitución conserva versiones inmutables
 El sistema SHALL crear un original nuevo vinculado a su predecesor y conservar el anterior disponible hasta que la extracción del sucesor se confirme atómicamente.
 
