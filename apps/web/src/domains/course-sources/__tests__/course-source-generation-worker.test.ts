@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { load } from "../../../app/login/__tests__/source-test-loader";
 import { ArtifactBaseGenerationSchema } from "../../artifacts/lib/artifact-base-generation.schema";
+import { BASE_BATCH_LIMITS } from "../course-source-base-batches";
+import { CourseSourceError } from "../course-source-error";
 import {
   courseSourcePrompt,
   type CourseGenerationContext,
@@ -71,6 +73,8 @@ test("Base documental omite investigación en principal/fallback incluso con pro
   }>(
     "netlify/functions/generate-artifact-background.ts",
     {
+      "../../src/domains/course-sources/course-source-base-batches": { BASE_BATCH_LIMITS },
+      "../../src/domains/course-sources/course-source-error": { CourseSourceError },
       "../../src/domains/artifacts/lib/artifact-generation-failure": {
         markArtifactGenerationFailed: async () => {
           throw new Error("No debe fallar");

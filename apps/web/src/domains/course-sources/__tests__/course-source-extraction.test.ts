@@ -46,8 +46,8 @@ test("un carácter Unicode en el límite se conserva íntegro en el JSON de Post
   assert.doesNotMatch(JSON.stringify(fragments), /\\ud[89a-f][0-9a-f]{2}/i);
 });
 
-test("TXT y DOCX llegan al commit documental sin depender del global File", async () => {
-  const text = "a".repeat(1999) + "😀 Texto al final del manual.";
+test("TXT y DOCX mayores de 120,000 llegan íntegros al commit documental", async () => {
+  const text = "a".repeat(1999) + "😀 " + "Sección del manual. ".repeat(6400) + "Texto al final del manual.";
   const archive = new JSZip();
   archive.file("[Content_Types].xml", "<Types/>");
   archive.file("word/document.xml", `<w:document><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:document>`);
@@ -77,9 +77,12 @@ test("TXT y DOCX llegan al commit documental sin depender del global File", asyn
       },
     } as unknown as SupabaseClient;
     await extractCourseSource(admin, document.artifact_id, document.id, document.organization_id);
-    assert.deepEqual(calls.map(call => call.p_action), ["reserve", "append", "publish"]);
-    assert.equal(calls[1].p_fragments?.map(fragment => fragment.text).join(""), text);
-    assert.doesNotMatch(JSON.stringify(calls[1].p_fragments), /\\ud[89a-f][0-9a-f]{2}/i);
+    assert.equal(calls[0].p_action, "reserve");
+    assert.equal(calls.at(-1)?.p_action, "publish");
+    const appends = calls.slice(1, -1);
+    assert.ok(appends.length > 1 && appends.every(call => call.p_action === "append"));
+    assert.equal(appends.flatMap(call => call.p_fragments ?? []).map(fragment => fragment.text).join(""), text);
+    assert.doesNotMatch(JSON.stringify(appends), /\\ud[89a-f][0-9a-f]{2}/i);
   }
 });
 

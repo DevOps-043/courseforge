@@ -31,6 +31,8 @@ En un borrador documental, guarda la política, comprueba al menos un archivo co
 
 La migración `20261107010000_course_source_extraction_diagnostics.sql` sigue a F4. Conserva el lease y distingue fallos de lectura, formato, cantidad de texto y persistencia. Los fallos históricos genéricos con tres intentos tienen una recuperación adicional. Los fragmentos conservan los límites de caracteres Unicode completos y sus posiciones UTF-16. La invalidación puede marcar una solicitud de publicación anterior como desactualizada sin permitir cambios de estado ni envíos obsoletos. Aplica la migración antes de desplegar aplicación y workers de esta corrección.
 
+La biblioteca admite hasta 250,000 unidades UTF-16 de texto extraído por archivo. Cuando las fuentes del curso superan el contexto directo de 120,000, Base recorre todos los fragmentos por lotes recuperables y verifica citas literales. Reintentar con el mismo propósito y la misma revisión conserva el avance. Temario y Plan siguen sujetos a su presupuesto directo. [Contrato, activación y piloto](../../openspec/changes/course-owned-document-sources/long-source-plan.md).
+
 ## F4: generación con fuentes y comprobación de respaldo
 
 Migración aditiva `20261106040000_course_source_generation.sql`; servicios `course-source-generation.ts` y `course-source-generation.service.ts`. Base, Temario local/background/importado y Plan reciben el texto íntegro de todos los fragmentos READY dentro del presupuesto. No requieren aprobación curricular antes de que exista el plan. En ambos modos documentales se omite la investigación web de esas etapas: las búsquedas del modo mixto se realizan exclusivamente en curación para vacíos revisables. Los prompts configurados y feedback no conceden herramientas.

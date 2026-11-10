@@ -63,6 +63,7 @@ async function database(generation = false) {
     await db.exec(await readFile('supabase/migrations/20261107010000_course_source_extraction_diagnostics.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261107020000_course_source_batch_runs.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261107030000_course_source_staged_extraction.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261109020000_course_source_base_batch_progress.sql', 'utf8'));
   }
   await db.exec('set role service_role');
   return db;
@@ -424,6 +425,10 @@ test('lotes documentales conservan checkpoints, cercan leases y rechazan citas y
     await assert.rejects(create(plan,otherOrganization), /SOURCE_NOT_FOUND/);
     const run = await create();
     assert.equal(await create(),run);
+    const progress = async (org=organization, artifact=course) => (await db.query(
+      'select read_course_source_base_batch_progress($1,$2,$3) as result', [run,artifact,org])).rows[0].result;
+    await assert.rejects(progress(otherOrganization), /SOURCE_NOT_FOUND/);
+    await assert.rejects(progress(organization,identifier()), /SOURCE_NOT_FOUND/);
     const command = async (action,path=null,lease=null,payload={},org=organization) => (await db.query(
       'select command_course_source_batch($1,$2,$3,$4,$5,$6) as result',
       [run,org,action,path,lease,JSON.stringify(payload)])).rows[0].result;
@@ -438,6 +443,7 @@ test('lotes documentales conservan checkpoints, cercan leases y rechazan citas y
     assert.equal((await command('complete',left.path,left.lease,{findings})).status,'CONFIRMED');
     assert.equal((await command('complete',left.path,left.lease,{findings})).status,'CONFIRMED');
     assert.deepEqual((await command('read',left.path)).findings,findings);
+    assert.equal((await progress()).findings,undefined);
     const right = await command('claim');
     assert.deepEqual(right.fragmentIds,[end]);
     await db.exec('reset role; update course_source_batches set lease_until=now()-interval \'1 second\' where state=\'LEASED\'; set role service_role;');
@@ -447,11 +453,14 @@ test('lotes documentales conservan checkpoints, cercan leases y rechazan citas y
     await assert.rejects(command('complete',right.path,right.lease,{findings:[]}), /SOURCE_CONFLICT/);
     await command('complete',recovered.path,recovered.lease,{findings:[]});
     assert.deepEqual(await command('status'),{status:'COMPLETE',confirmed:2,total:2,paused:0,attempts:4,reservedTokens:280});
+    assert.deepEqual((await progress()).findings,[findings,[]]);
     await change('policy',{policy:'DOCUMENTS_AND_WEB'});
     assert.equal((await command('status')).status,'STALE');
+    assert.deepEqual(await progress(),{status:'STALE'});
     await assert.rejects(db.query('select * from course_source_batches'), /permission denied/);
     await db.exec('set role authenticated');
     await assert.rejects(command('status'), /permission denied/);
+    await assert.rejects(progress(), /permission denied/);
   } finally { await db.close(); }
 });
 

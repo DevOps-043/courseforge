@@ -1,6 +1,8 @@
 import { Handler } from "@netlify/functions";
 import { prepareCourseGeneration, attestCourseGeneration } from "../../src/domains/course-sources/course-source-generation.service";
 import { courseSourcePrompt } from "../../src/domains/course-sources/course-source-generation";
+import { BASE_BATCH_LIMITS } from "../../src/domains/course-sources/course-source-base-batches";
+import { CourseSourceError } from "../../src/domains/course-sources/course-source-error";
 import { markArtifactGenerationFailed } from "../../src/domains/artifacts/lib/artifact-generation-failure";
 import { PIPELINE_GENERATION_LIMITS } from "../../src/lib/pipeline-generation-policy";
 import { generateObject } from "ai";
@@ -91,6 +93,8 @@ interface ValidationReportItem {
 }
 
 export const handler: Handler = async (event) => {
+  const startedJobAt = Date.now();
+  const jobDeadline = startedJobAt + 14 * 60_000;
   if (event.httpMethod !== "POST") {
     return methodNotAllowedResponse();
   }
@@ -136,8 +140,32 @@ export const handler: Handler = async (event) => {
       return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
     }
 
-    const sourceContext = await prepareCourseGeneration(serviceSupabase, artifactId, "BASE", null, undefined, runId);
-    if (body.documentary && !sourceContext) throw new Error("La política documental cambió antes de generar Base.");
+    stage = "configuration";
+    const modelConfig = await resolveModelSetting(
+      serviceSupabase,
+      "ARTIFACT_BASE",
+      {
+        model: "gemini-3.5-flash",
+        fallbackModel: "gemini-2.5-flash",
+        temperature: 0.7,
+        thinkingLevel: "medium",
+      },
+      organizationId || null,
+    );
+    console.log(
+      `[Background Job] Model config: ${modelConfig.model} / ${modelConfig.fallbackModel}`,
+    );
+
+    let researchContext = "";
+    let detectedSearchQueries: string[] = [];
+    const configuredModels = [modelConfig.model, modelConfig.fallbackModel].filter(Boolean);
+    stage = "documentary_context";
+    const sourceContext = await prepareCourseGeneration(serviceSupabase, artifactId, "BASE", null, undefined, runId, undefined, {
+      purpose: JSON.stringify({ title: formData.title, description: formData.description, feedback }),
+      model: modelConfig.model,
+      deadline: startedJobAt + BASE_BATCH_LIMITS.workerMs,
+    });
+    if (body.documentary && !sourceContext) throw new CourseSourceError(409, "La política documental cambió antes de generar Base.");
     if (cloudStorageProvider) {
       try {
         if (!userId || !organizationId) {
@@ -161,26 +189,6 @@ export const handler: Handler = async (event) => {
         );
       }
     }
-
-    stage = "configuration";
-    const modelConfig = await resolveModelSetting(
-      serviceSupabase,
-      "ARTIFACT_BASE",
-      {
-        model: "gemini-3.5-flash",
-        fallbackModel: "gemini-2.5-flash",
-        temperature: 0.7,
-        thinkingLevel: "medium",
-      },
-      organizationId || null,
-    );
-    console.log(
-      `[Background Job] Model config: ${modelConfig.model} / ${modelConfig.fallbackModel}`,
-    );
-
-    let researchContext = "";
-    let detectedSearchQueries: string[] = [];
-    const configuredModels = [modelConfig.model, modelConfig.fallbackModel].filter(Boolean);
     const configurationWarnings: string[] = [];
     if (
       modelConfig.fallbackModel &&
@@ -396,7 +404,7 @@ export const handler: Handler = async (event) => {
           schema: ArtifactBaseGenerationSchema,
           prompt: systemPrompt,
           ...(modelName.startsWith("gemini-") ? { temperature: modelConfig.temperature } : {}),
-          abortSignal: AbortSignal.timeout(PIPELINE_GENERATION_LIMITS.requestTimeoutMs),
+          abortSignal: AbortSignal.timeout(Math.max(1, Math.min(PIPELINE_GENERATION_LIMITS.requestTimeoutMs, jobDeadline - startedAt))),
           maxRetries: 0,
         });
         await recordAiSdkUsage({
@@ -501,7 +509,7 @@ export const handler: Handler = async (event) => {
     stage = "persistence";
     const sourceEvidenceId = await attestCourseGeneration(serviceSupabase, sourceContext, {
       nombres: content.nombres, objetivos: content.objetivos, descripcion: content.descripcion,
-    }, [genModelUsed, ...genModels]);
+    }, [genModelUsed, ...genModels], jobDeadline);
     let updateArtifactQuery = serviceSupabase
       .from("artifacts")
       .update({

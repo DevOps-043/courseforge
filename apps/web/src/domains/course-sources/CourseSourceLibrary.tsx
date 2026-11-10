@@ -12,7 +12,7 @@ const STATUS_LABELS: Record<string, string> = { RESERVED: "Carga pendiente", UPL
 const EXTRACTION_DIAGNOSTICS: ReadonlyMap<string, string> = new Map([
   ["SOURCE_READ_FAILED", "No se pudo leer el original almacenado. Intenta procesarlo otra vez."],
   ["SOURCE_FORMAT_INVALID", "No se pudo interpretar el formato. Comprueba que el archivo se abra correctamente."],
-  ["TEXT_LIMIT", "El texto supera 40,000 caracteres. Divide el documento y carga las partes."],
+  ["TEXT_LIMIT", "El texto supera el límite de extracción. Si el rechazo es anterior a la ampliación, vuelve a procesar el archivo. Si persiste, divide el documento."],
   ["INSUFFICIENT_TEXT", "Se necesitan al menos 50 caracteres de texto extraíble. Si el PDF es escaneado, aplica OCR."],
   ["SOURCE_PERSIST_FAILED", "Se leyó el documento, pero no se pudo guardar el texto. Intenta procesarlo otra vez."],
 ]);

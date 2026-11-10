@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { load } from "../../../app/login/__tests__/source-test-loader";
 import * as generation from "../course-source-generation";
+import * as baseBatches from "../course-source-base-batches";
 import { CourseSourceError } from "../course-source-error";
 const id = (n: number) =>
   `10000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -136,7 +137,7 @@ test("el presupuesto rechaza excesos y conserva evidencia posterior a 12000 cara
   assert.throws(() => generation.checkGenerationBudget([]), /Faltan/);
 });
 
-function fixture(policy: string | null = "DOCUMENTS_ONLY", approved = true) {
+function fixture(policy: string | null = "DOCUMENTS_ONLY", approved = true, longSources: generation.GenerationSource[] = []) {
   const effects: { name: string; payload: Record<string, unknown> }[] = [];
   let modelCalls = 0;
   const service = load<{
@@ -182,6 +183,7 @@ function fixture(policy: string | null = "DOCUMENTS_ONLY", approved = true) {
         },
       },
       "./course-source-generation": generation,
+      "./course-source-base-batches": baseBatches,
     },
     { AbortSignal },
   );
@@ -193,7 +195,10 @@ function fixture(policy: string | null = "DOCUMENTS_ONLY", approved = true) {
         eq: () => builder,
         order: () => builder,
         limit: async () => ({
-          data: [
+          data: longSources.length ? longSources.map(item => ({
+            id: item.id, document_id: item.documentId, text_content: item.text,
+            content_sha256: item.hash, locator: item.locator, course_source_documents: { filename: item.title },
+          })) : [
             {
               id: source.id,
               document_id: source.documentId,
@@ -224,6 +229,9 @@ function fixture(policy: string | null = "DOCUMENTS_ONLY", approved = true) {
             ? "hash"
             : name === "course_source_snapshot_current"
               ? true
+              : name === "read_course_source_base_batch_progress"
+                ? { status: "COMPLETE", findings: [[{ fragmentId: longSources.at(-1)!.id,
+                  quote: "La última regla exige autorización.", finding: "Aplicar autorización" }]] }
               : name === "course_source_curriculum"
                 ? {
                     modules: [{ id: "current" }],
@@ -238,6 +246,24 @@ function fixture(policy: string | null = "DOCUMENTS_ONLY", approved = true) {
   };
   return { service, database, effects, calls: () => modelCalls };
 }
+
+test("Base vincula el manifiesto completo y reutiliza solo evidencia confirmada de una fuente larga", async () => {
+  const sources = Array.from({ length: 64 }, (_, index) => ({
+    ...source, id: id(index + 100), text: "La última regla exige autorización.".padEnd(2000, "a"),
+  }));
+  const { service, database, effects, calls } = fixture("DOCUMENTS_ONLY", true, sources);
+  const context = await service.prepareCourseGeneration(database, id(4), "BASE", null, undefined, "nuevo-intento", undefined, {
+    purpose: "Taller de permisos", model: "gemini-primary", deadline: Date.now() + 10_000,
+  });
+  assert.deepEqual(context!.sources.map(item => item.id), [sources.at(-1)!.id]);
+  assert.equal(context!.sources[0].text, "La última regla exige autorización.");
+  const snapshot = effects.find(effect => effect.name === "snapshot_course_source_generation");
+  const manifest = snapshot?.payload.p_manifest as { id: string; text?: string }[];
+  assert.deepEqual(Array.from(manifest, item => item.id), sources.map(item => item.id));
+  assert.ok(manifest.every(item => item.text === undefined));
+  assert.ok(effects.some(effect => effect.name === "create_course_source_batch_run"));
+  assert.equal(calls(), 0);
+});
 
 test("no vincula inputs anteriores a un fingerprint nuevo y conserva la clave de ejecución", async () => {
   const stale = fixture();

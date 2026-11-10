@@ -11,7 +11,7 @@ export const COURSE_SOURCE_LIMITS = {
   pageSize: 20,
   maxPageSize: 50,
   officeEntries: 2000,
-  activeTextCharacters: 40_000,
+  activeTextCharacters: 250_000,
   extractionBatchFragments: 16,
   fragmentPageSize: 40,
 } as const;

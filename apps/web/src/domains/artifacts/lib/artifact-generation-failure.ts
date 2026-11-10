@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generationFailureMessage } from "../../../lib/pipeline-generation-policy";
+import { CourseSourceError } from "../../course-sources/course-source-error";
 
 export async function markArtifactGenerationFailed(
   supabase: SupabaseClient,
@@ -13,7 +14,8 @@ export async function markArtifactGenerationFailed(
     state: "ESCALATED",
     validation_report: {
       all_passed: false,
-      results: [{ code: "GENERATION_FAILED", passed: false, message: generationFailureMessage(error) }],
+      results: [{ code: "GENERATION_FAILED", passed: false,
+        message: error instanceof CourseSourceError ? error.message : generationFailureMessage(error) }],
       ...(diagnostics ? { diagnostics } : {}),
     },
   }).eq("id", artifactId).eq("state", "GENERATING");

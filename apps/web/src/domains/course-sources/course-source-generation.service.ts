@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateObject } from "ai";
+import {
+  BASE_BATCH_LIMITS,
+  baseBatchFindingsSchema,
+  planBaseBatches,
+  readBaseBatches,
+} from "./course-source-base-batches";
 import { resolveAiModel } from "../../../netlify/functions/shared/bootstrap";
 import {
   recordAiSdkUsage,
@@ -34,6 +40,7 @@ export async function prepareCourseGeneration(
   lessonIds?: string[],
   executionKey?: string,
   expectedInputs?: { modules?: unknown; plans?: unknown; objectives?: unknown },
+  baseBatch?: { purpose: string; model: string; deadline: number },
 ): Promise<CourseGenerationContext | null> {
   const settings = await readCourseSourcePolicy(admin, artifactId);
   if (!settings || settings.policy === "WEB_ONLY") return null;
@@ -68,10 +75,11 @@ export async function prepareCourseGeneration(
     }
     syllabusVersion = Number(current.data.syllabusVersion || 0);
   }
-  const { data: fragments, error } = await admin
+  const { data: fragments, count, error } = await admin
     .from("course_source_fragments")
     .select(
       "id,document_id,text_content,content_sha256,locator,ordinal,course_source_documents!inner(status,filename)",
+      { count: "exact" },
     )
     .eq("artifact_id", artifactId)
     .eq("course_source_documents.status", "READY")
@@ -79,7 +87,7 @@ export async function prepareCourseGeneration(
     .order("ordinal")
     .limit(1001);
   if (error) sourcePersistenceError(error);
-  if ((fragments?.length || 0) > 1000)
+  if ((count ?? fragments?.length ?? 0) > 1000)
     throw new CourseSourceError(
       413,
       "Demasiados fragmentos para generar. Divide el alcance del curso.",
@@ -165,7 +173,10 @@ export async function prepareCourseGeneration(
       ],
     }));
   }
-  checkGenerationBudget(sources, stage === "MATERIALS");
+  const useBaseBatches = stage === "BASE" && baseBatch && sources.reduce(
+    (length, source) => length + source.text.length, 0,
+  ) > SOURCE_GENERATION_LIMITS.structureCharacters;
+  if (!useBaseBatches) checkGenerationBudget(sources, stage === "MATERIALS");
   const { data: snapshotId, error: snapshotError } = await admin.rpc(
     "snapshot_course_source_generation",
     {
@@ -185,7 +196,7 @@ export async function prepareCourseGeneration(
     },
   );
   if (snapshotError) sourcePersistenceError(snapshotError);
-  return {
+  const context: CourseGenerationContext = {
     snapshotId,
     artifactId,
     stage,
@@ -196,6 +207,57 @@ export async function prepareCourseGeneration(
     sources,
     ...(syllabusVersion !== undefined ? { syllabusVersion } : {}),
   };
+  if (useBaseBatches) {
+    const { purpose, model, deadline } = baseBatch;
+    const plan = planBaseBatches(purpose, sources);
+    const { data: batchRun, error: batchError } = await admin.rpc("create_course_source_batch_run", {
+      p_artifact: artifactId, p_organization: settings.organization_id, p_revision: settings.revision,
+      p_purpose_hash: sourceTextHash(JSON.stringify({ purpose, model })), p_planner: BASE_BATCH_LIMITS.planner, p_plan: plan,
+      p_deadline: new Date(Date.now() + BASE_BATCH_LIMITS.lifetimeMs).toISOString(),
+      p_attempts: BASE_BATCH_LIMITS.attempts, p_splits: BASE_BATCH_LIMITS.splits, p_tokens: BASE_BATCH_LIMITS.totalUnits,
+    });
+    if (batchError) sourcePersistenceError(batchError);
+    const batchScope = { p_run: batchRun, p_organization: settings.organization_id };
+    context.sources = await readBaseBatches({
+      purpose, sources, deadline, resume: true,
+      command: async (action, path, lease, payload) => {
+        const { data, error: commandError } = await admin.rpc("command_course_source_batch", {
+          ...batchScope, p_action: action, p_path: path ?? null, p_lease: lease ?? null, p_payload: payload ?? {},
+        });
+        if (commandError) sourcePersistenceError(commandError);
+        return data;
+      },
+      progress: async () => {
+        const { data, error: progressError } = await admin.rpc("read_course_source_base_batch_progress", {
+          ...batchScope, p_artifact: artifactId,
+        });
+        if (progressError) sourcePersistenceError(progressError);
+        return data;
+      },
+      generate: async (prompt, timeoutMs) => {
+        const startedAt = Date.now();
+        const telemetry = { artifactId, organizationId: settings.organization_id,
+          pipelineStep: "BASE", operation: "read_course_source_base_batch", runId: batchRun };
+        try {
+          const { object, usage } = await generateObject({
+            model: resolveAiModel(model), schema: baseBatchFindingsSchema, prompt,
+            maxRetries: 0, maxOutputTokens: BASE_BATCH_LIMITS.outputTokens,
+            abortSignal: AbortSignal.timeout(timeoutMs),
+          });
+          await recordAiSdkUsage({ supabase: admin, usage, model, startedAt, context: telemetry });
+          return object;
+        } catch (error) {
+          await recordAiFailure({ supabase: admin, model, startedAt, context: telemetry,
+            provider: model.startsWith("gemini-") ? "gemini" : "openai",
+            error: new Error("Falló la lectura de un lote documental; no se registra el contenido."),
+          });
+          throw error;
+        }
+      },
+    });
+    await assertCourseGenerationCurrent(admin, context);
+  }
+  return context;
 }
 function executionIdentifier(artifactId: string, stage: string, key: string) {
   const hash = sourceTextHash(`${artifactId}:${stage}:${key}`);

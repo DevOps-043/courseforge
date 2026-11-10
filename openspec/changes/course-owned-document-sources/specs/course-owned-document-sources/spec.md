@@ -146,6 +146,16 @@ El sistema SHALL congelar política, versiones y fragmentos por ejecución, vali
 - **WHEN** un consumidor conserva objetivos, módulos o plan anteriores al currículo vigente
 - **THEN** no los vincula al fingerprint nuevo y se detiene antes de generar
 
+#### Scenario: Base usa un documento largo del taller
+- **WHEN** la biblioteca procesa un documento de hasta 250,000 unidades UTF-16 que supera el contexto directo de Base
+- **THEN** conserva íntegro el texto extraído y el job recorre todos sus fragmentos en lotes acotados
+- **AND** la redacción y la verificación usan citas literales de lotes confirmados mientras el manifiesto identifica la revisión completa
+
+#### Scenario: Base reanuda una lectura documental interrumpida
+- **WHEN** el autor reintenta con el mismo propósito, revisión y modelo tras un fallo recuperable
+- **THEN** el job conserva los lotes confirmados y continúa con los pendientes dentro del presupuesto vigente
+- **AND** la salida solo puede llegar a revisión tras completar todos los lotes y verificar su respaldo
+
 #### Scenario: Fallo de la primera generación de Base
 - **WHEN** la generación falla antes de obtener un recibo de evidencia
 - **THEN** Base registra el fallo terminal sin quedar atascada en generación
