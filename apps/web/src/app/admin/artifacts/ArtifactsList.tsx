@@ -29,6 +29,7 @@ export default function ArtifactsList({
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [ownershipFilter, setOwnershipFilter] = useState<"all" | "mine">("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const [deletionNotice, setDeletionNotice] = useState("");
 
   useArtifactsSync(artifacts, setArtifacts);
 
@@ -132,6 +133,10 @@ export default function ArtifactsList({
           </div>
       </div>
 
+      <div role="status" className={deletionNotice ? "text-sm text-[var(--engine-text-muted)]" : "sr-only"}>
+        {deletionNotice}
+      </div>
+
       {filteredArtifacts.length === 0 ? (
         <ArtifactsEmptyState basePath={basePath} />
       ) : (
@@ -155,11 +160,12 @@ export default function ArtifactsList({
                 viewMode={viewMode}
                 basePath={basePath}
                 position={startIndex + index + 1}
-                onDelete={(id) =>
-                  setArtifacts((prev) =>
-                    prev.filter((candidate) => candidate.id !== id),
-                  )
-                }
+                onDelete={(id, cleanupPending) => {
+                  setArtifacts((prev) => prev.filter((candidate) => candidate.id !== id));
+                  setDeletionNotice(cleanupPending
+                    ? "Artefacto eliminado. La limpieza de los archivos originales quedó programada."
+                    : "Artefacto eliminado.");
+                }}
               />
             ))}
           </div>

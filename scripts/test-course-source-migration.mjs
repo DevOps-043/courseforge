@@ -96,6 +96,73 @@ async function deleteArtifact(db, artifactId, organizationId = organization) {
   return rows[0].result;
 }
 
+test('el borrado confirmado compara el manifiesto, conserva el tenant y registra la limpieza en la misma transacción', async () => {
+  const db = await database(true);
+  try {
+    const course = await draft(db);
+    const otherCourse = await draft(db, key, otherOrganization);
+    await installArtifactDeletion(db);
+    await db.exec(`alter table syllabus_source_documents add column id uuid primary key, add column filename text;
+      create table syllabus_imports(id uuid primary key, artifact_id uuid references artifacts(id),
+        primary_document_id uuid references syllabus_source_documents(id));
+      alter table syllabus add column active_import_id uuid references syllabus_imports(id);`);
+    await db.exec(await readFile('supabase/migrations/20261110010000_confirm_artifact_document_deletion.sql', 'utf8'));
+    const preview = async (org = organization) => (await db.query(
+      'select public.preview_artifact_deletion($1,$2) as result', [course, org])).rows[0].result;
+    const erase = async (confirmation, org = organization) => (await db.query(
+      'select public.confirm_artifact_deletion($1,$2,$3) as result', [course, org, confirmation])).rows[0].result;
+
+    await db.exec('set role authenticated');
+    await assert.rejects(preview(), error => error.code === '42501');
+    await assert.rejects(erase(null), error => error.code === '42501');
+    await db.exec('set role service_role');
+    const empty = await preview();
+    assert.deepEqual(empty.documents, []);
+    const entry = await reserve(db, course);
+    const otherEntry = await reserve(db, otherCourse, { org: otherOrganization });
+    assert.equal(await erase(null), 'MANIFEST_CHANGED');
+    assert.equal(await erase(empty.confirmation), 'MANIFEST_CHANGED');
+    assert.equal(await preview(otherOrganization), null);
+    assert.equal(await erase(empty.confirmation, otherOrganization), 'NOT_FOUND');
+
+    await db.exec('reset role');
+    const legacyId = identifier();
+    const importId = identifier();
+    const snapshotId = identifier();
+    const receiptId = identifier();
+    await db.query('insert into syllabus_source_documents(artifact_id,id,filename) values ($1,$2,$3)', [course, legacyId, 'temario.pdf']);
+    await db.query('insert into syllabus_imports values ($1,$2,$3)', [importId, course, legacyId]);
+    await db.query('insert into syllabus(artifact_id,active_import_id) values ($1,$2)', [course, importId]);
+    await db.query(`insert into course_source_snapshots(id,artifact_id,execution_id,stage,policy,source_revision,syllabus_content_version,context_sha256)
+      values ($1,$2,$3,'BASE','DOCUMENTS_ONLY',1,0,repeat('a',64))`, [snapshotId, course, identifier()]);
+    await db.query(`insert into course_source_generation_receipts(id,artifact_id,snapshot_id,output_hash,citations)
+      values ($1,$2,$3,repeat('a',32),'[{}]')`, [receiptId, course, snapshotId]);
+    await db.query('update artifacts set source_evidence_id=$2 where id=$1', [course, receiptId]);
+    await db.exec('create table protected_artifact_reference(artifact_id uuid references artifacts(id));');
+    await db.query('insert into protected_artifact_reference values ($1)', [course]);
+    await db.exec('set role service_role');
+
+    const listed = await preview();
+    assert.deepEqual(listed.documents, [
+      { id: entry.id, kind: 'original', filename: entry.filename, status: 'RESERVED' },
+      { id: legacyId, kind: 'temario', filename: 'temario.pdf', status: 'REGISTRADO' },
+    ]);
+    await assert.rejects(erase(listed.confirmation), error => error.code === '23503');
+    assert.deepEqual(await preview(), listed);
+    assert.deepEqual((await db.query('select storage_path from artifact_source_storage_cleanup')).rows, []);
+
+    await db.exec('reset role; delete from protected_artifact_reference; set role service_role;');
+    assert.equal(await erase(listed.confirmation), 'DELETED');
+    assert.equal(await preview(), null);
+    assert.equal(await erase(listed.confirmation), 'NOT_FOUND');
+    assert.deepEqual((await db.query('select storage_path, next_attempt_at > now() as delayed from artifact_source_storage_cleanup')).rows,
+      [{ storage_path: entry.storage_path, delayed: true }]);
+    assert.deepEqual((await db.query('select id from course_source_documents order by id')).rows, [{ id: otherEntry.id }]);
+  } finally {
+    await db.close();
+  }
+});
+
 test('el borrado atómico elimina un borrador documental vacío y mantiene el aislamiento', async () => {
   const db = await database(true);
   try {

@@ -74,9 +74,10 @@ describe("frontera privilegiada de artefactos", () => {
 describe("eliminación de artefactos", () => {
   const artifactId = "40000000-0000-4000-8000-000000000001";
   const organizationId = "50000000-0000-4000-8000-000000000001";
+  const confirmation = "a".repeat(64);
 
   function deletionFixture() {
-    const state = { platformRole: "ADMIN", tenantAvailable: true, outcome: "DELETED", databaseError: null as null | { code: string; message: string } };
+    const state = { platformRole: "ADMIN", tenantAvailable: true, outcome: "DELETED" as unknown, databaseError: null as null | { code: string; message: string } };
     const calls: Array<[string, Record<string, string>]> = [];
     let privilegedClients = 0;
     class AuthorityUnavailable extends Error {}
@@ -107,30 +108,45 @@ describe("eliminación de artefactos", () => {
 
   it("rechaza UUID inválido, rol sin permiso y autoridad caída antes de construir el cliente privilegiado", async () => {
     const f = deletionFixture();
-    assert.equal((await f.action.deleteArtifactAction("inválido")).success, false);
+    assert.equal((await f.action.deleteArtifactAction("inválido", confirmation)).success, false);
+    assert.equal((await f.action.deleteArtifactAction(artifactId, "")).success, false);
     f.state.platformRole = "CONSTRUCTOR";
-    assert.equal((await f.action.deleteArtifactAction(artifactId)).success, false);
+    assert.equal((await f.action.previewArtifactDeletionAction(artifactId)).success, false);
+    assert.equal((await f.action.deleteArtifactAction(artifactId, confirmation)).success, false);
     f.state.tenantAvailable = false;
-    assert.equal((await f.action.deleteArtifactAction(artifactId)).success, false);
+    assert.equal((await f.action.deleteArtifactAction(artifactId, confirmation)).success, false);
     assert.equal(f.privilegedClients(), 0);
   });
 
   it("envía la organización resuelta en servidor y solo confirma la respuesta DELETED", async () => {
     const f = deletionFixture();
-    assert.equal((await f.action.deleteArtifactAction(artifactId)).success, true);
-    assert.deepEqual(f.calls, [["delete_artifact_for_organization", {
-      p_artifact_id: artifactId, p_organization_id: organizationId,
+    assert.equal((await f.action.deleteArtifactAction(artifactId, confirmation)).success, true);
+    assert.deepEqual(f.calls, [["confirm_artifact_deletion", {
+      p_artifact_id: artifactId, p_organization_id: organizationId, p_confirmation: confirmation,
     }]]);
-    for (const outcome of ["NOT_FOUND", "HAS_SOURCE_DOCUMENTS", "DESCONOCIDO"]) {
+    for (const outcome of ["NOT_FOUND", "MANIFEST_CHANGED", "DESCONOCIDO"]) {
       f.state.outcome = outcome;
-      assert.equal((await f.action.deleteArtifactAction(artifactId)).success, false);
+      const result = await f.action.deleteArtifactAction(artifactId, confirmation);
+      assert.ok(!result.success);
+      assert.equal(Boolean(result.refresh), outcome === "MANIFEST_CHANGED");
     }
+  });
+
+  it("previsualiza metadatos autorizados y descarta propiedades internas", async () => {
+    const f = deletionFixture();
+    const document = { id: artifactId, filename: "manual.pdf", status: "READY", kind: "original" };
+    f.state.outcome = { confirmation, documents: [{ ...document, storage_path: "ruta-privada" }] };
+    const response = await f.action.previewArtifactDeletionAction(artifactId);
+    assert.deepEqual(JSON.parse(JSON.stringify(response)), {
+      success: true, preview: { confirmation, documents: [document] },
+    });
+    assert.deepEqual(f.calls, [["preview_artifact_deletion", { p_artifact_id: artifactId, p_organization_id: organizationId }]]);
   });
 
   it("presenta un bloqueo sin exponer el detalle de PostgreSQL", async () => {
     const f = deletionFixture();
     f.state.databaseError = { code: "23503", message: "Detalle SQL interno" };
-    const result = await f.action.deleteArtifactAction(artifactId);
+    const result = await f.action.deleteArtifactAction(artifactId, confirmation);
     assert.ok(!result.success);
     assert.match(result.error, /datos vinculados.*referencia/i);
     assert.doesNotMatch(result.error, /Detalle SQL interno/);

@@ -93,15 +93,16 @@ La transferencia muestra progreso por bytes y permite cancelar XHR; la reserva q
 - `{ "action": "inspect" }`: inspecciona hasta 50 reservas RESERVED vencidas hace más de 24 horas. Solo un 404 explícito de Storage significa MISSING; otros fallos son UNKNOWN. Guarda actor/fecha y versión observada sin exponer rutas o capacidades de descarga. No borra objetos.
 - `{ "action": "purge", "documentId": "<UUID>", "confirmDocumentId": "<mismo UUID>" }`: operación irreversible separada; UI pide escribir el ID exacto. Revalida organización, estado RESERVED y al menos siete días desde vencimiento, conciliación conocida, referencias y versión del objeto. UNKNOWN, referencias o cambio de versión bloquean. Solo borra la ruta persistida en el bucket privado; después comprueba ausencia explícita y conserva registro/actor de autorización. Resultado incierto devuelve error y requiere consulta, nunca acredita éxito por timeout.
 
-Sin purga automática ni borrado de documentos UPLOADED/READY/RETIRED o fragmentos. El historial y las reservas conciliadas siguen contando en cuotas; no se declara una liberación de presupuesto antes de reconciliar datos/retención de forma separada. Para una carga huérfana fuera de una reserva conocida no se ofrece borrado general del bucket: debe investigarse administrativamente antes de autorizar un efecto.
+La conciliación conserva documentos UPLOADED/READY/RETIRED y sus fragmentos. El historial y las reservas conciliadas siguen contando en cuotas. Una carga huérfana fuera de una reserva conocida requiere investigación administrativa.
 
 No se ejecutó purga de datos reales al desarrollar esta funcionalidad. En despliegue, el operador debe usar primero inspección, revisar el ID/curso/retención y autorizar cada purga desde el control separado. Mantener el historial de conciliación durante la vida del curso; las fuentes consumidas no tienen borrado automático.
 
-La eliminación del artefacto usa una transacción. Un borrador sin archivos
-puede eliminarse con su configuración. Se conserva la clave de creación para
-rechazar reintentos y mantener la cuota. Reservas,
-originales registrados y dependencias protegidas bloquean el borrado y
-conservan el curso. Véase el [contrato de eliminación](../../openspec/changes/fix-artifact-deletion/design.md).
+La eliminación del artefacto requiere dos confirmaciones. La segunda presenta
+documentos, descargas y reservas antes de confirmar. La transacción elimina el
+curso y sus registros documentales, conserva la clave de creación para rechazar
+reintentos y agenda la limpieza de originales en Storage. Un manifiesto que
+cambia exige revisar la lista nuevamente. Una dependencia protegida revierte
+la eliminación. Véase el [contrato de eliminación](../../openspec/changes/fix-artifact-deletion/design.md).
 
 ## Responsabilidades
 
