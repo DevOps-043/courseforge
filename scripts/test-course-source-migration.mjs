@@ -67,6 +67,7 @@ async function database(generation = false) {
     await db.exec(await readFile('supabase/migrations/20261110020000_expand_course_source_extraction.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261110030000_split_long_course_sources.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261110040000_align_base_source_snapshot_budget.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261111010000_documentary_base_progress.sql', 'utf8'));
   }
   await db.exec('set role service_role');
   return db;
@@ -520,6 +521,31 @@ async function generationFixture(db, seedBase = true) {
   }
   return {course,document,fragment,text,change,snapshot,attest};
 }
+
+test('solo la ejecución vigente registra avance documental y conserva los demás metadatos', async () => {
+  const db = await database(true);
+  try {
+    const { course } = await generationFixture(db, false);
+    const run = identifier();
+    await db.query("update artifacts set state='GENERATING', generation_metadata=$2::jsonb where id=$1",
+      [course, JSON.stringify({ run_id: run, original_input: { description: 'Propósito' } })]);
+    const record = async (execution = run, org = organization, confirmed = 16) =>
+      (await db.query("select record_documentary_base_progress($1,$2,$3,$4,$5,$6,'2026-11-11T12:00:00Z') as applied",
+        [course, org, execution, 'reading', confirmed, 23])).rows[0].applied;
+    assert.equal(await record(identifier()), false);
+    assert.equal(await record(run, otherOrganization), false);
+    await assert.rejects(record(run, organization, 24), /SOURCE_BASE_PROGRESS_INVALID/);
+    assert.equal(await record(), true);
+    const { base_progress: progress, ...metadata } =
+      (await db.query('select generation_metadata from artifacts where id=$1', [course])).rows[0].generation_metadata;
+    assert.deepEqual(metadata, { run_id: run, original_input: { description: 'Propósito' } });
+    const { started_at, ...counts } = progress;
+    assert.equal(new Date(started_at).toISOString(), '2026-11-11T12:00:00.000Z');
+    assert.deepEqual(counts, { phase: 'reading', confirmed: 16, total: 23 });
+    await db.exec('set role authenticated');
+    await assert.rejects(record(), /permission denied/);
+  } finally { await db.close(); }
+});
 
 test('ingesta larga publica el texto completo de forma atómica y rechaza lotes incompletos', async () => {
   const db = await database(true);

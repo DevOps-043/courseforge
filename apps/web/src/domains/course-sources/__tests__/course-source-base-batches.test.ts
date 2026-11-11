@@ -27,14 +27,19 @@ test("Base recorre el documento largo y al recuperar el lote intermedio conserva
   assert.ok(plan.every(batch => batch.requestTokens <= BASE_BATCH_LIMITS.requestUnits));
   const confirmed = new Map<number, unknown[]>();
   const attempts: number[] = [];
+  const reported: number[] = [];
   let next = 0;
   let interrupted = false;
   let paused = false;
   const run = () => readBaseBatches({
     purpose, sources, deadline: Date.now() + 30_000, resume: true,
+    onProgress: async ({ confirmed: count, total }) => {
+      assert.equal(total, plan.length);
+      reported.push(count);
+    },
     progress: async () => next === plan.length
-      ? { status: "COMPLETE", findings: [...confirmed.values()] }
-      : { status: paused ? "PAUSED" : "ACTIVE", resumable: paused ? [[next + 1]] : [] },
+      ? { status: "COMPLETE", confirmed: next, total: plan.length, findings: [...confirmed.values()] }
+      : { status: paused ? "PAUSED" : "ACTIVE", confirmed: next, total: plan.length, resumable: paused ? [[next + 1]] : [] },
     command: async (action, path, _lease, payload) => {
       if (action === "claim") return paused ? { status: "NO_AVAILABLE_BATCH" } : {
         status: "LEASED", path: [next + 1], lease: randomUUID(),
@@ -68,7 +73,9 @@ test("Base recorre el documento largo y al recuperar el lote intermedio conserva
   });
   await assert.rejects(run(), /lotes confirmados/);
   assert.deepEqual([...confirmed.keys()], [0]);
+  assert.deepEqual(reported, [0, 1]);
   const context = await run();
+  assert.deepEqual(reported.slice(2), Array.from({ length: plan.length }, (_, index) => index + 1));
   assert.deepEqual(attempts, [0, 1, ...plan.slice(1).map((_, index) => index + 1)]);
   assert.deepEqual(context.map(source => source.id), [sources[0].id, sources[50].id, sources.at(-1)!.id]);
 });

@@ -43,6 +43,7 @@ interface ArtifactStageContentProps {
   isRegenerating: boolean;
   onApproveBase: () => Promise<void>;
   onCancelEdit: () => void;
+  onDocumentaryBaseStarted: () => void;
   onLocalProductionStatusChange: (complete: boolean) => void;
   onRejectBase: () => Promise<void>;
   onRegenerate: () => Promise<void>;
@@ -74,6 +75,7 @@ export function ArtifactStageContent({
   isRegenerating,
   onApproveBase,
   onCancelEdit,
+  onDocumentaryBaseStarted,
   onLocalProductionStatusChange,
   onRejectBase,
   onRegenerate,
@@ -114,6 +116,7 @@ export function ArtifactStageContent({
         validation={validation}
         onSaveContent={onSaveContent}
         onCancelEdit={onCancelEdit}
+        onDocumentaryBaseStarted={onDocumentaryBaseStarted}
         onApprove={onApproveBase}
         onReject={onRejectBase}
         onRegenerate={onRegenerate}

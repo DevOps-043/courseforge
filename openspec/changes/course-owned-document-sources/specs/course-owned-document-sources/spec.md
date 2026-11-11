@@ -43,6 +43,12 @@ El sistema SHALL permitir cargar y reutilizar PDF textual, DOCX, PPTX y TXT desd
 ### Requirement: Talleres con originales largos
 El sistema SHALL admitir originales largos dentro de presupuestos medidos y reutilizar evidencia versionada desde Base hasta Materiales, conservando los originales como archivos individuales y la trazabilidad de cada cita.
 
+#### Scenario: El autor consulta el avance de Base
+- **WHEN** la generación de Base está activa o se detiene tras confirmar parte de sus lotes
+- **THEN** el detalle del curso muestra la etapa y los lotes confirmados disponibles con la consulta de estado existente
+- **AND** muestra el resultado cuando termina y permite distinguir una pausa de un fallo al consultar el estado
+- **AND** una ejecución anterior u otra organización no pueden publicar avance para el trabajo actual
+
 #### Scenario: La evidencia relevante está al final del original
 - **WHEN** un autor autorizado aporta un documento largo válido y una regla relevante aparece en su última sección
 - **THEN** el sistema recorre todos los fragmentos, recupera la regla para el objetivo o tema correspondiente y permite verificar la cita contra el original

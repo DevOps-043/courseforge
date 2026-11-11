@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { planSourceBatches, type SourceBatchFailure } from "./course-source-batches";
 import { CourseSourceError } from "./course-source-error";
+import type { DocumentaryBatchCounts } from "./course-source-base-progress";
 import { checkGenerationBudget, type GenerationSource } from "./course-source-generation";
 
 export const BASE_BATCH_LIMITS = {
@@ -109,7 +110,7 @@ function pendingBatch(state: z.infer<typeof progressSchema>): never {
     throw new CourseSourceError(422, "La lectura de Base quedó bloqueada. Revisa el modelo configurado y el alcance documental.");
   }
   const progress = state.total ? ` Se guardaron ${state.confirmed ?? 0} de ${state.total} lotes.` : "";
-  throw new CourseSourceError(503, `La lectura de las fuentes quedó pendiente.${progress} Reintenta Generar Base para conservar los lotes confirmados.`);
+  throw new CourseSourceError(503, `La lectura de las fuentes quedó pendiente.${progress} Reintenta desde Base para conservar los lotes confirmados.`);
 }
 
 function evidenceFromFindings(sources: ReadonlyMap<string, GenerationSource>, findings: Finding[][]) {
@@ -136,22 +137,32 @@ export async function readBaseBatches(input: {
   generate: (prompt: string, timeoutMs: number) => Promise<unknown>;
   resume: boolean;
   findingsPerBatch?: number;
+  onProgress?: (counts: DocumentaryBatchCounts) => Promise<void>;
 }) {
   const { purpose, command, progress, deadline, generate, findingsPerBatch = MAX_FINDINGS_PER_BATCH } = input;
   const sources = new Map(input.sources.map(source => [source.id, source]));
-  let state = progressSchema.parse(await progress());
-  assertCurrent(state.status);
+  let lastCounts: DocumentaryBatchCounts | undefined;
+  async function readProgress() {
+    const state = progressSchema.parse(await progress());
+    assertCurrent(state.status);
+    if (input.onProgress && state.confirmed !== undefined && state.total !== undefined &&
+      (lastCounts?.confirmed !== state.confirmed || lastCounts?.total !== state.total)) {
+      lastCounts = { confirmed: state.confirmed, total: state.total };
+      await input.onProgress(lastCounts);
+    }
+    return state;
+  }
+  let state = await readProgress();
   if (input.resume && state.status !== "BUDGET_EXHAUSTED") {
     for (const path of state.resumable ?? []) await command("resume", path);
   }
 
   while (state.status !== "COMPLETE") {
-    assertCurrent(state.status);
     if (state.status === "BUDGET_EXHAUSTED" || deadline - Date.now() < 1000) pendingBatch(state);
     const claim = await command("claim");
     const lease = leaseSchema.safeParse(claim);
     if (!lease.success) {
-      state = progressSchema.parse(await progress());
+      state = await readProgress();
       if (state.status === "COMPLETE") break;
       const { status } = z.object({ status: z.string() }).parse(claim);
       if (status === "BUDGET_EXHAUSTED" || status === "STALE") pendingBatch({ ...state, status });
@@ -191,14 +202,14 @@ export async function readBaseBatches(input: {
           if (waitMs > 0 && Date.now() + waitMs < deadline) await new Promise(resolve => setTimeout(resolve, waitMs));
         }
       }
-      state = progressSchema.parse(await progress());
+      state = await readProgress();
       continue;
     }
     // Si la respuesta de esta escritura se pierde, el próximo claim consulta el estado durable.
     const result = z.object({ status: z.string() }).parse(await command("complete", path, token, { findings }));
     assertCurrent(result.status);
     if (result.status !== "CONFIRMED") pendingBatch(state);
-    state = progressSchema.parse(await progress());
+    state = await readProgress();
   }
 
   return evidenceFromFindings(sources, state.findings ?? []);

@@ -50,7 +50,8 @@ export async function getArtifactGenerationSnapshotAction(artifactId: string) {
     return { success: false as const, error: error?.message || "Artifact snapshot unavailable" };
   }
 
-  if (artifact.state === "GENERATING" && isGenerationStale(artifact.updated_at)) {
+  const generationStartedAt = artifact.generation_metadata?.base_progress?.started_at || artifact.updated_at;
+  if (artifact.state === "GENERATING" && isGenerationStale(generationStartedAt)) {
     await markArtifactGenerationFailed(authorized.admin, artifactId, artifact.generation_metadata?.run_id, new Error("timeout"), artifact.updated_at);
     return getArtifactGenerationSnapshotAction(artifactId);
   }
@@ -245,6 +246,7 @@ export async function regenerateArtifactAction(
       generation_metadata: {
         ...artifact.generation_metadata,
         run_id: runId,
+        base_progress: null,
         started_at: new Date().toISOString(),
         feedback_history: [
           ...(artifact.generation_metadata.feedback_history || []),

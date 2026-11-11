@@ -3,6 +3,7 @@ import { prepareCourseGeneration, attestCourseGeneration } from "../../src/domai
 import { courseSourcePrompt } from "../../src/domains/course-sources/course-source-generation";
 import { BASE_BATCH_LIMITS } from "../../src/domains/course-sources/course-source-base-batches";
 import { CourseSourceError } from "../../src/domains/course-sources/course-source-error";
+import type { DocumentaryBaseProgress } from "../../src/domains/course-sources/course-source-base-progress";
 import { markArtifactGenerationFailed } from "../../src/domains/artifacts/lib/artifact-generation-failure";
 import { PIPELINE_GENERATION_LIMITS } from "../../src/lib/pipeline-generation-policy";
 import { generateObject } from "ai";
@@ -140,6 +141,23 @@ export const handler: Handler = async (event) => {
       return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
     }
 
+    let baseProgress: DocumentaryBaseProgress | undefined;
+    async function publishBaseProgress(progress: DocumentaryBaseProgress) {
+      if (!organizationId) return;
+      const startedAt = new Date(startedJobAt).toISOString();
+      baseProgress = { ...progress, started_at: startedAt };
+      const { data, error } = await serviceSupabase.rpc("record_documentary_base_progress", {
+        p_artifact: artifactId, p_organization: organizationId, p_execution: runId,
+        p_phase: progress.phase, p_confirmed: progress.confirmed, p_total: progress.total,
+        p_started_at: startedAt,
+      });
+      if (error) {
+        console.warn("[Fuentes] No se pudo registrar el avance de Base.", { artifactId, runId, code: error.code });
+      } else if (data === false) {
+        throw new CourseSourceError(409, "La ejecución de Base ya no está activa.");
+      }
+    }
+
     stage = "configuration";
     const modelConfig = await resolveModelSetting(
       serviceSupabase,
@@ -164,6 +182,7 @@ export const handler: Handler = async (event) => {
       purpose: JSON.stringify({ title: formData.title, description: formData.description, feedback }),
       model: modelConfig.model,
       deadline: startedJobAt + BASE_BATCH_LIMITS.workerMs,
+      onProgress: (counts) => publishBaseProgress({ phase: "reading", ...counts }),
     });
     if (body.documentary && !sourceContext) throw new CourseSourceError(409, "La política documental cambió antes de generar Base.");
     if (cloudStorageProvider) {
@@ -377,6 +396,7 @@ export const handler: Handler = async (event) => {
       .update({
         generation_metadata: {
           ...(scopedArtifact.generation_metadata || {}),
+          ...(baseProgress ? { base_progress: baseProgress } : {}),
           configuration_warnings: configurationWarnings,
           prompt_resolution: promptResolution,
         },
@@ -388,6 +408,9 @@ export const handler: Handler = async (event) => {
     if (diagnosticsError) {
       throw diagnosticsError;
     }
+    if (sourceContext) await publishBaseProgress({
+      phase: "writing", confirmed: baseProgress?.confirmed ?? null, total: baseProgress?.total ?? null,
+    });
 
     let content: GeneratedArtifactContent | null = null;
     let genModelUsed = "";
@@ -507,6 +530,9 @@ export const handler: Handler = async (event) => {
     const allPassed = validationReport.every((result) => result.passed);
 
     stage = "persistence";
+    if (sourceContext) await publishBaseProgress({
+      phase: "verifying", confirmed: baseProgress?.confirmed ?? null, total: baseProgress?.total ?? null,
+    });
     const sourceEvidenceId = await attestCourseGeneration(serviceSupabase, sourceContext, {
       nombres: content.nombres, objetivos: content.objetivos, descripcion: content.descripcion,
     }, [genModelUsed, ...genModels], jobDeadline);
@@ -519,6 +545,7 @@ export const handler: Handler = async (event) => {
         descripcion: content.descripcion,
         generation_metadata: {
           ...(scopedArtifact.generation_metadata || {}),
+          ...(baseProgress ? { base_progress: baseProgress } : {}),
           source_configuration_dirty: false,
           ...(sourceContext ? { course_source_snapshot_id: sourceContext.snapshotId } : {}),
           research_summary: researchContext.slice(0, 2000),

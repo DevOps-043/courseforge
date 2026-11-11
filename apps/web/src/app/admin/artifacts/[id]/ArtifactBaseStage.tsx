@@ -39,6 +39,7 @@ interface ArtifactBaseStageProps {
   validation: ArtifactValidationReport;
   onSaveContent: () => Promise<void>;
   onCancelEdit: () => void;
+  onDocumentaryBaseStarted: () => void;
   onApprove: () => Promise<void>;
   onReject: () => Promise<void>;
   onRegenerate: () => Promise<void>;
@@ -61,6 +62,7 @@ export function ArtifactBaseStage({
   validation,
   onSaveContent,
   onCancelEdit,
+  onDocumentaryBaseStarted,
   onApprove,
   onReject,
   onRegenerate,
@@ -72,6 +74,7 @@ export function ArtifactBaseStage({
   const documentaryDraft = artifact.course_id === `DOC-${artifact.id}`;
   const initialDocumentaryBase = documentaryDraft &&
     ["DRAFT", "ESCALATED"].includes(artifact.state) && !hasReviewableContent;
+  if (artifact.state === "GENERATING") return null;
   return (
     <>
       {validation.results.filter((result) => result.code === "GENERATION_FAILED").map((result) => (
@@ -81,7 +84,8 @@ export function ArtifactBaseStage({
       ))}
       {initialDocumentaryBase && <CourseSourceBaseStart artifactId={artifact.id}
         initialDescription={artifact.generation_metadata?.original_input?.description}
-        onStarted={() => window.location.reload()} />}
+        retry={artifact.state === "ESCALATED"}
+        onStarted={onDocumentaryBaseStarted} />}
       <div className="flex items-center gap-4">
         {["content", "validation"].map((tab) => (
           <button

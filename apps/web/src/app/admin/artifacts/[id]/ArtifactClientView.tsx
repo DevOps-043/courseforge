@@ -25,6 +25,7 @@ import type {
 } from "@/domains/publication/types/publication.types";
 import { PRODUCTION_THEME } from "@/domains/materials/components/production-asset-ui";
 import { ArtifactStageContent } from "./ArtifactStageContent";
+import { ArtifactBaseProgress } from "./ArtifactBaseProgress";
 import { ArtifactToast } from "./ArtifactToast";
 import { ArtifactWorkflowHeader } from "./ArtifactWorkflowHeader";
 import { ArtifactWorkflowStepper } from "./ArtifactWorkflowStepper";
@@ -77,6 +78,7 @@ export default function ArtifactClientView({
   );
   const [feedback, setFeedback] = useState("");
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [generationSyncFailed, setGenerationSyncFailed] = useState(false);
   const [reviewState, setReviewState] = useState<
     "pending" | "approved" | "rejected"
   >(
@@ -137,31 +139,35 @@ export default function ArtifactClientView({
   }, [artifact]);
 
   useEffect(() => {
-    if (artifact.state === "GENERATING" || isRegenerating) {
+    if (artifact.state === "GENERATING") {
       let cancelled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const syncGenerationSnapshot = async () => {
+        let continuePolling = true;
         try {
           const result = await getArtifactGenerationSnapshotAction(artifact.id);
-          if (!result.success || cancelled) return;
+          if (cancelled) return;
+          setGenerationSyncFailed(!result.success);
+          if (!result.success) return;
           setArtifact((current) => ({ ...current, ...result.artifact }));
-        } catch (error) {
-          // A transient server-action transport failure must not interrupt the
-          // user's current workspace. The next polling interval can retry.
-          if (!cancelled) {
-            console.warn("[ArtifactDetail] Generation snapshot sync failed", error);
+          continuePolling = result.artifact.state === "GENERATING";
+          if (result.artifact.state === "APPROVED") setReviewState("approved");
+        } catch {
+          if (!cancelled) setGenerationSyncFailed(true);
+        } finally {
+          if (!cancelled && continuePolling) {
+            timer = setTimeout(() => void syncGenerationSnapshot(), ARTIFACT_REFRESH_POLL_INTERVAL_MS);
           }
         }
       };
 
       void syncGenerationSnapshot();
-      const interval = setInterval(() => void syncGenerationSnapshot(), ARTIFACT_REFRESH_POLL_INTERVAL_MS);
-
       return () => {
         cancelled = true;
-        clearInterval(interval);
+        clearTimeout(timer);
       };
     }
-  }, [artifact.id, artifact.state, isRegenerating]);
+  }, [artifact.id, artifact.state]);
 
   useEffect(() => {
     const enabled = currentStep === 7;
@@ -392,11 +398,19 @@ export default function ArtifactClientView({
         />
       </div>
 
+      <ArtifactBaseProgress artifact={artifact} syncFailed={generationSyncFailed} showResult={currentStep === 1} />
       <div className={isAssemblyStudio ? "min-h-0 flex-1 overflow-hidden" : ""}>
         <ArtifactStageContent
           delivery={delivery}
           activeTab={activeTab}
           artifact={artifact}
+          onDocumentaryBaseStarted={() => {
+            setGenerationSyncFailed(false);
+            setArtifact(current => ({
+              ...current, state: "GENERATING",
+              generation_metadata: { ...current.generation_metadata, base_progress: null },
+            }));
+          }}
           basePath={basePath}
           currentStep={currentStep}
           editedContent={editedContent}

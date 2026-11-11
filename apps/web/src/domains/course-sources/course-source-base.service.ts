@@ -49,6 +49,7 @@ export async function reserveDocumentaryBase(
     generation_metadata: {
       ...generation_metadata,
       run_id: runId,
+      base_progress: null,
       started_at: new Date().toISOString(),
       original_input: formData,
       video_duration_policy: videoDurationPolicy,

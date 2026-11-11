@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { DocumentaryBatchCounts } from "./course-source-base-progress";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateObject } from "ai";
 import {
@@ -40,7 +41,7 @@ export async function prepareCourseGeneration(
   lessonIds?: string[],
   executionKey?: string,
   expectedInputs?: { modules?: unknown; plans?: unknown; objectives?: unknown },
-  baseBatch?: { purpose: string; model: string; deadline: number },
+  baseBatch?: { purpose: string; model: string; deadline: number; onProgress?: (counts: DocumentaryBatchCounts) => Promise<void> },
 ): Promise<CourseGenerationContext | null> {
   const settings = await readCourseSourcePolicy(admin, artifactId);
   if (!settings || settings.policy === "WEB_ONLY") return null;
@@ -219,7 +220,7 @@ export async function prepareCourseGeneration(
     if (batchError) sourcePersistenceError(batchError);
     const batchScope = { p_run: batchRun, p_organization: settings.organization_id };
     context.sources = await readBaseBatches({
-      purpose, sources, deadline, resume: true, findingsPerBatch,
+      purpose, sources, deadline, resume: true, findingsPerBatch, onProgress: baseBatch.onProgress,
       command: async (action, path, lease, payload) => {
         const { data, error: commandError } = await admin.rpc("command_course_source_batch", {
           ...batchScope, p_action: action, p_path: path ?? null, p_lease: lease ?? null, p_payload: payload ?? {},

@@ -63,11 +63,20 @@ test("Base documental omite investigación en principal/fallback incluso con pro
       resolve({ data: null, error: null }),
   };
   const database = {
+    rpc: async (name: string, input: Record<string, unknown>) => {
+      assert.equal(name, "record_documentary_base_progress");
+      assert.equal(input.p_execution, "run");
+      assert.equal(input.p_organization, "organization");
+      assert.equal(input.p_artifact, "artifact");
+      phases.push(input.p_phase);
+      return { data: true, error: null };
+    },
     from: (table: string) => {
       assert.equal(table, "artifacts");
       return query;
     },
   };
+  const phases: unknown[] = [];
   const worker = load<{
     handler: (event: unknown) => Promise<{ statusCode: number }>;
   }>(
@@ -136,7 +145,12 @@ test("Base documental omite investigación en principal/fallback incluso con pro
         recordGeminiUsage: async () => {},
       },
       "../../src/domains/course-sources/course-source-generation.service": {
-        prepareCourseGeneration: async () => context,
+        prepareCourseGeneration: async (...args: unknown[]) => {
+          const options = args.at(-1) as { onProgress: (counts: { confirmed: number; total: number }) => Promise<void> };
+          await options.onProgress({ confirmed: 16, total: 23 });
+          await options.onProgress({ confirmed: 23, total: 23 });
+          return context;
+        },
         attestCourseGeneration: async (
           _admin: unknown,
           received: unknown,
@@ -168,4 +182,8 @@ test("Base documental omite investigación en principal/fallback incluso con pro
   assert.equal(requests.length, 2);
   assert.equal(checked, 1);
   assert.equal(writes.at(-1)!.source_evidence_id, "receipt");
+  assert.deepEqual(phases, ["reading", "reading", "writing", "verifying"]);
+  const { started_at, ...progress } = JSON.parse(JSON.stringify(writes.at(-1)!.generation_metadata)).base_progress;
+  assert.ok(Number.isFinite(Date.parse(started_at)));
+  assert.deepEqual(progress, { phase: "verifying", confirmed: 23, total: 23 });
 });
