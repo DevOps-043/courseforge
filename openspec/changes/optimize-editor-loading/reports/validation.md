@@ -1,5 +1,26 @@
 # Evidencia y límites — 2026-11-06
 
+## Seguimiento de cambio de video y biblioteca — 2026-11-11
+
+- El arranque ya resolvía el identificador del borrador y volvía a pedir la
+  misma fila antes de hidratarlo. Se elimina una consulta serial por apertura.
+- La biblioteca esperaba el registro de medios antes de consultar el catálogo
+  HTML. Ambas lecturas comparten el alcance autorizado y se solapan.
+- Cada miniatura de video montaba una fuente MP4 con precarga de metadatos.
+  Cada solicitud podía pasar por autorización, dos lecturas de datos, firma y
+  redirección a Storage. La biblioteca ahora usa iconos y difiere las imágenes.
+- Verificación local. La suite de HyperFrames aprobó 705 pruebas, el chequeo de
+  tipos pasó, lint quedó sin diferencias tras retirar una tolerancia obsoleta,
+  se comprobaron los enlaces y OpenSpec validó 56 elementos. En Chrome local, un fixture con
+  ocho videos y una imagen mostró las nueve entradas, cero reproductores y
+  cero fuentes MP4 en la biblioteca. Se comprobó el atributo de carga diferida
+  de la imagen y la acción de añadir un video a la línea de tiempo.
+- Pendiente en staging. Comparar con el mismo curso el tiempo de selección a
+  editor utilizable y el de apertura de Medios a lista visible. Revisar por
+  separado sincronización, borrador, biblioteca y reproducción con DevTools.
+  El fixture no mide la latencia real de Storage ni verifica la reproducción
+  contra un borrador autenticado.
+
 ## Diagnóstico por inspección
 
 - `ArtifactStageContent.tsx` importaba estáticamente las siete etapas posteriores

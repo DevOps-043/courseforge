@@ -443,9 +443,6 @@
       }
     },
     "src/domains/materials/components/composition-editor/CompositionStudioLibrary.tsx": {
-      "@next/next/no-img-element": {
-        "5ae621581bd063ae185c5adc86cf97413f89ff93857ccc29834a7f3de71ade79": 1
-      },
       "react-hooks/set-state-in-effect": {
         "0668bb90a81bce09066d5876f3104dc6952bac54bf08d908682df65ca494e8c8": 1
       }

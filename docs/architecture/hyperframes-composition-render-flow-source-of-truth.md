@@ -712,6 +712,12 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
   `hyperframes-source-sync-batches.test.ts`. Alcance y evidencia:
   [optimización de carga](../../openspec/changes/optimize-editor-loading/proposal.md).
 
+- La inicialización reutiliza el identificador del borrador ya resuelto. La
+  biblioteca consulta medios registrados y HTML en paralelo tras autorizar
+  la solicitud. La lista muestra iconos para videos y difiere las imágenes
+  fuera del área visible. La vista previa sigue usando las rutas privadas del
+  borrador.
+
 - 2026-11-06: generación documental integra recibos de respaldo y vigencia en
   `production_jobs`/`production_assets`, con revisión, fingerprint y hash del
   contenido del componente fijados por servidor. Las respuestas obsoletas se

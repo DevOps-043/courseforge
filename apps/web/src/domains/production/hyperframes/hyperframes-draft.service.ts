@@ -37,13 +37,6 @@ export class HyperframesDraftError extends Error {
 
 export type StudioProjectDescriptor = { draftId: string; projectId: string; version: number };
 
-type DraftRow = {
-  current_version: number;
-  id: string;
-  project_storage_bucket: string;
-  project_storage_prefix: string;
-};
-
 /** Builds one atomic, server-only migration that preserves authored edits. */
 export function buildProductionAssetReconciliationOperations(
   document: Parameters<typeof reconcileCompositionDocument>[0]["document"],
@@ -128,14 +121,7 @@ export async function initializeHyperframesDraft(params: {
   supabase: SupabaseClient<any, "public", any>;
 }) {
   const descriptor = await getOrCreateHyperframesDraft(params);
-  const { data: draft, error: draftError } = await params.supabase
-    .from("video_composition_drafts")
-    .select("id, current_version, project_storage_bucket, project_storage_prefix")
-    .eq("id", descriptor.draftId)
-    .eq("organization_id", params.organizationId)
-    .single();
-  if (draftError) throw draftError;
-  const typedDraft = draft as DraftRow;
+  const { draftId } = descriptor;
 
   const { data: composition, error: compositionError } = await params.supabase
     .from("video_compositions")
@@ -200,7 +186,7 @@ export async function initializeHyperframesDraft(params: {
     const { error: assetLinkError } = await params.supabase
       .from("video_composition_draft_assets")
       .upsert(candidates.map((asset) => ({
-        draft_id: typedDraft.id,
+        draft_id: draftId,
         organization_id: params.organizationId,
         production_asset_id: asset.productionAssetId,
         role: asset.timelineRole || inferAssetRole(asset.mimeType),
@@ -212,7 +198,7 @@ export async function initializeHyperframesDraft(params: {
   const { data: existingAssetLinks, error: existingAssetLinksError } = await params.supabase
     .from("video_composition_draft_assets")
     .select("production_asset_id")
-    .eq("draft_id", typedDraft.id)
+    .eq("draft_id", draftId)
     .eq("organization_id", params.organizationId);
   if (existingAssetLinksError) throw existingAssetLinksError;
   const staleAssetIds = (existingAssetLinks || [])
@@ -222,7 +208,7 @@ export async function initializeHyperframesDraft(params: {
     const { error: staleAssetLinkError } = await params.supabase
       .from("video_composition_draft_assets")
       .delete()
-      .eq("draft_id", typedDraft.id)
+      .eq("draft_id", draftId)
       .eq("organization_id", params.organizationId)
       .in("production_asset_id", staleAssetIds);
     if (staleAssetLinkError) throw staleAssetLinkError;
@@ -241,7 +227,7 @@ export async function initializeHyperframesDraft(params: {
     assets,
     compositionName: composition.name,
     deckDependencyAssetIds,
-    draftId: typedDraft.id,
+    draftId,
     organizationId: params.organizationId,
     supabase: params.supabase,
     userId: params.userId,
@@ -252,7 +238,7 @@ export async function initializeHyperframesDraft(params: {
       .from("video_composition_draft_changes")
       .upsert({
         actor_id: params.userId,
-        draft_id: typedDraft.id,
+        draft_id: draftId,
         metadata: { assetCount: assets.length, documentHash: hashCompositionDocument(persistedDocument.document), hasAnimatedDeck: Boolean(animatedDeck) },
         organization_id: params.organizationId,
         source: "SYSTEM",

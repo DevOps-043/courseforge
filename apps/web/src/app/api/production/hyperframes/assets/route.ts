@@ -36,12 +36,15 @@ export async function GET(request: Request) {
     if (!(await canReviewContent(authenticatedUser.userId, tenant))) {
       return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para consultar assets de video.", requestId, status: 403 });
     }
-    const assets = await listHyperframesSourceAssets({
+    const scope = {
       componentId,
       organizationId: tenant.organizationId,
       supabase: getServiceRoleClient(),
-    });
-    const htmlClips = await readStandaloneHtmlLibrary({ componentId, organizationId: tenant.organizationId, supabase: getServiceRoleClient() });
+    };
+    const [assets, htmlClips] = await Promise.all([
+      listHyperframesSourceAssets(scope),
+      readStandaloneHtmlLibrary(scope),
+    ]);
     return apiSuccessResponse({ data: assets, htmlClips }, { requestId });
   } catch (error) {
     const authorityUnavailable = authorizationUnavailableResponse(error, requestId);

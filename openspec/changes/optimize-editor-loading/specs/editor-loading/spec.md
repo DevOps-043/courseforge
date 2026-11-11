@@ -17,6 +17,15 @@ trabajo independiente sin alterar los contratos de autorización y persistencia.
 - **THEN** composición y sincronización pueden avanzar simultáneamente
 - **AND** el borrador espera a ambas y la biblioteca permanece visible si falla.
 
+### Requirement: Biblioteca de medios liviana
+La biblioteca SHALL presentar los videos mediante iconos y diferir la carga de
+las miniaturas de imagen según su proximidad al área visible.
+
+#### Scenario: Abrir Medios en Ensamble
+- **WHEN** se abre la biblioteca de una lección con varios videos
+- **THEN** la lista no solicita los archivos de video para sus miniaturas
+- **AND** el editor puede reproducir los medios autorizados en su vista previa.
+
 ### Requirement: Comprobaciones acotadas
 El sistema SHALL limitar a cuatro referencias las comprobaciones simultáneas y
 conservar descargas secuenciales.

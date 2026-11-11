@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import {
@@ -11,7 +12,6 @@ import {
   Film,
   Image as ImageIcon,
   Music2,
-  Play,
   Plus,
   ScrollText,
   Send,
@@ -155,8 +155,20 @@ function AssetThumbnail({ asset }: { asset: CompositionStudioAsset }) {
   const [failed, setFailed] = useState(false);
   const commonClass = "relative flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-white/5";
   if (asset.mimeType.startsWith("audio/")) return <span className={commonClass + " text-violet-600 dark:text-violet-300"}><Music2 size={18} /></span>;
-  if (asset.mimeType.startsWith("image/") && asset.previewUrl && !failed) return <span className={commonClass}><img src={asset.previewUrl} alt="" onError={() => setFailed(true)} className="h-full w-full bg-slate-950 object-contain" /></span>;
-  if (asset.mimeType.startsWith("video/") && asset.previewUrl && !failed) return <span className={commonClass}><video muted preload="metadata" onError={() => setFailed(true)} className="h-full w-full bg-slate-950 object-contain"><source src={asset.previewUrl} type={asset.mimeType} /></video><Play className="pointer-events-none absolute text-white drop-shadow" size={15} /></span>;
+  if (asset.mimeType.startsWith("image/") && asset.previewUrl && !failed) {
+    return <span className={commonClass}>
+      <Image
+        alt=""
+        className="h-full w-full bg-slate-950 object-contain"
+        height={36}
+        loading="lazy"
+        onError={() => setFailed(true)}
+        src={asset.previewUrl}
+        unoptimized
+        width={48}
+      />
+    </span>;
+  }
   const Icon = asset.mimeType.startsWith("image/") ? ImageIcon : asset.mimeType.startsWith("video/") ? Video : FileQuestion;
   return <span className={commonClass + " text-slate-400 dark:text-gray-500"}><Icon size={18} /></span>;
 }
