@@ -68,6 +68,7 @@ async function database(generation = false) {
     await db.exec(await readFile('supabase/migrations/20261110030000_split_long_course_sources.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261110040000_align_base_source_snapshot_budget.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261111010000_documentary_base_progress.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261111020000_parallel_documentary_base_batches.sql', 'utf8'));
   }
   await db.exec('set role service_role');
   return db;
@@ -708,6 +709,54 @@ test('lotes documentales conservan checkpoints, cercan leases y rechazan citas y
     await db.exec('set role authenticated');
     await assert.rejects(command('status'), /permission denied/);
     await assert.rejects(progress(), /permission denied/);
+  } finally { await db.close(); }
+});
+
+test('la reserva paralela limita los leases y descuenta cada lote del presupuesto compartido', async () => {
+  const db = await database(true);
+  try {
+    const { course, document, fragment } = await generationFixture(db, false);
+    const ids = [fragment];
+    for (let ordinal = 1; ordinal < 5; ordinal++) {
+      const id = identifier();
+      await db.query('insert into course_source_fragments(id,artifact_id,document_id,ordinal,text_content,content_sha256,locator) values($1,$2,$3,$4,$5,$6,$7)',
+        [id, course, document.id, ordinal, 'Evidencia del lote documental', 'b'.repeat(64), {}]);
+      ids.push(id);
+    }
+    const { revision } = (await db.query('select revision from course_source_settings where artifact_id=$1', [course])).rows[0];
+    const plan = ids.map(id => ({ fragmentIds: [id], requestTokens: 100 }));
+    const { id: run } = (await db.query(
+      "select create_course_source_batch_run($1,$2,$3,$4,'wave-test',$5,now()+interval '1 hour',8,2,400) as id",
+      [course, organization, revision, 'a'.repeat(64), JSON.stringify(plan)])).rows[0];
+    const command = async (action, path = null, lease = null, payload = {}) => (await db.query(
+      'select command_course_source_batch($1,$2,$3,$4,$5,$6) as result',
+      [run, organization, action, path, lease, JSON.stringify(payload)])).rows[0].result;
+
+    await db.exec('reset role');
+    await db.query("update course_source_batches set retry_after=now()+interval '1 minute' where run_id=$1", [run]);
+    await db.exec('set role service_role');
+    const waiting = await command('claim_wave');
+    assert.equal(waiting.status, 'WAITING');
+    assert.ok(Number.isFinite(Date.parse(waiting.retryAfter)));
+    assert.equal((await command('status')).reservedTokens, 0);
+    await db.exec('reset role');
+    await db.query("update course_source_batches set retry_after='-infinity' where run_id=$1", [run]);
+    await db.exec('set role service_role');
+
+    const first = await command('claim_wave');
+    assert.deepEqual(first.leases.map(lease => lease.fragmentIds[0]), ids.slice(0, 3));
+    assert.equal((await command('claim_wave')).status, 'BUSY');
+    const finished = first.leases[0];
+    await command('complete', finished.path, finished.lease, { findings: [] });
+    const next = await command('claim_wave');
+    assert.deepEqual(next.leases.map(lease => lease.fragmentIds[0]), [ids[3]]);
+    for (const lease of [...first.leases.slice(1), ...next.leases]) {
+      await command('complete', lease.path, lease.lease, { findings: [] });
+    }
+    assert.equal((await command('claim_wave')).status, 'BUDGET_EXHAUSTED');
+    const status = await command('status');
+    assert.equal(status.confirmed, 4);
+    assert.equal(status.reservedTokens, 400);
   } finally { await db.close(); }
 });
 

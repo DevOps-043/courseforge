@@ -49,6 +49,12 @@ El sistema SHALL admitir originales largos dentro de presupuestos medidos y reut
 - **AND** muestra el resultado cuando termina y permite distinguir una pausa de un fallo al consultar el estado
 - **AND** una ejecución anterior u otra organización no pueden publicar avance para el trabajo actual
 
+#### Scenario: Lectura concurrente con presupuesto compartido
+- **WHEN** hay varios lotes documentales pendientes
+- **THEN** PostgreSQL concede como máximo tres reservas vigentes de la misma ejecución y descuenta cada intento del presupuesto compartido
+- **AND** un fallo de un lote conserva los resultados confirmados de los demás y permite reanudar los pendientes
+- **AND** las versiones de planificación existentes conservan sus límites y su cobertura ordenada
+
 #### Scenario: La evidencia relevante está al final del original
 - **WHEN** un autor autorizado aporta un documento largo válido y una regla relevante aparece en su última sección
 - **THEN** el sistema recorre todos los fragmentos, recupera la regla para el objetivo o tema correspondiente y permite verificar la cita contra el original

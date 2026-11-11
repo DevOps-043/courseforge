@@ -15,6 +15,7 @@ export const BASE_BATCH_LIMITS = {
   requestMs: 45_000,
   lifetimeMs: 23 * 60 * 60_000,
   outputTokens: 4096,
+  concurrentBatches: 3,
 } as const;
 
 const EXTENDED_BASE_BATCH_LIMITS = {
@@ -56,6 +57,11 @@ const leaseSchema = z.object({
   fragmentIds: z.array(z.uuid()).min(1),
   correctionUsed: z.boolean(),
 });
+const waveSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("LEASED"), leases: z.array(leaseSchema).min(1).max(BASE_BATCH_LIMITS.concurrentBatches) }),
+  z.object({ status: z.literal("WAITING"), retryAfter: z.string() }),
+  z.object({ status: z.enum(["BUSY", "NO_AVAILABLE_BATCH", "BUDGET_EXHAUSTED", "PAUSED", "STALE"]) }),
+]);
 
 function baseBatchPrompt(purpose: string, sources: readonly GenerationSource[], correction: boolean, findingsPerBatch = MAX_FINDINGS_PER_BATCH) {
   const maximum = findingsPerBatch === MAX_FINDINGS_PER_BATCH ? "cuatro" : findingsPerBatch;
@@ -71,11 +77,20 @@ function requestUnits(purpose: string, sources: readonly GenerationSource[]) {
 
 export function planBaseBatches(purpose: string, sources: readonly GenerationSource[]) {
   try {
+    const emptyUnits = requestUnits(purpose, []);
+    const fragmentUnits = new Map(sources.map(source => [
+      source, Buffer.byteLength(JSON.stringify({ fragmentId: source.id, text: source.text })),
+    ]));
+    // El arreglo JSON solo añade comas entre los fragmentos ya serializados.
+    const countRequestTokens = (batch: readonly GenerationSource[]) => batch.reduce(
+      (total, source) => total + fragmentUnits.get(source)!,
+      emptyUnits + Math.max(0, batch.length - 1),
+    );
     const batches = planSourceBatches(sources, {
       maxInputTokens: BASE_BATCH_LIMITS.requestUnits,
       maxBatches: EXTENDED_BASE_BATCH_LIMITS.batches,
-      countRequestTokens: (batch) => requestUnits(purpose, batch),
-    }).map(batch => ({ fragmentIds: batch.map(source => source.id), requestTokens: requestUnits(purpose, batch) }));
+      countRequestTokens,
+    }).map(batch => ({ fragmentIds: batch.map(source => source.id), requestTokens: countRequestTokens(batch) }));
     const limits = batches.length <= BASE_BATCH_LIMITS.batches ? BASE_BATCH_LIMITS : EXTENDED_BASE_BATCH_LIMITS;
     const findingsPerBatch = limits === BASE_BATCH_LIMITS ? MAX_FINDINGS_PER_BATCH : Math.min(
       MAX_FINDINGS_PER_BATCH, Math.floor(EXTENDED_EVIDENCE_BUDGET /
@@ -157,18 +172,7 @@ export async function readBaseBatches(input: {
     for (const path of state.resumable ?? []) await command("resume", path);
   }
 
-  while (state.status !== "COMPLETE") {
-    if (state.status === "BUDGET_EXHAUSTED" || deadline - Date.now() < 1000) pendingBatch(state);
-    const claim = await command("claim");
-    const lease = leaseSchema.safeParse(claim);
-    if (!lease.success) {
-      state = await readProgress();
-      if (state.status === "COMPLETE") break;
-      const { status } = z.object({ status: z.string() }).parse(claim);
-      if (status === "BUDGET_EXHAUSTED" || status === "STALE") pendingBatch({ ...state, status });
-      pendingBatch(state);
-    }
-    const { path, lease: token, fragmentIds, correctionUsed } = lease.data;
+  async function processLease({ path, lease: token, fragmentIds, correctionUsed }: z.infer<typeof leaseSchema>) {
     const batch = fragmentIds.map(id => {
       const source = sources.get(id);
       if (!source) throw new CourseSourceError(409, "El lote no coincide con las fuentes vigentes del curso.");
@@ -193,23 +197,40 @@ export async function readBaseBatches(input: {
         }));
         assertCurrent(result.status);
       } else {
-        const result = z.object({ status: z.string(), retryAfter: z.string().optional() }).parse(
+        const result = z.object({ status: z.string() }).parse(
           await command("fail", path, token, { diagnostic: failure }),
         );
         assertCurrent(result.status);
-        if (result.status === "PENDING" && result.retryAfter) {
-          const waitMs = Date.parse(result.retryAfter) - Date.now() + 100;
-          if (waitMs > 0 && Date.now() + waitMs < deadline) await new Promise(resolve => setTimeout(resolve, waitMs));
-        }
       }
-      state = await readProgress();
-      continue;
+      return;
     }
     // Si la respuesta de esta escritura se pierde, el próximo claim consulta el estado durable.
     const result = z.object({ status: z.string() }).parse(await command("complete", path, token, { findings }));
     assertCurrent(result.status);
     if (result.status !== "CONFIRMED") pendingBatch(state);
+  }
+
+  while (state.status !== "COMPLETE") {
+    if (state.status === "BUDGET_EXHAUSTED" || deadline - Date.now() < 1000) pendingBatch(state);
+    const wave = waveSchema.parse(await command("claim_wave"));
+    if (wave.status === "LEASED") {
+      const completed = await Promise.allSettled(wave.leases.map(processLease));
+      state = await readProgress();
+      const failed = completed.find(result => result.status === "rejected");
+      if (failed?.status === "rejected" && state.status !== "COMPLETE") throw failed.reason;
+      continue;
+    }
+    if (wave.status === "WAITING") {
+      const retryAt = Date.parse(wave.retryAfter) + 100;
+      if (Number.isFinite(retryAt) && retryAt < deadline) {
+        await new Promise(resolve => setTimeout(resolve, Math.max(0, retryAt - Date.now())));
+        continue;
+      }
+    }
     state = await readProgress();
+    if (state.status === "COMPLETE") break;
+    if (wave.status === "BUDGET_EXHAUSTED" || wave.status === "STALE") pendingBatch({ ...state, status: wave.status });
+    pendingBatch(state);
   }
 
   return evidenceFromFindings(sources, state.findings ?? []);

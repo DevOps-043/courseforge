@@ -210,7 +210,12 @@ export async function prepareCourseGeneration(
   };
   if (useBaseBatches) {
     const { purpose, model, deadline } = baseBatch;
+    const planningStartedAt = Date.now();
     const { batches, limits, findingsPerBatch } = planBaseBatches(purpose, sources);
+    const metrics = {
+      planningMs: Date.now() - planningStartedAt, providerRequests: 0, providerMs: 0, databaseMs: 0,
+    };
+    const batchRunStartedAt = Date.now();
     const { data: batchRun, error: batchError } = await admin.rpc("create_course_source_batch_run", {
       p_artifact: artifactId, p_organization: settings.organization_id, p_revision: settings.revision,
       p_purpose_hash: sourceTextHash(JSON.stringify({ purpose, model })), p_planner: limits.planner, p_plan: batches,
@@ -218,44 +223,60 @@ export async function prepareCourseGeneration(
       p_attempts: limits.attempts, p_splits: limits.splits, p_tokens: limits.totalUnits,
     });
     if (batchError) sourcePersistenceError(batchError);
+    const batchRunMs = Date.now() - batchRunStartedAt;
     const batchScope = { p_run: batchRun, p_organization: settings.organization_id };
-    context.sources = await readBaseBatches({
-      purpose, sources, deadline, resume: true, findingsPerBatch, onProgress: baseBatch.onProgress,
-      command: async (action, path, lease, payload) => {
-        const { data, error: commandError } = await admin.rpc("command_course_source_batch", {
-          ...batchScope, p_action: action, p_path: path ?? null, p_lease: lease ?? null, p_payload: payload ?? {},
-        });
-        if (commandError) sourcePersistenceError(commandError);
-        return data;
-      },
-      progress: async () => {
-        const { data, error: progressError } = await admin.rpc("read_course_source_base_batch_progress", {
-          ...batchScope, p_artifact: artifactId,
-        });
-        if (progressError) sourcePersistenceError(progressError);
-        return data;
-      },
-      generate: async (prompt, timeoutMs) => {
-        const startedAt = Date.now();
-        const telemetry = { artifactId, organizationId: settings.organization_id,
-          pipelineStep: "BASE", operation: "read_course_source_base_batch", runId: batchRun };
-        try {
-          const { object, usage } = await generateObject({
-            model: resolveAiModel(model), schema: baseBatchFindingsSchema, prompt,
-            maxRetries: 0, maxOutputTokens: BASE_BATCH_LIMITS.outputTokens,
-            abortSignal: AbortSignal.timeout(timeoutMs),
+    const readingStartedAt = Date.now();
+    try {
+      context.sources = await readBaseBatches({
+        purpose, sources, deadline, resume: true, findingsPerBatch, onProgress: baseBatch.onProgress,
+        command: async (action, path, lease, payload) => {
+          const startedAt = Date.now();
+          const { data, error: commandError } = await admin.rpc("command_course_source_batch", {
+            ...batchScope, p_action: action, p_path: path ?? null, p_lease: lease ?? null, p_payload: payload ?? {},
           });
-          await recordAiSdkUsage({ supabase: admin, usage, model, startedAt, context: telemetry });
-          return object;
-        } catch (error) {
-          await recordAiFailure({ supabase: admin, model, startedAt, context: telemetry,
-            provider: model.startsWith("gemini-") ? "gemini" : "openai",
-            error: new Error("Falló la lectura de un lote documental; no se registra el contenido."),
+          metrics.databaseMs += Date.now() - startedAt;
+          if (commandError) sourcePersistenceError(commandError);
+          return data;
+        },
+        progress: async () => {
+          const startedAt = Date.now();
+          const { data, error: progressError } = await admin.rpc("read_course_source_base_batch_progress", {
+            ...batchScope, p_artifact: artifactId,
           });
-          throw error;
-        }
-      },
-    });
+          metrics.databaseMs += Date.now() - startedAt;
+          if (progressError) sourcePersistenceError(progressError);
+          return data;
+        },
+        generate: async (prompt, timeoutMs) => {
+          const startedAt = Date.now();
+          const telemetry = { artifactId, organizationId: settings.organization_id,
+            pipelineStep: "BASE", operation: "read_course_source_base_batch", runId: batchRun };
+          try {
+            const providerModel = resolveAiModel(model);
+            metrics.providerRequests++;
+            const { object, usage } = await generateObject({
+              model: providerModel, schema: baseBatchFindingsSchema, prompt,
+              maxRetries: 0, maxOutputTokens: BASE_BATCH_LIMITS.outputTokens,
+              abortSignal: AbortSignal.timeout(timeoutMs),
+            }).finally(() => { metrics.providerMs += Date.now() - startedAt; });
+            await recordAiSdkUsage({ supabase: admin, usage, model, startedAt, context: telemetry });
+            return object;
+          } catch (error) {
+            await recordAiFailure({ supabase: admin, model, startedAt, context: telemetry,
+              provider: model.startsWith("gemini-") ? "gemini" : "openai",
+              error: new Error("Falló la lectura de un lote documental; no se registra el contenido."),
+            });
+            throw error;
+          }
+        },
+      });
+    } finally {
+      console.info("[Fuentes] Duración de lectura de Base", {
+        artifactId, runId: batchRun, batches: batches.length,
+        ...metrics, batchRunMs, readingMs: Date.now() - readingStartedAt,
+        concurrentBatches: BASE_BATCH_LIMITS.concurrentBatches,
+      });
+    }
     await assertCourseGenerationCurrent(admin, context);
   }
   return context;
