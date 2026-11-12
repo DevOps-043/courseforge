@@ -682,6 +682,11 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-11-12. Los presets de composición `SEQUENCE` y `STACK` acotan la ventana
+  al último frame válido del canvas destino. Una secuencia requiere un frame por
+  clip y una superposición comparte la ventana. El canvas conserva su duración.
+  [Diseño y evaluación de la adaptación asistida](../../openspec/changes/fix-composition-preset-timing/design.md).
+
 - 2026-11-09. La eliminación de intervalos conserva los bordes fuente entre
   fotogramas y la descarga del fragmento confirmado usa el endpoint autorizado
   del borrador, con independencia de la página de biblioteca cargada.
