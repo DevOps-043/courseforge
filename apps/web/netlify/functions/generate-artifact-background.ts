@@ -529,13 +529,16 @@ export const handler: Handler = async (event) => {
 
     const allPassed = validationReport.every((result) => result.passed);
 
-    stage = "persistence";
-    if (sourceContext) await publishBaseProgress({
-      phase: "verifying", confirmed: baseProgress?.confirmed ?? null, total: baseProgress?.total ?? null,
-    });
+    if (sourceContext) {
+      stage = "verification";
+      await publishBaseProgress({
+        phase: "verifying", confirmed: baseProgress?.confirmed ?? null, total: baseProgress?.total ?? null,
+      });
+    }
     const sourceEvidenceId = await attestCourseGeneration(serviceSupabase, sourceContext, {
       nombres: content.nombres, objetivos: content.objetivos, descripcion: content.descripcion,
     }, [genModelUsed, ...genModels], jobDeadline);
+    stage = "persistence";
     let updateArtifactQuery = serviceSupabase
       .from("artifacts")
       .update({

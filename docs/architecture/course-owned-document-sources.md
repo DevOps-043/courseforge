@@ -66,6 +66,16 @@ Los inputs ya cargados por cada consumidor se cotejan con el currículo vigente 
 
 Una llamada de comprobación sin herramientas examina el respaldo completo de cada salida. El servidor valida UUIDs permitidos, citas literales de las evidencias y afirmaciones presentes en la salida; PostgreSQL repite esas comprobaciones literales y registra `course_source_generation_receipts` con hash del JSON exacto. Guardas de persistencia rechazan otro contenido, lección o snapshot vencido. Los recibos quedan en `source_evidence_id` para estructura y en `assets.course_source_evidence_id` para componentes; sesiones usan `course_source_delivery_receipts`. Los fallos de un componente no eliminan los demás componentes respaldados.
 
+Ante un rechazo del verificador de Base, el reporte del artefacto registra
+`validation_report.diagnostics.stage = "verification"` y un código seguro en
+`groundingReason`. `UNSUPPORTED_OUTPUT` indica un dictamen de respaldo desfavorable,
+`SOURCE_NOT_IN_CONTEXT` un fragmento ajeno al contexto, `QUOTE_NOT_IN_SOURCE` una
+cita que no coincide con su fragmento y `CLAIM_NOT_IN_OUTPUT` una afirmación que
+no coincide con el contenido generado. Se conserva el primer motivo según el
+orden de validación y se excluyen las citas, la explicación del auditor y el
+texto privado del reporte de fallo. La etapa `persistence` se usa al guardar
+la Base ya verificada.
+
 Esta comprobación semántica usa IA y **no es una prueba matemática de fidelidad**. Continúan siendo necesarias revisión humana, controles pedagógicos y aceptación con proveedores reales. La auditoría almacena citas privadas con acceso de backend; no se exportan esas tablas como materiales públicos. Los logs nuevos conservan IDs/estado/costos, no prompts ni texto documental. No se garantiza ejecución exactamente una vez frente a todos los fallos externos: se conservan los controles de run, iteración, versión y aceptación incierta del pipeline.
 
 La edición directa de contenido no hereda recibos anteriores. Para cambios documentales se utiliza Regenerar con retroalimentación y su comprobación de respaldo. Guardar Base no inicia una llamada pagada oculta: devuelve esa instrucción explícita. La edición histórica sigue disponible con autorización por recurso, campos permitidos y organización validada en servidor.

@@ -10,13 +10,23 @@ export async function markArtifactGenerationFailed(
   updatedAt?: string,
   diagnostics?: { stage: string; model?: string; errorName?: string; status?: number },
 ) {
+  const sourceError = error instanceof CourseSourceError ? error : undefined;
+  const groundingReason = sourceError?.groundingReason;
   let query = supabase.from("artifacts").update({
     state: "ESCALATED",
     validation_report: {
       all_passed: false,
-      results: [{ code: "GENERATION_FAILED", passed: false,
-        message: error instanceof CourseSourceError ? error.message : generationFailureMessage(error) }],
-      ...(diagnostics ? { diagnostics } : {}),
+      results: [{
+        code: "GENERATION_FAILED",
+        passed: false,
+        message: sourceError?.message ?? generationFailureMessage(error),
+      }],
+      ...(diagnostics ? {
+        diagnostics: {
+          ...diagnostics,
+          ...(groundingReason ? { groundingReason } : {}),
+        },
+      } : {}),
     },
   }).eq("id", artifactId).eq("state", "GENERATING");
   query = runId ? query.eq("generation_metadata->>run_id", runId) : query.is("generation_metadata->>run_id", null);

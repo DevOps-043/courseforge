@@ -177,6 +177,11 @@ El sistema SHALL congelar política, versiones y fragmentos por ejecución, vali
 - **THEN** el componente queda pendiente y se conservan otros componentes válidos
 - **AND** una decisión semántica desfavorable no activa otro modelo para obtener aprobación
 
+#### Scenario: Diagnóstico de respaldo rechazado en Base
+- **WHEN** el verificador rechaza Base por falta de respaldo, una fuente ajena al contexto, una cita que no coincide o una afirmación ausente de la salida
+- **THEN** Base queda detenida antes de guardar el contenido y el reporte identifica la etapa de verificación y el motivo con un código distinto para cada caso
+- **AND** el reporte de fallo excluye citas, texto privado y la explicación del auditor
+
 #### Scenario: Reintento de la misma ejecución
 - **WHEN** se repite la reserva de contexto para el mismo run, iteración o unidad con entradas idénticas
 - **THEN** se recupera el snapshot existente sin duplicar sus fragmentos

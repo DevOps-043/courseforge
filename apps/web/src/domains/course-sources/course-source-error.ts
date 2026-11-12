@@ -1,5 +1,15 @@
+export type CourseSourceGroundingRejection =
+  | "UNSUPPORTED_OUTPUT"
+  | "SOURCE_NOT_IN_CONTEXT"
+  | "QUOTE_NOT_IN_SOURCE"
+  | "CLAIM_NOT_IN_OUTPUT";
+
 export class CourseSourceError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly groundingReason?: CourseSourceGroundingRejection,
+  ) {
     super(message);
     this.name = "CourseSourceError";
   }

@@ -82,27 +82,28 @@ test("citas requieren texto y afirmación literales, IDs vigentes y juicio favor
     generation.validateSourceGrounding(context, output, grounding),
     grounding,
   );
-  for (const candidate of [
-    { ...grounding, supported: false },
-    {
+  for (const [groundingReason, candidate] of Object.entries({
+    UNSUPPORTED_OUTPUT: { ...grounding, supported: false },
+    SOURCE_NOT_IN_CONTEXT: {
       ...grounding,
       citations: [{ ...grounding.citations[0], sourceId: id(90) }],
     },
-    {
+    QUOTE_NOT_IN_SOURCE: {
       ...grounding,
       citations: [
         { ...grounding.citations[0], quote: "Una cita totalmente inexistente" },
       ],
     },
-    {
+    CLAIM_NOT_IN_OUTPUT: {
       ...grounding,
       citations: [
         { ...grounding.citations[0], claim: "Una afirmación que no aparece" },
       ],
     },
-  ]) {
-    assert.throws(() =>
-      generation.validateSourceGrounding(context, output, candidate),
+  })) {
+    assert.throws(
+      () => generation.validateSourceGrounding(context, output, candidate),
+      { name: "CourseSourceError", status: 409, groundingReason },
     );
   }
   assert.throws(
