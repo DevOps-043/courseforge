@@ -718,6 +718,11 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
   fuera del área visible. La vista previa sigue usando las rutas privadas del
   borrador.
 
+- La sincronización de Ensamble usa la recuperación histórica de HeyGen, que
+  incluye la recuperación local. Si HeyGen falla, aplica solo la recuperación
+  local. `Server-Timing` en la respuesta exitosa separa preparación,
+  recuperación de escenas y registro de medios.
+
 - 2026-11-06: generación documental integra recibos de respaldo y vigencia en
   `production_jobs`/`production_assets`, con revisión, fingerprint y hash del
   contenido del componente fijados por servidor. Las respuestas obsoletas se

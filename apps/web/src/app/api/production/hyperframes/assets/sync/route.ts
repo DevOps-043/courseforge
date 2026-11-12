@@ -23,6 +23,7 @@ const inputSchema = z.object({ componentId: z.string().uuid() }).strict();
 
 /** Synchronizes assets from the preceding Production step; it never moves or deletes files. */
 export async function POST(request: Request) {
+  const startedAt = performance.now();
   const requestId = resolveCorrelationId(request.headers.get("x-request-id"));
   const logger = createOperationalLogger("production.hyperframes.assets.sync", { correlationId: requestId });
   try {
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
       return apiErrorResponse({ code: API_ERROR_CODE.roleForbidden, message: "No tienes permisos para preparar assets de video.", requestId, status: 403 });
     }
     const admin = getServiceRoleClient();
+    const recoveryStartedAt = performance.now();
     const heygenPendingClipCount = await refreshPendingHeygenClips({
       admin,
       componentId: input.componentId,
@@ -46,13 +48,23 @@ export async function POST(request: Request) {
       userId: user.userId,
       requestId,
     });
+    const registrationStartedAt = performance.now();
     const synchronizedAssets = await syncHyperframesSourceAssetsFromProduction({
       componentId: input.componentId,
       createdBy: user.userId,
       organizationId: tenant.organizationId,
       supabase: admin,
     });
-    return apiSuccessResponse({ data: { ...synchronizedAssets, heygenPendingClipCount } }, { requestId });
+    return apiSuccessResponse({ data: { ...synchronizedAssets, heygenPendingClipCount } }, {
+      headers: {
+        "Server-Timing": [
+          `setup;dur=${(recoveryStartedAt - startedAt).toFixed(1)}`,
+          `scene-recovery;dur=${(registrationStartedAt - recoveryStartedAt).toFixed(1)}`,
+          `asset-registration;dur=${(performance.now() - registrationStartedAt).toFixed(1)}`,
+        ].join(", "),
+      },
+      requestId,
+    });
   } catch (error) {
     const authorityUnavailable = authorizationUnavailableResponse(error, requestId);
     if (authorityUnavailable) return authorityUnavailable;
@@ -72,11 +84,6 @@ async function refreshPendingHeygenClips(params: {
   requestId: string;
 }) {
   const logger = createOperationalLogger("production.hyperframes.assets.sync", { correlationId: params.requestId });
-  const recoveryService = new HeygenScenesService(params.admin);
-  await recoveryService.recoverCompletedSceneAssets({
-    componentId: params.componentId,
-    organizationId: params.organizationId,
-  });
 
   try {
     const auth = await getHeygenClientForOrganization({
@@ -108,22 +115,14 @@ async function refreshPendingHeygenClips(params: {
     });
   }
 
-  const { data: component, error } = await params.admin
-    .from("material_components")
-    .select("assets")
-    .eq("id", params.componentId)
-    .maybeSingle();
-  if (error) throw error;
-  const assets = component?.assets && typeof component.assets === "object"
-    ? component.assets as Record<string, unknown>
-    : {};
-  const avatarClips = Array.isArray(assets.avatar_clips)
-    ? assets.avatar_clips
-    : [];
-  return avatarClips.filter((clip) => (
-    clip && typeof clip === "object"
-    && (clip as Record<string, unknown>).status === "WAITING_PROVIDER"
-  )).length;
+  // La recuperación histórica ya incorpora esta operación. Solo se ejecuta
+  // por separado cuando no se pudo completar el flujo con el proveedor.
+  const assets = await new HeygenScenesService(params.admin).recoverCompletedSceneAssets({
+    componentId: params.componentId,
+    organizationId: params.organizationId,
+  });
+  const clips = Array.isArray(assets.avatar_clips) ? assets.avatar_clips : [];
+  return clips.filter((clip) => clip?.status === "WAITING_PROVIDER").length;
 }
 
 function mapStatusToErrorCode(status: number) {

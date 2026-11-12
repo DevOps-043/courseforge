@@ -13,6 +13,12 @@ La lista muestra un icono para cada video y carga las imágenes cerca del área
 visible. La vista previa del editor solicita los medios privados que necesita
 para reproducir la composición.
 
+La recuperación histórica de escenas ya promueve los clips locales. La
+sincronización inicial usa esa operación una vez en la ruta exitosa y recurre
+a la recuperación local cuando falla el acceso o la consulta del proveedor.
+La respuesta exitosa separa preparación, recuperación de escenas y registro
+de medios mediante `Server-Timing` para diagnosticar la ruta crítica.
+
 La sincronización comprueba registro y metadatos de cuatro referencias por lote.
 Cada lote termina antes de descargar/escribir sus medios, que siguen siendo
 secuenciales para no multiplicar memoria por el tamaño de los videos. Los

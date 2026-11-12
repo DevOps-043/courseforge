@@ -1,5 +1,24 @@
 # Evidencia y límites — 2026-11-06
 
+## Meta de 10 segundos al cambiar de video
+
+- Referencia reportada: entre 15 y 20 segundos. Criterio de QA: medir desde la
+  selección de otro video hasta que se vea la biblioteca de ese video, usando
+  el mismo curso, videos y condiciones de conexión para ambas versiones.
+  Registrar la primera apertura y los cambios entre videos ya visitados.
+- Se eliminó la llamada previa a la recuperación local en el camino exitoso
+  de HeyGen. La recuperación histórica ya la ejecuta. Si falla la credencial
+  o la consulta histórica, la ruta sigue intentando recuperar los medios locales.
+- Con servicios simulados se verificaron cinco casos de la ruta: éxito,
+  credencial no disponible, proveedor fallido, recuperación local fallida y
+  rol denegado. Se comprobó el alcance por organización, el conteo de clips
+  pendientes y la presencia de los tres tiempos en las respuestas exitosas.
+- `npm run verify:pr` completó la compuerta con código 0. Tipos, lint, enlaces
+  y OpenSpec pasaron. El registro se conserva en `.tmp/assembly-10s-verify-pr.log`.
+- En staging, revisar `Server-Timing` del POST de sincronización para separar
+  preparación, recuperación y registro. Comparar también el tiempo del borrador
+  y la biblioteca en DevTools. El fixture local no valida el umbral de 10 segundos.
+
 ## Seguimiento de cambio de video y biblioteca — 2026-11-11
 
 - El arranque ya resolvía el identificador del borrador y volvía a pedir la
