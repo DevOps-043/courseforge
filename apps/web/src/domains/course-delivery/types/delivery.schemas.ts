@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DELIVERY_LIMITS as limits } from "../config/delivery.config";
+import { sessionDocumentsSchema } from "./delivery-documents.schemas";
 
 const text = z.string().trim().min(1).max(limits.text);
 const reference = z.string().trim().min(1).max(200);
@@ -45,11 +46,13 @@ export const sessionPlanSchema = z.object({
   }).strict()).max(limits.lessons),
 }).strict();
 export const sessionMaterialsSchema = z.object({
+  documents: sessionDocumentsSchema.optional(),
   concepts: z.array(z.object({ title: text, explanation: text, example: text, misconceptions: z.array(text).max(10), sourceRefs: z.array(reference).min(1).max(20) }).strict()).min(1).max(30),
   activities: z.array(z.object({ id: reference, title: text, instructions: text, template: text, answer: text, criteria: z.array(text).min(1).max(10), sourceRefs: z.array(reference).min(1).max(20) }).strict()).min(1).max(30),
   preparation: z.object({ understand: text, explain: text, conduct: text, deepen: text, expand: text }).strict(),
   slides: z.array(z.object({ title: text, points: z.array(text).min(1).max(6), notes: z.string().max(1800), sourceRefs: z.array(reference).min(1).max(20) }).strict()).min(1).max(40),
 }).strict();
+export const generatedSessionMaterialsSchema = sessionMaterialsSchema.extend({ documents: sessionDocumentsSchema });
 export type DeliveryConfig = z.infer<typeof deliveryConfigSchema>;
 export type AgendaSession = z.infer<typeof agendaSessionSchema>;
 export type SessionPlan = z.infer<typeof sessionPlanSchema>;

@@ -12,12 +12,22 @@ const LABELS: Record<string, string> = {
   preparation: "Preparación del facilitador", understand: "Qué comprender", explain: "Qué explicar",
   conduct: "Qué conducir", deepen: "Dónde profundizar", expand: "Cómo ampliar",
   slides: "Presentación", points: "Ideas visibles", notes: "Notas del facilitador",
+  documents: "Documentos de la sesión", instruments: "Instrumentos de evaluación",
+  participantCriteria: "Criterios para el participante", expectedAnswer: "Respuesta esperada reservada",
+  feedback: "Retroalimentación", criticalErrors: "Errores críticos", retry: "Reglas de reintento",
+  contingencies: "Contingencias", situation: "Situación", trigger: "Cuándo activar",
+  action: "Acción", timeImpact: "Impacto en tiempos", evidenceImpact: "Impacto en evidencias",
+  objectiveLimit: "Cuándo se pierde el objetivo", recordTemplate: "Formato de registro",
+  sessionFields: "Campos de sesión", participantFields: "Campos por participante",
+  jobAid: "Ayuda de trabajo", followUp: "Refuerzo posterior", absence: "Alternativa por ausencia",
+  applicable: "Aplica", reason: "Justificación", content: "Contenido",
 };
 type EditableValue = string | number | boolean | null | EditableValue[] | { [key: string]: EditableValue };
 function ContentFields({ value, onChange, label }: { value: EditableValue; onChange: (next: EditableValue) => void; label: string }) {
   if (Array.isArray(value)) return <fieldset className="my-3 space-y-2 rounded border p-3"><legend>{label}</legend>{value.map((entry, index) => <ContentFields key={index} label={`${label} ${index + 1}`} value={entry} onChange={next => onChange(value.map((item, position) => position === index ? next : item))} />)}</fieldset>;
-  if (value !== null && typeof value === "object") return <fieldset className="my-2 space-y-2 rounded border p-3"><legend>{label}</legend>{Object.entries(value).filter(([key]) => !["id", "sourceRefs", "lessonId"].includes(key)).map(([key, entry]) => <ContentFields key={key} label={LABELS[key] || key} value={entry} onChange={next => onChange({ ...value, [key]: next })} />)}</fieldset>;
+  if (value !== null && typeof value === "object") return <fieldset className="my-2 space-y-2 rounded border p-3"><legend>{label}</legend>{Object.entries(value).filter(([key]) => !["id", "sourceRefs", "lessonId", "activityId", "blockId"].includes(key)).map(([key, entry]) => <ContentFields key={key} label={LABELS[key] || key} value={entry} onChange={next => onChange({ ...value, [key]: next })} />)}</fieldset>;
   if (typeof value === "number") return <label className="block">{label}<input type="number" min="1" className="block rounded border bg-transparent p-2" value={value} onChange={event => onChange(Number(event.target.value))} /></label>;
+  if (typeof value === "boolean") return <label className="block"><input type="checkbox" checked={value} onChange={event => onChange(event.target.checked)} /> {label}</label>;
   if (typeof value !== "string") return null;
   if (label === "Momento de uso") return <label className="block">{label}<select className="block rounded border bg-transparent p-2" value={value} onChange={event => onChange(event.target.value)}><option value="BEFORE">Antes de la clase</option><option value="AFTER">Después de la clase</option></select></label>;
   return <label className="block">{label}<textarea rows={value.length > 180 ? 5 : 2} className="block w-full rounded border bg-transparent p-2" value={value} onChange={event => onChange(event.target.value)} /></label>;

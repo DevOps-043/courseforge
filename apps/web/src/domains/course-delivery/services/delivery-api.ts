@@ -28,7 +28,7 @@ export async function deliverySnapshot(artifactId: string, includeSettings = tru
   const canReview = ["ADMIN", "ARQUITECTO", "SUPERADMIN"].includes(tenant.platformRole || "");
   if (workspace.document.config.mode === "NEXUS") return {
     organizationSlug:tenant.organizationSlug, enabled: deliveryEnabled(), workspace,
-    readiness: { planReady: true, materialsReady: true, nexus: true, sessions: false, assembly: true },
+    readiness: { planReady: true, materialsReady: true, documentsReady: true, nexus: true, sessions: false, assembly: true },
     lessons: [] as Awaited<ReturnType<typeof readDeliveryContext>>["lessons"],
     syllabusApproved: false, nexusPlanState: null, nexusMaterialsState: null,
     sourceCount: 0, run: null, settings: [], canReview,

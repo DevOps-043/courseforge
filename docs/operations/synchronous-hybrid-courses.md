@@ -1,5 +1,7 @@
 # Operación de cursos sincrónicos e híbridos
 
+La [ampliación de preparación hacia Academy y Hub](../architecture/live-preparation-expansion.md) documenta la entrega local de bloques, tiempos y notas privadas y el orden de publicación requerido.
+
 Fecha: 2026-10-26. Estado: implementación local bajo habilitación explícita; sin despliegue ni aplicación de SQL remoto.
 
 El [análisis](../architecture/synchronous-hybrid-course-flow-analysis.md) conserva la intención y el [plan](../architecture/synchronous-hybrid-course-implementation-plan.md) las entregas. Este documento describe los contratos implementados y sus límites.

@@ -72,6 +72,7 @@ export async function approveDelivery(admin: SupabaseClient, workspace: Delivery
       if (document.staleMaterials.includes(session.id)) throw new Error("Hay materiales de sesión pendientes de actualizar.");
       if (document.materialInputHashes[session.id] !== sessionMaterialInputHash(document, session, context)) throw new Error("Las fuentes o el plan de una sesión cambiaron. Actualiza sus materiales.");
       if (!document.materials[session.id]) throw new Error(`Faltan materiales de ${session.title}.`);
+      if (!document.materials[session.id].documents) throw new Error(`Actualiza los documentos de ${session.title} antes de aprobar materiales.`);
       requireValid(materialIssues(document.plans[session.id], document.materials[session.id], sessionSources(session, context.sources).map(source => source.id)));
     }
   }
@@ -143,7 +144,7 @@ export async function reserveDeliveryRun(admin: SupabaseClient, workspace: Deliv
   const units: DeliveryRunUnit[] = operation === "AGENDA" ? [{ id: randomUUID(), ready: false }] :
     document.agenda.map(session => ({ id: session.id, ready: operation === "PLAN"
       ? Boolean(document.plans[session.id]) && !document.stalePlans.includes(session.id) && document.planInputHashes[session.id] === sessionPlanInputHash(document, session, context)
-      : Boolean(document.materials[session.id]) && !document.staleMaterials.includes(session.id) && document.materialInputHashes[session.id] === sessionMaterialInputHash(document, session, context) }));
+      : Boolean(document.materials[session.id]?.documents) && !document.staleMaterials.includes(session.id) && document.materialInputHashes[session.id] === sessionMaterialInputHash(document, session, context) }));
   if (units.every(unit => unit.ready)) throw new Error("Las sesiones ya tienen contenido. Edita la unidad que requiere cambios o modifica su agenda antes de generar pendientes.");
   const { data, error } = await admin.rpc("reserve_course_delivery_run", {
     p_artifact_id: workspace.artifact_id, p_organization_id: workspace.organization_id, p_revision: workspace.revision,

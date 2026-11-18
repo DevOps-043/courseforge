@@ -31,5 +31,6 @@ export function deliveryReadiness(document: DeliveryDocument, context: DeliveryC
     (!requirements.nexus || context.materials?.state === "PHASE3_APPROVED") &&
     document.agenda.every(session => document.materials[session.id] && document.plans[session.id] &&
       materialIssues(document.plans[session.id], document.materials[session.id], sessionSources(session, context.sources).map(source => source.id)).length === 0));
-  return { planReady, materialsReady, ...requirements };
+  const documentsReady = !requirements.sessions || materialsReady && document.agenda.every(session => Boolean(document.materials[session.id]?.documents));
+  return { planReady, materialsReady, documentsReady, ...requirements };
 }

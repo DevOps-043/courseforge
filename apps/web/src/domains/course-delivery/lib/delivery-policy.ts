@@ -48,6 +48,18 @@ export function materialIssues(plan: SessionPlan, material: SessionMaterials, so
   const ids = material.activities.map(activity => activity.id);
   if (new Set(ids).size !== ids.length) issues.push("Las actividades repiten identificadores.");
   if (plan.blocks.some(block => !ids.includes(block.id))) issues.push("Cada bloque debe conservar su identificador en una actividad o consigna de conducción.");
+  const documents = material.documents;
+  if (documents) {
+    const instrumentIds = documents.instruments.map(instrument => instrument.activityId);
+    if (new Set(instrumentIds).size !== instrumentIds.length || ids.some(id => !instrumentIds.includes(id)) ||
+      instrumentIds.some(id => !ids.includes(id))) issues.push("Cada actividad requiere un instrumento único de la misma sesión.");
+    if (documents.instruments.some(instrument => instrument.sourceRefs.some(id => !knownSources.has(id)))) {
+      issues.push("Los instrumentos citan fuentes no aprobadas o ajenas.");
+    }
+    if (documents.contingencies.some(item => !plan.blocks.some(block => block.id === item.blockId))) {
+      issues.push("La contingencia debe referenciar un bloque de la sesión.");
+    }
+  }
   return issues;
 }
 export function sessionSources<Source extends { id: string; lessonId: string }>(session: AgendaSession, sources: Source[]) {
@@ -56,6 +68,12 @@ export function sessionSources<Source extends { id: string; lessonId: string }>(
 /** Proyección explícita: nunca serializar el documento interno para un participante. */
 export function participantMaterials(material: SessionMaterials) {
   return {
+    ...(material.documents ? { documents: {
+      instruments: material.documents.instruments.map(({ activityId, instructions, participantCriteria, sourceRefs }) => ({ activityId, instructions, participantCriteria, sourceRefs })),
+      jobAid: material.documents.jobAid.applicable ? material.documents.jobAid.content : null,
+      followUp: material.documents.followUp.applicable ? material.documents.followUp.content : null,
+      absence: material.documents.absence.applicable ? material.documents.absence.content : null,
+    } } : {}),
     concepts: material.concepts.map(({ title, explanation, example, sourceRefs }) => ({ title, explanation, example, sourceRefs })),
     activities: material.activities.map(({ id, title, instructions, template, sourceRefs }) => ({ id, title, instructions, template, sourceRefs })),
     slides: material.slides.map(({ title, points, sourceRefs }) => ({ title, points, sourceRefs })),

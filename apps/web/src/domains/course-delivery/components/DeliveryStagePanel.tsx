@@ -60,6 +60,7 @@ export function DeliveryStagePanel({ controller, stage }: { controller: CourseDe
         <p role="status">{(stage === 3 ? snapshot.readiness.planReady : snapshot.readiness.materialsReady) ? "Aprobado y vigente." : "Pendiente de revisión o reconciliación."}</p>
       </>}
       {(stage === 6 || stage === 8) && <><p>{stage === 6 ? "Revisa las salidas del contenido generado. Puedes volver a Materiales para corregirlo." : "Descarga el paquete aprobado. Abre la guía o el cuaderno y utiliza Imprimir para obtener una copia."}</p>
+        {!snapshot.readiness.documentsReady && <p role="status">Genera y aprueba los materiales para completar los instrumentos, contingencias y documentos de la sesión.</p>}
         <div className="flex flex-wrap gap-3">{[["presentation", "Presentación web"], ["facilitator", "Guía del facilitador"], ["participant", "Material del participante"]].map(([audience, label]) => <div key={audience} className="rounded border p-3">
           <a className="text-cyan-700 underline" href={exportUrl(audience, false, stage === 6)} target="_blank" rel="noreferrer">{label}{stage === 6 ? " (borrador)" : ""}</a>
           {stage === 8 && snapshot.readiness.materialsReady && <a className="ml-3 underline" href={exportUrl(audience, true)}>Descargar HTML</a>}

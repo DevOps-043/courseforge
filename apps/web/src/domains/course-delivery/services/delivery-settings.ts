@@ -57,7 +57,7 @@ export async function resolveDeliverySettings(admin: SupabaseClient, organizatio
   const globalPrompt = orgPrompt ? null : await findPrompt(admin, capability.prompt, null);
   const prompt = {
     code: capability.prompt, content: orgPrompt?.content || globalPrompt?.content || DELIVERY_PROMPTS[capability.prompt],
-    version: orgPrompt?.version || globalPrompt?.version || "code-1",
+    version: orgPrompt?.version || globalPrompt?.version || (operation === "MATERIALS" ? "code-2" : "code-1"),
     source: (orgPrompt ? "organization" : globalPrompt ? "global" : "default") as "organization" | "global" | "default",
   };
   const result = { model, settingType, inherited: settingType !== capability.setting, modelSource: source, prompt };

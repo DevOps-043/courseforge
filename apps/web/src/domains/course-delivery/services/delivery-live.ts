@@ -7,6 +7,7 @@ import { deliveryReadiness } from "./delivery-readiness";
 import { deliveryEnabled } from "../config/delivery-enabled";
 import { buildEnginePreparation } from "./delivery-live-payload";
 import { engineTargetsSchema } from "../types/engine-preparation.contract";
+import { ENGINE_PREPARATION_MAX_BYTES } from "../types/engine-session-documents.contract";
 
 async function requestLearning(payload:unknown){
   const base=getOptionalServerEnvValue("SOFLIA_API_URL"),key=getOptionalServerEnvValue("SOFLIA_API_KEY");
@@ -14,7 +15,7 @@ async function requestLearning(payload:unknown){
   const endpoint=new URL("/api/internal/jobs/live-engine-preparation",base);
   if(endpoint.protocol!=="https:"||endpoint.username||endpoint.password||endpoint.port)throw new Error("La conexión con Learning requiere un origen HTTPS válido.");
   const body=JSON.stringify(payload);
-  if(Buffer.byteLength(body)>32768)throw new Error("La preparación supera 32 KiB. Reduce su contenido antes de entregar.");
+  if(Buffer.byteLength(body)>ENGINE_PREPARATION_MAX_BYTES)throw new Error("La preparación supera 256 KiB. Reduce su contenido antes de entregar.");
   const timestamp=String(Date.now());
   const signature=createHmac("sha256",key).update(`live-preparation:v1:${timestamp}:${body}`).digest("hex");
   const response=await fetch(endpoint,{method:"POST",redirect:"error",cache:"no-store",signal:AbortSignal.timeout(30000),headers:{"Content-Type":"application/json","X-Soflia-Timestamp":timestamp,"X-Soflia-Signature":`v1=${signature}`},body});
@@ -40,7 +41,7 @@ export async function deliverLivePreparation(artifactId:string,revision:number,s
   if(workspace.document.config.mode==="NEXUS")throw new Error("El curso utiliza publicación Nexus. Selecciona una modalidad con sesiones antes de entregar.");
   if(workspace.revision!==revision||!deliveryReadiness(workspace.document,context).materialsReady)throw new Error("Aprueba y actualiza los materiales vigentes antes de entregar.");
   if(target.organization_slug!==tenant.organizationSlug)throw new Error("Elige una sesión de la organización activa.");
-  const payload=buildEnginePreparation(workspace,sourceSessionId,target,tenant.userId);
+  const payload=buildEnginePreparation(workspace,sourceSessionId,target,tenant.userId,context);
   const documentary=await assertCourseSourcePublication(admin,artifactId);
   if(documentary)assertNoPrivateSourceReferences(payload);
   const result=await requestLearning(payload);
