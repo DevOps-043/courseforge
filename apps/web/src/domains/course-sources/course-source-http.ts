@@ -9,6 +9,9 @@ import { requireCourseSourceAccess } from "./course-source-access";
 import { COURSE_SOURCE_LIMITS } from "./course-source-policy";
 import { CourseSourceError } from "./course-source-error";
 import { CourseSourceRepository } from "./course-source.repository";
+import { DeliveryInitializationError, validateInitialDeliveryConfig } from "../course-delivery/lib/delivery-initialization-policy";
+import { deliveryEnabled } from "../course-delivery/config/delivery-enabled";
+import { initializeArtifactDelivery } from "../course-delivery/services/delivery-initialization";
 import { CourseSourceService } from "./course-source.service";
 import { createSourceStorage } from "./course-source-storage";
 import { confirmSourceUploadSchema, createSourceDraftSchema, publicSourceDocument, reserveSourceUploadSchema, sourcePageSchema } from "./course-source.schema";
@@ -44,7 +47,10 @@ export async function courseSourceHttp(request: Request, operation: Operation, a
       result = { documents: collection.documents.map(publicSourceDocument), nextOffset: collection.nextOffset };
     } else if (operation === "draft") {
       const input = await parseBody(request, createSourceDraftSchema);
-      result = { artifactId: await repository.createDraft(input), state: "DRAFT" };
+      const config = validateInitialDeliveryConfig(input.deliveryConfig, deliveryEnabled());
+      const draftId = await repository.createDraft(input);
+      await initializeArtifactDelivery(admin, draftId, tenant.organizationId, config);
+      result = { artifactId: draftId, state: "DRAFT" };
     } else {
       const service = new CourseSourceService(repository, createSourceStorage(admin), tenant.userId);
       result = operation === "reserve"
@@ -56,7 +62,7 @@ export async function courseSourceHttp(request: Request, operation: Operation, a
   } catch (error) {
     const unavailable = authorizationUnavailableResponse(error, requestId);
     if (unavailable) return unavailable;
-    const known = error instanceof CourseSourceError;
+    const known = error instanceof CourseSourceError || error instanceof DeliveryInitializationError;
     const status = known ? error.status : error instanceof z.ZodError ? 400 : 503;
     const codes: Record<number, typeof API_ERROR_CODE[keyof typeof API_ERROR_CODE]> = {
       400: API_ERROR_CODE.invalidRequest, 401: API_ERROR_CODE.authRequired, 403: API_ERROR_CODE.roleForbidden,

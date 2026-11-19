@@ -9,10 +9,11 @@ import * as responses from "../../../lib/server/api-response";
 import * as mutationOrigin from "../../../lib/server/mutation-request-origin";
 import { AuthIdentityLookupError } from "../../../lib/server/auth-identity-error";
 import { TenantContextLookupError } from "../../../lib/server/tenant-context-error";
+import * as initializationPolicy from "../../course-delivery/lib/delivery-initialization-policy";
 
 const course = "10000000-0000-4000-8000-000000000001";
 const logger = { createOperationalLogger: () => ({ info() {}, warn() {} }), resolveCorrelationId: () => "prueba-fuentes" };
-function fixture(stage: "allowed" | "anonymous" | "role" | "foreign" | "unavailable" = "allowed") {
+function fixture(stage: "allowed" | "anonymous" | "role" | "foreign" | "unavailable" = "allowed", sessionsEnabled = true) {
   const effects: string[] = [];
   const tenant = { organizationId: course, userId: course, platformRole: stage === "role" ? "INVITADO" : "CONSTRUCTOR" };
   const access = load("src/domains/course-sources/course-source-access.ts", {
@@ -49,6 +50,12 @@ function fixture(stage: "allowed" | "anonymous" | "role" | "foreign" | "unavaila
       "./course-source.service": { CourseSourceService: class { constructor() { effects.push("service"); } } },
       "./course-source-storage": { createSourceStorage: () => { effects.push("storage"); return {}; } },
       "./course-source.schema": schema,
+      "../course-delivery/lib/delivery-initialization-policy": initializationPolicy,
+      "../course-delivery/config/delivery-enabled": { deliveryEnabled: () => sessionsEnabled },
+      "../course-delivery/services/delivery-initialization": { initializeArtifactDelivery: async (_admin: unknown, artifactId: string, organizationId: string, config: {mode:string}) => {
+        assert.equal(artifactId, course); assert.equal(organizationId, course);
+        if (config.mode !== "NEXUS") effects.push("modality");
+      } },
     });
   return { effects, respond: http.courseSourceHttp };
 }
@@ -82,6 +89,16 @@ test("borrador devuelve DRAFT y no construye servicio de carga ni generador", as
   assert.equal(result.status, 200);
   assert.deepEqual(f.effects, ["admin", "repository", "draft"]);
   const body = await result.json(); assert.equal(body.state, "DRAFT"); assert.equal(body.artifactId, course);
+});
+
+test("borrador inicializa la modalidad autorizada y rechaza sesiones apagadas antes de crear", async () => {
+  const body = {idempotencyKey:course,title:"Taller",deliveryConfig:{mode:"SYNCHRONOUS",sessionCount:2,sessionMinutes:60}};
+  const allowed = fixture();
+  assert.equal((await allowed.respond(request(body), "draft")).status, 200);
+  assert.deepEqual(allowed.effects, ["admin", "repository", "draft", "modality"]);
+  const disabled = fixture("allowed", false);
+  assert.equal((await disabled.respond(request(body), "draft")).status, 403);
+  assert.equal(disabled.effects.includes("draft"), false);
 });
 
 test("UUID inválido, autoridad enviada en payload y paginación excesiva fallan sin escritura", async () => {

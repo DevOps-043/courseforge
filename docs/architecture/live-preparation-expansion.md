@@ -1,6 +1,20 @@
 # Ampliación de preparación de sesiones hacia Academy y Hub
 
+## Formulario único de creación
+
+La creación de cursos y talleres comparte ahora el mismo formulario para admin y constructor. Asíncrono, síncrono e híbrido reutilizan título, descripción, público y resultados. Solo aparecen los ajustes aplicables: sesiones/enfoque, relación híbrida y duración de videos asíncronos. El borrador documental utiliza el título común y evita crear un segundo curso desde el botón de generación cuando ya existe un borrador.
+
+El servidor valida la habilitación de sesiones e inicializa la configuración autorizada antes del despacho de IA. Se conserva Nexus por defecto para llamadas anteriores. Una inicialización repetida confirma la configuración idéntica y rechaza sobrescribir otra ya editada. Si falla una etapa posterior, el curso o borrador conserva su identidad para recuperación; no se presenta esta secuencia como una única transacción. La importación SCORM conserva su proceso y confirma la modalidad antes de navegar al artefacto, sin generar automáticamente sesiones.
+
+La tipografía se resuelve también en body, donde Next define sus variables de fuente, con fallbacks válidos. La especificación y verificación están en [unificación del formulario](../../openspec/changes/unify-workshop-authoring-form/proposal.md).
+
+## Revisión visual local
+
+El 18 de noviembre se alinearon los componentes de impartición con los tokens `engine-*`: panel, controles, editor por secciones, salidas por audiencia y entrega al aula. La consulta y la entrega muestran esperas diferenciadas y errores recuperables. Se corrigió el texto de entrega para reflejar que Learning conserva notas y respuestas privadas con acceso autorizado. La revisión usa componentes reales y controladores de QA sin llamadas remotas; queda pendiente verificarla dentro del recorrido autenticado y con sus fuentes de Next. La evidencia coordinada vive en el reporte visual-review.md del cambio extend-live-session-preparation de Hub.
+
 ## Segunda entrega de documentos
+
+La creación unificada incluye ayuda contextual «?» para los campos comunes y los ajustes por modalidad. Los selectores presentan una explicación general y otra de la selección vigente, incluidas las duraciones personalizadas. Se reutiliza la ayuda de prompts con fondo opaco en ambos temas y asociación accesible entre botón y descripción. Estas ayudas explican la configuración; no disparan generación ni modifican las reglas de entrega.
 
 Las nuevas generaciones de materiales incluyen instrumentos por actividad, contingencias por bloque, plantilla vacía de registro y aplicabilidad justificada de los tres entregables condicionales. La agenda, los planes, la presentación, la guía, las referencias y la ficha se derivan del contenido aprobado. El paquete consolida 14 documentos con identidad estable por sesión y tipo.
 

@@ -33,6 +33,10 @@ function fixture(documentary = false, authorized = true) {
   }>("src/domains/artifacts/actions/artifact.actions.ts", {
     "@/lib/server/background-function-client": {},
     "../lib/artifact-generation-failure": {},
+    "../../course-delivery/actions/delivery-initialization.actions": { configureCreatedArtifactDeliveryAction: async () => { throw new Error("Editar contenido no debe inicializar la modalidad"); } },
+    "../../course-delivery/lib/delivery-initialization-policy": {},
+    "../../course-delivery/config/delivery-enabled": {},
+    "../../course-delivery/lib/delivery-hash": {},
     "@/lib/pipeline-generation-policy": {},
     "@/lib/errors": {},
     "@/utils/supabase/server": {

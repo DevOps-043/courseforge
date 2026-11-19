@@ -7,6 +7,11 @@ import { readCourseSourcePolicy } from "@/domains/course-sources/course-source-s
 import { CourseSourceError } from "@/domains/course-sources/course-source-error";
 import { SOURCE_GENERATION_LIMITS } from "@/domains/course-sources/course-source-generation";
 import { markArtifactGenerationFailed } from "../lib/artifact-generation-failure";
+import { configureCreatedArtifactDeliveryAction } from "../../course-delivery/actions/delivery-initialization.actions";
+import { validateInitialDeliveryConfig } from "../../course-delivery/lib/delivery-initialization-policy";
+import { deliveryEnabled } from "../../course-delivery/config/delivery-enabled";
+import type { DeliveryConfig } from "../../course-delivery/types/delivery.schemas";
+import { deliveryHash } from "../../course-delivery/lib/delivery-hash";
 import { isGenerationStale } from "@/lib/pipeline-generation-policy";
 import { getErrorMessage } from "@/lib/errors";
 import { createClient } from "@/utils/supabase/server";
@@ -68,6 +73,7 @@ export async function generateArtifactAction(formData: {
   useGoogleDrive?: boolean;
   videoDurationPolicy?: VideoDurationPolicy;
   requestId?: string;
+  deliveryConfig?: DeliveryConfig;
 }) {
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
@@ -91,6 +97,7 @@ export async function generateArtifactAction(formData: {
       };
     }
     const videoDurationPolicy = resolveVideoDurationPolicy(parsedVideoDurationPolicy.data);
+    const deliveryConfig = validateInitialDeliveryConfig(formData.deliveryConfig, deliveryEnabled());
     let finalCourseId = formData.courseId?.trim();
     if (!finalCourseId) {
       const prefix = formData.title
@@ -113,7 +120,7 @@ export async function generateArtifactAction(formData: {
         descripcion: {},
         generation_metadata: {
           run_id: runId,
-          original_input: { ...formData, videoDurationPolicy },
+          original_input: { ...formData, videoDurationPolicy, deliveryConfig },
           started_at: new Date().toISOString(),
           video_duration_policy: videoDurationPolicy,
         },
@@ -126,9 +133,12 @@ export async function generateArtifactAction(formData: {
 
     if (error) {
       if (error.code === "23505") {
-        const { data: existing } = await supabase.from("artifacts").select("id, state")
+        const { data: existing } = await supabase.from("artifacts").select("id, state, generation_metadata")
           .eq("id", artifactId).eq("created_by", authUser.userId).maybeSingle();
         if (existing) {
+          const previousConfig = validateInitialDeliveryConfig(existing.generation_metadata?.original_input?.deliveryConfig, deliveryEnabled());
+          if (deliveryHash(previousConfig) !== deliveryHash(deliveryConfig)) throw new Error("Esta solicitud ya creó un curso con otra modalidad. Abre el curso existente para editarla.");
+          if (deliveryConfig.mode !== "NEXUS") await configureCreatedArtifactDeliveryAction(existing.id, deliveryConfig);
           return {
             success: true,
             artifactId: existing.id,
@@ -141,12 +151,16 @@ export async function generateArtifactAction(formData: {
     }
     created = true;
 
+    if (deliveryConfig.mode !== "NEXUS") {
+      await configureCreatedArtifactDeliveryAction(artifact.id, deliveryConfig);
+    }
+
     await dispatchBackgroundFunctionJson(
       "generate-artifact-background",
       {
         artifactId: artifact.id,
         runId,
-        formData: { ...formData, videoDurationPolicy },
+        formData: { ...formData, videoDurationPolicy, deliveryConfig },
         userId: authUser.userId,
           cloudStorageProvider:
             formData.cloudStorageProvider ||

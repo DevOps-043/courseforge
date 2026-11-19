@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { COURSE_SOURCE_FORMATS, COURSE_SOURCE_LIMITS } from "./course-source-policy";
+import { deliveryConfigSchema } from "../course-delivery/types/delivery.schemas";
 
 const safeFilename = z.string().trim().min(1).max(255)
   .refine((name) => !/[\\/\x00-\x1f\x7f]/.test(name), "Nombre de archivo inválido.");
@@ -7,6 +8,7 @@ const safeFilename = z.string().trim().min(1).max(255)
 export const createSourceDraftSchema = z.object({
   idempotencyKey: z.uuid(),
   title: z.string().trim().min(1).max(300),
+  deliveryConfig: deliveryConfigSchema.optional(),
 }).strict();
 
 export const reserveSourceUploadSchema = z.object({

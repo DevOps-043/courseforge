@@ -1,0 +1,105 @@
+.panel {
+  margin-bottom: 24px;
+  padding: clamp(16px, 3vw, 28px);
+  border: 1px solid var(--engine-border);
+  border-radius: 20px;
+  background: var(--engine-surface-solid);
+  color: var(--engine-text);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--engine-shadow) 35%, transparent);
+  font-family: var(--font-system-ui);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.panel h2 { margin: 0; font-size: clamp(24px, 3vw, 30px); }
+.configuration { min-width: 0; margin: 0; padding: 0; border: 0; color: var(--engine-text); font-family: var(--font-system-ui); }
+.configuration > legend { margin-bottom: 14px; padding: 0; font-size: 15px; font-weight: 600; }
+.configuration > .configurationLegend { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; }
+.configurationLabel { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.configurationFields > div { min-width: 0; }
+.panel [data-field-help] button { min-height: 20px; padding: 0; font-size: 11px; line-height: 1; background: transparent; color: var(--engine-text-muted); border-radius: 50%; }
+.modalityChoices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.modalityChoice { display: flex !important; align-items: flex-start; gap: 9px; padding: 16px; border: 1px solid var(--engine-border); border-radius: 12px; background: var(--engine-canvas); cursor: pointer; }
+.modalityChoice[data-selected='true'] { border-color: var(--engine-accent-strong); background: color-mix(in srgb, var(--engine-accent) 6%, var(--engine-surface-solid)); }
+.modalityChoice:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+.modalityChoice:focus-within { outline: 2px solid var(--engine-accent-strong); outline-offset: 3px; }
+.modalityChoice input { flex: 0 0 auto; width: 15px; height: 15px; margin: 3px 0 0; accent-color: var(--engine-accent-strong); }
+.modalityChoice strong { display: block; font-size: 14px; font-weight: 600; }
+.modalityChoice small { display: block; margin-top: 6px; color: var(--engine-text-muted); font-size: 12px; line-height: 1.6; font-weight: 400; }
+.configurationFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--engine-border); }
+.configurationFields label { display: block; min-width: 0; font-size: 13px; font-weight: 500; }
+.configurationFields label span { font-weight: 400; color: var(--engine-text-muted); }
+.configurationFields input, .configurationFields select { display: block; width: 100%; min-width: 0; margin-top: 7px; padding: 10px 12px; border: 1px solid var(--engine-border); border-radius: 10px; background: var(--engine-canvas); color: var(--engine-text); font: inherit; }
+.configurationFields :is(input, select):focus-visible { outline: 2px solid var(--engine-accent-strong); outline-offset: 3px; }
+.configurationHint { margin-top: 12px; font-size: 12px; color: var(--engine-text-muted); }
+.configurationError { margin-top: 12px; padding: 12px; border: 1px solid var(--engine-danger); border-radius: 10px; color: var(--engine-text); font-size: 13px; }
+.configurationSummary > summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; cursor: pointer; font-size: 14px; }
+.configurationSummary > summary span { font-size: 12px; color: var(--engine-text-muted); }
+.configurationSummary > div { margin-top: 20px; }
+.configurationSummary > div > button { margin-top: 18px; }
+.eyebrow { margin: 0 0 6px; color: var(--engine-text-muted); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+.panelHeader { padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--engine-border); }
+.panel p { color: var(--engine-text-muted); }
+.panel button, .actions button, .transfer button {
+  min-height: 40px; border: 1px solid var(--engine-border); border-radius: 10px; padding: 9px 14px;
+  color: var(--engine-text); background: var(--engine-surface-solid); font: inherit; font-size: 13px;
+  font-weight: 500; cursor: pointer;
+}
+.panel button:hover:not(:disabled), .actions button:hover:not(:disabled), .transfer button:hover:not(:disabled) { border-color: var(--engine-accent-strong); background: var(--engine-surface-hover); }
+.panel button:disabled, .actions button:disabled, .transfer button:disabled { opacity: .5; cursor: not-allowed; }
+.panel .primary, .transfer .primary { background: var(--engine-action); color: var(--engine-on-action); border-color: var(--engine-action); }
+.panel .primary:hover:not(:disabled), .transfer .primary:hover:not(:disabled) { background: var(--engine-action); filter: brightness(1.08); }
+.panel .approve { background: var(--engine-surface-soft); border-color: var(--engine-border-active); color: var(--engine-text); }
+.panel label, .field { display: block; font-size: 13px; font-weight: 500; }
+.panel input:not([type='checkbox']):not([type='radio']), .panel select, .panel textarea, .field input:not([type='checkbox']):not([type='radio']), .field select, .field textarea {
+  display: block; width: 100%; max-width: 100%; min-width: 0; margin-top: 6px; padding: 10px 12px;
+  border: 1px solid var(--engine-border); border-radius: 10px; background: var(--engine-canvas);
+  color: var(--engine-text); font: inherit; font-size: 14px; line-height: 1.6;
+}
+.panel textarea, .field textarea { resize: vertical; min-height: 76px; }
+.panel input[type='checkbox'], .field input[type='checkbox'] { accent-color: var(--engine-accent-strong); margin-right: 7px; }
+.panel :is(button, input, textarea, select, summary, a):focus-visible, .editor :is(button, input, textarea, select, summary):focus-visible, .transfer :is(button, select):focus-visible {
+  outline: 2px solid var(--engine-accent-strong); outline-offset: 3px;
+}
+.editor { display: grid; gap: 12px; min-width: 0; }
+.session { min-width: 0; border: 1px solid var(--engine-border); border-radius: 14px; background: var(--engine-surface-solid); }
+.session > summary { display: flex; flex-wrap: wrap; gap: 8px 12px; justify-content: space-between; cursor: pointer; padding: 16px; list-style: none; }
+.session > summary::-webkit-details-marker { display: none; }
+.sessionTitle { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; min-width: 0; font-weight: 600; }
+.sessionTitle::before { content: '+'; color: var(--engine-text-muted); }
+.session[open] > summary .sessionTitle::before { content: '−'; }
+.session > summary small { color: var(--engine-text-muted); font-weight: 400; }
+.status { align-self: center; padding: 3px 8px; border: 1px solid var(--engine-border); background: var(--engine-surface-soft); border-radius: 6px; font-size: 11px; color: var(--engine-text-muted); }
+.sessionBody { display: grid; gap: 16px; padding: 0 16px 16px; min-width: 0; }
+.fieldGrid { display: grid; gap: 14px; min-width: 0; }
+.fieldGroup { min-width: 0; margin: 0; padding: 14px; border: 1px solid var(--engine-border); border-radius: 10px; }
+.fieldGroup > legend { padding: 0 6px; color: var(--engine-text-muted); font-size: 12px; }
+.fieldGroup > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.fieldGroup > summary span { margin-left: 8px; color: var(--engine-text-muted); font-size: 11px; font-weight: 400; }
+.fieldGroup > .fieldGrid { margin-top: 12px; }
+.field { min-width: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 12px; border-top: 1px solid var(--engine-border); }
+.transfer { display: grid; gap: 18px; padding: 20px; border: 1px solid var(--engine-border-active); border-radius: 16px; background: var(--engine-surface-soft); }
+.transfer h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.transfer p { margin: 6px 0 0; color: var(--engine-text-muted); font-size: 13px; }
+.transferSteps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 11px; color: var(--engine-text-muted); }
+.transferSteps li { border: 1px solid var(--engine-border); border-radius: 6px; padding: 4px 8px; background: var(--engine-surface-solid); }
+.transferFields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; }
+.transfer label { font-size: 13px; font-weight: 500; }
+.transfer select { display: block; width: 100%; min-width: 0; margin-top: 6px; padding: 10px; border: 1px solid var(--engine-border); border-radius: 10px; background: var(--engine-surface-solid); color: var(--engine-text); font: inherit; }
+.transferNotice, .panel [role='alert'] { padding: 12px 14px; border: 1px solid var(--engine-border); border-radius: 10px; background: var(--engine-surface-solid); font-size: 13px; }
+.exports { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; }
+.exportCard { padding: 16px; border: 1px solid var(--engine-border); border-radius: 12px; background: var(--engine-canvas); }
+.exportLink { display: flex; justify-content: space-between; gap: 10px; color: var(--engine-text); text-decoration: none; font-weight: 600; }
+.exportLink:hover { text-decoration: underline; }
+.exportLink span { color: var(--engine-text-muted); }
+.exportCard p { margin: 8px 0 12px; font-size: 12px; }
+.exportDownload { color: var(--engine-text); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.panel [role='alert'], .transferNotice[role='alert'] { border-color: var(--engine-danger); color: var(--engine-text); }
+@media (max-width: 520px) {
+  .modalityChoices, .configurationFields { grid-template-columns: 1fr; }
+  .session > summary, .sessionBody { padding: 12px; }
+  .fieldGroup { padding: 10px; }
+  .transfer { padding: 14px; }
+  .actions > button { width: 100%; }
+}

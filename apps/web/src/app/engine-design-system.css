@@ -1,9 +1,12 @@
+:root, body {
+  --font-system-display: var(--font-newsreader, Newsreader), Newsreader, Georgia, serif;
+  --font-system-ui: var(--font-inter-tight, "Inter Tight"), Inter, Arial, sans-serif;
+  --font-system-label: var(--font-ibm-plex, "IBM Plex Sans"), Arial, sans-serif;
+  --font-system-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 :root {
   color-scheme: light;
-  --font-system-display: var(--font-newsreader), Newsreader, Georgia, serif;
-  --font-system-ui: var(--font-inter-tight), "Inter Tight", Inter, Arial, sans-serif;
-  --font-system-label: var(--font-ibm-plex), "IBM Plex Sans", Arial, sans-serif;
-  --font-system-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   --engine-primary: #0a2540;
   --engine-primary-hover: #0d2f4d;
