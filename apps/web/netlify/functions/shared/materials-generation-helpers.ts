@@ -2,6 +2,7 @@ import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { MATERIAL_SOURCE_RULES } from "../../../src/domains/course-sources/course-source-generation";
 import {
   resolvePrompts,
   assemblePrompt,
@@ -510,6 +511,7 @@ async function buildMaterialsPrompt(
 
   return (
     basePrompt +
+    (input.course_source_snapshot_id ? `\n\n## Respaldo documental\n${MATERIAL_SOURCE_RULES}` : "") +
     (effectiveComponentTypes.includes("DIALOGUE")
       ? "\n\n## Contrato de identificadores DIALOGUE\nCada successCriteria.id, hintLadder.id y rubric.id debe ser único dentro de su lista y cumplir ^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$. Usa criterion_1, criterion_2 para criterios; hint_1, hint_2 para pistas; rubric_1, rubric_2 para rúbrica. Cada hintLadder.targetCriterionId debe copiar exactamente el id del criterio al que ayuda. No uses números solos, guiones, acentos ni referencias a criterios ausentes."
       : "") +

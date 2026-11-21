@@ -44,15 +44,18 @@ test("el diagnóstico conserva las categorías de validación, contexto y provee
   assert.equal(deliveryGenerationFailure({ statusCode: 403 }, "GENERATION", 180_000).code, "PROVIDER_CONFIGURATION");
 });
 
-test("el handler informa fallo del worker aunque la solicitud sea válida", async () => {
-  for (const status of ["FAILED", "COMPLETED", "PAUSED", "NOT_CLAIMED"]) {
+test("el handler informa el resultado del worker y vuelve a despachar los reintentos en cola", async () => {
+  for (const status of ["FAILED", "COMPLETED", "PAUSED", "NOT_CLAIMED", "QUEUED"]) {
+    const dispatched: unknown[] = [];
     const { handler } = load<{ handler: (event: { httpMethod: string }) => Promise<{ statusCode: number; body: string }> }>("netlify/functions/course-delivery-background.ts", {
       "./shared/http": {
         parseVerifiedBackgroundBody: async () => ({ runId: "10000000-0000-4000-8000-000000000001" }),
         jsonResponse: (body: unknown, statusCode = 200) => ({ statusCode, body: JSON.stringify(body) }),
       },
       "./shared/bootstrap": { createServiceRoleClient: () => ({}) },
-      "../../src/lib/server/background-function-client": { dispatchBackgroundFunctionJson: async () => {} },
+      "../../src/lib/server/background-function-client": { dispatchBackgroundFunctionJson: async (name: string, payload: { runId: string }, options: { localHandlerLoader: () => Promise<{ handler: unknown }> }) => {
+        dispatched.push({ name, runId: payload.runId, handler: (await options.localHandlerLoader()).handler });
+      } },
       "../../src/domains/course-delivery/services/delivery-generation": {
         executeDeliveryRun: async () => ({ status, runId: "run" }),
       },
@@ -60,5 +63,6 @@ test("el handler informa fallo del worker aunque la solicitud sea válida", asyn
     const response = await handler({ httpMethod: "POST" });
     assert.equal(response.statusCode, status === "FAILED" ? 503 : 200);
     assert.equal(JSON.parse(response.body).success, status !== "FAILED");
+    assert.deepEqual(dispatched, status === "QUEUED" ? [{ name: "course-delivery-background", runId: "run", handler }] : []);
   }
 });

@@ -28,10 +28,12 @@ async function database(generation = false) {
     create table instructional_plans(artifact_id uuid primary key references artifacts(id),lesson_plans jsonb default '[]',state text default 'STEP_DRAFT',upstream_dirty boolean default false,upstream_dirty_source text);
     create table curation(id uuid primary key default gen_random_uuid(),artifact_id uuid unique references artifacts(id),state text default 'PHASE2_DRAFT',attempt_number integer default 1,qa_decision jsonb,upstream_dirty boolean default false,upstream_dirty_source text);
     create table curation_rows(id uuid primary key default gen_random_uuid(),curation_id uuid references curation(id),lesson_id text,apta boolean,source_ref text,validation_report jsonb);
-    create table materials(id uuid primary key default gen_random_uuid(),artifact_id uuid unique references artifacts(id),state text default 'PHASE3_DRAFT',version integer default 1,upstream_dirty boolean default false,upstream_dirty_source text);
+    create table materials(id uuid primary key default gen_random_uuid(),artifact_id uuid unique references artifacts(id),state text default 'PHASE3_DRAFT',version integer default 1,upstream_dirty boolean default false,upstream_dirty_source text,prompt_version text,qa_decision jsonb,updated_at timestamptz default now());
     create table publication_requests(artifact_id uuid primary key references artifacts(id),status text default 'DRAFT',upstream_dirty boolean default false,upstream_dirty_source text);
-    create table material_lessons(id uuid primary key default gen_random_uuid(),materials_id uuid references materials(id),lesson_id text);
-    create table material_components(id uuid primary key default gen_random_uuid(),material_lesson_id uuid references material_lessons(id),content jsonb,assets jsonb default '{}');
+    create table material_lessons(id uuid primary key default gen_random_uuid(),materials_id uuid references materials(id),lesson_id text,
+      state text default 'PENDING',iteration_count integer default 0,max_iterations integer default 4,dod jsonb,updated_at timestamptz default now(),created_at timestamptz default now());
+    create table material_components(id uuid primary key default gen_random_uuid(),material_lesson_id uuid references material_lessons(id),content jsonb,assets jsonb default '{}',
+      type text not null default 'DIALOGUE',source_refs text[],validation_status text,validation_errors text[],iteration_number integer,generated_at timestamptz);
     grant select,insert,update on material_lessons,material_components to service_role;
     grant select,insert,update on artifacts,syllabus,instructional_plans,curation,curation_rows,materials,publication_requests to service_role;
     grant delete on curation_rows to service_role;
@@ -53,12 +55,14 @@ async function database(generation = false) {
       alter table curation add column syllabus_content_version integer default 0;
       create table production_jobs(id uuid primary key default gen_random_uuid(),artifact_id uuid,material_component_id uuid,status text default 'PENDING',input_snapshot jsonb default '{}');
       create table production_assets(id uuid primary key default gen_random_uuid(),artifact_id uuid,material_component_id uuid,production_job_id uuid);
-      create table course_delivery_workspaces(artifact_id uuid primary key,document jsonb,revision integer default 0);
-      create table course_delivery_runs(id uuid primary key,artifact_id uuid,operation text);
-      grant select,insert,update on production_jobs,production_assets,course_delivery_workspaces,course_delivery_runs to service_role;
-      create function commit_course_delivery_unit(uuid,uuid,jsonb,jsonb) returns integer language plpgsql as $$
-      begin update public.course_delivery_workspaces set document=$3,revision=revision+1 where artifact_id=(select artifact_id from public.course_delivery_runs where id=$1);return 1;end $$;
-      grant execute on function commit_course_delivery_unit(uuid,uuid,jsonb,jsonb) to service_role;`);
+      grant select,insert,update on production_jobs,production_assets to service_role;
+      create table organizations(id uuid primary key);
+      insert into organizations values ('${organization}'), ('${otherOrganization}');
+      create table model_settings(setting_type text);
+      create table system_prompts(code text);`);
+    await db.exec(await readFile('supabase/migrations/20260515120000_enforce_single_material_component_per_type.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20260915120000_pipeline_generation_commits.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261026160000_synchronous_course_delivery.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261106040000_course_source_generation.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261107010000_course_source_extraction_diagnostics.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261107020000_course_source_batch_runs.sql', 'utf8'));
@@ -1036,18 +1040,74 @@ test('F4: producción liga sus jobs al contenido vigente y rechaza callbacks de 
 test('F4: sesiones guardan recibos por unidad y su aprobación no acepta contenido editado sin respaldo',async()=>{
   const db=await database(true);
   try{
-    const {course,snapshot,attest}=await generationFixture(db);const session=identifier(),run=identifier();
+    const {course,snapshot,attest}=await generationFixture(db);const session=identifier(),token=identifier();
     const plan={text:'Verificar identidad antes de conceder acceso al curso.'};
     const document={config:{mode:'SYNCHRONOUS'},agenda:[{id:session}],plans:{[session]:plan},materials:{},planApproval:null,materialsApproval:null};
-    await db.query('insert into course_delivery_workspaces(artifact_id,document) values($1,$2::jsonb)',[course,JSON.stringify(document)]);
-    await db.query("insert into course_delivery_runs(id,artifact_id,operation) values($1,$2,'PLAN')",[run,course]);
+    await db.query('select save_course_delivery($1,$2,0,$3::jsonb)',[course,organization,JSON.stringify(document)]);
+    const run = (await db.query("select reserve_course_delivery_run($1,$2,1,'PLAN','{}',$3::jsonb) as id",[course,organization,JSON.stringify([{id:session,ready:false}])])).rows[0].id;
+    await db.query('select claim_course_delivery_run($1,$2)',[run,token]);
     const receipt=await attest(await snapshot('PLAN'),plan);
-    await db.query('select commit_course_source_delivery_unit($1,$2,$3::jsonb,$4::jsonb,$5,$6)',[run,identifier(),JSON.stringify(document),'[]',receipt,session]);
+    await db.query('select commit_course_source_delivery_unit($1,$2,$3::jsonb,$4::jsonb,$5,$6)',[run,token,JSON.stringify(document),JSON.stringify([{id:session,ready:true}]),receipt,session]);
     await db.query("select assert_course_source_delivery($1,'PLAN')",[course]);
     document.plans[session]={text:'Contenido distinto sin comprobación'};document.planApproval={reviewed:true};
     await assert.rejects(db.query('update course_delivery_workspaces set document=$1::jsonb where artifact_id=$2',[JSON.stringify(document),course]),/SOURCE_GENERATION_STALE/);
     await db.exec('set role authenticated');await assert.rejects(db.query('select * from course_source_legacy_imports'),/permission denied/);
   }finally{await db.close();}
+});
+
+test('materiales híbridos confirman sesión y componente con recibos exactos, y conservan sus versiones ante escrituras tardías', async () => {
+  const db = await database(true);
+  try {
+    const { course, fragment, change, attest } = await generationFixture(db);
+    await db.exec('reset role; alter table curation_rows add column source_title text,add column source_kind text;');
+    await db.exec(await readFile('supabase/migrations/20261120010000_all_validated_material_sources.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261121010000_coordinated_material_retries.sql', 'utf8'));
+    await db.exec('set role service_role');
+    await change('policy', { policy: 'DOCUMENTS_AND_WEB' });
+    await db.query('insert into syllabus(artifact_id,modules) values($1,$2)', [course, JSON.stringify([{ lessons: [{ id: 'lesson-1' }] }])]);
+    const curation = (await db.query('insert into curation(artifact_id) values($1) returning id', [course])).rows[0].id;
+    const web = (await db.query("insert into curation_rows(curation_id,lesson_id,apta,source_ref,validation_report) values($1,'lesson-1',true,'https://example.test/manual',$2) returning id",
+      [curation, JSON.stringify({ status: 'valid', content_excerpt: 'Verificar la identidad antes de conceder acceso.' })])).rows[0].id;
+    const snapshot = async () => {
+      const { rows: [{ context }] } = await db.query('select snapshot_all_course_source_materials($1,$2,$3,$4) as context', [course, organization, identifier(), ['lesson-1']]);
+      assert.deepEqual(new Set(context.sources.map(source => source.id)), new Set([fragment, web]));
+      return context.snapshotId;
+    };
+    const session = identifier();
+    const document = { config: { mode: 'HYBRID' }, agenda: [{ id: session }], plans: {}, materials: {}, planApproval: null, materialsApproval: null };
+    await db.query('select save_course_delivery($1,$2,0,$3::jsonb)', [course, organization, JSON.stringify(document)]);
+    const sessionMaterial = { concepts: [{ text: 'Verificar identidad antes de conceder acceso al curso.' }], documents: { recordTemplate: { instructions: 'Completar al impartir' } } };
+    const sessionReceipt = await attest(await snapshot(), sessionMaterial);
+    const units = JSON.stringify([{ id: session, ready: true }]);
+    const run = (await db.query("select reserve_course_delivery_run($1,$2,1,'MATERIALS','{}',$3) as id", [course, organization, JSON.stringify([{ id: session, ready: false }])])).rows[0].id;
+    const token = identifier();
+    await db.query('select claim_course_delivery_run($1,$2)', [run, token]);
+    document.materials[session] = sessionMaterial;
+    const confirmSession = lease => db.query('select commit_course_source_delivery_unit($1,$2,$3,$4,$5,$6) as revision', [run, lease, JSON.stringify(document), units, sessionReceipt, session]);
+    await assert.rejects(confirmSession(identifier()), /DELIVERY_STALE_RUN/);
+    assert.equal((await confirmSession(token)).rows[0].revision, 2);
+    const current = (await db.query('select revision,document from course_delivery_workspaces where artifact_id=$1', [course])).rows[0];
+    assert.equal(current.revision, 2);
+    assert.deepEqual(current.document.materials[session], sessionMaterial);
+    assert.deepEqual((await db.query('select revision,document from course_delivery_versions where artifact_id=$1', [course])).rows.map(row => [row.revision, row.document.materials]), [[1, {}]]);
+    assert.deepEqual((await db.query('select expected_revision,units from course_delivery_runs where id=$1', [run])).rows[0], { expected_revision: 2, units: JSON.parse(units) });
+    assert.equal((await db.query("select finish_delivery_material_run($1,$2,'COMPLETED',null,false) as state", [run, token])).rows[0].state, 'COMPLETED');
+
+    const { id: materialsId, version } = (await db.query('select start_material_generation($1,null) as execution', [course])).rows[0].execution;
+    const lessonId = (await db.query("insert into material_lessons(materials_id,lesson_id) values($1,'lesson-1-G2') returning id", [materialsId])).rows[0].id;
+    const iteration = (await db.query('select claim_material_generation($1,$2) as lesson', [materialsId, version])).rows[0].lesson.iteration_count;
+    const dialogue = { rescueContent: 'Verificar identidad antes de conceder acceso al curso.', scenario: 'Caso hipotético: prepara la apertura de un curso.' };
+    const receipt = await attest(await snapshot(), dialogue);
+    const row = { type: 'DIALOGUE', content: dialogue, assets: { course_source_evidence_id: receipt }, source_refs: [fragment], iteration_number: iteration };
+    const commit = (materialVersion, component) => db.query('select commit_material_generation($1,$2,$3,$4,$5,true) as saved', [materialsId, materialVersion, lessonId, iteration, JSON.stringify([component])]);
+    await assert.rejects(commit(version, { ...row, content: { ...dialogue, scenario: 'Contenido distinto del comprobado.' } }), /SOURCE_GENERATION_STALE/);
+    assert.equal((await commit(version - 1, row)).rows[0].saved, false);
+    assert.equal((await commit(version, row)).rows[0].saved, true);
+    assert.equal((await commit(version, row)).rows[0].saved, false);
+    assert.deepEqual((await db.query('select type,content,source_refs,iteration_number from material_components where material_lesson_id=$1', [lessonId])).rows, [{ type: 'DIALOGUE', content: dialogue, source_refs: [fragment], iteration_number: iteration }]);
+    assert.equal((await db.query('select state from material_lessons where id=$1', [lessonId])).rows[0].state, 'GENERATED');
+    assert.equal((await db.query('select finish_material_generation($1,$2) as ready', [materialsId, version])).rows[0].ready, true);
+  } finally { await db.close(); }
 });
 
 test('F4: reasignar o eliminar una URL revisada invalida la aprobación y el snapshot',async()=>{

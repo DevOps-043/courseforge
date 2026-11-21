@@ -88,6 +88,7 @@ export const deliveryDocumentSchema = z.object({
   materialsApproval: z.object({ revision: z.number().int(), syllabus: z.string(), nexus: z.string(), sources: z.string(), content: z.string(), userId: z.string() }).nullable(),
 }).strict();
 export interface DeliveryWorkspace { artifact_id: string; organization_id: string; revision: number; document: DeliveryDocument }
+export interface CurriculumLesson { id: string; title: string; module: string; objective: string }
 export function emptyDeliveryDocument(): DeliveryDocument {
   return { config: deliveryConfigSchema.parse({}), syllabusHash: "", agenda: [], plans: {}, materials: {}, stalePlans: [], staleMaterials: [], planInputHashes: {}, materialInputHashes: {}, planApproval: null, materialsApproval: null };
 }

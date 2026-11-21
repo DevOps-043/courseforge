@@ -23,6 +23,7 @@ import {
   DocumentaryBasePendingError,
   sourcePersistenceError,
   sourceGroundingFailure,
+  type CourseSourceGroundingRejection,
 } from "./course-source-error";
 import {
   checkGenerationBudget,
@@ -282,7 +283,10 @@ export async function attestCourseGeneration(
   };
   let grounding: ReturnType<typeof validateSourceGrounding> | undefined;
   let unavailable = { code: "GROUNDING_TIMEOUT", message: "Se agotó el tiempo disponible para comprobar el respaldo." };
-  for (const model of [...new Set(Array.isArray(models) ? models : [models])]) {
+  const reviewers = [...new Set(Array.isArray(models) ? models : [models])];
+  let citationFailure: CourseSourceGroundingRejection | undefined;
+  for (let index = 0; index < reviewers.length; index++) {
+    const model = reviewers[index];
     const startedAt = Date.now();
     const timeoutMs = Math.min(
       SOURCE_GENERATION_LIMITS.timeoutMs,
@@ -293,7 +297,7 @@ export async function attestCourseGeneration(
       const { object, usage } = await generateObject({
         model: resolveAiModel(model),
         schema: sourceGroundingSchema,
-        prompt: groundingPrompt(context, output),
+        prompt: groundingPrompt(context, output, citationFailure),
         maxRetries: 0,
         abortSignal: AbortSignal.timeout(timeoutMs),
       });
@@ -312,6 +316,11 @@ export async function attestCourseGeneration(
           "revision_contenido_rechazada", sourceGroundingFailure(error),
           { artifactId: context.artifactId, stage: context.stage, model, sourceCount: context.sources.length },
         );
+        if (context.stage === "MATERIALS" && !citationFailure && error.groundingReason && error.groundingReason !== "UNSUPPORTED_OUTPUT") {
+          citationFailure = error.groundingReason;
+          reviewers.splice(index + 1, 0, model);
+          continue;
+        }
         throw error;
       }
       unavailable = sourceGroundingFailure(error);
@@ -344,7 +353,8 @@ export async function attestCourseGeneration(
     p_citations: grounding.citations,
   });
   if (error) sourcePersistenceError(error);
-  return data as string;
+  if (typeof data !== "string" || !data) throw new CourseSourceError(503, "La base de datos no confirmó el recibo de respaldo.");
+  return data;
 }
 export async function assertCourseGenerationCurrent(
   admin: SupabaseClient,

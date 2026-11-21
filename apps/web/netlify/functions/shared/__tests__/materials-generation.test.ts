@@ -1,6 +1,7 @@
 import { loadAptaSources, buildMaterialSourceValidationContext } from "../materials-source-context";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createRequire } from "node:module";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
@@ -372,6 +373,47 @@ test("manual full regeneration still requires generation rather than accepting s
   assert.equal(result.success, false, "manual regeneration cannot succeed without a configured model");
   assert.equal(writes[0].p_success, false);
   assert.match(String(writes[0].p_error), /MODEL_SETTING_NOT_CONFIGURED/);
+});
+
+test("Nexus revisa de nuevo el componente corregido y guarda solo contenido confirmado", async (testContext) => {
+  const requireSibling = createRequire(__filename);
+  const sourceService = requireSibling("../../../../src/domains/course-sources/course-source-generation.service");
+  testContext.mock.method(requireSibling("../../../../src/domains/course-delivery/services/academy-scope.server"), "readAcademyScope", async () => ({ routeHash: null, lessonIds: ["lesson-1"], modules: [{ lessons: [{ id: "lesson-1" }] }] }));
+  const helpers = requireSibling("../materials-generation-helpers");
+  const sourceId = "10000000-0000-4000-8000-000000000001";
+  const receipt = "10000000-0000-4000-8000-000000000002";
+  const original = { ...dialogueFixture(), title: "Versión inicial" };
+  const corrected = { ...original, title: "Versión corregida" };
+  const lesson = { id: "material-lesson", lesson_id: "lesson-1-G1", lesson_title: "Lección", module_id: "module-1", module_title: "Módulo", expected_components: ["DIALOGUE"], iteration_count: 2 };
+  testContext.mock.method(sourceService, "prepareCourseGeneration", async () => ({
+    snapshotId: "snapshot", sources: [{ id: sourceId, kind: "DOCUMENT", title: "Fuente", text: "Evidencia sintética", locator: {} }],
+  }));
+  const requests: MaterialsGenerationInput[] = [];
+  testContext.mock.method(helpers, "generateWithRetry", async (input: MaterialsGenerationInput) => {
+    requests.push(input);
+    const dialogue = normalizeGeneratedDialogueIdentifiers(requests.length === 1 ? original : corrected);
+    return { success: true, content: { components: { DIALOGUE: dialogue }, source_refs_used: [sourceId] } };
+  });
+  const reviews: string[] = [];
+  testContext.mock.method(sourceService, "attestCourseGeneration", async (_admin: unknown, _context: unknown, component: { title: string }) => {
+    reviews.push(component.title);
+    if (component.title === original.title) throw new CourseSourceError(409, "Rechazado", "UNSUPPORTED_OUTPUT");
+    return receipt;
+  });
+  const { database, writes } = databaseStub();
+  const result = await generateLessonMaterials({
+    execution, supabase: database, lesson,
+    generationContext: { artifactId: "artifact", lessonPlans: [{ lesson_id: "lesson-1", lesson_title: "Lección", module_title: "Módulo", components: [{ type: "DIALOGUE" }] }], lessonSources: [], requiresSources: true, documentary: true, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
+    logPrefix: "[Prueba documental]", models: ["gpt-5-test"], modelRuntimeConfig: runtime,
+  });
+  assert.deepEqual(result, { success: true });
+  assert.deepEqual(reviews, [original.title, corrected.title]);
+  assert.equal(requests.length, 2);
+  assert.match(requests[1].fix_instructions || "", /sin respaldo/);
+  assert.equal(writes.length, 1);
+  const [row] = writes[0].p_rows as Array<{ content: { title: string }; assets: Record<string, unknown> }>;
+  assert.equal(row.content.title, corrected.title);
+  assert.equal(row.assets.course_source_evidence_id, receipt);
 });
 
 test("component replacement and lesson state are committed atomically with execution ownership", async () => {

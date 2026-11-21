@@ -91,14 +91,6 @@
         "5fdcf6604d753da747a627068fed43845317dec2c40cfac31164fd5da6bbcb8e": 1
       }
     },
-    "src/app/admin/artifacts/new/page.tsx": {
-      "@next/next/no-html-link-for-pages": {
-        "ded466fdcb6491745351b07e1b33fc6a48cc7da4f4da7b17e18cf74f1d50585e": 3
-      },
-      "@typescript-eslint/no-unused-vars": {
-        "376c30f78219c41403b291fe5614dfd97e379ffdb8c6bbc198fc2c71e6f9a1e8": 1
-      }
-    },
     "src/app/admin/heygen/HeygenPlatformTools.tsx": {
       "react-hooks/set-state-in-effect": {
         "c2f42589bb8e471462ff8969007b98592b2c52855e60d97e6cbaa138aeb84f36": 1
@@ -197,14 +189,6 @@
         "c77b9da760e3869be5bc98bb08584fb745166aaf044361bdae6c41d2e3ae5e9e": 1
       }
     },
-    "src/app/builder/artifacts/new/page.tsx": {
-      "@next/next/no-html-link-for-pages": {
-        "ded466fdcb6491745351b07e1b33fc6a48cc7da4f4da7b17e18cf74f1d50585e": 3
-      },
-      "@typescript-eslint/no-unused-vars": {
-        "376c30f78219c41403b291fe5614dfd97e379ffdb8c6bbc198fc2c71e6f9a1e8": 1
-      }
-    },
     "src/app/builder/layout.tsx": {
       "prefer-const": {
         "c77b9da760e3869be5bc98bb08584fb745166aaf044361bdae6c41d2e3ae5e9e": 1
@@ -251,11 +235,6 @@
     "src/domains/course-delivery/components/DeliverySettingsPanel.tsx": {
       "react-hooks/set-state-in-effect": {
         "fdc194d2acd29e91a949a10a9edb46579f53687db9f23a8b02e7426642cbe4f2": 1
-      }
-    },
-    "src/domains/course-delivery/hooks/useCourseDelivery.ts": {
-      "react-hooks/set-state-in-effect": {
-        "068c7cd8ca1b87072dcdc327a57cdbd3d6c3d630488107b40beffc6fec4a7ea1": 1
       }
     },
     "src/domains/curation/components/CurationSettingsManager.tsx": {

@@ -2,6 +2,7 @@ import { groundingRejectionDiagnostic } from "../../lib/grounding-rejection-diag
 
 export type CourseSourceGroundingRejection =
   | "UNSUPPORTED_OUTPUT"
+  | "MISSING_CITATIONS"
   | "SOURCE_NOT_IN_CONTEXT"
   | "QUOTE_NOT_IN_SOURCE"
   | "CLAIM_NOT_IN_OUTPUT";

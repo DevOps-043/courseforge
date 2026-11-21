@@ -1,9 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { executeDeliveryRun } from "../services/delivery-generation";
 import { deliveryHash } from "../lib/delivery-hash";
 import { emptyDeliveryDocument, type SessionPlan } from "../types/delivery.schemas";
+import { CourseSourceError } from "../../course-sources/course-source-error";
+import { documentFixture } from "./delivery-documents.fixture";
 
 test("worker conserva unidades guardadas y reanuda solo pendientes con la configuración fijada", async () => {
   const previous = process.env.SYNCHRONOUS_COURSES_ENABLED;
@@ -88,4 +91,55 @@ test("worker conserva unidades guardadas y reanuda solo pendientes con la config
     if (previous === undefined) delete process.env.SYNCHRONOUS_COURSES_ENABLED;
     else process.env.SYNCHRONOUS_COURSES_ENABLED = previous;
   }
+});
+
+test("el worker de sesiones guarda la versión corregida junto con el progreso confirmado", async (testContext) => {
+  const requireSibling = createRequire(__filename);
+  const sourceService = requireSibling("../../course-sources/course-source-generation.service");
+  const repository = requireSibling("../services/delivery-repository");
+  const { id, context, workspace, material } = documentFixture();
+  const run = { id, operation: "MATERIALS", artifact_id: id, organization_id: id,
+    expected_revision: workspace.revision, units: [{ id, ready: false }], snapshot: { document: workspace.document,
+      context: structuredClone(context), settings: { model: { model_name: "gpt-4o", fallback_model: null } } } };
+  const receipt = "10000000-0000-4000-8000-000000000002";
+  const rejected = structuredClone(material);
+  rejected.concepts[0].explanation = "Afirmación sin respaldo";
+  const reviewed: unknown[] = [];
+  testContext.mock.method(requireSibling("../config/delivery-enabled"), "deliveryEnabled", () => true);
+  testContext.mock.method(repository, "readDeliveryContext", async () => context);
+  testContext.mock.method(repository, "readDeliveryWorkspace", async () => workspace);
+  testContext.mock.method(sourceService, "prepareCourseGeneration", async () => ({ sources: [] }));
+  testContext.mock.method(sourceService, "attestCourseGeneration", async (_admin: unknown, _context: unknown, output: typeof material) => {
+    reviewed.push(output);
+    if (output.concepts[0].explanation === rejected.concepts[0].explanation) throw new CourseSourceError(409, "Rechazado", "UNSUPPORTED_OUTPUT");
+    return receipt;
+  });
+  const updates = { eq: () => updates, select: () => updates, maybeSingle: async () => ({ data: { id }, error: null }) };
+  const database = {
+    from() {
+      return { select: () => ({ eq: () => ({ single: async () => ({ data: run, error: null }) }) }),
+        update: () => updates };
+    },
+    async rpc(name: string, payload: Record<string, unknown>) {
+      if (name === "claim_course_delivery_run") return { data: true, error: null };
+      if (name === "take_delivery_material_retry") return { data: null, error: null };
+      if (name === "finish_delivery_material_run") return { data: payload.p_status, error: null };
+      assert.equal(name, "commit_course_source_delivery_unit");
+      assert.equal(payload.p_receipt, receipt);
+      assert.deepEqual(payload.p_units, [{ id, ready: true, model: "gpt-4o", generating: false, attempts: 1 }]);
+      assert.deepEqual((payload.p_document as typeof workspace.document).materials[id], material);
+      return { data: workspace.revision + 1, error: null };
+    },
+  } as unknown as SupabaseClient;
+  const corrections: (string | undefined)[] = [];
+  const result = await executeDeliveryRun(database, id, async (_admin, _run, _unit, _deadline, correction) => {
+    corrections.push(correction);
+    return { output: correction ? material : rejected, model: "gpt-4o" };
+  });
+  assert.equal(corrections.length, 2);
+  assert.equal(corrections[0], undefined);
+  assert.match(corrections[1] || "", /sin respaldo/);
+  assert.deepEqual(reviewed, [rejected, material]);
+  assert.equal(run.units[0].ready, true);
+  assert.equal(result.status, "COMPLETED");
 });

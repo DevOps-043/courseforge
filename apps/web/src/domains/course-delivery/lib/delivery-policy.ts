@@ -1,10 +1,9 @@
-import type { AgendaSession, DeliveryConfig, DeliveryDocument, SessionMaterials, SessionPlan } from "../types/delivery.schemas";
+import type { AgendaSession, CurriculumLesson, DeliveryConfig, DeliveryDocument, SessionMaterials, SessionPlan } from "../types/delivery.schemas";
 import { routeIssues, hybridPlanIssues } from "./hybrid-route";
 
 export function deliveryRequirements(mode: DeliveryConfig["mode"]) {
   return { nexus: mode !== "SYNCHRONOUS", sessions: mode !== "NEXUS", assembly: mode !== "SYNCHRONOUS" };
 }
-export interface CurriculumLesson { id: string; title: string; module: string; objective: string }
 export function curriculumLessons(modules: unknown): CurriculumLesson[] {
   if (!Array.isArray(modules)) throw new Error("El temario no contiene módulos válidos.");
   return modules.flatMap((module, mi) => {

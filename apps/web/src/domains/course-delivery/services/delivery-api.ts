@@ -21,8 +21,16 @@ export const deliveryCommandSchema = z.discriminatedUnion("action", [
 ]);
 export async function deliverySnapshot(artifactId: string, includeSettings = true) {
   const { tenant, admin } = await requireDeliveryAccess(artifactId);
-  const workspace = await readDeliveryWorkspace(admin, artifactId, tenant.organizationId);
+  let workspace = await readDeliveryWorkspace(admin, artifactId, tenant.organizationId);
   const canReview = ["ADMIN", "ARQUITECTO", "SUPERADMIN"].includes(tenant.platformRole || "");
+  const { data: run, error } = workspace.revision && workspace.document.config.mode !== "NEXUS" ? await admin.from("course_delivery_runs")
+    .select("id,operation,status,units,last_error,lease_expires_at,retry_units,expected_revision").eq("artifact_id", artifactId).eq("organization_id", tenant.organizationId)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle() : { data: null, error: null };
+  if (error) throw new Error("No se pudo leer el progreso de impartición.");
+  // Si el guardado ocurrió entre consultas, devuelve su revisión antes de detener el sondeo.
+  if (run && run.expected_revision > workspace.revision) {
+    workspace = await readDeliveryWorkspace(admin, artifactId, tenant.organizationId);
+  }
   if (workspace.document.config.mode === "NEXUS") return {
     organizationSlug:tenant.organizationSlug, enabled: deliveryEnabled(), workspace,
     readiness: { planReady: true, materialsReady: true, documentsReady: true, nexus: true, sessions: false, assembly: true },
@@ -31,10 +39,6 @@ export async function deliverySnapshot(artifactId: string, includeSettings = tru
     sourceCount: 0, run: null, settings: [], canReview,
   };
   const context = await readDeliveryContext(admin, artifactId, tenant.organizationId);
-  const { data: run, error } = workspace.revision ? await admin.from("course_delivery_runs")
-    .select("id,operation,status,units,last_error,lease_expires_at,retry_units").eq("artifact_id", artifactId).eq("organization_id", tenant.organizationId)
-    .order("created_at", { ascending: false }).limit(1).maybeSingle() : { data: null, error: null };
-  if (error) throw new Error("No se pudo leer el progreso de impartición.");
   const settings = includeSettings ? await Promise.all(
     (["AGENDA", "PLAN", "MATERIALS"] as const).map(async operation => {
       try { const effective = await resolveDeliverySettings(admin, tenant.organizationId, operation); return { operation, model: effective.model.model_name, inherited: effective.inherited, source: effective.modelSource, version: effective.prompt.version }; }

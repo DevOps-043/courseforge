@@ -1,5 +1,6 @@
 const REJECTIONS = {
   UNSUPPORTED_OUTPUT: "La revisión detectó contenido sin respaldo suficiente en las fuentes.",
+  MISSING_CITATIONS: "La revisión favorable no incluyó citas verificables.",
   SOURCE_NOT_IN_CONTEXT: "La revisión citó una fuente ajena al contexto de generación.",
   QUOTE_NOT_IN_SOURCE: "Una cita de la revisión no coincide literalmente con la fuente.",
   CLAIM_NOT_IN_OUTPUT: "La revisión citó una afirmación que no coincide con el componente.",

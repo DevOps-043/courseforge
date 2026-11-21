@@ -158,7 +158,7 @@ function fixture(policy: string | null = "DOCUMENTS_ONLY", approved = true, long
           if (providerFailure) throw providerFailure;
           assert.equal(request.tools, undefined);
           assert.match(String(request.prompt), /Audita el respaldo/);
-          return { object: auditorOutput, usage: {} };
+          return { object: typeof auditorOutput === "function" ? auditorOutput(modelCalls, request.prompt) : auditorOutput, usage: {} };
         },
       },
       "../../../netlify/functions/shared/bootstrap": {
@@ -356,7 +356,8 @@ test("un fallo técnico del auditor no crea un recibo ni acepta el componente", 
 
 test("el auditor propaga cada rechazo específico sin crear un recibo", async () => {
   const candidates = {
-    UNSUPPORTED_OUTPUT: { ...grounding, supported: false },
+    UNSUPPORTED_OUTPUT: { ...grounding, supported: false, citations: [] },
+    MISSING_CITATIONS: { ...grounding, citations: [] },
     SOURCE_NOT_IN_CONTEXT: { ...grounding, citations: [{ ...grounding.citations[0], sourceId: id(90) }] },
     QUOTE_NOT_IN_SOURCE: { ...grounding, citations: [{ ...grounding.citations[0], quote: "cita privada inexistente" }] },
     CLAIM_NOT_IN_OUTPUT: { ...grounding, citations: [{ ...grounding.citations[0], claim: "afirmación privada inexistente" }] },
@@ -366,8 +367,24 @@ test("el auditor propaga cada rechazo específico sin crear un recibo", async ()
     const resolved=await current.service.prepareCourseGeneration(current.database,id(4),"MATERIALS","lesson-1-G2");
     await assert.rejects(current.service.attestCourseGeneration(current.database,resolved,output,"gemini-test"), {status:409,groundingReason:reason});
     assert.equal(current.effects.some(item=>item.name==="attest_course_source_generation"),false);
-    assert.equal(current.calls(),1);
+    assert.equal(current.calls(), reason === "UNSUPPORTED_OUTPUT" ? 1 : 2);
   }
+});
+
+test("el auditor corrige una cita inexacta y confirma solo el contenido exacto", async () => {
+  const current = fixture("DOCUMENTS_ONLY", true, [], undefined, (attempt: number, prompt: string) => {
+    assert.match(prompt, /Las decisiones didácticas/);
+    if (attempt === 2) assert.match(prompt, /QUOTE_NOT_IN_SOURCE/);
+    return attempt === 1
+      ? { ...grounding, citations: [{ ...grounding.citations[0], quote: "Una paráfrasis ausente de la fuente" }] }
+      : grounding;
+  });
+  const resolved = await current.service.prepareCourseGeneration(current.database, id(4), "MATERIALS", "lesson-1-G2");
+  assert.equal(await current.service.attestCourseGeneration(current.database, resolved, output, "gemini-test"), id(3));
+  assert.equal(current.calls(), 2);
+  const receipts = current.effects.filter(item => item.name === "attest_course_source_generation");
+  assert.equal(receipts.length, 1);
+  assert.equal(receipts[0].payload.p_output, output);
 });
 
 test("cursos históricos no reciben snapshots; política vacía y revisión pendiente bloquean antes de generar", async () => {

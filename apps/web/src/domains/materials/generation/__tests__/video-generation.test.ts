@@ -116,13 +116,19 @@ test("oversized demo is corrected through narration-only revisions before storyb
   let scripts = 0;
   const oversized = scriptDraft(15_000);
   const corrected = scriptDraft(9_900);
+  const longScriptPrompt = "Expande todos los pasos y añade ejemplos a cada sección.";
   const result = await generateVideoInStages({
-    input, contract, componentType: "VIDEO_DEMO", prompts, models: ["primary"],
+    input, contract, componentType: "VIDEO_DEMO", prompts: { ...prompts, componentPrompts: { VIDEO_DEMO: longScriptPrompt } }, models: ["primary"],
     request: async ({ prompt }) => {
       if (prompt.includes("ETAPA ACTUAL: GUION")) {
-        if (++scripts === 1) return { content: oversized };
+        if (++scripts === 1) {
+          assert.ok(prompt.includes(longScriptPrompt));
+          return { content: oversized };
+        }
         assert.match(prompt, /EXCESSIVE_NARRATION/);
         assert.match(prompt, /narration_sections/);
+        assert.ok(!prompt.includes(longScriptPrompt));
+        assert.match(prompt, /PRESUPUESTO MEDIDO DE REESCRITURA/);
         return { content: { narration_sections: corrected.script.sections.map((section, index) => ({
           section_number: index + 1, narration_text: section.narration_text,
         })) } };

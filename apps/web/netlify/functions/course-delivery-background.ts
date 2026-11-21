@@ -15,7 +15,7 @@ export const handler: Handler = async event => {
     const result = await executeDeliveryRun(createServiceRoleClient(), parsed.data.runId);
     if (result.status === "QUEUED") await dispatchBackgroundFunctionJson("course-delivery-background", { runId: result.runId }, {
       fallbackError: "El reintento quedó en cola. Actualiza el estado para reanudar si no comienza.",
-      localHandlerLoader: () => import("./course-delivery-background"),
+      localHandlerLoader: async () => ({ handler }),
     });
     return jsonResponse({ success: result.status !== "FAILED", ...result }, result.status === "FAILED" ? 503 : 200);
   }
