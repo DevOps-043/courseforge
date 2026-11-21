@@ -34,3 +34,9 @@
 - [x] 6.2 Unificar anchos y mostrar el prompt como opción avanzada plegable.
 - [x] 6.3 Verificar interacción y presentación de componentes con datos simulados en escritorio y móvil; registrar límites en reports/plan-layout.md.
 - [ ] 6.4 Ejecutar pruebas de generación con grupos/lotes tras revisar esta entrega visual.
+
+## 7. Selectores de modelos de sesiones
+- [x] 7.1 Reutilizar PremiumSelect y extraer el catálogo de texto compartido con las fases.
+- [x] 7.2 Conservar herencia y valores existentes, permitir Sin respaldo y evitar respaldo igual al principal.
+- [x] 7.3 Verificar tipos, lint comparado con HEAD y registrar límites en reports/model-selectors.md.
+- [ ] 7.4 Verificar interacción visual y guardado en un entorno accesible; Chrome agotó el acceso al servidor local.

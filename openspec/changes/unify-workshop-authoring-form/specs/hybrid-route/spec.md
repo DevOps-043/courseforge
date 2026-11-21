@@ -1,5 +1,17 @@
 ## ADDED Requirements
 
+### Requirement: Selección de modelos por operación de sesiones
+La configuración de agenda, plan y materiales de sesión SHALL ofrecer selectores
+con el mismo catálogo de modelos de texto usado por las fases del pipeline.
+SHALL conservar la herencia, mostrar valores configurados fuera del catálogo y
+permitir un respaldo opcional distinto del principal. Los cambios guardados
+SHALL aplicarse solo a nuevas ejecuciones.
+
+#### Scenario: Cambiar modelo y retirar respaldo
+- **WHEN** el autor desactiva la herencia y selecciona modelos para una operación
+- **THEN** puede guardar un principal y un respaldo distinto o elegir Sin respaldo
+- **AND** no se modifica la configuración fijada de una ejecución iniciada
+
 ### Requirement: Recorrido híbrido explícito en Architect
 Architect SHALL permitir guardar una secuencia ordenada de tramos asíncronos de Learning y sesiones síncronas de Hub después de aprobar el temario. Cada tramo asíncrono SHALL indicar lecciones, título y duración; cada sesión SHALL conservar sus IDs y duración. El resumen SHALL separar tiempos de ambas modalidades sin sumar dos veces la cobertura temática.
 

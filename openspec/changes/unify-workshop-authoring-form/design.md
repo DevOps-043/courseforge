@@ -17,4 +17,10 @@ La configuración canónica es deliveryConfigSchema y se persiste con save_cours
 
 ## Risks
 
+La configuración de agenda, plan y materiales de sesión reutiliza PremiumSelect y
+el catálogo de modelos de texto de las fases. Conserva modelos configurados fuera
+del catálogo como opciones visibles, permite retirar el respaldo y evita repetir
+el modelo principal como respaldo. La herencia y el snapshot de ejecuciones
+iniciadas mantienen su contrato; no se cambia la configuración remota al editar UI.
+
 Proteger reintentos, aislamiento tenant y configuración anterior. Los formularios no deben elegir una modalidad que el servidor tenga deshabilitada. El formato SCORM conserva su proceso de importación; elegir un taller no genera automáticamente sesiones ni las aprueba.
