@@ -1,5 +1,4 @@
-
-import fetch from 'node-fetch';
+export {};
 
 interface VimeoOEmbedResponse {
     duration?: number;

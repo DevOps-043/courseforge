@@ -292,93 +292,89 @@ async function synthesizeDeckVisibleCopyBatch(params: SynthesizeVisibleCopyParam
 }> {
   const openAiKey = getOptionalOpenAIApiKey();
   const { model, fallbackModel } = resolveOpenAiTextModels(params.model?.modelName, params.model?.fallbackModel);
-  const configuredModels = openAiKey ? [model, fallbackModel] : [];
+  let selectedModel = model;
   const warnings: string[] = [];
   let attemptCount = 0;
   const accepted = new Map<string, CourseDeckSpec["slides"][number]>();
   let repairFeedback: string[] | undefined;
 
-  for (const model of configuredModels) {
-    try {
-      if (!openAiKey) break;
-      // One bounded repair per provider, using the same rules as final QA.
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        if (params.deadlineAt && Date.now() + SYNTHESIS_TIMEOUT_MS > params.deadlineAt) {
-          warnings.push("synthesis_deadline_exceeded");
-          break;
-        }
-        attemptCount += 1;
-        const pending = params.deckSpec.slides.filter((slide) => !accepted.has(slide.id));
-        const request = { ...params, repairFeedback,
-          acceptedSlides: [...(params.acceptedSlides || []), ...accepted.values()],
-          deckSpec: { ...params.deckSpec, slides: pending },
-        };
-        let deckSpec: CourseDeckSpec | undefined;
-        let result: Awaited<ReturnType<typeof synthesizeWithOpenAI>> | undefined;
-        try {
-          result = await synthesizeWithOpenAI(request, openAiKey, model);
-          const rawSlides = synthesisResponseSchema.parse(result.response).slides;
-          const responseIds = rawSlides.map((value) => {
-            const raw = asRecord(value);
-            const candidate = Object.keys(asRecord(raw.slide)).length ? asRecord(raw.slide)
-              : Object.keys(asRecord(raw.content)).length ? asRecord(raw.content) : raw;
-            return compactText(candidate.id);
-          });
-          if (new Set(responseIds).size !== responseIds.length || responseIds.some((id) => !pending.some((slide) => slide.id === id))) {
-            throw new Error("invalid_slide_ids");
-          }
-          const invalidIds: string[] = [];
-          const proposed: CourseDeckSpec = { ...request.deckSpec, slides: pending.flatMap((slide) => {
-            const responseIndex = responseIds.indexOf(slide.id);
-            try {
-              if (responseIndex < 0) throw new Error("missing_slide");
-              return normalizeSynthesis({ deckSpec: { ...request.deckSpec, slides: [slide] }, response: { slides: [rawSlides[responseIndex]] } }).slides;
-            } catch {
-              invalidIds.push(slide.id);
-              return [];
-            }
-          }) };
-          const findings = validateCourseDeckVisibleCopy({ ...params.deckSpec,
-            slides: [...request.acceptedSlides, ...proposed.slides],
-          }).filter((finding) => finding.severity === "error");
-          for (const slide of proposed.slides) {
-            if (!findings.some((finding) => !finding.slideId || finding.slideId === slide.id)) accepted.set(slide.id, slide);
-          }
-          repairFeedback = [
-            ...findings.map((finding) => `${finding.slideId || "deck"}: ${finding.code}: ${finding.message}`),
-            ...invalidIds.map((id) => `${id}: missing_or_invalid_slide: completa todos los campos solicitados.`),
-          ];
-          deckSpec = { ...params.deckSpec, slides: params.deckSpec.slides.map((slide) => accepted.get(slide.id) || slide) };
-        } catch (error) {
-          // Do not persist provider response bodies, which can include private data.
-          repairFeedback = [error instanceof SyntaxError ? "invalid_json: devuelve JSON completo." : "provider_or_contract_error: respuesta no disponible o contrato invalido."];
-          warnings.push(`${model}: ${repairFeedback[0]}`);
-        }
-        if (deckSpec && result && accepted.size === params.deckSpec.slides.length && repairFeedback.length === 0) {
-          return {
-            deckSpec,
-            trace: {
-              appliedSlideCount: deckSpec.slides.length,
-              batches: [{
-                applied: true,
-                attempts: attemptCount,
-                batchNumber: 1,
-                model: result.model,
-                provider: result.provider,
-                slides: slideAuditEntries(deckSpec).map((slide) => ({ ...slide, status: "GENERATED", findingCodes: [] })),
-                warning: warnings.length > 0 ? warnings.join(" | ") : null,
-              }],
-              model: result.model,
-              provider: result.provider,
-              warning: warnings.length > 0 ? warnings.join(" | ") : null,
-            },
-          };
-        }
-      }
-      throw new Error(`El copy sigue sin pasar QA tras la correccion: ${repairFeedback?.join("; ")}`);
-    } catch (error) {
-      warnings.push(error instanceof Error ? `${model}: ${error.message}` : `${model}: error desconocido`);
+  // Cada lote permite una reparación. Una falla de la llamada cambia al respaldo.
+  for (let attempt = 0; openAiKey && attempt < 2; attempt += 1) {
+    if (params.deadlineAt && Date.now() + SYNTHESIS_TIMEOUT_MS > params.deadlineAt) {
+      warnings.push("synthesis_deadline_exceeded");
+      break;
     }
+    attemptCount += 1;
+    const pending = params.deckSpec.slides.filter((slide) => !accepted.has(slide.id));
+    const request = { ...params, repairFeedback,
+      acceptedSlides: [...(params.acceptedSlides || []), ...accepted.values()],
+      deckSpec: { ...params.deckSpec, slides: pending },
+    };
+    let deckSpec: CourseDeckSpec | undefined;
+    let result: Awaited<ReturnType<typeof synthesizeWithOpenAI>> | undefined;
+    try {
+      result = await synthesizeWithOpenAI(request, openAiKey, selectedModel);
+      const rawSlides = synthesisResponseSchema.parse(result.response).slides;
+      const responseIds = rawSlides.map((value) => {
+        const raw = asRecord(value);
+        const candidate = Object.keys(asRecord(raw.slide)).length ? asRecord(raw.slide)
+          : Object.keys(asRecord(raw.content)).length ? asRecord(raw.content) : raw;
+        return compactText(candidate.id);
+      });
+      if (new Set(responseIds).size !== responseIds.length || responseIds.some((id) => !pending.some((slide) => slide.id === id))) {
+        throw new Error("invalid_slide_ids");
+      }
+      const invalidIds: string[] = [];
+      const proposed: CourseDeckSpec = { ...request.deckSpec, slides: pending.flatMap((slide) => {
+        const responseIndex = responseIds.indexOf(slide.id);
+        try {
+          if (responseIndex < 0) throw new Error("missing_slide");
+          return normalizeSynthesis({ deckSpec: { ...request.deckSpec, slides: [slide] }, response: { slides: [rawSlides[responseIndex]] } }).slides;
+        } catch {
+          invalidIds.push(slide.id);
+          return [];
+        }
+      }) };
+      const findings = validateCourseDeckVisibleCopy({ ...params.deckSpec,
+        slides: [...request.acceptedSlides, ...proposed.slides],
+      }).filter((finding) => finding.severity === "error");
+      for (const slide of proposed.slides) {
+        if (!findings.some((finding) => !finding.slideId || finding.slideId === slide.id)) accepted.set(slide.id, slide);
+      }
+      repairFeedback = [
+        ...findings.map((finding) => `${finding.slideId || "deck"}: ${finding.code}: ${finding.message}`),
+        ...invalidIds.map((id) => `${id}: missing_or_invalid_slide: completa todos los campos solicitados.`),
+      ];
+      deckSpec = { ...params.deckSpec, slides: params.deckSpec.slides.map((slide) => accepted.get(slide.id) || slide) };
+    } catch (error) {
+      // Do not persist provider response bodies, which can include private data.
+      repairFeedback = [error instanceof SyntaxError ? "invalid_json: devuelve JSON completo." : "provider_or_contract_error: respuesta no disponible o contrato invalido."];
+      warnings.push(`${selectedModel}: ${repairFeedback[0]}`);
+      if (!result) selectedModel = fallbackModel;
+    }
+    if (deckSpec && result && accepted.size === params.deckSpec.slides.length && repairFeedback.length === 0) {
+      return {
+        deckSpec,
+        trace: {
+          appliedSlideCount: deckSpec.slides.length,
+          batches: [{
+            applied: true,
+            attempts: attemptCount,
+            batchNumber: 1,
+            model: result.model,
+            provider: result.provider,
+            slides: slideAuditEntries(deckSpec).map((slide) => ({ ...slide, status: "GENERATED", findingCodes: [] })),
+            warning: warnings.length > 0 ? warnings.join(" | ") : null,
+          }],
+          model: result.model,
+          provider: result.provider,
+          warning: warnings.length > 0 ? warnings.join(" | ") : null,
+        },
+      };
+    }
+  }
+  if (repairFeedback?.length) {
+    warnings.push(`El copy sigue sin pasar QA tras la corrección: ${repairFeedback.join("; ")}`);
   }
 
   const fallbackDeck = { ...params.deckSpec, slides: params.deckSpec.slides.map((slide) => accepted.get(slide.id) || slide) };
