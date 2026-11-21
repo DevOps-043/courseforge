@@ -48,8 +48,9 @@ export async function getArtifactGenerationSnapshotAction(artifactId: string) {
 
   const { data: artifact, error } = await authorized.admin
     .from("artifacts")
-    .select("descripcion, generation_metadata, nombres, objetivos, production_complete, qa_status, state, validation_report, updated_at")
+    .select("descripcion, generation_metadata, nombres, objetivos, production_complete, state, validation_report, updated_at")
     .eq("id", artifactId)
+    .eq("organization_id", authorized.artifact.organization_id)
     .single();
 
   if (error || !artifact) {

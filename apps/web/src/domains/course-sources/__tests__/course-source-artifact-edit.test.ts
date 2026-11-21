@@ -9,6 +9,7 @@ const course = "10000000-0000-4000-8000-000000000001";
 function fixture(documentary = false, authorized = true) {
   const writes: Record<string, unknown>[] = [];
   const filters: Record<string, unknown> = {};
+  let selection = "";
   let dirty = 0;
   const query = {
     update: (value: Record<string, unknown>) => {
@@ -23,10 +24,16 @@ function fixture(documentary = false, authorized = true) {
       filters[key] = value;
       return query;
     },
-    select: () => query,
+    select: (columns: string) => { selection = columns; return query; },
     maybeSingle: async () => ({ data: { id: course }, error: null }),
+    single: async () => ({ data: { state: "GENERATING", generation_metadata: {
+      run_id: course, started_at: "2026-01-01T00:00:00.000Z", base_queue: { invocations: 0 },
+    } }, error: null }),
   };
   const action = load<{
+    getArtifactGenerationSnapshotAction: (id: string) => Promise<{
+      success: boolean; artifact?: { can_retry_documentary_base: boolean };
+    }>;
     updateArtifactContentAction: (
       id: string,
       updates: unknown,
@@ -80,8 +87,17 @@ function fixture(documentary = false, authorized = true) {
       SOURCE_GENERATION_LIMITS,
     },
   });
-  return { action, writes, filters, dirty: () => dirty };
+  return { action, writes, filters, dirty: () => dirty, selection: () => selection };
 }
+
+test("la lectura de Base usa las columnas de artifacts y la organización autorizada", async () => {
+  const current = fixture();
+  const result = await current.action.getArtifactGenerationSnapshotAction(course);
+  assert.equal(result.success, true);
+  assert.equal(result.artifact?.can_retry_documentary_base, true);
+  assert.equal(current.filters.organization_id, course);
+  assert.doesNotMatch(current.selection(), /qa_status/);
+});
 test("edición histórica usa autorización del recurso y campos permitidos, sin depender de grants documentales al navegador", async () => {
   const current = fixture();
   assert.equal(
