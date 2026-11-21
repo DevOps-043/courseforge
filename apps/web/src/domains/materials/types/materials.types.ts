@@ -449,7 +449,7 @@ export interface MaterialsGenerationInput {
     fix_instructions?: string;
 }
 
-// Output de generación de materiales (respuesta de Gemini)
+// Output de generación de materiales (respuesta del modelo)
 export interface MaterialsGenerationOutput {
     components: {
         DIALOGUE?: DialogueContent;

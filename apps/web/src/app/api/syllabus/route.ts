@@ -1,7 +1,6 @@
 import { prepareCourseGeneration, attestCourseGeneration } from "@/domains/course-sources/course-source-generation.service";
 import { courseSourcePrompt } from "@/domains/course-sources/course-source-generation";
 import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
-import { GoogleGenAI } from "@google/genai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import { SYLLABUS_PROMPT } from "@/domains/syllabus/config/syllabus.config";
@@ -14,8 +13,7 @@ import {
 } from "@/domains/syllabus/lib/syllabus-generation";
 import { SyllabusGenerationMetadata } from "@/domains/syllabus/types/syllabus.types";
 import {
-  getGeminiApiKey,
-  getOptionalOpenAIApiKey,
+  getOpenAIApiKey,
   isNetlifyDeployment,
 } from "@/lib/server/env";
 import { getPipelineModelSettings } from "@/lib/server/model-settings";
@@ -38,7 +36,6 @@ import {
   generateSyllabusResearch,
   type SyllabusModelClients,
 } from "@/domains/syllabus/lib/syllabus-model-provider";
-import { getTextModelProvider } from "@/shared/ai/text-model-provider";
 import { syllabusGenerationRequestSchema } from "@/domains/syllabus/syllabus-generation-request.schema";
 import { syllabusManagementRequestSchema } from "@/domains/syllabus/syllabus-management-request.schema";
 import { runAllValidations } from "@/domains/syllabus/validators/syllabus.validators";
@@ -61,11 +58,6 @@ import { SYLLABUS_PROMPT_CODE } from "@/shared/config/prompts/pipeline.prompts";
 
 const MAX_SYLLABUS_REQUEST_BYTES = 768 * 1024;
 const MAX_SYLLABUS_MANAGEMENT_REQUEST_BYTES = 256 * 1024;
-
-interface GroundingMetadata {
-  webSearchQueries?: string[];
-  groundingChunks?: unknown[];
-}
 
 async function authorizeSyllabusArtifact(artifactId: string) {
   const supabase = await createClient();
@@ -633,49 +625,25 @@ export async function POST(request: Request) {
     );
     const searchModelName =
       syllabusSettings.fallback_model || syllabusSettings.model_name;
-    const configuredModels = Array.from(
-      new Set([syllabusSettings.model_name, searchModelName].filter(Boolean)),
-    );
-    const clients: SyllabusModelClients = {};
-    if (
-      configuredModels.some((model) => getTextModelProvider(model) === "gemini")
-    ) {
-      clients.gemini = new GoogleGenAI({ apiKey: getGeminiApiKey() });
-    }
-    if (
-      configuredModels.some((model) => getTextModelProvider(model) === "openai")
-    ) {
-      const openAiApiKey = getOptionalOpenAIApiKey();
-      if (!openAiApiKey) {
-        throw new Error(
-          "Configuracion incompleta: falta OPENAI_API_KEY para el modelo del temario.",
-        );
-      }
-      clients.openai = new OpenAI({ apiKey: openAiApiKey });
-    }
     const researchPrompt = buildSyllabusResearchPrompt(ideaCentral, objetivos);
+    const clients: SyllabusModelClients = { openai: new OpenAI({ apiKey: getOpenAIApiKey() }) };
 
     let researchContext = "";
-    let researchMetadata: GroundingMetadata | null = null;
+    let researchMetadata: Awaited<ReturnType<typeof generateSyllabusResearch>> | null = null;
 
     try {
       if (!sourceContext) {
-      const researchResult = await generateSyllabusResearch({
-        clients,
-        model: searchModelName,
-        prompt: researchPrompt,
-        temperature: 0.7,
-      });
-
-      researchContext = researchResult.text;
-      researchMetadata =
-        (researchResult.groundingMetadata as GroundingMetadata | undefined) ||
-        null;
-
-      logger.info("syllabus.research_completed", {
-        artifactId,
-        resultCharacters: researchContext.length,
-      });
+        researchMetadata = await generateSyllabusResearch({
+          clients,
+          model: searchModelName,
+          prompt: researchPrompt,
+          temperature: 0.7,
+        });
+        researchContext = researchMetadata.text;
+        logger.info("syllabus.research_completed", {
+          artifactId,
+          resultCharacters: researchContext.length,
+        });
       }
     } catch (researchError) {
       logger.warn("syllabus.research_failed", {
@@ -729,8 +697,8 @@ export async function POST(request: Request) {
     const metadata: SyllabusGenerationMetadata = {
       ...content.generation_metadata,
       research_summary: researchContext,
-      search_queries: researchMetadata?.webSearchQueries || [],
-      search_sources: researchMetadata,
+      search_queries: researchMetadata?.searchQueries || [],
+      search_sources: researchMetadata?.groundingMetadata || null,
       models_used: {
         search: searchModelName,
         architect: mainModelName,

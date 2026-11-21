@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAiModel } from "../../../../netlify/functions/shared/bootstrap";
 import { recordAiFailure, recordAiSdkUsage } from "../../../shared/ai/usage-telemetry";
-import { getTextModelProvider, isOpenAiReasoningModel } from "../../../shared/ai/text-model-provider";
+import { isOpenAiReasoningModel, resolveOpenAiTextModels } from "../../../shared/ai/text-model-provider";
 import { createOperationalLogger } from "../../../lib/server/operational-logger";
 import { DELIVERY_LIMITS, deliveryGenerationTimeout, deliveryUnitBudget } from "../config/delivery.config";
 import { deliveryGenerationFailure, type DeliveryGenerationStage } from "../lib/delivery-generation-failure";
@@ -43,30 +43,27 @@ export async function generateDeliveryUnit(admin: SupabaseClient, run: DeliveryR
     ...(run.operation === "PLAN" && sources.length ? { sourceRules: PLAN_SOURCE_RULES } : {}),
     outputContract: z.toJSONSchema(schema),
   });
-  for (const model of [settings.model.model_name, settings.model.fallback_model].filter((value): value is string => Boolean(value))) {
+  const { model: primary, fallbackModel: secondary } = resolveOpenAiTextModels(settings.model.model_name, settings.model.fallback_model);
+  for (const model of settings.model.fallback_model ? [primary, secondary] : [primary]) {
     const startedAt = Date.now();
     const timeoutMs = Math.min(deliveryGenerationTimeout(run.operation), deadline - startedAt);
     if (timeoutMs < 1000) throw new DOMException("Se agotó el presupuesto de generación.", "TimeoutError");
-    const provider = getTextModelProvider(model);
-    if (!provider) throw new Error("El modelo configurado no tiene proveedor compatible.");
     const telemetry = { artifactId: run.artifact_id, organizationId: run.organization_id, runId: run.id, lessonId: unit.id, operation: settings.settingType, pipelineStep: run.operation };
     try {
       const level = settings.model.thinking_level || "medium";
       const reasoning = isOpenAiReasoningModel(model);
-      const providerOptions: Parameters<typeof generateObject>[0]["providerOptions"] = provider === "gemini" && model.startsWith("gemini-3")
-        ? { google: { thinkingConfig: { thinkingLevel: level } } }
-        : provider === "openai" ? { openai: { store: false, ...(reasoning ? { reasoningEffort: /^gpt-6/.test(model) && level === "minimal" ? "low" : level } : {}) } } : undefined;
+      const reasoningEffort = /^gpt-6/.test(model) && level === "minimal" ? "low" : level;
       const response = await generateObject({
         model: resolveAiModel(model), schema, prompt, maxRetries: 0,
         maxOutputTokens: DELIVERY_LIMITS.generationOutputTokens,
         ...(reasoning ? {} : { temperature: settings.model.temperature }),
-        providerOptions, abortSignal: AbortSignal.timeout(timeoutMs),
+        providerOptions: { openai: { store: false, ...(reasoning ? { reasoningEffort } : {}) } }, abortSignal: AbortSignal.timeout(timeoutMs),
       });
       await recordAiSdkUsage({ supabase: admin, context: telemetry, model, startedAt, usage: response.usage });
       return { output: response.object, model };
     } catch (error) {
-      await recordAiFailure({ supabase: admin, context: telemetry, model, provider, error, startedAt });
-      if (model === (settings.model.fallback_model || settings.model.model_name)) throw error;
+      await recordAiFailure({ supabase: admin, context: telemetry, model, provider: "openai", error, startedAt });
+      if (model === secondary || !settings.model.fallback_model) throw error;
     }
   }
   throw new Error("No se obtuvo contenido válido del modelo.");

@@ -17,8 +17,6 @@ const serverEnvSchema = z
     OPENAI_ADMIN_KEY: z.string().min(1).optional(),
     OPENAI_ORG_ID: z.string().min(1).optional(),
     OPENAI_PROJECT_ID: z.string().min(1).optional(),
-    GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
-    GOOGLE_API_KEY: z.string().min(1).optional(),
     HEYGEN_API_KEY: z.string().min(1).optional(),
     HYPERFRAMES_CLOUD_API_KEY: z.string().min(1).optional(),
     NETLIFY: z.string().min(1).optional(),
@@ -49,8 +47,6 @@ function buildEnvObject(): Record<string, string | undefined> {
     OPENAI_ADMIN_KEY: process.env.OPENAI_ADMIN_KEY,
     OPENAI_ORG_ID: process.env.OPENAI_ORG_ID,
     OPENAI_PROJECT_ID: process.env.OPENAI_PROJECT_ID,
-    GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
     HEYGEN_API_KEY: process.env.HEYGEN_API_KEY,
     HYPERFRAMES_CLOUD_API_KEY: process.env.HYPERFRAMES_CLOUD_API_KEY,
     NETLIFY: process.env.NETLIFY,
@@ -168,22 +164,10 @@ export function resolveBackgroundFunctionSecret(input: {
   );
 }
 
-export function getGeminiApiKey() {
-  const env = getParsedServerEnv();
-  const apiKey = env.GOOGLE_GENERATIVE_AI_API_KEY || env.GOOGLE_API_KEY;
-
-  if (!apiKey) {
-    throw new Error(
-      "Configuracion incompleta: falta GOOGLE_GENERATIVE_AI_API_KEY o GOOGLE_API_KEY",
-    );
-  }
-
-  return apiKey;
-}
-
-export function getOptionalGeminiApiKey() {
-  const env = getParsedServerEnv();
-  return env.GOOGLE_GENERATIVE_AI_API_KEY || env.GOOGLE_API_KEY || null;
+export function getOpenAIApiKey() {
+  const key = getOptionalOpenAIApiKey();
+  if (!key) throw new Error("Configuración incompleta: falta OPENAI_API_KEY");
+  return key;
 }
 
 export function getOptionalOpenAIApiKey() {

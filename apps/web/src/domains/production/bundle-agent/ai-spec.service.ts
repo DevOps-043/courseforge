@@ -1,12 +1,11 @@
 import { APP_CONFIG } from "../../../config/app";
-import { GoogleGenAI } from "@google/genai";
-import { getOptionalGeminiApiKey, getOptionalOpenAIApiKey } from "@/lib/server/env";
+import { getOptionalOpenAIApiKey } from "@/lib/server/env";
 import {
   fetchWithDeadline,
   readJsonResponseWithLimit,
   readResponseTextWithLimit,
 } from "@/lib/server/outbound-http";
-import { getPipelineModelSettings, type PipelineModelSettings } from "@/lib/server/model-settings";
+import { getPipelineModelSettings } from "@/lib/server/model-settings";
 import {
   bundleAgentMessageMetadataSchema,
   bundleAgentSpecSchema,
@@ -16,7 +15,8 @@ import {
 import { buildSpecFromConversation, normalizeBundleAgentSpecForRendering } from "./spec.service";
 import { sanitizeErrorMessage } from "./redaction.service";
 import { normalizeGeneratedBundleSpec } from "./ai-spec-normalizer.service";
-import { getBundleModelProvider, resolveGeminiBundleModel, resolveOpenAIBundleModel } from "./provider-model.service";
+
+import { resolveOpenAiTextModels, isOpenAiReasoningModel } from "../../../shared/ai/text-model-provider";
 
 const AI_SPEC_TIMEOUT_MS = 60_000;
 const AI_SPEC_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
@@ -31,7 +31,7 @@ interface MessageForSpec {
 export interface AiSpecGenerationResult {
   spec: BundleAgentSpec;
   model: string;
-  source: "openai" | "gemini" | "deterministic_fallback";
+  source: "openai" | "deterministic_fallback";
   warning: string | null;
 }
 
@@ -296,30 +296,6 @@ function buildOpenAIInput(input: { title?: string | null; messages: MessageForSp
   ];
 }
 
-function buildGeminiContents(input: { title?: string | null; messages: MessageForSpec[] }) {
-  const prompt = buildPrompt(input);
-  const imageReferences = getImageReferences(input.messages).slice(0, 4);
-
-  if (imageReferences.length === 0) {
-    return prompt;
-  }
-
-  return [
-    {
-      role: "user",
-      parts: [
-        { text: prompt },
-        ...imageReferences.map((reference) => ({
-          fileData: {
-            mimeType: reference.mimeType,
-            fileUri: reference.publicUrl!,
-          },
-        })),
-      ],
-    },
-  ];
-}
-
 function buildPrompt(input: {
   title?: string | null;
   messages: MessageForSpec[];
@@ -498,7 +474,7 @@ function extractJsonObject(text: string) {
     return trimmed.slice(first, last + 1);
   }
 
-  throw new Error("Gemini no devolvio un objeto JSON.");
+  throw new Error("OpenAI no devolvió un objeto JSON.");
 }
 
 function getOpenAIOutputText(payload: OpenAIResponsesPayload) {
@@ -544,7 +520,8 @@ async function generateSpecWithOpenAI(input: {
     body: JSON.stringify({
       model: input.model,
       input: buildOpenAIInput(input),
-      temperature: 0.3,
+      store: false,
+      ...(!isOpenAiReasoningModel(input.model) ? { temperature: 0.3 } : {}),
       text: {
         format: {
           type: "json_object",
@@ -577,108 +554,23 @@ async function generateSpecWithOpenAI(input: {
   };
 }
 
-async function generateSpecWithGemini(input: {
-  apiKey: string;
-  settings: PipelineModelSettings;
-  title?: string | null;
-  messages: MessageForSpec[];
-}): Promise<AiSpecGenerationResult> {
-  const model = resolveGeminiBundleModel({
-    configuredModel: input.settings.model_name,
-    configuredFallback: input.settings.fallback_model,
-    environmentModel: process.env.GEMINI_BUNDLE_AGENT_MODEL || process.env.GEMINI_MODEL,
-  });
-  const genAI = new GoogleGenAI({ apiKey: input.apiKey });
-  const result = await genAI.models.generateContent({
-    model,
-    contents: buildGeminiContents(input) as any,
-    config: {
-      abortSignal: AbortSignal.timeout(AI_SPEC_TIMEOUT_MS),
-      temperature: Math.min(0.7, Math.max(0.1, input.settings.temperature || 0.4)),
-      responseMimeType: "application/json",
-    },
-  });
-
-  const parsed = JSON.parse(extractJsonObject(result.text || ""));
-  const deterministicSpec = buildSpecFromConversation({
-    title: input.title,
-    messages: buildFallbackMessagesWithVisualContext(input.messages),
-  });
-  const spec = normalizeBundleAgentSpecForRendering(applyVisualReferenceConstraints(
-    normalizeGeneratedBundleSpec(parsed, deterministicSpec),
-    input.messages,
-  ));
-
-  return {
-    spec,
-    model,
-    source: "gemini",
-    warning: null,
-  };
-}
-
 export async function generateBundleSpecWithAi(input: {
   organizationId: string;
   title?: string | null;
   messages: MessageForSpec[];
 }): Promise<AiSpecGenerationResult> {
-  const openAIApiKey = getOptionalOpenAIApiKey();
-  const geminiApiKey = getOptionalGeminiApiKey();
+  const apiKey = getOptionalOpenAIApiKey();
+  if (!apiKey) return fallbackSpec(input, "No hay una credencial configurada para OpenAI.");
+  const settings = await getPipelineModelSettings("BUNDLE_AGENT", input.organizationId);
+  const { model, fallbackModel } = resolveOpenAiTextModels(settings.model_name, settings.fallback_model);
   const warnings: string[] = [];
-  const settings: PipelineModelSettings = openAIApiKey || geminiApiKey
-    ? await getPipelineModelSettings("BUNDLE_AGENT", input.organizationId)
-    : {
-        fallback_model: "gpt-4.1-mini",
-        model_name: "gemini-2.5-flash",
-        setting_type: "BUNDLE_AGENT",
-        temperature: 0.3,
-        thinking_level: "medium",
-      };
-
-  const providerOrder = Array.from(new Set([
-    getBundleModelProvider(settings.model_name),
-    getBundleModelProvider(settings.fallback_model),
-    "gemini" as const,
-    "openai" as const,
-  ].filter((provider): provider is "gemini" | "openai" => Boolean(provider))));
-
-  for (const provider of providerOrder) {
+  for (const selected of [model, fallbackModel]) {
     try {
-      const result = provider === "gemini"
-        ? geminiApiKey
-          ? await generateSpecWithGemini({
-              apiKey: geminiApiKey,
-              settings,
-              title: input.title,
-              messages: input.messages,
-            })
-          : null
-        : openAIApiKey
-          ? await generateSpecWithOpenAI({
-              apiKey: openAIApiKey,
-              model: resolveOpenAIBundleModel({
-                configuredModel: settings.model_name,
-                configuredFallback: settings.fallback_model,
-                environmentModel: process.env.OPENAI_BUNDLE_AGENT_MODEL,
-              }),
-              title: input.title,
-              messages: input.messages,
-            })
-          : null;
-
-      if (!result) continue;
-
-      return {
-        ...result,
-        warning: warnings.length > 0 ? warnings.join(" | ") : null,
-      };
+      const result = await generateSpecWithOpenAI({ ...input, apiKey, model: selected });
+      return { ...result, warning: warnings.join(" | ") || null };
     } catch (error) {
-      warnings.push(`${provider === "gemini" ? "Gemini" : "OpenAI"}: ${sanitizeErrorMessage(error)}`);
+      warnings.push("OpenAI: " + sanitizeErrorMessage(error));
     }
   }
-
-  return fallbackSpec(
-    input,
-    warnings.length > 0 ? warnings.join(" | ") : "No AI provider API key configured.",
-  );
+  return fallbackSpec(input, warnings.join(" | "));
 }

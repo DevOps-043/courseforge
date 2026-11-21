@@ -3,9 +3,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
-import { requestGeminiJson, requestOpenAiJson } from "../materials-model-client";
+import { requestOpenAiJson } from "../materials-model-client";
 import { commitGeneratedLesson } from "../material-components.repository";
 import { generateLessonMaterials, processGenerationResult, triggerNextLesson } from "../materials-generation-runtime";
 import { resolveVideoDurationPolicy } from "../../../../src/domains/video-duration/video-duration-policy";
@@ -473,16 +472,6 @@ test("cancelled or replaced executions never report success", async () => {
   assert.deepEqual(result, { success: false, superseded: true });
 });
 
-test("Gemini requests are bounded and report termination and usage", async () => {
-  let received: Record<string, unknown> | undefined;
-  const client = { models: { generateContent: async (request: Record<string, unknown>) => { received = request; return { text: '{"title":"Complete"}', candidates: [{ finishReason: "STOP" }], usageMetadata: { candidatesTokenCount: 80 } }; } } } as unknown as GoogleGenAI;
-  const response = await requestGeminiJson(client, "gemini-test", "prompt", runtime, 5_000);
-  assert.deepEqual(response, { content: { title: "Complete" }, finishReason: "STOP", outputTokens: 80 });
-  const config = received?.config as { abortSignal: AbortSignal; httpOptions: { timeout: number }; maxOutputTokens: number };
-  assert.ok(config.abortSignal instanceof AbortSignal);
-  assert.equal(config.httpOptions.timeout, 5_000);
-  assert.equal(config.maxOutputTokens, 16_000);
-});
 
 test("OpenAI requests disable hidden retries and reject truncated JSON", async () => {
   let options: { maxRetries: number; timeout: number; signal: AbortSignal } | undefined;

@@ -1,7 +1,7 @@
 import { APP_CONFIG } from "../../src/config/app";
 import { Handler } from "@netlify/functions";
 import {
-  createGeminiClient,
+  createOpenAiClient,
   createServiceRoleClient,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
@@ -33,7 +33,9 @@ import { buildCourseDeckSpecFromComponent } from "../../src/domains/production/s
 import { CLIP_GENERATION_PROMPT_CODE } from "../../src/shared/config/prompts/materials-generation.prompts.modular";
 import { resolveSinglePrompt } from "../../src/shared/config/prompts/prompt-resolver.service";
 
-const BROLL_PROMPT_MODEL = "gemini-3.5-flash";
+import { COURSE_TEXT_MODELS, withTextModelFallback } from "../../src/shared/ai/text-model-provider";
+
+const BROLL_PROMPT_MODEL = COURSE_TEXT_MODELS.model;
 
 interface VideoPromptsRequestBody {
   componentId?: string;
@@ -88,7 +90,7 @@ export const handler: Handler = async (event) => {
     }
 
     const supabase = createServiceRoleClient();
-    const genAI = createGeminiClient();
+    const openai = createOpenAiClient();
     console.log(`[Video Prompts] Generating for component: ${componentId}`);
 
     const context = await resolveProductionComponentContext({
@@ -108,11 +110,11 @@ export const handler: Handler = async (event) => {
             componentId,
             input: inputSnapshot,
             jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
-            provider: PRODUCTION_PROVIDERS.GEMINI,
+            provider: PRODUCTION_PROVIDERS.OPENAI,
           }),
           inputSnapshot,
           jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
-          provider: PRODUCTION_PROVIDERS.GEMINI,
+          provider: PRODUCTION_PROVIDERS.OPENAI,
           providerModel: BROLL_PROMPT_MODEL,
         });
     activeProductionJobId = productionJob.id;
@@ -140,23 +142,12 @@ export const handler: Handler = async (event) => {
     }, null, 2);
     const fullPrompt = `${systemPrompt}\n\nSTORYBOARD INPUT:\n${inputContext}`;
 
-    const response = await genAI.models.generateContent({
-      model: BROLL_PROMPT_MODEL,
-      contents: fullPrompt,
-      config: {
-        temperature: 0.7,
-        responseModalities: ["TEXT"],
-      },
+    const { result, model } = await withTextModelFallback(BROLL_PROMPT_MODEL, COURSE_TEXT_MODELS.fallbackModel, async model => {
+      const response = await openai.responses.create({
+        model, input: fullPrompt, store: false, text: { format: { type: "json_object" } },
+      }, { timeout: 60_000, maxRetries: 0 });
+      return { model, result: parseBrollPromptResponse(JSON.parse(response.output_text)) };
     });
-
-    const responseText = response.text || "";
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-
-    if (!jsonMatch) {
-      throw new Error("No valid JSON in response");
-    }
-
-    const result = parseBrollPromptResponse(JSON.parse(jsonMatch[0]));
     if (
       context.videoDurationContract &&
       result.prompts.length < context.videoDurationContract.minimumBrollTakes
@@ -186,7 +177,7 @@ export const handler: Handler = async (event) => {
     await completeBrollPromptProductionJob(supabase, {
       context,
       jobId: productionJob.id,
-      model: BROLL_PROMPT_MODEL,
+      model,
       promptItems: result.prompts,
       promptsText,
       slideDeckSpec,

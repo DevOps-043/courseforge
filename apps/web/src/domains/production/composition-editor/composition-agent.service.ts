@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { getOptionalGeminiApiKey, getOptionalOpenAIApiKey } from "@/lib/server/env";
+import { getOptionalOpenAIApiKey } from "@/lib/server/env";
 import { getHyperframesGenerationSettings } from "../hyperframes/hyperframes-generation-settings.service";
 import { getVideoStudioModelProvider } from "../hyperframes/video-studio-model-options";
 import type { CompositionEditorDocument } from "./composition-document.types";
@@ -156,10 +156,10 @@ function resolveModelRuntime(model: string, required: boolean): CompositionAgent
     if (required) throw new CompositionAgentProposalError("El modelo de edición configurado no es compatible.", 400);
     return null;
   }
-  const apiKey = provider === "gemini" ? getOptionalGeminiApiKey() : getOptionalOpenAIApiKey();
+  const apiKey = getOptionalOpenAIApiKey();
   if (!apiKey) {
     if (required) {
-      throw new CompositionAgentProposalError(`No hay una API key configurada para ${provider === "openai" ? "OpenAI" : "Gemini"}.`, 503);
+      throw new CompositionAgentProposalError("No hay una credencial configurada para OpenAI.", 503);
     }
     return null;
   }

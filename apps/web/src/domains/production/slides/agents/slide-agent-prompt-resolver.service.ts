@@ -1,3 +1,4 @@
+import { COURSE_TEXT_MODELS, resolveOpenAiTextModels } from "../../../../shared/ai/text-model-provider";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   SLIDE_AGENT_PROMPT_CODES,
@@ -33,56 +34,56 @@ const SLIDE_AGENT_PROMPT_ENTRIES = Object.entries(SLIDE_AGENT_PROMPT_CODES) as A
 
 const DEFAULT_MODEL_SETTINGS: Record<SlideAgentPromptKey, SlideAgentModelSettingRecord> = {
   deckBrief: {
-    fallbackModel: "gemini-2.5-flash",
-    modelName: "gpt-4o-mini",
+    fallbackModel: COURSE_TEXT_MODELS.fallbackModel,
+    modelName: COURSE_TEXT_MODELS.model,
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.deckBrief,
     temperature: 0.2,
     thinkingLevel: "low",
   },
   evidence: {
-    fallbackModel: "gemini-2.5-flash",
-    modelName: "gpt-4o-mini",
+    fallbackModel: COURSE_TEXT_MODELS.fallbackModel,
+    modelName: COURSE_TEXT_MODELS.model,
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.evidence,
     temperature: 0.1,
     thinkingLevel: "low",
   },
   qa: {
-    fallbackModel: "gemini-2.5-flash",
-    modelName: "gpt-4o-mini",
+    fallbackModel: COURSE_TEXT_MODELS.fallbackModel,
+    modelName: COURSE_TEXT_MODELS.model,
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.qa,
     temperature: 0.1,
     thinkingLevel: "low",
   },
   slideStrategy: {
-    fallbackModel: "gemini-2.5-flash",
-    modelName: "gpt-4o",
+    fallbackModel: COURSE_TEXT_MODELS.fallbackModel,
+    modelName: COURSE_TEXT_MODELS.model,
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.slideStrategy,
     temperature: 0.3,
     thinkingLevel: "medium",
   },
   templateType: {
-    fallbackModel: "gemini-2.5-flash",
-    modelName: "gpt-4o",
+    fallbackModel: COURSE_TEXT_MODELS.fallbackModel,
+    modelName: COURSE_TEXT_MODELS.model,
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.templateType,
     temperature: 0.45,
     thinkingLevel: "medium",
   },
   visibleCopy: {
-    fallbackModel: "gemini-2.5-flash",
-    modelName: "gpt-4o-mini",
+    fallbackModel: COURSE_TEXT_MODELS.fallbackModel,
+    modelName: COURSE_TEXT_MODELS.model,
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.visibleCopy,
     temperature: 0.3,
     thinkingLevel: "low",
   },
   visualTemplate: {
-    fallbackModel: "gemini-2.5-flash",
-    modelName: "gpt-4o",
+    fallbackModel: COURSE_TEXT_MODELS.fallbackModel,
+    modelName: COURSE_TEXT_MODELS.model,
     scope: SLIDE_AGENT_PROMPT_SCOPE,
     settingType: SLIDE_AGENT_PROMPT_CODES.visualTemplate,
     temperature: 0.5,
@@ -130,9 +131,10 @@ function mapRowToModelSetting(
   row: ModelSettingRow,
   fallback: SlideAgentModelSettingRecord,
 ): SlideAgentModelSettingRecord {
+  const { model, fallbackModel } = resolveOpenAiTextModels(row.model_name, row.fallback_model);
   return {
-    fallbackModel: row.fallback_model || fallback.fallbackModel,
-    modelName: row.model_name || fallback.modelName,
+    fallbackModel,
+    modelName: model,
     scope: row.scope || fallback.scope,
     settingType: row.setting_type,
     temperature: parseTemperature(row.temperature, fallback.temperature),

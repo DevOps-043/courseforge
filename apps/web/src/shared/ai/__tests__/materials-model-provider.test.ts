@@ -5,9 +5,9 @@ import {
   isSupportedMaterialsModel,
 } from "../materials-model-provider";
 
-test("detecta modelos Gemini para Materiales", () => {
-  assert.equal(getMaterialsModelProvider("gemini-3.6-flash"), "gemini");
-  assert.equal(getMaterialsModelProvider("gemini-2.5-flash"), "gemini");
+test("rechaza modelos retirados para Materiales", () => {
+  assert.equal(getMaterialsModelProvider("gemini-3.6-flash"), null);
+  assert.equal(getMaterialsModelProvider("gemini-2.5-flash"), null);
 });
 
 test("detecta modelos OpenAI para Materiales", () => {

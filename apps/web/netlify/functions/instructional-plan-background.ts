@@ -278,7 +278,7 @@ async function generateModulePlans(params: {
       },
       error,
       model: modelName,
-      provider: modelName.startsWith("gemini-") ? "gemini" : "openai",
+      provider: "openai",
       startedAt,
       supabase,
     });

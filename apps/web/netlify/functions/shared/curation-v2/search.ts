@@ -46,6 +46,8 @@ export async function searchLessonCandidates(params: {
     ),
   );
   const isReasoningModel = isOpenAiReasoningModel(model);
+  const effort = /^gpt-6\./i.test(model) && ["minimal", "none"].includes(reasoningEffort)
+    ? "low" : reasoningEffort;
   const startedAt = Date.now();
   const timeoutMs = Math.min(
     PIPELINE_GENERATION_LIMITS.requestTimeoutMs,
@@ -79,7 +81,7 @@ export async function searchLessonCandidates(params: {
       },
     ],
     max_output_tokens: 6000,
-    ...(isReasoningModel ? { reasoning: { effort: reasoningEffort } } : {}),
+    ...(isReasoningModel ? { reasoning: { effort } } : {}),
     include: ["web_search_call.action.sources"],
     tools: [
       {

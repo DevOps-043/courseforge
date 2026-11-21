@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { DELIVERY_CAPABILITIES, DELIVERY_PROMPTS } from "../config/delivery.config";
 import type { DeliveryOperation } from "../types/delivery.schemas";
-import { getTextModelProvider } from "../../../shared/ai/text-model-provider";
+import { getTextModelProvider, resolveOpenAiTextModels } from "../../../shared/ai/text-model-provider";
 import { deliveryHash } from "../lib/delivery-hash";
 
 export const deliveryModelSchema = z.object({
@@ -12,7 +12,7 @@ export const deliveryModelSchema = z.object({
   thinking_level: z.enum(["minimal", "low", "medium", "high"]).nullable(),
 }).superRefine((setting, context) => {
   for (const field of ["model_name", "fallback_model"] as const) {
-    if (setting[field] && !getTextModelProvider(setting[field])) context.addIssue({ code: "custom", path: [field], message: "Selecciona un modelo Gemini u OpenAI compatible." });
+    if (setting[field] && !getTextModelProvider(setting[field])) context.addIssue({ code: "custom", path: [field], message: "Selecciona un modelo de texto OpenAI compatible." });
   }
   if (setting.fallback_model && setting.fallback_model === setting.model_name) context.addIssue({ code: "custom", path: ["fallback_model"], message: "El respaldo debe ser distinto del modelo principal." });
 });
@@ -54,7 +54,10 @@ export async function resolveDeliverySettings(admin: SupabaseClient, organizatio
   if (!selected) throw new Error("Configura un modelo de la fase correspondiente antes de generar sesiones.");
   // La configuración compartida anterior puede repetir el principal como respaldo.
   // Eso equivale a no tener respaldo y no debe bloquear ni duplicar llamadas.
-  const model = deliveryModelSchema.parse({ ...selected, fallback_model: selected.fallback_model === selected.model_name ? null : selected.fallback_model });
+  const resolved = resolveOpenAiTextModels(selected.model_name, selected.fallback_model);
+  const fallback = selected.fallback_model === selected.model_name && getTextModelProvider(selected.model_name)
+    ? null : selected.fallback_model ? resolved.fallbackModel : null;
+  const model = deliveryModelSchema.parse({ ...selected, model_name: resolved.model, fallback_model: fallback });
   const orgPrompt = await findPrompt(admin, capability.prompt, organizationId);
   const globalPrompt = orgPrompt ? null : await findPrompt(admin, capability.prompt, null);
   const prompt = {

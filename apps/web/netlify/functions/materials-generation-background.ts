@@ -4,7 +4,6 @@ import { materialGenerationError } from "../../src/lib/material-generation-error
 import { signBackgroundPayload } from "../../src/lib/server/background-payload-signature";
 import {
   createServiceRoleClient,
-  getGeminiApiKeySource,
   resolveConfiguredModelSetting,
 } from "./shared/bootstrap";
 import { getErrorMessage } from "./shared/errors";
@@ -452,9 +451,6 @@ export const handler: Handler = async (event) => {
       throw new Error(
         `UNSUPPORTED_MATERIALS_MODEL: ${unsupportedModel} no pertenece a un proveedor implementado para Materiales.`,
       );
-    }
-    if (models.some((model) => model.startsWith("gemini-"))) {
-      console.log(`${logPrefix} Gemini API key source: ${getGeminiApiKeySource()}`);
     }
     console.log(`${logPrefix} Models: ${models.join(", ")}`);
     const modelRuntimeConfig: MaterialsModelRuntimeConfig = {

@@ -1,9 +1,9 @@
-export type TextModelProvider = "gemini" | "openai";
+export type TextModelProvider = "openai";
 
 export const COURSE_TEXT_MODELS = { model: "gpt-6.1-terra", fallbackModel: "gpt-6.2-sol" } as const;
 
 export function isOpenAiReasoningModel(model: string) {
-  return /^(?:gpt-[5-9](?:[.\-]|$)|o[13](?:-|$))/i.test(model.trim());
+  return /^(?:gpt-[5-9](?:[.\-]|$)|o[134](?:-|$))/i.test(model.trim());
 }
 
 export async function withTextModelFallback<T>(model: string, fallback: string, request: (model: string) => Promise<T>) {
@@ -17,18 +17,21 @@ export async function withTextModelFallback<T>(model: string, fallback: string, 
 
 export function getTextModelProvider(modelName: string): TextModelProvider | null {
   const normalizedName = modelName.trim().toLowerCase();
+  if (/^gpt-(?:image|live|realtime|audio|transcribe)(?:-|$)/.test(normalizedName)) return null;
+  return /^(?:gpt-|o[134](?:-|$))/.test(normalizedName) ? "openai" : null;
+}
 
-  if (normalizedName.startsWith("gemini-")) {
-    return "gemini";
-  }
+export function resolveOpenAiTextModel(model?: string | null, fallback: string = COURSE_TEXT_MODELS.model) {
+  const requested = model?.trim();
+  if (requested && getTextModelProvider(requested)) return requested;
+  return getTextModelProvider(fallback) ? fallback : COURSE_TEXT_MODELS.model;
+}
 
-  if (
-    normalizedName.startsWith("gpt-") ||
-    normalizedName.startsWith("o1") ||
-    normalizedName.startsWith("o3")
-  ) {
-    return "openai";
-  }
-
-  return null;
+export function resolveOpenAiTextModels(model?: string | null, fallback?: string | null, defaults: { model: string; fallbackModel: string } = COURSE_TEXT_MODELS) {
+  const primary = resolveOpenAiTextModel(model, defaults.model);
+  const secondary = resolveOpenAiTextModel(fallback, defaults.fallbackModel);
+  return {
+    model: primary,
+    fallbackModel: primary !== secondary ? secondary : primary === COURSE_TEXT_MODELS.fallbackModel ? COURSE_TEXT_MODELS.model : COURSE_TEXT_MODELS.fallbackModel,
+  };
 }

@@ -34,36 +34,3 @@ export interface CurationRowInsert {
   validation_report?: object;
   added_by?: string;
 }
-
-export interface GeminiCandidateSource {
-  url?: string;
-  title?: string;
-  rationale?: string;
-  is_acceptable?: boolean;
-}
-
-export interface GeminiComponentResult {
-  component_type?: string;
-  component_name?: string;
-  source_url?: string;
-  url?: string;
-  source_title?: string;
-  title?: string;
-  rationale?: string;
-  is_valid?: boolean;
-  is_acceptable?: boolean;
-  invalidation_reason?: string;
-  is_complete_coverage?: boolean;
-  confidence_score?: number;
-  candidate_sources?: GeminiCandidateSource[];
-  [key: string]: unknown;
-}
-
-export interface GeminiCurationLesson {
-  lesson_id: string;
-  components: GeminiComponentResult[];
-}
-
-export interface GeminiCurationResponse {
-  sources_by_lesson: GeminiCurationLesson[];
-}

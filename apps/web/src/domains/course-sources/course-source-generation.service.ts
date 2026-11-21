@@ -241,7 +241,7 @@ export async function prepareCourseGeneration(
             return object;
           } catch (error) {
             await recordAiFailure({ supabase: admin, model, startedAt, context: telemetry,
-              provider: model.startsWith("gemini-") ? "gemini" : "openai",
+              provider: "openai",
               error: new Error("Falló la lectura de un lote documental; no se registra el contenido."),
             });
             throw error;
@@ -333,7 +333,7 @@ export async function attestCourseGeneration(
         model,
         startedAt,
         context: telemetry,
-        provider: model.startsWith("gemini-") ? "gemini" : "openai",
+        provider: "openai",
         error: new Error(
           "Falló la comprobación documental; no se registra contenido privado.",
         ),

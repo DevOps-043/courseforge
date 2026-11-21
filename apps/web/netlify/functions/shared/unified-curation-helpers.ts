@@ -280,83 +280,12 @@ function collectOpenAiSources(value: unknown, sources: GroundingSource[]) {
   }
 }
 
-function collectGeminiSources(value: unknown, sources: GroundingSource[]) {
-  const record = asRecord(value);
-
-  if (Array.isArray(value)) {
-    value.forEach((item) => collectGeminiSources(item, sources));
-    return;
-  }
-
-  if (!record) {
-    return;
-  }
-
-  const web = asRecord(record.web);
-  const url =
-    typeof web?.uri === "string"
-      ? web.uri
-      : typeof record.uri === "string"
-        ? record.uri
-        : typeof record.url === "string"
-          ? record.url
-          : null;
-
-  if (url?.startsWith("http")) {
-    sources.push({
-      uri: url,
-      title:
-        typeof web?.title === "string"
-          ? web.title
-          : typeof record.title === "string"
-            ? record.title
-            : "Source from Gemini Google Search",
-    });
-  }
-
-  for (const item of Object.values(record)) {
-    if (item && typeof item === "object") {
-      collectGeminiSources(item, sources);
-    }
-  }
-}
-
 export async function extractOpenAiSearchSources(
   response: unknown,
   courseTitle: string,
 ): Promise<GroundingSource[]> {
   const collectedSources: GroundingSource[] = [];
   collectOpenAiSources(response, collectedSources);
-
-  const uniqueSources = new Map<string, GroundingSource>();
-  for (const source of collectedSources) {
-    let finalUri = source.uri;
-    if (
-      finalUri.includes("grounding-api-redirect") ||
-      finalUri.includes("vertexaisearch.cloud.google.com")
-    ) {
-      finalUri = await resolveRedirectUrl(finalUri);
-    }
-
-    if (isBlockedDomain(finalUri, courseTitle)) {
-      continue;
-    }
-
-    uniqueSources.set(finalUri, {
-      uri: finalUri,
-      title: source.title,
-    });
-  }
-
-  return Array.from(uniqueSources.values());
-}
-
-export async function extractGeminiSearchSources(
-  response: unknown,
-  courseTitle: string,
-): Promise<GroundingSource[]> {
-  const collectedSources: GroundingSource[] = [];
-  collectGeminiSources(response, collectedSources);
 
   const uniqueSources = new Map<string, GroundingSource>();
   for (const source of collectedSources) {
@@ -409,39 +338,6 @@ export function getOpenAiResponseText(response: unknown) {
   return "";
 }
 
-export function getGeminiResponseText(response: unknown) {
-  const record = asRecord(response);
-  if (!record) {
-    return "";
-  }
-
-  if (typeof record.text === "string") {
-    return record.text;
-  }
-
-  if (typeof record.output_text === "string") {
-    return record.output_text;
-  }
-
-  const candidates = Array.isArray(record.candidates) ? record.candidates : [];
-  for (const candidate of candidates) {
-    const candidateRecord = asRecord(candidate);
-    const content = asRecord(candidateRecord?.content);
-    const parts = Array.isArray(content?.parts) ? content.parts : [];
-
-    const text = parts
-      .map((part) => asRecord(part)?.text)
-      .filter(hasString)
-      .join("\n")
-      .trim();
-
-    if (text) {
-      return text;
-    }
-  }
-
-  return "";
-}
 
 function buildGroundingRow(params: {
   curationId: string;

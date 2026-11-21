@@ -15,9 +15,6 @@ const MAX_REDIRECTS = 5;
 
 export const LESSONS_PER_BATCH = 2;
 export const SOURCES_PER_LESSON = 2;
-export const DEFAULT_MODEL = "gpt-5.6-luna";
-export const DEFAULT_FALLBACK_MODEL = "gemini-2.5-flash";
-export const GEMINI_QUOTA_FALLBACK_MODEL = "gemini-2.5-flash";
 export const DELAY_BETWEEN_BATCHES_MS = 5000;
 
 export const delay = (ms: number) =>

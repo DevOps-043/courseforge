@@ -53,7 +53,7 @@ La sincronizacion del catalogo HeyGen requiere la cadena completa de funciones S
 | Backend web | Next.js API routes + Netlify Functions (background y programadas) |
 | Worker de audio | `apps/api` (Node 20 + FFmpeg; perfil neural opcional con DeepFilterNet) |
 | DB/Auth | Supabase PostgreSQL, RLS, Auth Bridge JWT HS256 |
-| IA | Google Gemini principal, OpenAI fallback/curacion/bundle agent |
+| IA | OpenAI para texto, búsqueda e imágenes |
 | Video | Editor de composicion nativo + HyperFrames Cloud para render; Remotion 4.0.484 (Player y composiciones internas) |
 | Integraciones | SofLIA API, PulseHub, HeyGen, HyperFrames Cloud, Google Search, Google Drive, Microsoft Graph, Artlist |
 
@@ -483,7 +483,6 @@ Las invocaciones directas de handlers en `localhost` validan firma y expiracion,
 
 IA:
 
-- `GOOGLE_GENERATIVE_AI_API_KEY`
 - `GOOGLE_API_KEY`
 - `GEMINI_MODEL`, `GEMINI_SEARCH_MODEL`, `GEMINI_BUNDLE_AGENT_MODEL`
 - `OPENAI_API_KEY`

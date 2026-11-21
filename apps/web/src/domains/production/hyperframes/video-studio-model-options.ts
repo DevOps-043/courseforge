@@ -1,4 +1,6 @@
-export type VideoStudioModelProvider = "gemini" | "openai";
+import { isOpenAiReasoningModel } from "../../../shared/ai/text-model-provider";
+
+export type VideoStudioModelProvider = "openai";
 
 export interface VideoStudioModelOption {
   description: string;
@@ -12,14 +14,8 @@ export interface VideoStudioModelOption {
  * Los modelos de imagen no se exponen porque el asistente devuelve propuestas JSON.
  */
 export const VIDEO_STUDIO_MODEL_OPTIONS: readonly VideoStudioModelOption[] = [
-  { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash", provider: "gemini", description: "Tareas agénticas y multimodales." },
-  { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash", provider: "gemini", description: "Rendimiento sostenido para edición y código." },
-  { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", provider: "gemini", description: "Alto volumen y menor costo." },
-  { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", provider: "gemini", description: "Estable y eficiente para alto volumen." },
-  { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)", provider: "gemini", description: "Razonamiento multimodal avanzado; versión preview." },
-  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", provider: "gemini", description: "Balance de razonamiento, latencia y costo." },
-  { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite", provider: "gemini", description: "Rápido y económico para alto volumen." },
-  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro", provider: "gemini", description: "Razonamiento y ajustes complejos." },
+  { value: "gpt-6.1-terra", label: "GPT-6.1 Terra", provider: "openai", description: "Redacción y razonamiento visual." },
+  { value: "gpt-6.2-sol", label: "GPT-6.2 Sol", provider: "openai", description: "Razonamiento para flujos de varios pasos." },
   { value: "gpt-5.6-sol", label: "GPT-5.6 Sol", provider: "openai", description: "Máxima calidad y capacidad analítica." },
   { value: "gpt-5.6-luna", label: "GPT-5.6 Luna", provider: "openai", description: "Alta capacidad con costo eficiente." },
   { value: "gpt-5.6-terra", label: "GPT-5.6 Terra", provider: "openai", description: "Balance entre calidad y costo." },
@@ -44,5 +40,5 @@ export function getVideoStudioModelProvider(model: string): VideoStudioModelProv
 }
 
 export function isVideoStudioReasoningModel(model: string) {
-  return /^(?:o\d|gpt-5)/i.test(model.trim());
+  return isOpenAiReasoningModel(model);
 }

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
 import {
   generateSyllabusJson,
@@ -37,26 +36,26 @@ test("envia modelos GPT al cliente OpenAI", async () => {
   });
 });
 
-test("envia modelos Gemini al cliente Google", async () => {
+test("usa Terra para una configuración histórica", async () => {
   let capturedRequest: Record<string, unknown> | undefined;
-  const gemini = {
-    models: {
-      generateContent: async (request: Record<string, unknown>) => {
+  const openai = {
+    responses: {
+      create: async (request: Record<string, unknown>) => {
         capturedRequest = request;
-        return { text: '{"modules":[]}' };
+        return { status: "completed", output_text: '{"modules":[]}' };
       },
     },
-  } as unknown as GoogleGenAI;
+  } as unknown as OpenAI;
 
   const result = await generateSyllabusJson({
-    clients: { gemini },
+    clients: { openai },
     model: "gemini-3.5-flash",
     prompt: "Genera JSON",
     temperature: 0.7,
   });
 
   assert.equal(result, '{"modules":[]}');
-  assert.equal(capturedRequest?.model, "gemini-3.5-flash");
+  assert.equal(capturedRequest?.model, "gpt-6.1-terra");
 });
 
 test("usa web_search de OpenAI durante la investigacion", async () => {
@@ -68,6 +67,13 @@ test("usa web_search de OpenAI durante la investigacion", async () => {
         return {
           id: "research-test",
           output_text: "Contexto investigado",
+          output: [
+            { type: "web_search_call", action: { type: "search", queries: ["tema", "documentación"] } },
+            { type: "message", content: [{ type: "output_text", annotations: [
+              { type: "url_citation", title: "Referencia", url: "https://example.org/tema" },
+              { type: "url_citation", title: "Inválida", url: "javascript:void(0)" },
+            ] }] },
+          ],
         };
       },
     },
@@ -81,5 +87,7 @@ test("usa web_search de OpenAI durante la investigacion", async () => {
   });
 
   assert.equal(result.text, "Contexto investigado");
+  assert.deepEqual(result.searchQueries, ["tema", "documentación"]);
+  assert.deepEqual(result.groundingMetadata.citations, [{ title: "Referencia", url: "https://example.org/tema" }]);
   assert.deepEqual(capturedRequest?.tools, [{ type: "web_search" }]);
 });

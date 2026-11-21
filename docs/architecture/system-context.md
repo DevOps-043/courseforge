@@ -17,8 +17,8 @@ SofLIA Architect es una plataforma multi-tenant para crear, validar, producir y 
 - **Backend web**: Next.js API routes y Netlify Functions para jobs largos del pipeline.
 - **Backend de producción**: Next.js API routes y workers especializados. El servidor Express legado en `apps/api/src/server.ts` solo monta `GET /health`; no monta render local/Lambda ni builds cloud. El worker de escritorio fue retirado de las rutas HTTP; persisten módulos y tablas residuales, que no prueban exposición activa.
 - **DB/Auth**: Supabase PostgreSQL con RLS, tabla `profiles`, Auth Bridge JWT HS256 y soporte multi-organizacion.
-- **IA**: Google Gemini como proveedor principal; OpenAI como fallback y para el bundle agent de Remotion.
-- **Servicios**: Gamma API, Google Search grounding, SofLIA API, Google Drive, Microsoft Graph/OneDrive, Artlist, AWS Remotion Lambda, S3, CodeBuild y CloudFront para templates externos.
+- **IA**: OpenAI para modelos de texto, búsqueda web y generación de imágenes. Los valores predeterminados de texto son GPT-6.1 Terra y GPT-6.2 Sol de respaldo.
+- **Servicios**: Gamma API, la herramienta `web_search` de OpenAI Responses, SofLIA API, Google Drive, Microsoft Graph/OneDrive, Artlist, AWS Remotion Lambda, S3, CodeBuild y CloudFront para templates externos.
 - **Editor de composicion**: el dominio `production/composition-editor` gestiona documento, assets, pistas, mezcla de audio, profundidad de capas, presets de movimiento, auto-organizacion y patches validados de propuestas del agente. El documento se persiste como versiones inmutables con hash y auditoria; el RPC `append_video_composition_draft_document_v2` devuelve resultados explicitos de guardado y evita colas de bloqueo.
 - **HyperFrames**: el dominio `production/hyperframes` cubre borradores, composiciones, preflight, revisiones, preview, render y sincronizacion de assets; sus rutas viven bajo `/api/production/hyperframes`.
 - **Fuente de verdad HyperFrames**: antes de cambiar documento, SFX, preview, snapshot ZIP, variables, upload o render, leer y actualizar `docs/architecture/hyperframes-composition-render-flow-source-of-truth.md` en el mismo cambio.
@@ -117,8 +117,8 @@ Areas admin principales:
 SofLIA es el asistente integrado en la app.
 
 - API: `POST /api/lia`
-- Modelo principal: Gemini (`gemini-3.5-flash` por defecto en los prompts actuales)
-- Usa Google Search grounding cuando aplica.
+- Modelo principal: GPT-6.1 Terra
+- Usa la herramienta `web_search` de OpenAI Responses cuando aplica.
 - Responde en markdown con fuentes.
 - Los prompts y contexto viven principalmente en servicios compartidos y resolvers de prompts.
 
@@ -197,7 +197,7 @@ Procesos principales:
 - `curation-background.ts`
 - `validate-curation-background.ts`
 
-Busca fuentes con Gemini + Google Search grounding, valida URLs, contenido, paywalls, soft 404 y calidad minima. Admin aprueba o rechaza fuentes en QA.
+Busca fuentes con OpenAI Responses y la herramienta `web_search` de OpenAI Responses, valida URLs, contenido, paywalls, soft 404 y calidad minima. Admin aprueba o rechaza fuentes en QA.
 
 ### Fase 5: MATERIALES
 
@@ -274,7 +274,7 @@ Flujo:
 1. Upload de `.zip` a storage.
 2. Parsing de manifest, SCOs, recursos y HTML.
 3. Analisis de componentes, quizzes y gaps.
-4. Enriquecimiento con Gemini.
+4. Enriquecimiento con OpenAI.
 5. Transformacion a estructura SofLIA Architect.
 
 Rutas:

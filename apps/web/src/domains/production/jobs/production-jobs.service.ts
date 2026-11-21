@@ -331,7 +331,7 @@ export async function completeBrollPromptProductionJob(
       module_id: params.context.moduleId,
       organization_id: params.context.organizationId,
       production_job_id: params.jobId,
-      provider: PRODUCTION_PROVIDERS.GEMINI,
+      provider: PRODUCTION_PROVIDERS.OPENAI,
       qa_status: PRODUCTION_QA_STATUSES.GENERATED,
     },
     ...(slideDeckSpec

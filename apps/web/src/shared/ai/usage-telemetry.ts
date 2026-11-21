@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type AiProvider = "gemini" | "openai";
+export type AiProvider = "openai";
 export type AiUsageStatus = "failed" | "incomplete" | "succeeded";
 
 export interface AiUsageContext {
@@ -140,40 +140,6 @@ export async function recordOpenAiUsage(params: {
   });
 }
 
-export async function recordGeminiUsage(params: {
-  context: AiUsageContext;
-  model: string;
-  response: unknown;
-  startedAt: number;
-  supabase?: SupabaseClient | null;
-}) {
-  const response = params.response as {
-    responseId?: string;
-    usageMetadata?: {
-      cachedContentTokenCount?: number;
-      candidatesTokenCount?: number;
-      promptTokenCount?: number;
-      thoughtsTokenCount?: number;
-      totalTokenCount?: number;
-    };
-  };
-  const usage = response.usageMetadata;
-
-  await recordAiUsageEvent(params.supabase, {
-    ...params.context,
-    cachedInputTokens: usage?.cachedContentTokenCount,
-    inputTokens: usage?.promptTokenCount,
-    latencyMs: Date.now() - params.startedAt,
-    model: params.model,
-    outputTokens: usage?.candidatesTokenCount,
-    provider: "gemini",
-    providerRequestId: response.responseId,
-    reasoningTokens: usage?.thoughtsTokenCount,
-    status: "succeeded",
-    totalTokens: usage?.totalTokenCount,
-  });
-}
-
 export async function recordAiFailure(params: {
   context: AiUsageContext;
   error: unknown;
@@ -206,9 +172,6 @@ export async function recordAiSdkUsage(params: {
     reasoningTokens?: number;
     totalTokens?: number;
   };
-  const provider: AiProvider = /^(gpt-|o\d)/i.test(params.model)
-    ? "openai"
-    : "gemini";
   await recordAiUsageEvent(params.supabase, {
     ...params.context,
     cachedInputTokens: usage.cachedInputTokens,
@@ -216,7 +179,7 @@ export async function recordAiSdkUsage(params: {
     latencyMs: Date.now() - params.startedAt,
     model: params.model,
     outputTokens: usage.outputTokens,
-    provider,
+    provider: "openai",
     reasoningTokens: usage.reasoningTokens,
     status: "succeeded",
     totalTokens: usage.totalTokens,

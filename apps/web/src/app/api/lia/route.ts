@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
 import { getLiaDBContext, generateDBContextSummary } from "@/lib/lia-db-context";
 import {
-  callGeminiREST,
+  callLiaOpenAi,
   detectHallucination,
   getLiaSettings,
   parseActionFromResponse,
@@ -15,11 +15,10 @@ import {
   buildLiaConfig,
   buildSystemInstruction,
   cleanStandardResponse,
-  extractGroundingSources,
 } from "@/lib/lia-route-helpers";
 import type { LiaRequestPayload } from "@/lib/lia-types";
 import {
-  getGeminiApiKey,
+  getOpenAIApiKey,
 } from "@/lib/server/env";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import {
@@ -105,7 +104,7 @@ export async function POST(req: NextRequest) {
     const settings = await getLiaSettings(supabase, useComputerUse, organizationId);
     const modelName = settings.model_name;
     const config = buildLiaConfig(settings, useComputerUse);
-    const apiKey = getGeminiApiKey();
+    const apiKey = getOpenAIApiKey();
     logger.info("lia.request.started", {
       mode: useComputerUse ? "COMPUTER" : "STANDARD",
       model: modelName,
@@ -128,9 +127,8 @@ export async function POST(req: NextRequest) {
       dbContextSummary,
     );
     const fullPrompt = buildConversationPrompt(payload, systemInstruction);
-    const result = await callGeminiREST(apiKey, modelName, fullPrompt, config, correlationId);
+    const result = await callLiaOpenAi(apiKey, modelName, fullPrompt, config, correlationId);
     const responseText = result.text;
-    const groundingMetadata = result.groundingMetadata;
 
     if (useComputerUse) {
       const parsed = parseActionFromResponse(responseText);
@@ -163,7 +161,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const sources = extractGroundingSources(groundingMetadata);
+    const sources = result.sources;
     const cleanContent = cleanStandardResponse(responseText);
     logger.info("lia.request.completed", {
       durationMs: Date.now() - startedAt,

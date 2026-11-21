@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { VIDEO_STUDIO_MODEL_IDS } from "./video-studio-model-options";
+import { COURSE_TEXT_MODELS, resolveOpenAiTextModels } from "../../../shared/ai/text-model-provider";
+import { getVideoStudioModelProvider, VIDEO_STUDIO_MODEL_IDS } from "./video-studio-model-options";
 
 export const hyperframesGenerationSettingsSchema = z.object({
   agentAssistedGenerationEnabled: z.boolean().default(true),
@@ -22,9 +23,9 @@ export type HyperframesGenerationSettings = z.infer<typeof hyperframesGeneration
 
 export const DEFAULT_HYPERFRAMES_GENERATION_SETTINGS: HyperframesGenerationSettings = {
   agentAssistedGenerationEnabled: true,
-  agentModel: "gemini-3.5-flash",
+  agentModel: COURSE_TEXT_MODELS.model,
   automaticGenerationEnabled: true,
-  fallbackModel: null,
+  fallbackModel: COURSE_TEXT_MODELS.fallbackModel,
   temperature: 0.3,
 };
 
@@ -68,19 +69,16 @@ export async function saveHyperframesGenerationSettings(params: {
 }
 
 function mapSettingsRow(row: Record<string, unknown>): HyperframesGenerationSettings {
-  const agentModel = typeof row.agent_model === "string" && VIDEO_STUDIO_MODEL_IDS.includes(row.agent_model as typeof VIDEO_STUDIO_MODEL_IDS[number])
-    ? row.agent_model
-    : DEFAULT_HYPERFRAMES_GENERATION_SETTINGS.agentModel;
-  const fallbackModel = typeof row.fallback_model === "string"
-    && row.fallback_model !== agentModel
-    && VIDEO_STUDIO_MODEL_IDS.includes(row.fallback_model as typeof VIDEO_STUDIO_MODEL_IDS[number])
-    ? row.fallback_model
-    : null;
+  const agent = typeof row.agent_model === "string" && getVideoStudioModelProvider(row.agent_model)
+    ? row.agent_model : null;
+  const backup = typeof row.fallback_model === "string" && getVideoStudioModelProvider(row.fallback_model)
+    ? row.fallback_model : null;
+  const { model: agentModel, fallbackModel } = resolveOpenAiTextModels(agent, backup);
   return hyperframesGenerationSettingsSchema.parse({
     agentAssistedGenerationEnabled: row.agent_assisted_generation_enabled,
     agentModel,
     automaticGenerationEnabled: row.automatic_generation_enabled,
-    fallbackModel,
+    fallbackModel: row.fallback_model === null ? null : fallbackModel,
     temperature: Number(row.temperature),
   });
 }
