@@ -9,3 +9,5 @@ Si el worker confirma una revisión entre las dos consultas de progreso, el API 
 Base ofrece un reintento explícito después de un minuto si el trabajo reservado aún registra cero invocaciones. La acción comprueba organización y ejecución, actualiza la reserva de forma condicional y usa el worker firmado del despliegue actual. El identificador, la revisión de fuentes y el plazo original se conservan. Una reserva que ya tomó un worker conserva su ámbito y lease.
 
 La configuración de las fases de cursos admite GPT-6.1 Terra y GPT-6.2 Sol como modelos de OpenAI. Base decide el proveedor de búsqueda a partir de los modelos configurados y usa Responses con `web_search` para OpenAI. La política documental sigue determinando cuándo se omite la búsqueda. Plan y Curación intentan el respaldo antes de declarar el fallo del proveedor. El trabajo reservado de Hub conserva su configuración original.
+
+Si la generación del plan de Academy falla antes de guardar lecciones, se muestra el diagnóstico en la misma pantalla de configuración del plan. El editor puede modificar el prompt de ese intento y regenerar sin borrar una versión anterior.

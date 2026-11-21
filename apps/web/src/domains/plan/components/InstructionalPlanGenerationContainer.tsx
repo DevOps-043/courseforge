@@ -424,7 +424,8 @@ export function InstructionalPlanGenerationContainer({
     );
   }
 
-  if (existingPlan) {
+  const failedWithoutPlan = existingPlan?.state === "STEP_FAILED" && !existingPlan.lesson_plans?.length;
+  if (existingPlan && !failedWithoutPlan) {
     return (
       <InstructionalPlanResultsView
         canReview={canReview}
@@ -458,18 +459,23 @@ export function InstructionalPlanGenerationContainer({
   }
 
   return (
-    <InstructionalPlanSetupView
-      academyOnly={coordinatedReview}
-      configuredPrompt={configuredPrompt}
-      customPrompt={customPrompt}
-      isGenerating={isGenerating}
-      lessonCount={0}
-      onGenerate={handleGenerateFromUi}
-      promptSource={promptSource}
-      promptVersion={promptVersion}
-      setCustomPrompt={setCustomPrompt}
-      setUseCustomPrompt={setUseCustomPrompt}
-      useCustomPrompt={useCustomPrompt}
-    />
+    <>
+      {failedWithoutPlan && <p role="alert" className="mb-4 rounded-xl border border-red-300 p-4">
+        {existingPlan?.last_error?.message || "No se pudo generar el plan. Revisa el prompt antes de reintentar."}
+      </p>}
+      <InstructionalPlanSetupView
+        academyOnly={coordinatedReview}
+        configuredPrompt={configuredPrompt}
+        customPrompt={customPrompt}
+        isGenerating={isGenerating}
+        lessonCount={0}
+        onGenerate={handleGenerateFromUi}
+        promptSource={promptSource}
+        promptVersion={promptVersion}
+        setCustomPrompt={setCustomPrompt}
+        setUseCustomPrompt={setUseCustomPrompt}
+        useCustomPrompt={useCustomPrompt}
+      />
+    </>
   );
 }
