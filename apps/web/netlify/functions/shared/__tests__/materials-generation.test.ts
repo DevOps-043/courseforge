@@ -24,6 +24,32 @@ import { buildStoryboardNarration } from "../../../../src/domains/materials/gene
 import type { VideoGuideContent } from "../../../../src/domains/materials/types/materials.types";
 import { CourseSourceError, sourceGroundingFailure } from "../../../../src/domains/course-sources/course-source-error";
 import { load } from "../../../../src/app/login/__tests__/source-test-loader";
+import { materialSourceSetAvailability } from "../../../../src/domains/course-sources/course-source-material-set";
+
+test("la validación acepta el conjunto automático y las referencias de la lección sin exigir asociaciones manuales", async () => {
+  const context = load<typeof import("../materials-source-context")>("netlify/functions/shared/materials-source-context.ts", {
+    "../../../src/domains/course-sources/course-source-review.service": {
+      readCourseSourcePolicy: async () => ({ policy: "DOCUMENTS_AND_WEB" }),
+      readSourceReview: async () => ({
+        policy: "DOCUMENTS_AND_WEB", planReady: true, approved: false, coverage: [], associations: [],
+        lessons: [{ id: "lesson", title: "Lección", webRequired: 1 }],
+        evidence: [{ id: "doc", type: "DOCUMENT", text: "Guía" },
+          { id: "web", type: "WEB", lessonId: "lesson", text: "Evidencia" },
+          { id: "foreign", type: "WEB", lessonId: "other", text: "Evidencia ajena" }],
+      }),
+    },
+    "../../../src/domains/course-sources/course-source-material-set": { materialSourceSetAvailability },
+    "../../../src/domains/curation/lib/lesson-source-requirement": {},
+    "./materials-generation-helpers": {},
+  });
+  const database = { rpc: async (name: string) => {
+    assert.equal(name, "current_course_source_component_ids");
+    return { data: ["component"], error: null };
+  } } as unknown as SupabaseClient;
+  const validation = await context.loadMaterialSourceValidationContext(database, "artifact", [{ lesson_id: "lesson-G2" }]);
+  assert.deepEqual([...(validation.validSourceIdsByLesson.get("lesson-G2") || [])], ["doc", "web"]);
+  assert.deepEqual([...(validation.validComponentIds || [])], ["component"]);
+});
 
 test("un fallo de despacho individual despierta la cola sin detener la generación global", async () => {
   const writes: string[] = [];

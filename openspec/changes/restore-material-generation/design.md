@@ -11,3 +11,5 @@ Base ofrece un reintento explícito después de un minuto si el trabajo reservad
 La configuración de las fases de cursos admite GPT-6.1 Terra y GPT-6.2 Sol como modelos de OpenAI. Base decide el proveedor de búsqueda a partir de los modelos configurados y usa Responses con `web_search` para OpenAI. La política documental sigue determinando cuándo se omite la búsqueda. Plan y Curación intentan el respaldo antes de declarar el fallo del proveedor. El trabajo reservado de Hub conserva su configuración original.
 
 Si la generación del plan de Academy falla antes de guardar lecciones, se muestra el diagnóstico en la misma pantalla de configuración del plan. El editor puede modificar el prompt de ese intento y regenerar sin borrar una versión anterior.
+
+La validación de Academy utiliza el mismo conjunto automático que la generación y exige recibos de respaldo vigentes. Se aceptan los documentos procesados y, cuando la política lo permite, las fuentes web válidas de la lección.

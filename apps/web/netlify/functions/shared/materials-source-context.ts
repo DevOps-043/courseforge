@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readCourseSourcePolicy, readSourceReview } from "../../../src/domains/course-sources/course-source-review.service";
+import { materialSourceSetAvailability } from "../../../src/domains/course-sources/course-source-material-set";
 import { getLessonSourceRequirement } from "../../../src/domains/curation/lib/lesson-source-requirement";
 import {
   findLessonSources,
@@ -57,14 +58,22 @@ export async function loadMaterialSourceValidationContext(
   const settings = await readCourseSourcePolicy(supabase, artifactId);
   if (settings && settings.policy !== "WEB_ONLY") {
     const review = await readSourceReview(supabase, artifactId);
-    if (!review.approved || !review.coverage.length || !review.coverage.every(item => item.complete)) throw new Error("Revisa y aprueba las fuentes vigentes antes de validar materiales.");
+    const availability = materialSourceSetAvailability(review.policy, review.planReady, review.lessons, review.evidence);
+    if (!availability.ready) throw new Error(availability.issues.join(" "));
     const receipts = await supabase.rpc("current_course_source_component_ids", { p_artifact: artifactId });
     if (receipts.error) throw new Error("No se pudo verificar el respaldo vigente de los componentes.");
+    const validSourceIdsByLesson = new Map(lessons.map(lesson => {
+      const lessonId = lesson.lesson_id.replace(/-G\d+$/i, "");
+      const sources = review.evidence.filter(source => source.text.trim() && (
+        source.type === "DOCUMENT" || (review.policy === "DOCUMENTS_AND_WEB" && source.lessonId === lessonId)
+      ));
+      return [lesson.lesson_id, new Set(sources.map(source => source.id))];
+    }));
     return {
       validComponentIds: new Set<string>(receipts.data || []),
       requiresSources: true,
       requiredSourcesByLesson: new Map(lessons.map(lesson => [lesson.lesson_id, 1])),
-      validSourceIdsByLesson: new Map(lessons.map(lesson => [lesson.lesson_id, new Set(review.associations.filter(item => item.lessonId === lesson.lesson_id.replace(/-G\d+$/i, "")).map(item => item.evidenceId))])),
+      validSourceIdsByLesson,
     };
   }
   const [syllabus, plan, sources] = await Promise.all([
