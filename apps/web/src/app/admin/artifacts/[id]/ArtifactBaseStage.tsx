@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { REVIEWER_ROLE_SET } from "@/lib/pipeline-constants";
+import { generationFailureMessage } from "@/lib/pipeline-generation-policy";
 import { CourseSourceBaseStart } from "@/domains/course-sources/CourseSourceBaseStart";
 import type {
   ArtifactDisplayProfile,
@@ -75,11 +76,12 @@ export function ArtifactBaseStage({
   const initialDocumentaryBase = documentaryDraft &&
     ["DRAFT", "ESCALATED"].includes(artifact.state) && !hasReviewableContent;
   if (artifact.state === "GENERATING") return null;
+  const billingBlocked = validation.diagnostics?.stage === "generation" && validation.diagnostics.status === 402;
   return (
     <>
       {validation.results.filter((result) => result.code === "GENERATION_FAILED").map((result) => (
         <div key={result.code} role="alert" className="rounded-lg border border-red-300 bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">
-          {result.message}
+          {billingBlocked ? generationFailureMessage({ status: 402 }) : result.message}
         </div>
       ))}
       {initialDocumentaryBase && <CourseSourceBaseStart artifactId={artifact.id}

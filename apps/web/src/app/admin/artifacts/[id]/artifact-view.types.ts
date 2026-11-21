@@ -30,6 +30,7 @@ export interface ArtifactValidationResultItem {
 
 export interface ArtifactValidationReport {
   all_passed?: boolean;
+  diagnostics?: { stage?: string; status?: number };
   results: ArtifactValidationResultItem[];
 }
 

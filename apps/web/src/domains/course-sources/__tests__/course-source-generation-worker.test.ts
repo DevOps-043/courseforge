@@ -111,7 +111,7 @@ async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "
           requests.push(request);
           assert.equal(request.tools, undefined);
           assert.match(String(request.prompt), /Verifica permisos antes/);
-          if (outcome === "provider_error") throw Object.assign(new Error("API key invalid. Respuesta privada."), { statusCode: 400 });
+          if (outcome === "provider_error") throw Object.assign(new Error("Respuesta privada."), { statusCode: 402 });
           if (requests.length === 1)
             throw new Error("Modelo principal no disponible");
           return { object: content, usage: {} };
@@ -213,10 +213,11 @@ test("Base conserva un diagnóstico seguro de Gemini y descarta el mensaje origi
   assert.equal(providerErrors.length, 2);
   for (const error of providerErrors as Error[]) {
     assert.match(error.message, /^El proveedor no pudo generar la base documental\.$/);
-    assert.deepEqual(JSON.parse(JSON.stringify(error)), { status: 400, code: "PROVIDER_API_KEY" });
+    assert.deepEqual(JSON.parse(JSON.stringify(error)), { status: 402 });
   }
   const report = JSON.stringify(writes.at(-1));
-  assert.match(report, /"status":400/);
+  assert.match(report, /"status":402/);
+  assert.match(report, /facturación del proveedor/);
   assert.doesNotMatch(report, /Respuesta privada/i);
 });
 
