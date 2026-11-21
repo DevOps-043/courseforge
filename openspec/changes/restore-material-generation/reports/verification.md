@@ -22,4 +22,8 @@ La auditoría distingue el contenido factual de las decisiones didácticas y sig
 
 La primera compuerta tras integrar se detuvo por cinco tolerancias de lint obsoletas y luego por dos ciclos en las dependencias de impartición. Se retiraron solo las tolerancias ausentes y se eliminaron la autoimportación del handler y el ciclo de tipos entre recorrido y política. La red local de prueba utilizó la versión de Puppeteer fijada por el repositorio y PGlite en directorios temporales.
 
-La verificación externa fue de solo lectura. Queda pendiente el piloto con proveedor real en un entorno autorizado. Las pruebas locales cubren las escrituras y lecturas con PostgreSQL y respuestas de IA simuladas.
+Las pruebas locales cubren las escrituras y lecturas con PostgreSQL y respuestas de IA simuladas.
+
+## Piloto autorizado en staging
+
+La guía sintética se extrajo en dos fragmentos. La primera reserva de Base registró cero invocaciones en Engine porque faltaba el RPC que permite tomar el trabajo. Se aplicó con autorización la migración `20261114010000` y se comprobó que los cinco RPC de continuación permiten ejecución a `service_role` y la deniegan a `anon` y `authenticated`. Se añadió un reintento autenticado desde el mismo borrador para recuperar el despacho inicial cuando quedó en un despliegue anterior.

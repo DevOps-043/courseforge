@@ -59,6 +59,7 @@ function generationFixture(options: { enabled?: boolean; failSetup?: boolean; pr
   const action=load<{generateArtifactAction:(input:Record<string,unknown>)=>Promise<{success:boolean;error?:string}>}>("src/domains/artifacts/actions/artifact.actions.ts",{
     "@/lib/server/background-function-client":{dispatchBackgroundFunctionJson:async()=>{effects.push("dispatch");}},
     "@/domains/course-sources/course-source-settings":{},"@/domains/course-sources/course-source-error":{},"@/domains/course-sources/course-source-generation":{},
+    "@/domains/course-sources/course-source-base-progress":{},
     "../lib/artifact-generation-failure":{markArtifactGenerationFailed:async()=>{effects.push("failed");}},
     "../../course-delivery/actions/delivery-initialization.actions":{configureCreatedArtifactDeliveryAction:async(artifactId:string)=>{assert.equal(artifactId,id);effects.push("configure");if(options.failSetup)throw new Error("No se pudo configurar");}},
     "../../course-delivery/lib/delivery-initialization-policy":policy,

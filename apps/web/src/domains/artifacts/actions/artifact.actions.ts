@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { readCourseSourcePolicy } from "@/domains/course-sources/course-source-settings";
 import { CourseSourceError } from "@/domains/course-sources/course-source-error";
+import { canRetryUnclaimedDocumentaryBase } from "@/domains/course-sources/course-source-base-progress";
 import { SOURCE_GENERATION_LIMITS } from "@/domains/course-sources/course-source-generation";
 import { markArtifactGenerationFailed } from "../lib/artifact-generation-failure";
 import { configureCreatedArtifactDeliveryAction } from "../../course-delivery/actions/delivery-initialization.actions";
@@ -60,7 +61,10 @@ export async function getArtifactGenerationSnapshotAction(artifactId: string) {
     await markArtifactGenerationFailed(authorized.admin, artifactId, artifact.generation_metadata?.run_id, new Error("timeout"), artifact.updated_at);
     return getArtifactGenerationSnapshotAction(artifactId);
   }
-  return { success: true as const, artifact };
+  return { success: true as const, artifact: {
+    ...artifact,
+    can_retry_documentary_base: artifact.state === "GENERATING" && canRetryUnclaimedDocumentaryBase(artifact.generation_metadata),
+  } };
 }
 
 export async function generateArtifactAction(formData: {

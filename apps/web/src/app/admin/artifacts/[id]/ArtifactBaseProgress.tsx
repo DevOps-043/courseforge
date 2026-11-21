@@ -6,10 +6,12 @@ const ACTIVE_PHASE_LABELS = {
   verifying: "Verificando el contenido y sus fuentes",
 };
 
-export function ArtifactBaseProgress({ artifact, syncFailed, showResult }: {
+export function ArtifactBaseProgress({ artifact, syncFailed, showResult, onRetry, retrying }: {
   artifact: ArtifactViewRecord;
   syncFailed: boolean;
   showResult: boolean;
+  onRetry?: () => void;
+  retrying?: boolean;
 }) {
   const progress = artifact.generation_metadata?.base_progress;
   const active = artifact.state === "GENERATING";
@@ -41,6 +43,10 @@ export function ArtifactBaseProgress({ artifact, syncFailed, showResult }: {
         : generationFailed
           ? "Ya puedes recargar o reintentar desde Base."
           : "Ya puedes revisar el contenido o recargar la página."}</p>
+      {active && documentary && artifact.can_retry_documentary_base && onRetry && (
+        <button type="button" className="rounded-md border px-3 py-1 disabled:opacity-50" disabled={retrying}
+          onClick={onRetry}>{retrying ? "Reintentando…" : "Reintentar inicio de Base"}</button>
+      )}
     </div>
   );
 }

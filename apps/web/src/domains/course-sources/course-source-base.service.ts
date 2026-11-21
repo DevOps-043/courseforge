@@ -3,7 +3,7 @@ import { z } from "zod";
 import { resolveVideoDurationPolicy } from "../video-duration/video-duration-policy";
 import { CourseSourceError, sourcePersistenceError } from "./course-source-error";
 import { readCourseSourcePolicy } from "./course-source-settings";
-import { BASE_CONTINUATION_LIFETIME_MS } from "./course-source-base-progress";
+import { BASE_CONTINUATION_LIFETIME_MS, canRetryUnclaimedDocumentaryBase } from "./course-source-base-progress";
 
 export const documentaryBaseSchema = z.object({
   artifactId: z.uuid(),
@@ -72,4 +72,29 @@ export async function reserveDocumentaryBase(
   if (reservation.error) sourcePersistenceError(reservation.error);
   if (!reservation.data) throw new CourseSourceError(409, "El borrador cambió. Actualiza el curso para consultar su estado.");
   return formData;
+}
+
+export async function retryUnclaimedDocumentaryBase(
+  admin: SupabaseClient, organizationId: string, artifactId: string, runId: string, scope: string,
+) {
+  const artifact = await admin.from("artifacts").select("generation_metadata")
+    .eq("id", artifactId).eq("organization_id", organizationId)
+    .eq("course_id", `DOC-${artifactId}`).eq("state", "GENERATING").maybeSingle();
+  if (artifact.error) sourcePersistenceError(artifact.error);
+  const metadata = artifact.data?.generation_metadata;
+  if (metadata?.run_id !== runId || !canRetryUnclaimedDocumentaryBase(metadata)) return false;
+
+  const now = Date.now();
+  const reservation = await admin.from("artifacts").update({
+    generation_metadata: {
+      ...metadata,
+      started_at: new Date(now).toISOString(),
+      base_queue: { ...metadata.base_queue, scope, due_at: new Date(now).toISOString() },
+    },
+  }).eq("id", artifactId).eq("organization_id", organizationId).eq("state", "GENERATING")
+    .eq("course_id", `DOC-${artifactId}`)
+    .eq("generation_metadata->>run_id", runId).eq("generation_metadata->>started_at", metadata.started_at)
+    .eq("generation_metadata->base_queue->>invocations", "0").select("id").maybeSingle();
+  if (reservation.error) sourcePersistenceError(reservation.error);
+  return Boolean(reservation.data);
 }

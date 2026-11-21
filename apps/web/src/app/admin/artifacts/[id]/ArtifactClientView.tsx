@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useCourseDelivery } from "@/domains/course-delivery/hooks/useCourseDelivery";
+import { retryUnclaimedDocumentaryBaseAction } from "@/domains/course-sources/course-source-base.action";
 import {
   getArtifactGenerationSnapshotAction,
   regenerateArtifactAction,
@@ -79,6 +80,7 @@ export default function ArtifactClientView({
   const [feedback, setFeedback] = useState("");
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [generationSyncFailed, setGenerationSyncFailed] = useState(false);
+  const [retryingDocumentaryBase, setRetryingDocumentaryBase] = useState(false);
   const [reviewState, setReviewState] = useState<
     "pending" | "approved" | "rejected"
   >(
@@ -242,6 +244,21 @@ export default function ArtifactClientView({
     }
   };
 
+  const handleRetryDocumentaryBase = async () => {
+    const runId = artifact.generation_metadata?.run_id;
+    if (!runId || retryingDocumentaryBase) return;
+    setRetryingDocumentaryBase(true);
+    try {
+      const result = await retryUnclaimedDocumentaryBaseAction({ artifactId: artifact.id, runId });
+      if (!result.success) showToast(result.error, "error");
+      setArtifact(current => ({ ...current, can_retry_documentary_base: false }));
+    } catch {
+      showToast("No se confirmó el reintento. Comprueba el estado de Base.", "error");
+    } finally {
+      setRetryingDocumentaryBase(false);
+    }
+  };
+
   const handleCancelEdit = () => {
     setEditingSection(null);
     setEditedContent(buildEditedContent(artifact));
@@ -398,7 +415,8 @@ export default function ArtifactClientView({
         />
       </div>
 
-      <ArtifactBaseProgress artifact={artifact} syncFailed={generationSyncFailed} showResult={currentStep === 1} />
+      <ArtifactBaseProgress artifact={artifact} syncFailed={generationSyncFailed} showResult={currentStep === 1}
+        onRetry={() => void handleRetryDocumentaryBase()} retrying={retryingDocumentaryBase} />
       <div className={isAssemblyStudio ? "min-h-0 flex-1 overflow-hidden" : ""}>
         <ArtifactStageContent
           delivery={delivery}

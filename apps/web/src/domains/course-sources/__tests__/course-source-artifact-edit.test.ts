@@ -3,6 +3,7 @@ import test from "node:test";
 import { load } from "../../../app/login/__tests__/source-test-loader";
 import * as videoPolicy from "../../video-duration/video-duration-policy";
 import { CourseSourceError } from "../course-source-error";
+import { canRetryUnclaimedDocumentaryBase } from "../course-source-base-progress";
 import { SOURCE_GENERATION_LIMITS } from "../course-source-generation";
 const course = "10000000-0000-4000-8000-000000000001";
 function fixture(documentary = false, authorized = true) {
@@ -74,6 +75,7 @@ function fixture(documentary = false, authorized = true) {
         documentary ? { policy: "DOCUMENTS_ONLY" } : null,
     },
     "@/domains/course-sources/course-source-error": { CourseSourceError },
+    "@/domains/course-sources/course-source-base-progress": { canRetryUnclaimedDocumentaryBase },
     "@/domains/course-sources/course-source-generation": {
       SOURCE_GENERATION_LIMITS,
     },

@@ -29,3 +29,12 @@ test("Base muestra avance guardado y distingue una consulta fallida de un trabaj
   assert.doesNotMatch(stopped, /<progress/);
   assert.match(render({ ...artifact, state: "APPROVED" }), /Base disponible/);
 });
+
+test("Base ofrece el reintento solo para el despacho que sigue pendiente", () => {
+  const render = (canRetry: boolean) => renderToStaticMarkup(createElement(ArtifactBaseProgress, {
+    artifact: { ...artifact, can_retry_documentary_base: canRetry },
+    syncFailed: false, showResult: true, onRetry: () => {},
+  }));
+  assert.match(render(true), /Reintentar inicio de Base/);
+  assert.doesNotMatch(render(false), /Reintentar inicio de Base/);
+});

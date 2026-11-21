@@ -16,6 +16,7 @@ export interface ArtifactDescription {
 
 export interface ArtifactGenerationMetadata {
   base_progress?: DocumentaryBaseProgress | null;
+  run_id?: string;
   search_queries?: string[];
   original_input?: { description?: string };
   [key: string]: unknown;
@@ -68,6 +69,7 @@ export interface ArtifactMaterialsRelation extends ArtifactStageRelation {
 }
 
 export interface ArtifactViewRecord {
+  can_retry_documentary_base?: boolean;
   courseId?: string | null;
   course_id?: string | null;
   created_at: string;
