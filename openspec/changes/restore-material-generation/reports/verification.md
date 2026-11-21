@@ -27,3 +27,5 @@ Las pruebas locales cubren las escrituras y lecturas con PostgreSQL y respuestas
 ## Piloto autorizado en staging
 
 La guía sintética se extrajo en dos fragmentos. La primera reserva de Base registró cero invocaciones en Engine porque faltaba el RPC que permite tomar el trabajo. Se aplicó con autorización el SQL de `20261114010000`; el conector lo registró como `20261121184340_documentary_base_continuation`. Los cinco RPC de continuación permiten ejecución a `service_role` y la deniegan a `anon` y `authenticated`. Se añadió un reintento autenticado desde el mismo borrador para recuperar el despacho inicial cuando quedó en un despliegue anterior. En la primera recarga, la consulta de avance pidió `qa_status` en `artifacts`, columna ausente en Engine. La lectura se ajustó al esquema y filtra por organización.
+
+El worker tomó la misma ejecución tras el reintento en staging. Los dos modelos configurados para Base fallaron antes del guardado y el borrador pasó a `ESCALATED`. Base registra el código HTTP del proveedor y las causas conocidas de acceso, esquema y espera sin copiar mensajes ni respuestas del proveedor.

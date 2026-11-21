@@ -98,6 +98,20 @@ interface ValidationReportItem {
   passed: boolean;
 }
 
+function redactDocumentaryProviderError(failure: unknown) {
+  const details = failure && typeof failure === "object" ? failure as {
+    status?: unknown; statusCode?: unknown; message?: unknown; name?: unknown;
+  } : {};
+  const httpStatus = details.statusCode ?? details.status;
+  const status = typeof httpStatus === "number" && Number.isInteger(httpStatus) && httpStatus >= 400 && httpStatus <= 599
+    ? httpStatus : undefined;
+  const message = typeof details.message === "string" ? details.message : "";
+  const code = /\bapi[_ ]key\b|API_KEY_INVALID|API_KEY_SERVICE_BLOCKED/i.test(message) ? "PROVIDER_API_KEY"
+    : /response[_ ]?schema|generation_config\.response/i.test(message) || details.name === "AI_NoObjectGeneratedError" ? "PROVIDER_SCHEMA"
+    : details.name === "TimeoutError" || details.name === "AbortError" ? "PROVIDER_TIMEOUT" : undefined;
+  return Object.assign(new Error("El proveedor no pudo generar la base documental."), { status, code });
+}
+
 export const handler: Handler = async (event) => {
   const startedJobAt = Date.now();
   const jobDeadline = startedJobAt + 14 * 60_000;
@@ -479,7 +493,7 @@ export const handler: Handler = async (event) => {
         );
         break;
       } catch (failure: unknown) {
-        const error = sourceContext ? new Error("El proveedor no pudo generar la base documental. No se registra su contenido.") : failure;
+        const error = sourceContext ? redactDocumentaryProviderError(failure) : failure;
         await recordAiFailure({
           context: {
             artifactId,

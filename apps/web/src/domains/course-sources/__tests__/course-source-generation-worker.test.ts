@@ -11,9 +11,10 @@ import {
   type CourseGenerationContext,
 } from "../course-source-generation";
 
-async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "duplicate" = "success") {
+async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "duplicate" | "provider_error" = "success") {
   const writes: Record<string, unknown>[] = [];
   const requests: Record<string, unknown>[] = [];
+  const providerErrors: unknown[] = [];
   let searches = 0;
   let checked = 0;
   const context: CourseGenerationContext = {
@@ -110,6 +111,7 @@ async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "
           requests.push(request);
           assert.equal(request.tools, undefined);
           assert.match(String(request.prompt), /Verifica permisos antes/);
+          if (outcome === "provider_error") throw Object.assign(new Error("API key invalid. Respuesta privada."), { statusCode: 400 });
           if (requests.length === 1)
             throw new Error("Modelo principal no disponible");
           return { object: content, usage: {} };
@@ -153,7 +155,7 @@ async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "
         renderPromptTemplate: (prompt: string) => prompt,
       },
       "../../src/shared/ai/usage-telemetry": {
-        recordAiFailure: async () => {},
+        recordAiFailure: async ({ error }: { error: unknown }) => { providerErrors.push(error); },
         recordAiSdkUsage: async () => {},
         recordGeminiUsage: async () => {},
       },
@@ -202,8 +204,21 @@ async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "
       ...(queued ? { continuation: true, documentary: true } : { formData: { title: "Accesos", description: "Seguridad" } }),
     }),
   });
-  return { result, searches, requests, checked, writes, phases, invocationActions, dispatches };
+  return { result, searches, requests, checked, writes, phases, invocationActions, dispatches, providerErrors };
 }
+
+test("Base conserva un diagnóstico seguro de Gemini y descarta el mensaje original", async () => {
+  const { result, writes, providerErrors } = await runDocumentaryBase("provider_error");
+  assert.equal(result.statusCode, 500);
+  assert.equal(providerErrors.length, 2);
+  for (const error of providerErrors as Error[]) {
+    assert.match(error.message, /^El proveedor no pudo generar la base documental\.$/);
+    assert.deepEqual(JSON.parse(JSON.stringify(error)), { status: 400, code: "PROVIDER_API_KEY" });
+  }
+  const report = JSON.stringify(writes.at(-1));
+  assert.match(report, /"status":400/);
+  assert.doesNotMatch(report, /Respuesta privada/i);
+});
 
 test("Base documental omite investigación en principal/fallback incluso con prompt configurado que pide navegar", async () => {
   const { result, searches, requests, checked, writes, phases } = await runDocumentaryBase();
