@@ -439,6 +439,8 @@ export const handler: Handler = async (event) => {
       promptOrganizationId,
     );
     const modelName = modelConfig.model;
+    const generationArtifactId = artifactId;
+    const generationAdmin = supabase;
     console.log(
       `[Background Job] Starting incremental generation with ${modelName}`,
     );
@@ -464,7 +466,7 @@ export const handler: Handler = async (event) => {
       try {
         await assertCourseGenerationCurrent(supabase, sourceContext);
         const moduleResult = await withTextModelFallback(modelName, modelConfig.fallbackModel, selectedModel => generateModulePlans({
-          artifactId,
+          artifactId: generationArtifactId,
           attempt: iterationNumber,
           artifact,
           contextPromptTemplate,
@@ -476,7 +478,7 @@ export const handler: Handler = async (event) => {
           videoDurationPolicy,
           privateSources: Boolean(sourceContext),
           organizationId: promptOrganizationId,
-          supabase,
+          supabase: generationAdmin,
         }));
 
         allGeneratedPlans = [...allGeneratedPlans, ...moduleResult.lessonPlans.map(lesson => ({ ...lesson,

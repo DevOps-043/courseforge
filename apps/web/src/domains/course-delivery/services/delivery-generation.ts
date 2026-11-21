@@ -52,7 +52,7 @@ export async function generateDeliveryUnit(admin: SupabaseClient, run: DeliveryR
     try {
       const level = settings.model.thinking_level || "medium";
       const reasoning = isOpenAiReasoningModel(model);
-      const providerOptions = provider === "gemini" && model.startsWith("gemini-3")
+      const providerOptions: Parameters<typeof generateObject>[0]["providerOptions"] = provider === "gemini" && model.startsWith("gemini-3")
         ? { google: { thinkingConfig: { thinkingLevel: level } } }
         : provider === "openai" ? { openai: { store: false, ...(reasoning ? { reasoningEffort: /^gpt-6/.test(model) && level === "minimal" ? "low" : level } : {}) } } : undefined;
       const response = await generateObject({
