@@ -34,4 +34,6 @@ En el segundo intento, `gemini-3.5-flash` y `gemini-2.5-flash` devolvieron `HTTP
 
 ## Configuración de OpenAI para cursos
 
-La combinación elegida es `gpt-6.1-terra` con respaldo `gpt-6.2-sol`. Las pruebas de fuentes cubren el uso de `web_search` mediante Responses y la ausencia de llamadas a Gemini cuando ambos modelos son de OpenAI. También se verificaron las suites de Temario y Curación. La prueba con el proveedor real requiere cambiar la configuración activa y seguir el borrador en staging.
+Se guardó `gpt-6.1-terra` con respaldo `gpt-6.2-sol` en las cinco fases de Board Vision. Engine confirmó los cinco ajustes y la interfaz confirmó la herencia en las tres operaciones de Hub. Las pruebas de fuentes cubren `web_search` mediante Responses y la ausencia de llamadas a Gemini cuando ambos modelos son de OpenAI. Pasaron las suites de Temario, Curación, Materiales y `verify:pr`.
+
+Terra generó Base y Temario en el mismo borrador, y Engine confirmó los respectivos recibos documentales y la versión 1 del Temario. Los primeros planes de Hub y Academy fueron descartados por la revisión documental. Se especificó en los prompts del plan cómo evaluar las decisiones pedagógicas y conservar la exigencia de evidencia para los hechos del dominio.

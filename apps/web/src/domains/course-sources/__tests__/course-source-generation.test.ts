@@ -38,6 +38,15 @@ const grounding = {
   citations: [{ sourceId: source.id, quote: text, claim: output.text }],
 };
 
+test("el respaldo de Plan comprueba hechos y citas sin exigir una fuente para el diseño de actividades", () => {
+  const plan = { ...context, stage: "PLAN" as const };
+  assert.match(generation.courseSourcePrompt(plan), /propuestas de diseño del curso/);
+  const audit = generation.groundingPrompt(plan, output);
+  assert.match(audit, /consigna de práctica o un umbral del quiz no necesita una cita/);
+  assert.match(audit, /copia sourceId exactamente/);
+  assert.throws(() => generation.validateSourceGrounding(plan, output, { ...grounding, citations: [] }), { groundingReason: "MISSING_CITATIONS" });
+});
+
 test("la política documental contrasta la organización del curso y bloquea una configuración ajena", async () => {
   const settings = load<{
     readCourseSourcePolicy: (...args: unknown[]) => Promise<unknown>;
