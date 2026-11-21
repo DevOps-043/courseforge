@@ -173,9 +173,13 @@ test("error de lectura no permite fallback silencioso ni defaults de modelo", as
   await assert.rejects(resolveDeliverySettings(settingsDatabase({ fail: true }).admin, "org", "AGENDA"), /consultar/);
   await assert.rejects(resolveDeliverySettings(settingsDatabase({}).admin, "org", "AGENDA"), /Configura/);
 });
-test("configuración rechaza proveedor no implementado y normaliza respaldo idéntico heredado", async () => {
-  await assert.rejects(resolveDeliverySettings(settingsDatabase({ models: [{ ...baseModel, model_name: "proveedor-ajeno" }] }).admin, "org", "AGENDA"));
-  const resolved = await resolveDeliverySettings(settingsDatabase({ models: [{ ...baseModel, fallback_model: baseModel.model_name }] }).admin, "org", "AGENDA");
+test("configuración usa OpenAI con modelos heredados y normaliza el respaldo idéntico", async () => {
+  const migrated = await resolveDeliverySettings(settingsDatabase({
+    models: [{ ...baseModel, model_name: "gemini-3.5-flash", fallback_model: "gemini-3.6-flash" }],
+  }).admin, "org", "AGENDA");
+  assert.equal(migrated.model.model_name, "gpt-6.1-terra");
+  assert.equal(migrated.model.fallback_model, "gpt-6.2-sol");
+  const resolved = await resolveDeliverySettings(settingsDatabase({ models: [{ ...baseModel, model_name: "gpt-4o", fallback_model: "gpt-4o" }] }).admin, "org", "AGENDA");
   assert.equal(resolved.model.fallback_model, null);
 });
 test("instantánea de configuración conserva prompt y hash aunque se cambie el registro", async () => {

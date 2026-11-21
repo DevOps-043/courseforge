@@ -55,7 +55,6 @@ describe("slide copy duplication regressions", () => {
 
   function mockProvider(t: TestContext, responses: unknown[]) {
     t.mock.method(serverEnv, "getOptionalOpenAIApiKey", () => "test-key");
-    t.mock.method(serverEnv, "getOptionalGeminiApiKey", () => null);
     const prompts: string[] = [];
     t.mock.method(globalThis, "fetch", async (_url: unknown, init: RequestInit) => {
       prompts.push(JSON.parse(String(init.body)).input);
@@ -134,7 +133,6 @@ describe("slide copy duplication regressions", () => {
   it("retries truncated JSON within the same provider", async (t) => {
     const deck = synthesisDraft();
     t.mock.method(serverEnv, "getOptionalOpenAIApiKey", () => "test-key");
-    t.mock.method(serverEnv, "getOptionalGeminiApiKey", () => null);
     let calls = 0;
     t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({
       output_text: ++calls === 1 ? '{"slides":[' : JSON.stringify(validResponse(deck)),
@@ -205,7 +203,6 @@ describe("slide copy duplication regressions", () => {
 
   it("audits rejected fallback slides when no provider is configured", async (t) => {
     t.mock.method(serverEnv, "getOptionalOpenAIApiKey", () => null);
-    t.mock.method(serverEnv, "getOptionalGeminiApiKey", () => null);
     const deck = synthesisDraft();
     deck.slides[1]!.bodyBlocks = [{ kind: "bullets", items: ["Contenido pendiente de sintetizar desde fuentes aprobadas."] }];
     const result = await synthesizeDeckVisibleCopy({ deckSpec: deck });
@@ -1346,7 +1343,6 @@ describe("SofLIA - Engine slide deck generation", () => {
       })),
     }));
     t.mock.method(serverEnv, "getOptionalOpenAIApiKey", () => "test-key");
-    t.mock.method(serverEnv, "getOptionalGeminiApiKey", () => null);
     let requestCount = 0;
     t.mock.method(globalThis, "fetch", async () => {
       const response = batchResponses[requestCount++];

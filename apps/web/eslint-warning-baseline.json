@@ -560,11 +560,6 @@
         "a0b094805527579d20bd768d35fb5b5558ec5716d714ad6be06832faf78d6426": 2
       }
     },
-    "src/domains/production/bundle-agent/ai-spec.service.ts": {
-      "@typescript-eslint/no-explicit-any": {
-        "754bd57209135db32ea24e5ff4ea077b4844d29198d25e9a00d7cfec96f50d1f": 1
-      }
-    },
     "src/domains/production/bundle-agent/types.ts": {
       "@typescript-eslint/no-explicit-any": {
         "a8d683509ba372fbfdeb146312952a3d4d4567e7632be9e55561300451de5772": 1

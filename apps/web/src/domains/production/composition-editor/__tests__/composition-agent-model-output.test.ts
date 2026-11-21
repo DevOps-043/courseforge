@@ -8,7 +8,6 @@ import {
   normalizeCompositionAgentModelOutput,
 } from "../composition-agent-model-output.types";
 import {
-  buildGeminiCompositionProposalConfig,
   buildOpenAiCompositionProposalRequest,
 } from "../composition-agent-provider.service";
 
@@ -117,10 +116,9 @@ test("decodes new editor operations and rejects operations outside the executabl
   }), /requiere una acción manual explícita/);
 });
 
-test("builds strict JSON Schema requests for OpenAI and Gemini", () => {
+test("builds strict JSON Schema requests para OpenAI", () => {
   const schema = getCompositionAgentJsonSchema();
-  const openAi = buildOpenAiCompositionProposalRequest({ model: "gpt-5", prompt: "mueve", temperature: 0.2 });
-  const gemini = buildGeminiCompositionProposalConfig(0.2);
+  const openAi = buildOpenAiCompositionProposalRequest({ model: "gpt-6.1-terra", prompt: "mueve", temperature: 0.2 });
 
   assert.equal(schema.additionalProperties, false);
   assert.deepEqual(schema.required, ["operations", "summary"]);
@@ -128,12 +126,6 @@ test("builds strict JSON Schema requests for OpenAI and Gemini", () => {
   assert.equal((openAi.text as { format: { strict: boolean; type: string } }).format.type, "json_schema");
   assert.equal(JSON.stringify(openAi).includes("\"oneOf\""), false);
   assert.equal("temperature" in openAi, false);
-  assert.equal(gemini.responseMimeType, "application/json");
-  assert.deepEqual(gemini.responseJsonSchema, getCompositionAgentProviderJsonSchema());
-  const serializedGeminiSchema = JSON.stringify(gemini.responseJsonSchema);
-  for (const unsupportedKeyword of ["\"const\"", "\"pattern\"", "\"minLength\"", "\"maxLength\"", "\"exclusiveMinimum\""]) {
-    assert.equal(serializedGeminiSchema.includes(unsupportedKeyword), false, `Gemini schema contains ${unsupportedKeyword}`);
-  }
-  assert.match(serializedGeminiSchema, /"propertyOrdering"/);
-  assert.match(serializedGeminiSchema, /"clip\.move"/);
+  assert.equal(openAi.store, false);
+  assert.match(JSON.stringify(openAi), /"clip\.move"/);
 });

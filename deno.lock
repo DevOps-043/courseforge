@@ -11,10 +11,7 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
-        "npm:@ai-sdk/google@^3.0.10",
         "npm:@ai-sdk/openai@^3.0.12",
-        "npm:@google/genai@^1.37.0",
-        "npm:@google/generative-ai@~0.24.1",
         "npm:@netlify/functions@^5.1.2",
         "npm:@supabase/ssr@0.8",
         "npm:@types/bcryptjs@^2.4.6",
@@ -76,7 +73,6 @@
       "apps/web": {
         "packageJson": {
           "dependencies": [
-            "npm:@google/genai@^1.38.0",
             "npm:@netlify/functions@^5.1.2",
             "npm:@remotion/bundler@4.0.484",
             "npm:@remotion/player@4.0.484",

@@ -1,11 +1,10 @@
-import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import {
   fetchWithDeadline,
   readJsonResponseWithLimit,
   readResponseTextWithLimit,
 } from "../../../../lib/server/outbound-http";
-import { getOptionalGeminiApiKey, getOptionalOpenAIApiKey } from "../../../../lib/server/env";
+import { getOptionalOpenAIApiKey } from "../../../../lib/server/env";
 import { buildSourceInsights, type SlideSourcePack } from "../content/slide-source-pack.service";
 import { validateCourseDeckVisibleCopy } from "../validation/course-deck-qa.service";
 import {
@@ -19,6 +18,8 @@ import type {
   SlideAgentPromptRecord,
 } from "./slide-agent-prompt-codes";
 
+import { isOpenAiReasoningModel, resolveOpenAiTextModels } from "../../../../shared/ai/text-model-provider";
+
 const SYNTHESIS_TIMEOUT_MS = 60_000;
 const SYNTHESIS_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 const SYNTHESIS_ERROR_MAX_BYTES = 32 * 1024;
@@ -29,7 +30,7 @@ const synthesisResponseSchema = z.object({
   slides: z.array(z.unknown()).max(24),
 });
 
-type SynthesisProvider = "gemini" | "openai" | "deterministic_fallback";
+type SynthesisProvider = "openai" | "deterministic_fallback";
 
 export interface VisibleCopySlideAudit {
   slideId: string;
@@ -69,25 +70,6 @@ interface SynthesizeVisibleCopyParams {
   sourcePack?: SlideSourcePack;
 }
 
-function providerForModel(model: string | null | undefined): Exclude<SynthesisProvider, "deterministic_fallback"> | null {
-  if (typeof model !== "string") return null;
-  if (/^gemini(?:-|$)/i.test(model.trim())) return "gemini";
-  if (/^(?:gpt-|o\d)/i.test(model.trim())) return "openai";
-  return null;
-}
-
-function isRetiredGeminiModel(model: string | null | undefined) {
-  return typeof model === "string" && /^gemini-2\.0-/i.test(model.trim());
-}
-
-function resolveModel(params: SynthesizeVisibleCopyParams, provider: Exclude<SynthesisProvider, "deterministic_fallback">) {
-  const candidates = [params.model?.modelName, params.model?.fallbackModel];
-  const matching = candidates.find((candidate) =>
-    providerForModel(candidate) === provider && !(provider === "gemini" && isRetiredGeminiModel(candidate)),
-  );
-  return matching || (provider === "gemini" ? "gemini-2.5-flash" : "gpt-4.1-mini");
-}
-
 function temperatureFor(params: SynthesizeVisibleCopyParams) {
   const temperature = params.model?.temperature;
   return typeof temperature === "number" && Number.isFinite(temperature)
@@ -96,7 +78,7 @@ function temperatureFor(params: SynthesizeVisibleCopyParams) {
 }
 
 function supportsOpenAITemperature(model: string) {
-  return !/^(?:gpt-5|o\d)/i.test(model.trim());
+  return !isOpenAiReasoningModel(model);
 }
 
 function compactText(value: unknown) {
@@ -272,8 +254,7 @@ function normalizeSynthesis(params: {
   } satisfies CourseDeckSpec;
 }
 
-async function synthesizeWithOpenAI(params: SynthesizeVisibleCopyParams, apiKey: string) {
-  const model = resolveModel(params, "openai");
+async function synthesizeWithOpenAI(params: SynthesizeVisibleCopyParams, apiKey: string, model: string) {
   const response = await fetchWithDeadline("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -282,6 +263,7 @@ async function synthesizeWithOpenAI(params: SynthesizeVisibleCopyParams, apiKey:
     },
     body: JSON.stringify({
       input: buildSynthesisPrompt(params),
+      store: false,
       model,
       ...(supportsOpenAITemperature(model) ? { temperature: temperatureFor(params) } : {}),
       text: { format: { type: "json_object" } },
@@ -303,50 +285,22 @@ async function synthesizeWithOpenAI(params: SynthesizeVisibleCopyParams, apiKey:
   return { model, response: JSON.parse(extractJsonObject(text)), provider: "openai" as const };
 }
 
-async function synthesizeWithGemini(params: SynthesizeVisibleCopyParams, apiKey: string) {
-  const model = resolveModel(params, "gemini");
-  const client = new GoogleGenAI({ apiKey });
-  const result = await client.models.generateContent({
-    config: {
-      abortSignal: AbortSignal.timeout(SYNTHESIS_TIMEOUT_MS),
-      responseMimeType: "application/json",
-      temperature: temperatureFor(params),
-    },
-    contents: buildSynthesisPrompt(params),
-    model,
-  });
-
-  return {
-    model,
-    response: JSON.parse(extractJsonObject(result.text || "")),
-    provider: "gemini" as const,
-  };
-}
-
 /** Uses the configured visible-copy model, with a deterministic deck as a safe fallback. */
 async function synthesizeDeckVisibleCopyBatch(params: SynthesizeVisibleCopyParams): Promise<{
   deckSpec: CourseDeckSpec;
   trace: VisibleCopySynthesisTrace;
 }> {
   const openAiKey = getOptionalOpenAIApiKey();
-  const geminiKey = getOptionalGeminiApiKey();
-  const configuredProviders = [
-    providerForModel(params.model?.modelName),
-    providerForModel(params.model?.fallbackModel),
-    "gemini" as const,
-    "openai" as const,
-  ].filter((provider, index, providers): provider is Exclude<SynthesisProvider, "deterministic_fallback"> =>
-    Boolean(provider) && providers.indexOf(provider) === index,
-  );
+  const { model, fallbackModel } = resolveOpenAiTextModels(params.model?.modelName, params.model?.fallbackModel);
+  const configuredModels = openAiKey ? [model, fallbackModel] : [];
   const warnings: string[] = [];
   let attemptCount = 0;
   const accepted = new Map<string, CourseDeckSpec["slides"][number]>();
   let repairFeedback: string[] | undefined;
 
-  for (const provider of configuredProviders) {
+  for (const model of configuredModels) {
     try {
-      const apiKey = provider === "gemini" ? geminiKey : openAiKey;
-      if (!apiKey) continue;
+      if (!openAiKey) break;
       // One bounded repair per provider, using the same rules as final QA.
       for (let attempt = 0; attempt < 2; attempt += 1) {
         if (params.deadlineAt && Date.now() + SYNTHESIS_TIMEOUT_MS > params.deadlineAt) {
@@ -360,11 +314,9 @@ async function synthesizeDeckVisibleCopyBatch(params: SynthesizeVisibleCopyParam
           deckSpec: { ...params.deckSpec, slides: pending },
         };
         let deckSpec: CourseDeckSpec | undefined;
-        let result: Awaited<ReturnType<typeof synthesizeWithOpenAI>> | Awaited<ReturnType<typeof synthesizeWithGemini>> | undefined;
+        let result: Awaited<ReturnType<typeof synthesizeWithOpenAI>> | undefined;
         try {
-          result = provider === "gemini"
-            ? await synthesizeWithGemini(request, apiKey)
-            : await synthesizeWithOpenAI(request, apiKey);
+          result = await synthesizeWithOpenAI(request, openAiKey, model);
           const rawSlides = synthesisResponseSchema.parse(result.response).slides;
           const responseIds = rawSlides.map((value) => {
             const raw = asRecord(value);
@@ -400,7 +352,7 @@ async function synthesizeDeckVisibleCopyBatch(params: SynthesizeVisibleCopyParam
         } catch (error) {
           // Do not persist provider response bodies, which can include private data.
           repairFeedback = [error instanceof SyntaxError ? "invalid_json: devuelve JSON completo." : "provider_or_contract_error: respuesta no disponible o contrato invalido."];
-          warnings.push(`${provider}: ${repairFeedback[0]}`);
+          warnings.push(`${model}: ${repairFeedback[0]}`);
         }
         if (deckSpec && result && accepted.size === params.deckSpec.slides.length && repairFeedback.length === 0) {
           return {
@@ -425,7 +377,7 @@ async function synthesizeDeckVisibleCopyBatch(params: SynthesizeVisibleCopyParam
       }
       throw new Error(`El copy sigue sin pasar QA tras la correccion: ${repairFeedback?.join("; ")}`);
     } catch (error) {
-      warnings.push(error instanceof Error ? `${provider}: ${error.message}` : `${provider}: error desconocido`);
+      warnings.push(error instanceof Error ? `${model}: ${error.message}` : `${model}: error desconocido`);
     }
   }
 

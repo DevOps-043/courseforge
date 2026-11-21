@@ -18,7 +18,7 @@ const PRIMARY: CompositionAgentModelRuntime = {
 const FALLBACK: CompositionAgentModelRuntime = {
   apiKey: "fallback-secret",
   model: "gemini-3.5-flash",
-  provider: "gemini",
+  provider: "openai",
 };
 
 test("returns a valid primary proposal without recovery", async () => {

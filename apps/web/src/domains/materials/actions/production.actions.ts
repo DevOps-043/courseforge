@@ -703,12 +703,12 @@ export async function generateVideoPromptsAction(
         componentId,
         input: inputSnapshot,
         jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
-        provider: PRODUCTION_PROVIDERS.GEMINI,
+        provider: PRODUCTION_PROVIDERS.OPENAI,
       }),
       inputSnapshot,
       jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
-      provider: PRODUCTION_PROVIDERS.GEMINI,
-      providerModel: "gemini-3.5-flash",
+      provider: PRODUCTION_PROVIDERS.OPENAI,
+      providerModel: "gpt-6.1-terra",
     });
 
     if (

@@ -1,4 +1,3 @@
-import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -29,11 +28,11 @@ import {
 import {
   buildVideoGenerationGuardrails,
 } from "../../../src/domains/materials/validators/material-video.validators";
-import { requestGeminiJson, requestOpenAiJson, type MaterialsModelRuntimeConfig } from "./materials-model-client";
+import { requestOpenAiJson, type MaterialsModelRuntimeConfig } from "./materials-model-client";
 import { VIDEO_GENERATION_LIMITS } from "../../../src/domains/materials/generation/video-generation.contracts";
 export type { MaterialsModelRuntimeConfig } from "./materials-model-client";
 import { getMaterialsModelProvider } from "../../../src/shared/ai/materials-model-provider";
-import { createGeminiClient, createOpenAiClient } from "./bootstrap";
+import { createOpenAiClient } from "./bootstrap";
 import { normalizeGeneratedDialogueIdentifiers } from "../../../src/domains/materials/lib/dialogue-identifiers";
 import { validateSofliaDialogueContent } from "../../../src/domains/materials/validators/materials-control3.validators";
 
@@ -121,38 +120,14 @@ function wait(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function getProviderBillingOrPermissionError(
-  provider: "gemini" | "openai",
-  message: string,
-) {
-  const normalizedMessage = message.toLowerCase();
-
-  if (provider === "gemini" && (
-    normalizedMessage.includes("lightning dunning decision is deny") ||
-    normalizedMessage.includes("dunning decision is deny")
-  )) {
-    return "Gemini rechazo la solicitud porque el proyecto de Google Cloud asociado a la API key esta bloqueado por billing/dunning. Revisa facturacion/estado del proyecto en Google Cloud o configura una API key de un proyecto activo y reinicia el servidor.";
+function getProviderBillingOrPermissionError(message: string) {
+  const normalized = message.toLowerCase();
+  if (/permission_denied|"code":403|\b403\b/.test(normalized)) {
+    return "OpenAI rechazó la solicitud por permisos. Comprueba el acceso al modelo configurado.";
   }
-
-  if (
-    normalizedMessage.includes("permission_denied") ||
-    normalizedMessage.includes('"code":403') ||
-    normalizedMessage.includes("status code 403")
-  ) {
-    return provider === "gemini"
-      ? "Gemini rechazo la solicitud con 403 PERMISSION_DENIED. Verifica que la API key tenga acceso a Gemini API/Generative Language API, que el proyecto este activo y que el modelo configurado este disponible para ese proyecto."
-      : "OpenAI rechazo la solicitud por permisos. Verifica OPENAI_API_KEY y que el proyecto tenga acceso al modelo configurado.";
+  if (/insufficient_quota|billing|quota|\b402\b/.test(normalized)) {
+    return "OpenAI rechazó la solicitud por cuota o facturación.";
   }
-
-  if (
-    provider === "openai" &&
-    (normalizedMessage.includes("insufficient_quota") ||
-      normalizedMessage.includes("billing") ||
-      normalizedMessage.includes("quota"))
-  ) {
-    return "OpenAI rechazo la solicitud por cuota o facturacion. Revisa los creditos y limites del proyecto asociado a OPENAI_API_KEY.";
-  }
-
   return null;
 }
 
@@ -258,7 +233,6 @@ export async function generateWithRetry(
 
   const attemptErrors: string[] = [];
   const unavailableModels = new Set<string>();
-  let geminiClient: GoogleGenAI | undefined;
   let openAiClient: OpenAI | undefined;
   let attemptInput = input;
 
@@ -278,21 +252,7 @@ export async function generateWithRetry(
           );
         }
 
-        const content = provider === "gemini"
-          ? await generateMaterialsWithGemini(
-              (geminiClient ||= createGeminiClient()),
-              model,
-              attemptInput,
-              logPrefix,
-              supabase,
-              componentTypes,
-              organizationId,
-              modelRuntimeConfig,
-              deadlineMs,
-              artifactId,
-              lessonId,
-            )
-          : await generateMaterialsWithOpenAI(
+        const content = await generateMaterialsWithOpenAI(
               (openAiClient ||= createOpenAiClient()),
               model,
               attemptInput,
@@ -320,9 +280,7 @@ export async function generateWithRetry(
         console.warn(`${logPrefix} ${model} failed: ${message}`);
 
         const provider = getMaterialsModelProvider(model);
-        const permissionError = provider
-          ? getProviderBillingOrPermissionError(provider, message)
-          : null;
+        const permissionError = provider ? getProviderBillingOrPermissionError(message) : null;
         if (permissionError) {
           attemptErrors.push(`${model}: ${permissionError}`);
           unavailableModels.add(model);
@@ -356,48 +314,6 @@ export async function generateWithRetry(
     success: false as const,
     error: `Fallaron los modelos configurados para Materiales. ${attemptErrors.join(" | ")}`,
   };
-}
-
-export async function generateMaterialsWithGemini(
-  genAI: GoogleGenAI,
-  model: string,
-  input: MaterialsGenerationInput,
-  logPrefix: string,
-  supabase?: SupabaseClient,
-  componentTypes?: string[],
-  organizationId?: string | null,
-  modelRuntimeConfig: MaterialsModelRuntimeConfig = {
-    temperature: 0.7,
-    thinkingLevel: "medium",
-  },
-  deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.requestTimeoutMs,
-  artifactId?: string,
-  lessonId?: string,
-) {
-  const prompt = await buildMaterialsPrompt(
-    input,
-    logPrefix,
-    supabase,
-    componentTypes,
-    organizationId,
-  );
-
-  console.log(`${logPrefix} Calling ${model} through Gemini`);
-
-  const response = await requestGeminiJson(genAI, model, prompt, modelRuntimeConfig, remainingRequestTime(deadlineMs), {
-    containsPrivateSources: input.sources.some(source => source.source_kind === "DOCUMENT"),
-    sourceSnapshotId: input.course_source_snapshot_id,
-    supabase,
-    context: {
-      artifactId,
-      attempt: input.iteration_number,
-      lessonId: lessonId || input.lesson.lesson_id,
-      operation: "generate_material_components",
-      organizationId,
-      pipelineStep: "MATERIALS",
-    },
-  });
-  return parseAndValidateMaterialsOutput(input, response.content);
 }
 
 export async function generateMaterialsWithOpenAI(

@@ -123,10 +123,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.10",
     "@ai-sdk/openai": "^3.0.12",
-    "@google/genai": "^1.37.0",
-    "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.8.0",
     "ai": "^6.0.39",
     "bcryptjs": "^3.0.3",

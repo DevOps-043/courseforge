@@ -1,40 +1,31 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
-  GeminiRestResponse,
+  LiaProviderResponse,
   LiaAction,
   LiaConfig,
-  LiaGroundingMetadata,
   LiaSettingsRecord,
   ParsedLiaResponse,
 } from "@/lib/lia-types";
 import { createOperationalLogger, resolveCorrelationId } from "@/lib/server/operational-logger";
 import { fetchWithDeadline, readJsonResponseWithLimit } from "@/lib/server/outbound-http";
 
+import { COURSE_TEXT_MODELS, resolveOpenAiTextModels, withTextModelFallback, isOpenAiReasoningModel } from "../shared/ai/text-model-provider";
+import { extractOpenAiWebSources, type OpenAiSearchOutputItem } from "../shared/ai/openai-web-search";
+
 const LIA_PROVIDER_TIMEOUT_MS = 60_000;
 const LIA_PROVIDER_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
 
 const DEFAULT_COMPUTER_SETTINGS: LiaSettingsRecord = {
-  model_name: "gemini-3.5-flash",
+  model_name: COURSE_TEXT_MODELS.model,
   temperature: 0.3,
   setting_type: "COMPUTER",
 };
 
 const DEFAULT_STANDARD_SETTINGS: LiaSettingsRecord = {
-  model_name: "gemini-3.5-flash",
+  model_name: COURSE_TEXT_MODELS.model,
   temperature: 0.7,
   setting_type: "LIA_MODEL",
 };
-
-interface GeminiRestCandidate {
-  content?: {
-    parts?: Array<{ text?: string }>;
-  };
-  groundingMetadata?: LiaGroundingMetadata;
-}
-
-interface GeminiRestApiResponse {
-  candidates?: GeminiRestCandidate[];
-}
 
 interface LiaActionEnvelope {
   action?: LiaAction | null;
@@ -81,7 +72,9 @@ export async function getLiaSettings(
       : DEFAULT_STANDARD_SETTINGS;
   }
 
-  return data as LiaSettingsRecord;
+  const settings = data as LiaSettingsRecord;
+  const { model, fallbackModel } = resolveOpenAiTextModels(settings.model_name, settings.fallback_model);
+  return { ...settings, model_name: model, fallback_model: fallbackModel };
 }
 
 export function detectHallucination(
@@ -272,63 +265,40 @@ export function parseActionFromResponse(text: string): ParsedLiaResponse | null 
   return { cleanText: text };
 }
 
-export async function callGeminiREST(
+export async function callLiaOpenAi(
   apiKey: string,
   model: string,
   prompt: string,
   config: LiaConfig,
   correlationId?: string,
-): Promise<GeminiRestResponse> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const body: {
-    contents: Array<{ parts: Array<{ text: string }> }>;
-    generationConfig: {
-      temperature: number;
-    };
-    tools?: LiaConfig["tools"];
-  } = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: config.temperature || 0.7,
-    },
-  };
-
-  if (config.tools) {
-    body.tools = config.tools;
-  }
-
-  const logger = createOperationalLogger("lia.gemini", {
-    correlationId: resolveCorrelationId(correlationId),
-    model,
+): Promise<LiaProviderResponse> {
+  const { model: primary, fallbackModel } = resolveOpenAiTextModels(model, config.fallbackModel);
+  return withTextModelFallback(primary, fallbackModel, async selectedModel => {
+    const logger = createOperationalLogger("lia.openai", { correlationId: resolveCorrelationId(correlationId), model: selectedModel });
+    const startedAt = Date.now();
+    const reasoning = isOpenAiReasoningModel(selectedModel);
+    const response = await fetchWithDeadline("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: selectedModel, store: false,
+        input: prompt,
+        ...(!reasoning ? { temperature: config.temperature } : {}),
+        ...(reasoning && config.thinkingLevel ? { reasoning: { effort: config.thinkingLevel } } : {}),
+        ...(config.webSearch ? { tools: [{ type: "web_search" }] } : {}),
+      }),
+    }, LIA_PROVIDER_TIMEOUT_MS);
+    if (!response.ok) {
+      logger.warn("lia.provider.failed", { status: response.status, durationMs: Date.now() - startedAt });
+      throw new Error("OpenAI devolvió HTTP " + response.status);
+    }
+    const data = await readJsonResponseWithLimit<{
+      output_text?: string;
+      output?: Array<OpenAiSearchOutputItem & { content?: Array<{ type: string; text?: string }> }>;
+    }>(response, LIA_PROVIDER_RESPONSE_MAX_BYTES);
+    const text = data.output_text ?? data.output?.filter(item => item.type === "message")
+      .flatMap(item => item.content || []).filter(item => item.type === "output_text").map(item => item.text).join("\n") ?? "";
+    if (!text.trim()) throw new Error("OpenAI no devolvió texto para Lia.");
+    return { text, sources: extractOpenAiWebSources(data.output) };
   });
-  const startedAt = Date.now();
-  logger.info("lia.provider.requested", { promptLength: prompt.length });
-
-  const restResponse = await fetchWithDeadline(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }, LIA_PROVIDER_TIMEOUT_MS);
-
-  if (!restResponse.ok) {
-    logger.error("lia.provider.failed", new Error(`HTTP ${restResponse.status}`), {
-      durationMs: Date.now() - startedAt,
-      status: restResponse.status,
-    });
-    throw new Error(`Gemini API error: HTTP ${restResponse.status}`);
-  }
-
-  const data = await readJsonResponseWithLimit<GeminiRestApiResponse>(
-    restResponse,
-    LIA_PROVIDER_RESPONSE_MAX_BYTES,
-  );
-  const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  logger.info("lia.provider.completed", {
-    durationMs: Date.now() - startedAt,
-    responseLength: responseText.length,
-  });
-  return {
-    text: responseText,
-    groundingMetadata: data.candidates?.[0]?.groundingMetadata,
-  };
 }

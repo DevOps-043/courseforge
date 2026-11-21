@@ -21,13 +21,13 @@ const boundaryModules = {
     if (runtime.settingsError) throw runtime.settingsError;
     return {model_name: runtime.model};
   }`,
-  env: `export const getGeminiApiKey = () => 'qa-placeholder'; export const getOptionalOpenAIApiKey = () => 'qa-placeholder';`,
+  env: `export const getOpenAIApiKey = () => 'qa-placeholder';`,
   "operational-logger": `export function createOperationalLogger() {
     return {info: (event, fields) => globalThis.__syllabusImportQA.logs.push({event, fields}),
       warn: (event, fields) => globalThis.__syllabusImportQA.logs.push({event, fields})};
   }`,
   "usage-telemetry": `export const recordAiFailure = async () => {}; export const recordAiSdkUsage = async () => {};
-    export const recordGeminiUsage = async () => {}; export const recordOpenAiUsage = async () => {};`,
+    export const recordOpenAiUsage = async () => {};`,
 };
 await build({
   entryPoints: [
@@ -55,29 +55,19 @@ await build({
             return { contents: boundaryModules[name], loader: "js" };
           },
         );
-        builder.onResolve({ filter: /^(openai|@google\/genai)$/ }, (args) => ({
+        builder.onResolve({ filter: /^openai$/ }, (args) => ({
           path: args.path,
           namespace: "qa-sdk",
         }));
-        builder.onLoad({ filter: /.*/, namespace: "qa-sdk" }, (args) => ({
+        builder.onLoad({ filter: /.*/, namespace: "qa-sdk" }, () => ({
           loader: "js",
-          contents:
-            args.path === "openai"
-              ? `export default class OpenAI { constructor(options) {
+          contents: `export default class OpenAI { constructor(options) {
           globalThis.__syllabusImportQA.clients.push({provider:'openai', options});
           this.responses = {create: async request => {
             const runtime=globalThis.__syllabusImportQA; runtime.requests.push(request);
             if(runtime.providerError) throw runtime.providerError;
             return {output_text: runtime.responseText(), status: runtime.truncated ? 'incomplete' : 'completed',
               incomplete_details: runtime.truncated ? {reason:'max_output_tokens'} : null};
-          }};
-        }}`
-              : `export class GoogleGenAI { constructor(options) {
-          globalThis.__syllabusImportQA.clients.push({provider:'gemini', options});
-          this.models = {generateContent: async request => {
-            const runtime=globalThis.__syllabusImportQA; runtime.requests.push(request);
-            if(runtime.providerError) throw runtime.providerError;
-            return {text:runtime.responseText(), candidates:[{finishReason:runtime.truncated?'MAX_TOKENS':'STOP'}]};
           }};
         }}`,
         }));

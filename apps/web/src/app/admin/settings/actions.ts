@@ -5,8 +5,7 @@ import { SystemPrompt, UpdateSystemPromptDTO } from '@/domains/prompts/types';
 import { revalidatePath } from 'next/cache';
 import { resolveSettingsAccess } from '@/domains/prompts/server/settings-access.server';
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
-import { isSupportedMaterialsModel } from '@/shared/ai/materials-model-provider';
-import { COURSE_TEXT_MODELS } from '@/shared/ai/text-model-provider';
+import { COURSE_TEXT_MODELS, getTextModelProvider, resolveOpenAiTextModels } from '@/shared/ai/text-model-provider';
 
 interface ModelSettingsUpdateInput {
   fallback_model?: string | null;
@@ -90,8 +89,8 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   BUNDLE_AGENT: {
-    model_name: 'gemini-2.5-flash',
-    fallback_model: 'gpt-4.1-mini',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.3,
     thinking_level: 'medium',
     scope: 'Modulos: Bundle',
@@ -99,8 +98,8 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   SLIDES_DECK_BRIEF_AGENT: {
-    model_name: 'gpt-4o-mini',
-    fallback_model: 'gemini-2.5-flash',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.2,
     thinking_level: 'low',
     scope: 'Modulos: Slides',
@@ -108,8 +107,8 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   SLIDES_EVIDENCE_AGENT: {
-    model_name: 'gpt-4o-mini',
-    fallback_model: 'gemini-2.5-flash',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.1,
     thinking_level: 'low',
     scope: 'Modulos: Slides',
@@ -117,8 +116,8 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   SLIDES_STRATEGY_AGENT: {
-    model_name: 'gpt-4o',
-    fallback_model: 'gemini-2.5-flash',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.3,
     thinking_level: 'medium',
     scope: 'Modulos: Slides',
@@ -126,8 +125,8 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   SLIDE_TEMPLATE_TYPE_AGENT: {
-    model_name: 'gpt-4o',
-    fallback_model: 'gemini-2.5-flash',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.45,
     thinking_level: 'medium',
     scope: 'Modulos: Slides',
@@ -135,8 +134,8 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   SLIDES_VISIBLE_COPY_AGENT: {
-    model_name: 'gpt-4o-mini',
-    fallback_model: 'gemini-2.5-flash',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.3,
     thinking_level: 'low',
     scope: 'Modulos: Slides',
@@ -144,8 +143,8 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   SLIDES_VISUAL_TEMPLATE_AGENT: {
-    model_name: 'gpt-4o',
-    fallback_model: 'gemini-2.5-flash',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.5,
     thinking_level: 'medium',
     scope: 'Modulos: Slides',
@@ -153,8 +152,8 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   SLIDES_QA_AGENT: {
-    model_name: 'gpt-4o-mini',
-    fallback_model: 'gemini-2.5-flash',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.1,
     thinking_level: 'low',
     scope: 'Modulos: Slides',
@@ -561,7 +560,19 @@ export async function getModelSettingsAction() {
 
   const orgSettings = (orgData || []) as ModelSettingsRecord[];
   const orgByType = mapSettingsByType(orgSettings);
-  const merged = baselineSettings.map((setting) => orgByType.get(setting.setting_type) ?? setting);
+  const merged = baselineSettings.map(baseline => {
+    const setting = orgByType.get(baseline.setting_type) ?? baseline;
+    if (setting.setting_type === "SLIDES_IMAGE_GENERATION") {
+      const defaults = DEFAULT_MODEL_SETTINGS_BY_TYPE.SLIDES_IMAGE_GENERATION;
+      return {
+        ...setting,
+        model_name: /^gpt-image-/i.test(setting.model_name) ? setting.model_name : defaults.model_name,
+        fallback_model: /^gpt-image-/i.test(setting.fallback_model || "") ? setting.fallback_model : defaults.fallback_model,
+      };
+    }
+    const { model, fallbackModel } = resolveOpenAiTextModels(setting.model_name, setting.fallback_model);
+    return { ...setting, model_name: model, fallback_model: fallbackModel };
+  });
 
   return { success: true, settings: merged };
 }
@@ -764,21 +775,13 @@ export async function updateModelSettingsAction(settings: ModelSettingsUpdateInp
   const activeOrgId = access.tenant.organizationId;
   const supabaseAdmin = getAdminClient();
 
-  const invalidMaterialsSetting = settings.find(
-    (setting) =>
-      setting.setting_type === 'MATERIALS' &&
-      (!isSupportedMaterialsModel(setting.model_name) ||
-        (Boolean(setting.fallback_model) &&
-          !isSupportedMaterialsModel(setting.fallback_model || ''))),
-  );
-
-  if (invalidMaterialsSetting) {
-    return {
-      success: false,
-      error:
-        'Materiales admite modelos Gemini y OpenAI. Selecciona uno de esos proveedores para principal y fallback.',
-    };
-  }
+  const invalidModel = settings.some(setting => {
+    const compatible = setting.setting_type === "SLIDES_IMAGE_GENERATION"
+      ? (model: string) => /^gpt-image-/i.test(model.trim())
+      : getTextModelProvider;
+    return !compatible(setting.model_name) || Boolean(setting.fallback_model && !compatible(setting.fallback_model));
+  });
+  if (invalidModel) return { success: false, error: "Selecciona modelos de OpenAI compatibles con la fase." };
 
   const duplicatedArtifactBaseFallback = settings.find(
     (setting) =>

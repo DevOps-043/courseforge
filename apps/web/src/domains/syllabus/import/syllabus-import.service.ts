@@ -1,15 +1,13 @@
 import { prepareCourseGeneration, attestCourseGeneration } from "../../course-sources/course-source-generation.service";
 import { courseSourcePrompt } from "../../course-sources/course-source-generation";
-import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  getGeminiApiKey,
-  getOptionalOpenAIApiKey,
+  getOpenAIApiKey,
 } from "../../../lib/server/env";
 import { getPipelineModelSettings } from "../../../lib/server/model-settings";
+import { resolveOpenAiTextModels, withTextModelFallback } from "../../../shared/ai/text-model-provider";
 import { createOperationalLogger } from "../../../lib/server/operational-logger";
-import { getTextModelProvider } from "../../../shared/ai/text-model-provider";
 import {
   generateSyllabusJson,
   type SyllabusModelClients,
@@ -85,42 +83,21 @@ export async function executeSyllabusImport(
         artifact.organization_id,
       );
       usedModelName = settings.model_name;
-      const clients: SyllabusModelClients = {};
-      const provider = getTextModelProvider(settings.model_name);
-      if (provider === "gemini")
-        clients.gemini = new GoogleGenAI({
-          apiKey: getGeminiApiKey(),
-          httpOptions: {
-            timeout: SYLLABUS_IMPORT_POLICY.modelRequestTimeoutMs,
-          },
-        });
-      if (provider === "openai") {
-        const apiKey = getOptionalOpenAIApiKey();
-        if (!apiKey) throw new Error("Missing model configuration");
-        clients.openai = new OpenAI({
-          apiKey,
-          timeout: SYLLABUS_IMPORT_POLICY.modelRequestTimeoutMs,
-          maxRetries: 0,
-        });
-      }
-      return parseModelJson(
-        await generateSyllabusJson({
-          clients,
-          model: settings.model_name,
-          temperature: 0.1,
-          prompt: prompt + courseSourcePrompt(sourceContext),
-          telemetry: {
-            supabase: admin,
-            context: {
-              artifactId,
-              organizationId: artifact.organization_id,
-              pipelineStep: "SYLLABUS",
-              operation: `syllabus_import_${entry.operation}`,
-              attempt: entry.attempt_count,
-            },
-          },
-        }),
-      );
+      const clients: SyllabusModelClients = { openai: new OpenAI({
+        apiKey: getOpenAIApiKey(), timeout: SYLLABUS_IMPORT_POLICY.modelRequestTimeoutMs, maxRetries: 0,
+      }) };
+      const { model, fallbackModel } = resolveOpenAiTextModels(settings.model_name, settings.fallback_model);
+      return withTextModelFallback(model, fallbackModel, async model => {
+        const output = parseModelJson(await generateSyllabusJson({
+          clients, model, temperature: 0.1, prompt: prompt + courseSourcePrompt(sourceContext),
+          telemetry: { supabase: admin, context: {
+            artifactId, organizationId: artifact.organization_id, pipelineStep: "SYLLABUS",
+            operation: `syllabus_import_${entry.operation}`, attempt: entry.attempt_count,
+          } },
+        }));
+        usedModelName = model;
+        return output;
+      });
     };
     if (entry.operation === "parse") {
       const [primary] = await repository.documents([entry.primary_document_id]);

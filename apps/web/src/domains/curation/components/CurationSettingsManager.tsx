@@ -271,47 +271,6 @@ const PROMPT_HELP_TEXT: Record<string, string> = {
 };
 
 const ALL_MODEL_OPTIONS = [
-  // Modelos Google Gemini vigentes
-  {
-    value: "gemini-3.6-flash",
-    label: "Gemini 3.6 Flash",
-    description: "Modelo Flash actual para tareas agenticas y multimodales",
-  },
-  {
-    value: "gemini-3.5-flash",
-    label: "Gemini 3.5 Flash",
-    description: "Alto rendimiento sostenido para tareas agenticas y de codigo",
-  },
-  {
-    value: "gemini-3.5-flash-lite",
-    label: "Gemini 3.5 Flash-Lite",
-    description: "Opcion actual de alto volumen y menor costo",
-  },
-  {
-    value: "gemini-3.1-flash-lite",
-    label: "Gemini 3.1 Flash-Lite",
-    description: "Modelo estable y eficiente para ejecucion de alto volumen",
-  },
-  {
-    value: "gemini-3.1-pro-preview",
-    label: "Gemini 3.1 Pro (Preview)",
-    description: "Razonamiento multimodal avanzado; usar con cautela por ser preview",
-  },
-  {
-    value: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash",
-    description: "Opcion vigente con buen balance de razonamiento, latencia y costo",
-  },
-  {
-    value: "gemini-2.5-flash-lite",
-    label: "Gemini 2.5 Flash-Lite",
-    description: "Modelo vigente, rapido y economico para alto volumen",
-  },
-  {
-    value: "gemini-2.5-pro",
-    label: "Gemini 2.5 Pro",
-    description: "Modelo vigente para razonamiento y tareas complejas",
-  },
   {
     value: "gpt-6.1-terra",
     label: "GPT-6.1 Terra",

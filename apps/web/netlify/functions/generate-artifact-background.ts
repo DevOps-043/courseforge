@@ -16,7 +16,6 @@ import {
   type GeneratedArtifactBase,
 } from "../../src/domains/artifacts/lib/artifact-base-generation.schema";
 import {
-  createGeminiClient,
   createOpenAiClient,
   createServiceRoleClient,
   resolveAiModel,
@@ -42,10 +41,11 @@ import {
 import {
   recordAiFailure,
   recordAiSdkUsage,
-  recordGeminiUsage,
   recordOpenAiUsage,
 } from "../../src/shared/ai/usage-telemetry";
-import { COURSE_TEXT_MODELS, getTextModelProvider } from "../../src/shared/ai/text-model-provider";
+import { COURSE_TEXT_MODELS } from "../../src/shared/ai/text-model-provider";
+
+import { extractOpenAiSearchQueries } from "../../src/shared/ai/openai-web-search";
 
 const BLOOM_VERBS = [
   "comprender",
@@ -79,18 +79,6 @@ interface GenerateArtifactRequestBody {
   cloudStorageProvider?: CloudStorageProvider | null;
   organizationId?: string | null;
   useGoogleDrive?: boolean;
-}
-
-interface ResearchCandidate {
-  groundingMetadata?: {
-    groundingChunks?: unknown[];
-    webSearchQueries?: string[];
-  };
-}
-
-interface ResearchResponse {
-  candidates?: ResearchCandidate[];
-  text?: string;
 }
 
 type GeneratedArtifactContent = GeneratedArtifactBase;
@@ -289,64 +277,20 @@ export const handler: Handler = async (event) => {
     stage = "research";
     for (const modelName of sourceContext ? [] : searchModels) {
       const startedAt = Date.now();
-      const provider = getTextModelProvider(modelName);
-      if (!provider) continue;
       const context = { artifactId, operation: "research_artifact_base", organizationId, pipelineStep: "BASE", runId, userId };
       try {
         console.log(`[Background Job] Researching with ${modelName}...`);
 
-        if (provider === "openai") {
-          const timeoutMs = Math.min(PIPELINE_GENERATION_LIMITS.requestTimeoutMs, jobDeadline - startedAt);
-          if (timeoutMs < 1000) break;
-          const result = await createOpenAiClient().responses.create({
-            model: modelName, input: researchPrompt, max_output_tokens: 5000,
-            tools: [{ type: "web_search" }], tool_choice: "required", store: false,
-          }, { timeout: timeoutMs, maxRetries: 0, signal: AbortSignal.timeout(timeoutMs) });
-          await recordOpenAiUsage({ context, model: modelName, response: result, startedAt, supabase: serviceSupabase });
-          researchContext = result.output_text?.trim() || "";
-          if (!researchContext) continue;
-          researchSuccess = true;
-          break;
-        }
-
-        const result = (await createGeminiClient().models.generateContent({
-          model: modelName,
-          contents: researchPrompt,
-          config: {
-            httpOptions: { timeout: PIPELINE_GENERATION_LIMITS.requestTimeoutMs },
-            tools: [{ googleSearch: {} }],
-            temperature: 0.7,
-          },
-        })) as ResearchResponse;
-
-        await recordGeminiUsage({
-          context,
-          model: modelName,
-          response: result,
-          startedAt,
-          supabase: serviceSupabase,
-        });
-
-        researchContext = result.text || "";
-
-        const grounding = result.candidates?.[0]?.groundingMetadata;
-        if (grounding?.webSearchQueries) {
-          detectedSearchQueries = grounding.webSearchQueries;
-          console.log(
-            `[Background Job] Google Search used. Queries: ${detectedSearchQueries.join(", ")}`,
-          );
-        } else {
-          console.log(
-            `[Background Job] Warning: Model ${modelName} did NOT perform a Google Search.`,
-          );
-        }
-
-        const groundingChunks = grounding?.groundingChunks || [];
-        console.log(
-          `[Background Job] Grounding URLs found: ${groundingChunks.length}`,
-        );
-
-        console.log(`[Background Job] Research complete using ${modelName}.`);
+        const timeoutMs = Math.min(PIPELINE_GENERATION_LIMITS.requestTimeoutMs, jobDeadline - startedAt);
+        if (timeoutMs < 1000) break;
+        const result = await createOpenAiClient().responses.create({
+          model: modelName, input: researchPrompt, max_output_tokens: 5000,
+          tools: [{ type: "web_search" }], tool_choice: "required", store: false,
+        }, { timeout: timeoutMs, maxRetries: 0, signal: AbortSignal.timeout(timeoutMs) });
+        await recordOpenAiUsage({ context, model: modelName, response: result, startedAt, supabase: serviceSupabase });
+        researchContext = result.output_text?.trim() || "";
+        if (!researchContext) continue;
+        detectedSearchQueries = extractOpenAiSearchQueries(result.output);
         researchSuccess = true;
         break;
       } catch (error: unknown) {
@@ -354,7 +298,7 @@ export const handler: Handler = async (event) => {
           context,
           error,
           model: modelName,
-          provider,
+          provider: "openai",
           startedAt,
           supabase: serviceSupabase,
         });
@@ -463,8 +407,7 @@ export const handler: Handler = async (event) => {
           model: resolveAiModel(modelName),
           schema: ArtifactBaseGenerationSchema,
           prompt: systemPrompt,
-          ...(modelName.startsWith("gemini-") ? { temperature: modelConfig.temperature } : {}),
-          ...(getTextModelProvider(modelName) === "openai" ? { providerOptions: { openai: { store: false } } } : {}),
+          providerOptions: { openai: { store: false } },
           abortSignal: AbortSignal.timeout(Math.max(1, Math.min(PIPELINE_GENERATION_LIMITS.requestTimeoutMs, jobDeadline - startedAt))),
           maxRetries: 0,
         });
@@ -501,7 +444,7 @@ export const handler: Handler = async (event) => {
           },
           error,
           model: modelName,
-          provider: modelName.startsWith("gemini-") ? "gemini" : "openai",
+          provider: "openai",
           startedAt,
           supabase: serviceSupabase,
         });
