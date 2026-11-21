@@ -1,4 +1,5 @@
 import { materialGenerationError } from "../../../lib/material-generation-error";
+import { DeliveryPlanValidationError } from "./delivery-plan-generation";
 
 export type DeliveryGenerationStage = "PREPARATION" | "GENERATION" | "VALIDATION" | "GROUNDING" | "PERSISTENCE";
 const STAGES: Record<DeliveryGenerationStage, string> = {
@@ -17,7 +18,10 @@ export function deliveryGenerationFailure(failure: unknown, stage: DeliveryGener
   const text = String(error.message || "").toLowerCase();
   let code = "GENERATION_FAILED";
   let message = "No se pudo completar esta etapa. Consulta el identificador de ejecución para revisar el diagnóstico.";
-  if (/TimeoutError|AbortError|Timeout/i.test(name) || /timed out|timeout|aborted|presupuesto de tiempo/.test(text)) {
+  if (failure instanceof DeliveryPlanValidationError) {
+    code = "INVALID_OUTPUT";
+    message = `${failure.issues.join(" ")} La versión anterior se conserva para revisión.`;
+  } else if (/TimeoutError|AbortError|Timeout/i.test(name) || /timed out|timeout|aborted|presupuesto de tiempo/.test(text)) {
     code = "TIMEOUT";
     message = stage === "GENERATION"
       ? `El proveedor no completó la respuesta dentro de ${timeoutMs / 1000} segundos. Reanuda para volver a intentar la unidad pendiente.`

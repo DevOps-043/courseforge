@@ -33,7 +33,7 @@ export function agendaIssues(agenda: AgendaSession[], lessons: CurriculumLesson[
 export function planIssues(session: AgendaSession, plan: SessionPlan, config: DeliveryConfig) {
   const issues: string[] = [];
   const minutes = plan.blocks.reduce((sum, block) => sum + block.minutes, 0);
-  if (minutes !== session.minutes) issues.push(`Los bloques de ${session.title} suman ${minutes} minutos; deben distribuir sus ${session.minutes} minutos disponibles.`);
+  if (minutes !== session.minutes) issues.push(`Los bloques suman ${minutes} minutos; deben distribuir exactamente ${session.minutes} minutos disponibles.`);
   if (new Set(plan.blocks.map(block => block.id)).size !== plan.blocks.length) issues.push("Los bloques repiten identificadores.");
   const covered = new Set(session.coverage.map(item => item.lessonId));
   if (config.mode === "SYNCHRONOUS" && plan.nexusLinks.some(link => !covered.has(link.lessonId))) issues.push("Las referencias de estudio deben pertenecer al recorrido de Academy.");

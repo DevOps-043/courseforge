@@ -65,6 +65,8 @@ No se modificaron .env, credenciales ni configuración remota. La ausencia de mi
 
 ## Recuperación y reversión
 
+- Los planes de sesión reciben minutos exactos, vínculos permitidos y lecciones compartidas obligatorias calculados desde el recorrido. Una respuesta que incumple esquema o reglas del plan permite una corrección dentro del presupuesto. Se vuelven a ejecutar todos los validadores y la revisión de respaldo antes de guardar. Si falla de nuevo, INVALID_OUTPUT muestra el motivo sin incluir contenido privado y conserva la versión anterior.
+- Para probar modelos o prompts recién guardados, cancela únicamente la ejecución fallida y genera una nueva. Reanudar pendientes conserva la instantánea original; el texto «Configuración para nuevas ejecuciones» no acredita el modelo usado por una ejecución anterior.
 - La revisión documental comprueba afirmaciones, explicaciones y soluciones contra la evidencia aprobada. Las consignas, los casos identificados como hipotéticos y las plantillas vacías pueden ser creaciones didácticas. Los hechos o pasos técnicos que incluyan siguen sujetos a revisión.
 - Materiales de sesión y componentes Nexus pueden corregir una vez una salida con contenido sin respaldo dentro del presupuesto de ejecución. Las citas inexactas pueden pasar por una corrección de revisión. El sistema confirma únicamente contenido con recibo vigente y muestra la etapa del fallo cuando la corrección no basta.
 - Reanudar procesa pendientes; no repite unidades válidas. Un timeout de proveedor no garantiza ausencia de consumo externo.
