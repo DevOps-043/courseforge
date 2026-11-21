@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { resolveSettingsAccess } from '@/domains/prompts/server/settings-access.server';
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from '@/lib/server/env';
 import { isSupportedMaterialsModel } from '@/shared/ai/materials-model-provider';
+import { COURSE_TEXT_MODELS } from '@/shared/ai/text-model-provider';
 
 interface ModelSettingsUpdateInput {
   fallback_model?: string | null;
@@ -44,8 +45,8 @@ const MODEL_SETTING_TYPES = [
 ] as const;
 const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number], Omit<ModelSettingsRecord, 'id'>> = {
   ARTIFACT_BASE: {
-    model_name: 'gemini-3.5-flash',
-    fallback_model: 'gpt-4o-mini',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.7,
     thinking_level: 'medium',
     scope: 'Cursos',
@@ -53,8 +54,8 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   SYLLABUS: {
-    model_name: 'gemini-3.5-flash',
-    fallback_model: 'gpt-4o-mini',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.7,
     thinking_level: 'medium',
     scope: 'Cursos',
@@ -62,8 +63,8 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   INSTRUCTIONAL_PLAN: {
-    model_name: 'gemini-3.5-flash',
-    fallback_model: 'gpt-4o-mini',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.7,
     thinking_level: 'medium',
     scope: 'Cursos',
@@ -71,8 +72,8 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   CURATION: {
-    model_name: 'gpt-4o-mini',
-    fallback_model: 'gemini-2.5-flash',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.1,
     thinking_level: 'low',
     scope: 'Cursos',
@@ -80,10 +81,10 @@ const DEFAULT_MODEL_SETTINGS_BY_TYPE: Record<(typeof MODEL_SETTING_TYPES)[number
     is_active: true,
   },
   MATERIALS: {
-    model_name: 'gemini-3.6-flash',
-    fallback_model: 'gemini-3.5-flash',
+    model_name: COURSE_TEXT_MODELS.model,
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
     temperature: 0.7,
-    thinking_level: 'minimal',
+    thinking_level: 'low',
     scope: 'Cursos',
     setting_type: 'MATERIALS',
     is_active: true,

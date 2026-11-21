@@ -5,16 +5,18 @@ import { ArtifactBaseGenerationSchema } from "../../artifacts/lib/artifact-base-
 import { markArtifactGenerationFailed } from "../../artifacts/lib/artifact-generation-failure";
 import { BASE_BATCH_LIMITS } from "../course-source-base-batches";
 import { CourseSourceError, DocumentaryBaseBatchError, DocumentaryBasePendingError } from "../course-source-error";
+import * as textModels from "../../../shared/ai/text-model-provider";
 import {
   courseSourcePrompt,
   validateSourceGrounding,
   type CourseGenerationContext,
 } from "../course-source-generation";
 
-async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "duplicate" | "provider_error" = "success") {
+async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "duplicate" | "provider_error" | "web" = "success") {
   const writes: Record<string, unknown>[] = [];
   const requests: Record<string, unknown>[] = [];
   const providerErrors: unknown[] = [];
+  const webRequests: Record<string, unknown>[] = [];
   let searches = 0;
   let checked = 0;
   const context: CourseGenerationContext = {
@@ -106,11 +108,12 @@ async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "
       "../../src/lib/pipeline-generation-policy": {
         PIPELINE_GENERATION_LIMITS: { requestTimeoutMs: 10000 },
       },
+      "../../src/shared/ai/text-model-provider": textModels,
       ai: {
         generateObject: async (request: Record<string, unknown>) => {
           requests.push(request);
           assert.equal(request.tools, undefined);
-          assert.match(String(request.prompt), /Verifica permisos antes/);
+          if (outcome !== "web") assert.match(String(request.prompt), /Verifica permisos antes/);
           if (outcome === "provider_error") throw Object.assign(new Error("Respuesta privada."), { statusCode: 402 });
           if (requests.length === 1)
             throw new Error("Modelo principal no disponible");
@@ -121,6 +124,10 @@ async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "
         ArtifactBaseGenerationSchema,
       },
       "./shared/bootstrap": {
+        createOpenAiClient: () => ({ responses: { create: async (request: Record<string, unknown>) => {
+          webRequests.push(request);
+          return { output_text: "Contexto público comprobado" };
+        } } }),
         createGeminiClient: () => {
           searches++;
           throw new Error("Búsqueda prohibida");
@@ -128,8 +135,7 @@ async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "
         createServiceRoleClient: () => database,
         resolveAiModel: (model: string) => model,
         resolveModelSetting: async () => ({
-          model: "gemini-primary",
-          fallbackModel: "gpt-fallback",
+          ...(outcome === "web" ? textModels.COURSE_TEXT_MODELS : { model: "gemini-primary", fallbackModel: "gpt-fallback" }),
           temperature: 0.1,
         }),
       },
@@ -158,9 +164,11 @@ async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "
         recordAiFailure: async ({ error }: { error: unknown }) => { providerErrors.push(error); },
         recordAiSdkUsage: async () => {},
         recordGeminiUsage: async () => {},
+        recordOpenAiUsage: async () => {},
       },
       "../../src/domains/course-sources/course-source-generation.service": {
         prepareCourseGeneration: async (...args: unknown[]) => {
+          if (outcome === "web") return null;
           const options = args.at(-1) as { onProgress: (counts: { confirmed: number; total: number }) => Promise<void> };
           await options.onProgress({ confirmed: 16, total: 23 });
           if (outcome === "continue") throw new DocumentaryBasePendingError("Quedan lotes pendientes.");
@@ -172,6 +180,7 @@ async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "
           received: unknown,
           output: unknown,
         ) => {
+          if (outcome === "web") return null;
           assert.equal(received, context);
           assert.deepEqual(JSON.parse(JSON.stringify(output)), content);
           checked++;
@@ -204,8 +213,19 @@ async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "
       ...(queued ? { continuation: true, documentary: true } : { formData: { title: "Accesos", description: "Seguridad" } }),
     }),
   });
-  return { result, searches, requests, checked, writes, phases, invocationActions, dispatches, providerErrors };
+  return { result, searches, requests, checked, writes, phases, invocationActions, dispatches, providerErrors, webRequests };
 }
+
+test("Base usa Responses para búsqueda y respaldo OpenAI con los modelos configurados", async () => {
+  const { result, searches, requests, webRequests } = await runDocumentaryBase("web");
+  assert.equal(result.statusCode, 200);
+  assert.equal(searches, 0);
+  assert.equal(webRequests.length, 1);
+  assert.equal(webRequests[0].model, "gpt-6.1-terra");
+  assert.equal(webRequests[0].store, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(webRequests[0].tools)), [{ type: "web_search" }]);
+  assert.deepEqual(requests.map(item => item.model), ["gpt-6.1-terra", "gpt-6.2-sol"]);
+});
 
 test("Base conserva un diagnóstico seguro de Gemini y descarta el mensaje original", async () => {
   const { result, writes, providerErrors } = await runDocumentaryBase("provider_error");

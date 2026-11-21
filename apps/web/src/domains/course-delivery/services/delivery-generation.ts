@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAiModel } from "../../../../netlify/functions/shared/bootstrap";
 import { recordAiFailure, recordAiSdkUsage } from "../../../shared/ai/usage-telemetry";
-import { getTextModelProvider } from "../../../shared/ai/text-model-provider";
+import { getTextModelProvider, isOpenAiReasoningModel } from "../../../shared/ai/text-model-provider";
 import { createOperationalLogger } from "../../../lib/server/operational-logger";
 import { DELIVERY_LIMITS, deliveryGenerationTimeout, deliveryUnitBudget } from "../config/delivery.config";
 import { deliveryGenerationFailure, type DeliveryGenerationStage } from "../lib/delivery-generation-failure";
@@ -51,10 +51,10 @@ export async function generateDeliveryUnit(admin: SupabaseClient, run: DeliveryR
     const telemetry = { artifactId: run.artifact_id, organizationId: run.organization_id, runId: run.id, lessonId: unit.id, operation: settings.settingType, pipelineStep: run.operation };
     try {
       const level = settings.model.thinking_level || "medium";
-      const reasoning = /^(gpt-5|o[13])/.test(model);
-      const providerOptions: Record<string, { thinkingConfig: { thinkingLevel: string } } | { reasoningEffort: string }> | undefined = provider === "gemini" && model.startsWith("gemini-3")
-        ? { google: { thinkingConfig: { thinkingLevel: level } } } :
-        reasoning ? { openai: { reasoningEffort: level } } : undefined;
+      const reasoning = isOpenAiReasoningModel(model);
+      const providerOptions = provider === "gemini" && model.startsWith("gemini-3")
+        ? { google: { thinkingConfig: { thinkingLevel: level } } }
+        : provider === "openai" ? { openai: { store: false, ...(reasoning ? { reasoningEffort: /^gpt-6/.test(model) && level === "minimal" ? "low" : level } : {}) } } : undefined;
       const response = await generateObject({
         model: resolveAiModel(model), schema, prompt, maxRetries: 0,
         maxOutputTokens: DELIVERY_LIMITS.generationOutputTokens,
@@ -145,7 +145,8 @@ export async function executeDeliveryRun(admin: SupabaseClient, runId: string, g
         const review = (output: unknown) => {
           stage = "GROUNDING";
           logger.info("respaldo_iniciado", { unitId: unit.id, operation: run.operation });
-          return attestCourseGeneration(admin, sourceContext, output, generated.model, Math.min(groundingDeadline, Date.now() + DELIVERY_LIMITS.groundingBudgetMs));
+          const { model_name, fallback_model } = run.snapshot.settings.model;
+          return attestCourseGeneration(admin, sourceContext, output, [generated.model, model_name, fallback_model].filter((model): model is string => Boolean(model)), Math.min(groundingDeadline, Date.now() + DELIVERY_LIMITS.groundingBudgetMs));
         };
         if (run.operation === "AGENDA") {
           const generatedAgenda = generatedAgendaSchema.parse(generated.output);

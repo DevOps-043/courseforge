@@ -12,6 +12,7 @@ import { getErrorMessage } from './shared/errors';
 import { backgroundGuardFailureResponse, methodNotAllowedResponse, parseVerifiedBackgroundBody } from './shared/http';
 import { resolveInstructionalPlanAudience } from '../../src/domains/plan/lib/instructional-plan-validation-context';
 import { recordAiFailure, recordAiSdkUsage } from '../../src/shared/ai/usage-telemetry';
+import { COURSE_TEXT_MODELS, getTextModelProvider, isOpenAiReasoningModel, withTextModelFallback } from '../../src/shared/ai/text-model-provider';
 
 // EMBEDDED PROMPT TO AVOID IMPORT ISSUES
 const INSTRUCTIONAL_PLAN_VALIDATION_PROMPT = `Actúa como un Auditor de Calidad Instruccional Senior y Experto en Validación Curricular.
@@ -187,52 +188,32 @@ export const handler: Handler = async (event) => {
             supabase,
             'INSTRUCTIONAL_PLAN',
             {
-                model: 'gemini-2.5-flash',
-                fallbackModel: 'gemini-2.5-flash',
+                ...COURSE_TEXT_MODELS,
                 temperature: 0.2,
                 thinkingLevel: 'medium',
             },
             artifact?.organization_id || null,
         );
-        const modelName = modelSettings.model;
-        console.log(`[Validation Job] Validating with ${modelName}...`);
-
-        const startedAt = Date.now();
-        let result;
-        try {
-            result = await generateObject({
-                model: resolveAiModel(modelName),
-                schema: ValidationResultSchema,
-                prompt: `${INSTRUCTIONAL_PLAN_VALIDATION_PROMPT}\n\n${validationContext}`,
-                temperature: modelSettings.temperature,
-            });
-        } catch (error) {
-            await recordAiFailure({
-                context: {
-                    artifactId,
-                    operation: 'validate_instructional_plan',
-                    organizationId: artifact?.organization_id || null,
-                    pipelineStep: 'PLAN_VALIDATION',
-                },
-                error,
-                model: modelName,
-                provider: modelName.startsWith('gemini-') ? 'gemini' : 'openai',
-                startedAt,
-                supabase,
-            });
-            throw error;
-        }
-        await recordAiSdkUsage({
-            context: {
-                artifactId,
-                operation: 'validate_instructional_plan',
-                organizationId: artifact?.organization_id || null,
-                pipelineStep: 'PLAN_VALIDATION',
-            },
-            model: modelName,
-            startedAt,
-            supabase,
-            usage: result.usage,
+        const context = { artifactId, operation: 'validate_instructional_plan', organizationId: artifact?.organization_id || null, pipelineStep: 'PLAN_VALIDATION' };
+        const result = await withTextModelFallback(modelSettings.model, modelSettings.fallbackModel, async model => {
+            const startedAt = Date.now();
+            const provider = getTextModelProvider(model);
+            if (!provider) throw new Error('El modelo de validación no tiene un proveedor compatible.');
+            try {
+                const response = await generateObject({
+                    model: resolveAiModel(model),
+                    schema: ValidationResultSchema,
+                    prompt: `${INSTRUCTIONAL_PLAN_VALIDATION_PROMPT}\n\n${validationContext}`,
+                    ...(isOpenAiReasoningModel(model) ? {} : { temperature: modelSettings.temperature }),
+                    ...(provider === 'openai' ? { providerOptions: { openai: { store: false } } } : {}),
+                    maxRetries: 0,
+                });
+                await recordAiSdkUsage({ context, model, startedAt, supabase, usage: response.usage });
+                return response;
+            } catch (error) {
+                await recordAiFailure({ context, error, model, provider, startedAt, supabase });
+                throw error;
+            }
         });
 
         const validationOutput = result.object;

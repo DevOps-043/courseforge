@@ -2,6 +2,7 @@ import { Handler } from "@netlify/functions";
 import { prepareCourseGeneration, attestCourseGeneration, assertCourseGenerationCurrent } from "../../src/domains/course-sources/course-source-generation.service";
 import { courseSourcePrompt } from "../../src/domains/course-sources/course-source-generation";
 import { generateObject } from "ai";
+import { COURSE_TEXT_MODELS, getTextModelProvider, isOpenAiReasoningModel, withTextModelFallback } from "../../src/shared/ai/text-model-provider";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
 import { GLOBAL_VIDEO_DURATION_PROMPTS } from "../../src/shared/config/prompts/global-video-duration.prompts";
@@ -261,7 +262,9 @@ async function generateModulePlans(params: {
       model: resolveAiModel(modelName),
       schema: GeneratedInstructionalPlanSchema,
       prompt: `${finalSystemPrompt}\n\nMODULO ACTUAL: ${module.title}\n${finalContextPrompt}`,
-      temperature,
+      ...(isOpenAiReasoningModel(modelName) ? {} : { temperature }),
+      ...(getTextModelProvider(modelName) === "openai" ? { providerOptions: { openai: { store: false } } } : {}),
+      maxRetries: 0,
     });
   } catch (failure) {
     const error = params.privateSources ? new Error("El proveedor no pudo generar el plan documental. No se registra su contenido.") : failure;
@@ -429,8 +432,7 @@ export const handler: Handler = async (event) => {
       createServiceRoleClient(),
       "INSTRUCTIONAL_PLAN",
       {
-        model: "gemini-3.5-flash",
-        fallbackModel: "gemini-2.5-flash",
+        ...COURSE_TEXT_MODELS,
         temperature: 0.7,
         thinkingLevel: "medium",
       },
@@ -461,21 +463,21 @@ export const handler: Handler = async (event) => {
 
       try {
         await assertCourseGenerationCurrent(supabase, sourceContext);
-        const moduleResult = await generateModulePlans({
+        const moduleResult = await withTextModelFallback(modelName, modelConfig.fallbackModel, selectedModel => generateModulePlans({
           artifactId,
           attempt: iterationNumber,
           artifact,
           contextPromptTemplate,
           module,
           moduleIndex: module.delivery_module_index ?? moduleIndex,
-          modelName,
+          modelName: selectedModel,
           systemPromptTemplate,
           temperature: modelConfig.temperature,
           videoDurationPolicy,
           privateSources: Boolean(sourceContext),
           organizationId: promptOrganizationId,
           supabase,
-        });
+        }));
 
         allGeneratedPlans = [...allGeneratedPlans, ...moduleResult.lessonPlans.map(lesson => ({ ...lesson,
           ...(academy.routeHash ? { delivery_route_hash: academy.routeHash } : {}),

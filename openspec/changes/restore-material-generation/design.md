@@ -7,3 +7,5 @@ Sesiones conservan revisión, historial y lease del RPC. Nexus conserva su confi
 Si el worker confirma una revisión entre las dos consultas de progreso, el API recupera esa revisión antes de responder. La corrección de duración de video utiliza el presupuesto medido de narración y conserva guion por secciones, fuentes y notas visuales.
 
 Base ofrece un reintento explícito después de un minuto si el trabajo reservado aún registra cero invocaciones. La acción comprueba organización y ejecución, actualiza la reserva de forma condicional y usa el worker firmado del despliegue actual. El identificador, la revisión de fuentes y el plazo original se conservan. Una reserva que ya tomó un worker conserva su ámbito y lease.
+
+La configuración de las fases de cursos admite GPT-6.1 Terra y GPT-6.2 Sol como modelos de OpenAI. Base decide el proveedor de búsqueda a partir de los modelos configurados y usa Responses con `web_search` para OpenAI. La política documental sigue determinando cuándo se omite la búsqueda. Plan y Curación intentan el respaldo antes de declarar el fallo del proveedor. El trabajo reservado de Hub conserva su configuración original.

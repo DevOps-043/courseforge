@@ -81,6 +81,7 @@ export async function runCurationWorkflowV2(params: {
   systemPrompt?: string;
   openAiApiKey: string;
   model: string;
+  fallbackModel?: string;
   reasoningEffort?: string;
   supabase: SupabaseClient;
   resume?: boolean;
@@ -231,7 +232,7 @@ export async function runCurationWorkflowV2(params: {
         try {
           candidates = await (params.search || searchLessonCandidates)({
             client,
-            model,
+            model: attempt > 0 && params.fallbackModel ? params.fallbackModel : model,
             courseContext: context.fullCourseContext,
             lessons: batch.map((lesson) => {
               const currentCoverage = coverage.find((item) => item.lessonId === lesson.lesson_id)!;
@@ -254,7 +255,7 @@ export async function runCurationWorkflowV2(params: {
           lastSearchError = undefined;
           break;
         } catch (error) {
-          if (isPermanentProviderFailure(error)) throw error;
+          if (isPermanentProviderFailure(error) && (attempt > 0 || !params.fallbackModel || params.fallbackModel === model)) throw error;
           lastSearchError = error;
           console.error(
             `[Curation V2] Search attempt ${attempt + 1}/${SEARCH_ATTEMPTS} failed:`,

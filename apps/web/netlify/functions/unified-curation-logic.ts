@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { resolveModelSetting } from "./shared/bootstrap";
 import { runCurationWorkflowV2 } from "./shared/curation-v2/workflow";
+import { COURSE_TEXT_MODELS, getTextModelProvider } from "../../src/shared/ai/text-model-provider";
 import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
 import {
   CURATION_PROMPT_CODE,
@@ -19,8 +20,8 @@ interface UnifiedCurationParams {
 }
 
 const OPENAI_CURATION_DEFAULTS = {
-  model: process.env.OPENAI_CURATION_MODEL || "gpt-5.4-mini",
-  fallbackModel: process.env.OPENAI_CURATION_MODEL || "gpt-5.4-mini",
+  model: process.env.OPENAI_CURATION_MODEL || COURSE_TEXT_MODELS.model,
+  fallbackModel: COURSE_TEXT_MODELS.fallbackModel,
   temperature: 0.1,
   thinkingLevel: "low",
 };
@@ -54,7 +55,7 @@ export async function processUnifiedCuration({
     artifact?.organization_id || null,
   );
   const configuredModel = setting.model || OPENAI_CURATION_DEFAULTS.model;
-  const model = configuredModel.toLowerCase().startsWith("gpt-")
+  const model = getTextModelProvider(configuredModel) === "openai"
     ? configuredModel
     : OPENAI_CURATION_DEFAULTS.model;
   const configuredSystemPrompt = await resolvePromptWithFallback(
@@ -73,6 +74,7 @@ export async function processUnifiedCuration({
     curationId,
     systemPrompt,
     model,
+    fallbackModel: getTextModelProvider(setting.fallbackModel) === "openai" ? setting.fallbackModel : OPENAI_CURATION_DEFAULTS.fallbackModel,
     reasoningEffort: setting.thinkingLevel,
     openAiApiKey,
     supabase,

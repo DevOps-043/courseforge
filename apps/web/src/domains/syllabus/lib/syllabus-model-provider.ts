@@ -99,6 +99,8 @@ export async function generateSyllabusResearch(params: {
       input: prompt,
       max_output_tokens: 5000,
       tools: [{ type: "web_search" }],
+      tool_choice: "required",
+      store: false,
     });
   } catch (error) {
     if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "openai", startedAt });
@@ -158,6 +160,7 @@ export async function generateSyllabusJson(params: {
       input: prompt,
       max_output_tokens: 16000,
       text: { format: { type: "json_object" } },
+      store: false,
     });
   } catch (error) {
     if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "openai", startedAt });

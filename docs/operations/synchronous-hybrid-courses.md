@@ -68,6 +68,7 @@ No se modificaron .env, credenciales ni configuración remota. La ausencia de mi
 - La revisión documental comprueba afirmaciones, explicaciones y soluciones contra la evidencia aprobada. Las consignas, los casos identificados como hipotéticos y las plantillas vacías pueden ser creaciones didácticas. Los hechos o pasos técnicos que incluyan siguen sujetos a revisión.
 - Materiales de sesión y componentes Nexus pueden corregir una vez una salida con contenido sin respaldo dentro del presupuesto de ejecución. Las citas inexactas pueden pasar por una corrección de revisión. El sistema confirma únicamente contenido con recibo vigente y muestra la etapa del fallo cuando la corrección no basta.
 - Reanudar procesa pendientes; no repite unidades válidas. Un timeout de proveedor no garantiza ausencia de consumo externo.
+- La configuración de cursos admite GPT-6.1 Terra con respaldo GPT-6.2 Sol. Las etapas síncronas pueden heredar Temario, Plan y Materiales. Los modelos guardados se aplican a nuevas ejecuciones; la reserva anterior conserva sus modelos.
 - Cambiar entradas invalida aprobaciones y marca contenido afectado, sin borrarlo. El historial conserva el documento anterior.
 - Cambiar agenda afecta las sesiones modificadas; cambiar configuración pedagógica marca planes y materiales. Los hashes detectan fuentes o planes incompatibles.
 - Una fuente rechazada impide entregar contenido que la cite. Una nueva generación usa las fuentes aprobadas actuales.

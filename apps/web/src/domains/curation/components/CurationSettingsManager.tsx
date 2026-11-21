@@ -312,7 +312,17 @@ const ALL_MODEL_OPTIONS = [
     label: "Gemini 2.5 Pro",
     description: "Modelo vigente para razonamiento y tareas complejas",
   },
-  // Modelos OpenAI GPT-5 & Next-Gen
+  {
+    value: "gpt-6.1-terra",
+    label: "GPT-6.1 Terra",
+    description: "Modelo OpenAI para redacción y razonamiento visual",
+  },
+  {
+    value: "gpt-6.2-sol",
+    label: "GPT-6.2 Sol",
+    description: "Modelo OpenAI para flujos de varios pasos",
+  },
+  // Modelos de la familia GPT-5
   {
     value: "gpt-5.6-sol",
     label: "GPT-5.6 Sol",
@@ -740,6 +750,7 @@ export function CurationSettingsManager() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settingsList, setSettingsList] = useState<CurationConfig[]>([]);
+  const [savedSettings, setSavedSettings] = useState<CurationConfig[]>([]);
   const [prompts, setPrompts] = useState<SystemPrompt[]>([]);
   const [promptSavingId, setPromptSavingId] = useState<string | null>(null);
   const [promptResettingCode, setPromptResettingCode] = useState<string | null>(null);
@@ -767,6 +778,7 @@ export function CurationSettingsManager() {
           );
         });
         setSettingsList(filtered);
+        setSavedSettings(filtered);
       } else {
         console.error("Error loading settings:", settingsRes.error);
         toast.error("Error al cargar la configuracion de modelos");
@@ -797,13 +809,21 @@ export function CurationSettingsManager() {
     );
   };
 
+  const editedSettings = settingsList.filter((setting, index) => {
+    const saved = savedSettings[index];
+    return setting.model_name !== saved?.model_name || setting.fallback_model !== saved?.fallback_model
+      || setting.temperature !== saved?.temperature || setting.thinking_level !== saved?.thinking_level;
+  });
+
   const saveSettings = async () => {
+    if (!editedSettings.length) return;
     setSaving(true);
-    const res = await updateModelSettingsAction(settingsList);
+    const res = await updateModelSettingsAction(editedSettings);
 
     if (!res.success) {
       toast.error(res.error || "Error guardando algunas configuraciones");
     } else {
+      setSavedSettings(settingsList);
       toast.success("Configuraciones de modelos guardadas correctamente");
     }
 

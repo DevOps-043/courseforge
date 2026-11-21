@@ -5,6 +5,7 @@ import type { CurationCandidate, CurationLesson } from "./types";
 import { PIPELINE_GENERATION_LIMITS } from "../../../../src/lib/pipeline-generation-policy";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { recordAiFailure, recordOpenAiUsage } from "../../../../src/shared/ai/usage-telemetry";
+import { isOpenAiReasoningModel } from "../../../../src/shared/ai/text-model-provider";
 
 function responseText(response: unknown) {
   const value = response as { output_text?: unknown };
@@ -44,7 +45,7 @@ export async function searchLessonCandidates(params: {
       ),
     ),
   );
-  const isReasoningModel = model.toLowerCase().startsWith("gpt-5");
+  const isReasoningModel = isOpenAiReasoningModel(model);
   const startedAt = Date.now();
   const timeoutMs = Math.min(
     PIPELINE_GENERATION_LIMITS.requestTimeoutMs,
@@ -55,6 +56,7 @@ export async function searchLessonCandidates(params: {
   try {
     response = await client.responses.create({
     model,
+    store: false,
     input: [
       {
         role: "system",

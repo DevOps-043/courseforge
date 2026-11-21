@@ -86,8 +86,9 @@ export async function requestOpenAiJson(
       model,
       input: prompt,
       max_output_tokens: VIDEO_GENERATION_LIMITS.maximumOutputTokens,
-      reasoning: { effort: normalizeReasoningEffort(runtime.thinkingLevel) },
+      reasoning: { effort: normalizeReasoningEffort(runtime.thinkingLevel, model) },
       text: { format: { type: "json_object" } },
+      store: false,
     }, { timeout: timeoutMs, maxRetries: 0, signal: AbortSignal.timeout(timeoutMs) });
   } catch (error) {
     if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "openai", startedAt });
@@ -120,8 +121,10 @@ async function checkSourceSnapshot(telemetry?: MaterialsModelTelemetry) {
   if (current.error || current.data !== true) throw new Error("SOURCE_GENERATION_STALE: Las fuentes cambiaron. Detén esta ejecución y actualiza antes de reintentar.");
 }
 
-function normalizeReasoningEffort(value: string): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
-  switch (value.trim().toLowerCase()) {
+function normalizeReasoningEffort(value: string, model: string): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
+  const effort = value.trim().toLowerCase();
+  if (/^gpt-6\./i.test(model) && (effort === "none" || effort === "minimal")) return "low";
+  switch (effort) {
     case "none": return "none";
     case "minimal": return "minimal";
     case "low": return "low";

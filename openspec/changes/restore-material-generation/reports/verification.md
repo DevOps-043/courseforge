@@ -31,3 +31,7 @@ La guía sintética se extrajo en dos fragmentos. La primera reserva de Base reg
 El worker tomó la misma ejecución tras el reintento en staging. Los dos modelos configurados para Base fallaron antes del guardado y el borrador pasó a `ESCALATED`. Base registra el código HTTP del proveedor y las causas conocidas de acceso, esquema y espera sin copiar mensajes ni respuestas del proveedor.
 
 En el segundo intento, `gemini-3.5-flash` y `gemini-2.5-flash` devolvieron `HTTP_402`. Engine conservó dos snapshots de fuentes de Base sin evidencia de contenido confirmado. La consulta por artefacto encontró cero temarios, ejecuciones o recibos síncronos de materiales y paquetes o componentes asíncronos. La UI identifica el bloqueo de facturación con el diagnóstico persistido. El piloto conserva los modelos configurados por la organización.
+
+## Configuración de OpenAI para cursos
+
+La combinación elegida es `gpt-6.1-terra` con respaldo `gpt-6.2-sol`. Las pruebas de fuentes cubren el uso de `web_search` mediante Responses y la ausencia de llamadas a Gemini cuando ambos modelos son de OpenAI. También se verificaron las suites de Temario y Curación. La prueba con el proveedor real requiere cambiar la configuración activa y seguir el borrador en staging.

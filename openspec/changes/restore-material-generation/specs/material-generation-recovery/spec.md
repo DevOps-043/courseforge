@@ -32,3 +32,17 @@ El sistema SHALL permitir que un editor autorizado reintente el despacho de la e
 
 - **WHEN** un worker ya tomó la ejecución o la solicitud corresponde a otra organización o ejecución
 - **THEN** el sistema conserva la reserva vigente y evita otro despacho
+
+### Requirement: Usar los modelos configurados para generación y búsqueda
+
+El sistema SHALL despachar la búsqueda y la generación de cursos al proveedor de los modelos configurados para cada fase.
+
+#### Scenario: Principal y respaldo de OpenAI
+
+- **WHEN** la fase tiene GPT-6.1 Terra y GPT-6.2 Sol y la política permite búsquedas
+- **THEN** el sistema usa Responses con `web_search` para la búsqueda y conserva el respaldo dentro de OpenAI
+
+#### Scenario: Fuentes exclusivamente documentales
+
+- **WHEN** la generación usa una política documental sin búsqueda web
+- **THEN** el trabajo usa el contexto autorizado y conserva la revisión de citas sin enviar una consulta web

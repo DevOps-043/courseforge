@@ -49,7 +49,7 @@ import {
   generateSyllabusResearch,
   type SyllabusModelClients,
 } from "../../src/domains/syllabus/lib/syllabus-model-provider";
-import { getTextModelProvider } from "../../src/shared/ai/text-model-provider";
+import { COURSE_TEXT_MODELS, getTextModelProvider } from "../../src/shared/ai/text-model-provider";
 import { syllabusGenerationBackgroundRequestSchema } from "../../src/domains/syllabus/syllabus-generation-request.schema";
 
 function buildCorrectionRules(objectiveCount: number) {
@@ -200,8 +200,7 @@ export const handler: Handler = async (event) => {
 
     const sourceContext = await prepareCourseGeneration(supabase, artifactId, "SYLLABUS", null, undefined, `syllabus:${nextIteration}`, { objectives: objetivos });
     const modelConfig = await resolveModelSetting(supabase, "SYLLABUS", {
-      model: "gemini-3.5-flash",
-      fallbackModel: "gemini-2.5-flash",
+      ...COURSE_TEXT_MODELS,
       temperature: 0.7,
       thinkingLevel: "medium",
     }, artifactScope?.organization_id || null);

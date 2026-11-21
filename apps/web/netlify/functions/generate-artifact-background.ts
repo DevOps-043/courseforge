@@ -17,6 +17,7 @@ import {
 } from "../../src/domains/artifacts/lib/artifact-base-generation.schema";
 import {
   createGeminiClient,
+  createOpenAiClient,
   createServiceRoleClient,
   resolveAiModel,
   resolveModelSetting,
@@ -42,7 +43,9 @@ import {
   recordAiFailure,
   recordAiSdkUsage,
   recordGeminiUsage,
+  recordOpenAiUsage,
 } from "../../src/shared/ai/usage-telemetry";
+import { COURSE_TEXT_MODELS, getTextModelProvider } from "../../src/shared/ai/text-model-provider";
 
 const BLOOM_VERBS = [
   "comprender",
@@ -200,8 +203,7 @@ export const handler: Handler = async (event) => {
       serviceSupabase,
       "ARTIFACT_BASE",
       {
-        model: "gemini-3.5-flash",
-        fallbackModel: "gemini-2.5-flash",
+        ...COURSE_TEXT_MODELS,
         temperature: 0.7,
         thinkingLevel: "medium",
       },
@@ -259,16 +261,7 @@ export const handler: Handler = async (event) => {
       );
     }
 
-    const configuredSearchModels = [...new Set(configuredModels)]
-      .filter((model) => model?.startsWith("gemini-"));
-    const searchModels = configuredSearchModels.length > 0
-      ? configuredSearchModels
-      : [process.env.GEMINI_SEARCH_MODEL || "gemini-3.5-flash"];
-    if (configuredSearchModels.length === 0 && !sourceContext) {
-      configurationWarnings.push(
-        `ARTIFACT_BASE no incluye un modelo Gemini para research; se usará ${searchModels[0]} exclusivamente para Google Search.`,
-      );
-    }
+    const searchModels = [...new Set(configuredModels)];
     let researchSuccess = false;
 
     const hardcodedResearchPrompt = `
@@ -296,8 +289,25 @@ export const handler: Handler = async (event) => {
     stage = "research";
     for (const modelName of sourceContext ? [] : searchModels) {
       const startedAt = Date.now();
+      const provider = getTextModelProvider(modelName);
+      if (!provider) continue;
+      const context = { artifactId, operation: "research_artifact_base", organizationId, pipelineStep: "BASE", runId, userId };
       try {
         console.log(`[Background Job] Researching with ${modelName}...`);
+
+        if (provider === "openai") {
+          const timeoutMs = Math.min(PIPELINE_GENERATION_LIMITS.requestTimeoutMs, jobDeadline - startedAt);
+          if (timeoutMs < 1000) break;
+          const result = await createOpenAiClient().responses.create({
+            model: modelName, input: researchPrompt, max_output_tokens: 5000,
+            tools: [{ type: "web_search" }], tool_choice: "required", store: false,
+          }, { timeout: timeoutMs, maxRetries: 0, signal: AbortSignal.timeout(timeoutMs) });
+          await recordOpenAiUsage({ context, model: modelName, response: result, startedAt, supabase: serviceSupabase });
+          researchContext = result.output_text?.trim() || "";
+          if (!researchContext) continue;
+          researchSuccess = true;
+          break;
+        }
 
         const result = (await createGeminiClient().models.generateContent({
           model: modelName,
@@ -310,14 +320,7 @@ export const handler: Handler = async (event) => {
         })) as ResearchResponse;
 
         await recordGeminiUsage({
-          context: {
-            artifactId,
-            operation: "research_artifact_base",
-            organizationId,
-            pipelineStep: "BASE",
-            runId,
-            userId,
-          },
+          context,
           model: modelName,
           response: result,
           startedAt,
@@ -348,17 +351,10 @@ export const handler: Handler = async (event) => {
         break;
       } catch (error: unknown) {
         await recordAiFailure({
-          context: {
-            artifactId,
-            operation: "research_artifact_base",
-            organizationId,
-            pipelineStep: "BASE",
-            runId,
-            userId,
-          },
+          context,
           error,
           model: modelName,
-          provider: "gemini",
+          provider,
           startedAt,
           supabase: serviceSupabase,
         });
@@ -382,9 +378,8 @@ export const handler: Handler = async (event) => {
       modelConfig.fallbackModel &&
       modelConfig.model.trim() === modelConfig.fallbackModel.trim()
     ) {
-      const emergencyFallback = modelConfig.model.startsWith("gemini-")
-        ? "gpt-4o-mini"
-        : "gemini-3.5-flash";
+      const emergencyFallback = modelConfig.model === COURSE_TEXT_MODELS.fallbackModel
+        ? COURSE_TEXT_MODELS.model : COURSE_TEXT_MODELS.fallbackModel;
       genModels.push(emergencyFallback);
       configurationWarnings.push(
         `Se agregó ${emergencyFallback} como respaldo operativo porque la configuración guardada repite el modelo principal.`,
@@ -469,6 +464,7 @@ export const handler: Handler = async (event) => {
           schema: ArtifactBaseGenerationSchema,
           prompt: systemPrompt,
           ...(modelName.startsWith("gemini-") ? { temperature: modelConfig.temperature } : {}),
+          ...(getTextModelProvider(modelName) === "openai" ? { providerOptions: { openai: { store: false } } } : {}),
           abortSignal: AbortSignal.timeout(Math.max(1, Math.min(PIPELINE_GENERATION_LIMITS.requestTimeoutMs, jobDeadline - startedAt))),
           maxRetries: 0,
         });

@@ -99,6 +99,7 @@ export function settingsFixture() {
     "@/lib/server/env": { getSupabaseUrl: () => "https://synthetic.invalid", getSupabaseServiceRoleKey: () => "sintetico" },
     "@/lib/server/tenant-context": tenantModule,
     "@/shared/ai/materials-model-provider": { isSupportedMaterialsModel: () => true },
+    "@/shared/ai/text-model-provider": { COURSE_TEXT_MODELS: { model: "gpt-6.1-terra", fallbackModel: "gpt-6.2-sol" } },
     "@/lib/pipeline-constants": pipeline,
     "next/cache": { revalidatePath: () => effects.push("revalidate") },
   }, { console: { ...console, error: () => effects.push("log.error") } });
