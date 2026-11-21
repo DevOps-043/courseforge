@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { assertAcademyComponentCurrent } from "../../course-delivery/services/academy-scope.server";
 import { assertCourseSourcePublication } from "../../course-sources/course-source-publication";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertProviderSupportsJobType } from "../providers/production-provider-registry";
@@ -134,6 +135,7 @@ export async function resolveProductionComponentContext(params: {
   if (!material?.artifact_id) {
     throw new Error("No se pudo resolver el artefacto del componente.");
   }
+  await assertAcademyComponentCurrent(supabase, material.artifact_id, lesson?.lesson_id || "", component.assets);
 
   return {
     artifactId: material.artifact_id,

@@ -52,7 +52,9 @@ export async function resolveDeliverySettings(admin: SupabaseClient, organizatio
     if (selected) { source = "global"; settingType = type; break; }
   }
   if (!selected) throw new Error("Configura un modelo de la fase correspondiente antes de generar sesiones.");
-  const model = deliveryModelSchema.parse(selected);
+  // La configuración compartida anterior puede repetir el principal como respaldo.
+  // Eso equivale a no tener respaldo y no debe bloquear ni duplicar llamadas.
+  const model = deliveryModelSchema.parse({ ...selected, fallback_model: selected.fallback_model === selected.model_name ? null : selected.fallback_model });
   const orgPrompt = await findPrompt(admin, capability.prompt, organizationId);
   const globalPrompt = orgPrompt ? null : await findPrompt(admin, capability.prompt, null);
   const prompt = {

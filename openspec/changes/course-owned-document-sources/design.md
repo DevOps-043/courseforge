@@ -4,7 +4,7 @@
 La carga al temario, la curación y los extractos para Materiales tienen contratos distintos. Conectar un botón al registro PDF mantendría exclusiones de cobertura y pérdida de contenido, y no cubriría los otros formatos. Se necesita un dominio documental compartido con consumidores explícitos.
 
 ## Goals / Non-Goals
-Entregar el recorrido archivo → extracción → asociación curricular → aprobación → generación → trazabilidad. El modo exclusivo limita las fuentes de conocimiento aportadas, pero no puede garantizar por sí solo que un modelo nunca use conocimiento previo: se requieren validación de respaldo y revisión humana.
+Entregar el recorrido archivo → extracción → conjunto de fuentes válidas → generación → validación y trazabilidad. El modo exclusivo limita las fuentes de conocimiento aportadas, pero no puede garantizar por sí solo que un modelo nunca use conocimiento previo: se requieren validación de respaldo y revisión humana.
 
 El alcance cerrado incluye los cuatro formatos con texto extraíble. OCR, audio/video, archivos Office antiguos y bases vectoriales quedan como ampliaciones. Todo formato no soportado se rechaza explícitamente. Mantener los flujos históricos y SCORM.
 
@@ -12,9 +12,9 @@ El alcance cerrado incluye los cuatro formatos con texto extraíble. OCR, audio/
 
 ### Implementación local F4
 
-El contexto de estructura se obtiene de la selección READY antes de que exista una revisión curricular; exigir esa revisión en Base crearía una dependencia circular. Materiales usa exclusivamente la revisión aprobada. `course_source_snapshots` y sus items fijan referencias documentales inmutables y extractos web exactos; `course_source_generation_receipts` registra citas literales y hash del resultado comprobado. La clave de snapshot se deriva de la ejecución/iteración/unidad y no permite sustituir sus entradas al reintentar.
+El contexto de estructura se obtiene de la selección READY antes de que exista una revisión curricular; exigir esa revisión en Base crearía una dependencia circular. Materiales usa el conjunto completo ALL_VALIDATED, construido por PostgreSQL sin selección manual; las revisiones históricas conservan su contrato original. `course_source_snapshots` y sus items fijan referencias documentales inmutables y extractos web exactos; `course_source_generation_receipts` registra citas literales y hash del resultado comprobado. La clave de snapshot se deriva de la ejecución/iteración/unidad y no permite sustituir sus entradas al reintentar.
 
-Las guardas SQL reemplazan el bloqueo temporal F3. La vigencia de estructura depende de política, selección activa e inputs previos; Materiales añade revisión y fingerprint curricular, que incluye Base y versión del temario. Una asociación nueva no provoca regeneración circular de las primeras etapas si sus fuentes siguen iguales. Las guardas de producción fijan revisión, fingerprint y hash del componente en metadata del job; la publicación vuelve a comprobar la versión del paquete encolado. El verificador semántico no usa herramientas y no sustituye al revisor humano. Contratos efectivos, presupuestos y límites: `docs/architecture/course-owned-document-sources.md` y `reports/phase-4.md`.
+Las guardas SQL reemplazan el bloqueo temporal F3. La vigencia de estructura depende de política, selección activa e inputs previos; Materiales añade conjunto completo y fingerprint curricular, que incluye Base y versión del temario. Una asociación nueva no provoca regeneración circular de las primeras etapas si sus fuentes siguen iguales. Las guardas de producción fijan revisión, fingerprint y hash del componente en metadata del job; la publicación vuelve a comprobar la versión del paquete encolado. El verificador semántico no usa herramientas y no sustituye al revisor humano. Contratos efectivos, presupuestos y límites: `docs/architecture/course-owned-document-sources.md` y `reports/phase-4.md`.
 
 ### 1. Política independiente de la ruta de temario
 Decisión confirmada por el usuario: mostrar en cada curso documental «Solo mis archivos» y «Mis archivos + fuentes web», sin opción preseleccionada. Permitir guardar el borrador sin elección, pero bloquear la generación hasta que el autor elija. Persistir la elección y mostrarla al reabrir; no preguntar de nuevo en cada etapa. Cambiarla después requiere confirmar la invalidación de resultados afectados.
@@ -50,25 +50,31 @@ RLS y grants de mínimo privilegio; ninguna lectura de archivos privados por URL
 
 Límites iniciales propuestos: 8 documentos seleccionados, 15 MB por archivo, 40 MB por lote, 40,000 caracteres por documento y 120,000 por selección, reutilizando el contrato del temario. Rechazar excesos, no truncar. Mantener lectura de PDF históricos de hasta 25 MB sin ampliar automáticamente el límite de cargas nuevas. Cuotas acumuladas por curso y organización, concurrencia y presupuesto de extracción deben fijarse y probarse antes del piloto; una cantidad de archivos no equivale a presupuesto de tokens.
 
-### 5. Biblioteca y revisión de cobertura
+### 5. Biblioteca e inventario de fuentes
 
-Decisión F3 implementada: las referencias de evidencia se guardan como conjuntos inmutables acotados en `course_source_review_versions`, con aprobaciones separadas y CAS. Se evita sobrescribir asociaciones revisadas y duplicar texto. `course_source_assignments`, preparado en F1, no es una segunda fuente activa; cualquier proyección futura debe derivarse de la revisión aprobada. El resolver compartido es `sourceCoverage`; la propuesta es determinista y siempre no verificada, sin ejecutar IA.
-Entradas visibles desde preparación de Base, Temario y Fuentes: seleccionar/arrastrar, progreso, error por archivo, vista del texto interpretado, original autorizado, reutilización, sustitución y retirada lógica. Mostrar política, límites y procesamiento por proveedor IA. No exigir volver a subir en cada etapa.
+La biblioteca conserva los originales y su texto. La interfaz normal lista todas
+las fuentes válidas por lección y permite continuar con el conjunto completo.
+No requiere confirmar relaciones individuales. Los endpoints y tablas de revisión
+manual se conservan como compatibilidad histórica; no se fabrica una revisión
+humana para habilitar el nuevo consumo.
 
-Proponer asociaciones a partir de fragmentos con IDs servidor; el autor puede corregirlas y el revisor aprobarlas. Algoritmo de cobertura compartido entre UI, API y workers:
-- En modo documental, validar respaldo por objetivo/tema del plan y evidencia suficiente para el componente; un único manual puede ser suficiente. No aplicar el mínimo web de dos archivos ni aprobar por un simple contador de fragmentos.
-- La propuesta del modelo no aprueba por sí misma: cobertura con vacíos requiere corrección o revisión explícita; guardar autor y versión revisada.
-- En modo mixto, documentos aprobados satisfacen lo que cubren y la web resuelve los vacíos. Mantener una sola función de decisión, con desglose de cobertura documental/web y conflictos.
-- En modo web histórico, preservar cálculo actual. Cambiar fuente, política o asociaciones invalida la aprobación y los consumidores afectados.
+### 6. Contexto y comprobación de respaldo
 
-### 6. Contexto y trazabilidad en todas las etapas
-Base y Temario reciben contexto documental con presupuesto explícito; Plan conserva objetivos y temas trazables. Materiales recupera fragmentos aprobados por lección y componente, no solo los primeros 12,000 caracteres del documento ni el `content_excerpt` histórico.
+La RPC snapshot_all_course_source_materials deriva las fuentes desde el curso y
+la organización, fija el ámbito y construye su manifest completo. No acepta IDs
+elegidos por cliente. DOCUMENTS_ONLY excluye web; el modo mixto incorpora todas las
+URLs válidas de la lección con contenido verificable. Presupuestos explícitos
+bloquean excesos sin descartar fuentes. Un snapshot ALL_VALIDATED comprueba también
+que el conjunto completo siga siendo el mismo; los MANUAL previos conservan sus
+guardas originales. Las citas y el resultado quedan vinculados a recibos y ámbito.
 
-Primer enfoque: recuperación determinista por asociaciones revisadas y secciones; evitar añadir embeddings como requisito. Si el contenido excede el presupuesto, informar el alcance excluido y requerir selección/división; ningún recorte silencioso. Contexto y selección son reproducibles desde el snapshot.
+La búsqueda conserva fuentes válidas existentes, completa pendientes y confirma
+su ejecución/attempt antes de escribir. La continuación normal verifica plan,
+revisión y disponibilidad en servidor. La suficiencia factual se audita al generar
+cada salida; encontrar una URL o habilitar Materiales no equivale a revisión humana
+del contenido pedagógico. La revisión de planes y materiales sigue vigente.
 
-Todas las rutas locales, background, reanudaciones, regeneraciones parciales y fallback de proveedor usan el mismo resolver. Las fuentes permanecen como datos no confiables. Las herramientas se controlan en código según política, aunque un prompt solicite navegar.
-
-Cada componente declara IDs de evidencia enviados y localizadores verificables. Validar pertenencia al snapshot y asociación con la lección, vigencia y correspondencia de citas textuales cuando existan. Para suficiencia semántica usar chequeo explícito y revisión humana; un ID válido no demuestra una afirmación correcta. Ejemplos pedagógicos nuevos deben distinguirse del contenido atribuido a una fuente. Ante material sin respaldo, pedir corrección y no inventar citas.
+Contrato y activación: all-validated-sources.md y documentación canónica del dominio.
 
 ### 7. Concurrencia, invalidación y operación
 Congelar fuentes/política/temario al iniciar un job. Comprobar versión al reservar y al confirmar resultados; un job antiguo no puede aprobar sobre fuentes nuevas. Invalidación y modificación de fuentes deben ser transaccionales. Conservar borradores anteriores con estado obsoleto y diagnóstico; evitar regeneración pagada automática.

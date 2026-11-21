@@ -106,3 +106,13 @@ Comandos de partida: `npm run test:syllabus-duration --workspace=apps/web`, `npm
 | Histórico | Cursos web, sin fuente, importados y SCORM mantienen su comportamiento compatible. |
 
 “100% operativo” exige F0–F6 y evidencia de aceptación desplegada. Tener migraciones locales, un botón de carga o suites verdes no satisface por sí solo esa condición.
+
+## Ampliación: conjunto completo de fuentes válidas (2026-11-20)
+- [x] Sustituir selección manual obligatoria por inventario y continuación versionada.
+- [x] Construir en PostgreSQL el snapshot ALL_VALIDATED con todo el conjunto del ámbito, sin IDs elegidos por cliente.
+- [x] Conservar snapshots MANUAL, exclusión web por política, recibos, citas, vigencia y límites explícitos.
+- [x] Adaptar finalización del buscador y guardas de Materiales/publicación sin fingir aprobación humana.
+- [x] Verificar múltiples fuentes, otra organización, ejecución obsoleta, presupuesto, contratos, UI y compatibilidad de Hub.
+- [ ] Aplicar migración en Architect y ejecutar piloto real autorizado con aplicación y workers coordinados.
+
+Diseño y orden de activación: all-validated-sources.md. Evidencia: reports/all-validated-sources.md.

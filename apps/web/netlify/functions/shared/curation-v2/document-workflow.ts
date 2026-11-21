@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import { readSourceReview } from "../../../../src/domains/course-sources/course-source-review.service";
-import { sourceCoverage } from "../../../../src/domains/course-sources/course-source-coverage";
+import { materialSourceSetAvailability } from "../../../../src/domains/course-sources/course-source-material-set";
 import { searchLessonCandidates } from "./search";
 import { validateUrlSource, SOURCE_VALIDATION_TIMEOUT_MS } from "./validation";
 import { PIPELINE_GENERATION_LIMITS } from "../../../../src/lib/pipeline-generation-policy";
@@ -23,12 +23,7 @@ export async function runDocumentCuration(params: {
   const snapshot = await readSourceReview(params.supabase, params.artifactId);
   if (!snapshot.policy)
     throw new Error("Elige la política documental antes de curar fuentes.");
-  const coverage = sourceCoverage(
-    snapshot.policy,
-    snapshot.lessons,
-    snapshot.associations,
-    snapshot.evidence,
-  );
+  const availableEvidence = [...snapshot.evidence];
   const checkpoint = async (
     rows: CurationRowInsert[] = [],
     completion: Record<string, unknown> | null = null,
@@ -54,10 +49,10 @@ export async function runDocumentCuration(params: {
     const deadline = Date.now() + PIPELINE_GENERATION_LIMITS.curationRunMs;
     let client: OpenAI | undefined;
     for (const lesson of snapshot.lessons) {
-      const missing = coverage.find((item) => item.lessonId === lesson.id)!;
+      const existingWeb = snapshot.evidence.filter(item => item.type === "WEB" && item.lessonId === lesson.id);
+      const needed = Math.max(0, lesson.webRequired - new Set(existingWeb.map(item => item.sourceRef)).size);
       if (
-        !missing.missing.length ||
-        !missing.webNeeded ||
+        !needed ||
         Date.now() >= deadline
       )
         continue;
@@ -89,9 +84,9 @@ export async function runDocumentCuration(params: {
             lesson_title: lesson.title,
             lesson_objective: lesson.requirements[0].label,
             module_title: "Curso",
-            topics: missing.missing.map((item) => item.label),
-            required_sources: missing.webNeeded,
-            remaining_sources: missing.webNeeded,
+            topics: lesson.requirements.map((item) => item.label),
+            required_sources: needed,
+            remaining_sources: needed,
             excluded_urls: excludedUrls,
             video_target_seconds: 0,
           },
@@ -105,7 +100,7 @@ export async function runDocumentCuration(params: {
       const seen = new Set<string>(excludedUrls);
       const rows: CurationRowInsert[] = [];
       for (const candidate of candidates) {
-        if (rows.length >= missing.webNeeded || Date.now() >= deadline) break;
+        if (rows.length >= needed || Date.now() >= deadline) break;
         if (candidate.lesson_id !== lesson.id || seen.has(candidate.url))
           continue;
         const valid = await (params.validate || validateUrlSource)(
@@ -140,20 +135,23 @@ export async function runDocumentCuration(params: {
         });
       }
       if (!(await checkpoint(rows))) return inserted;
+      for (const row of rows) {
+        const report = row.validation_report as Record<string, unknown> | null;
+        availableEvidence.push({ id: row.source_ref, type: "WEB", lessonId: lesson.id,
+          title: row.source_title || row.source_ref, sourceRef: row.source_ref, text: String(report?.content_excerpt || "") });
+      }
       inserted += rows.length;
     }
   }
-  const approved =
-    snapshot.approved &&
-    coverage.length > 0 &&
-    coverage.every((item) => item.complete);
+  const availability = materialSourceSetAvailability(snapshot.policy, snapshot.planReady, snapshot.lessons, availableEvidence);
+  const approved = availability.ready;
   await checkpoint([], {
     state: approved ? "PHASE2_APPROVED" : "PHASE2_BLOCKED",
     qa_decision: {
       decision: approved ? "APPROVED" : "BLOCKED",
       notes: approved
-        ? "Cobertura documental revisada y vigente."
-        : "Revisa las evidencias y confirma cada objetivo/tema antes de aprobar. Las nuevas URLs no aprueban su suficiencia automáticamente.",
+        ? "Conjunto completo de fuentes válidas disponible. Los materiales comprobarán su respaldo y citas al generarse."
+        : availability.issues.join(" "),
     },
   });
   return inserted;

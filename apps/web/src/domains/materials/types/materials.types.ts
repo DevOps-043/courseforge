@@ -193,6 +193,8 @@ export interface VoiceClip {
 }
 
 export interface MaterialAssets {
+    /** Distribución híbrida con la que se generó el recurso asíncrono. */
+    delivery_route_hash?: string;
     // Campos existentes
     slides_url?: string;
     b_roll_prompts?: string;

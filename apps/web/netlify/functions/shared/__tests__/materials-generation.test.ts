@@ -21,6 +21,40 @@ import { buildVideoDurationContract } from "../../../../src/domains/video-durati
 import { normalizeVideoDurationContent } from "../../../../src/domains/video-duration/video-duration-validation";
 import { buildStoryboardNarration } from "../../../../src/domains/materials/generation/video-storyboard-timeline";
 import type { VideoGuideContent } from "../../../../src/domains/materials/types/materials.types";
+import { CourseSourceError, sourceGroundingFailure } from "../../../../src/domains/course-sources/course-source-error";
+import { load } from "../../../../src/app/login/__tests__/source-test-loader";
+
+test("un fallo de despacho individual despierta la cola sin detener la generación global", async () => {
+  const writes: string[] = [];
+  const dispatches: Array<{ payload: Record<string,unknown>; options: { onFailure?: (error: Error)=>Promise<void> } }> = [];
+  const helpers = load<{callMaterialsNetlifyFunction: (name:string,payload:Record<string,unknown>,fallback:string)=>Promise<unknown>}>("src/domains/materials/actions/materials-action-helpers.ts", {
+    "@/lib/server/background-function-client": { dispatchBackgroundFunctionJson: async (_name:string,payload:Record<string,unknown>,options:typeof dispatches[number]["options"])=>{dispatches.push({payload,options});} },
+    "@/lib/pipeline-generation-policy": { generationFailureMessage },
+    "@/lib/server/artifact-action-auth": { getServiceRoleClient: ()=>({rpc:async()=>{writes.push("lesson");return {error:null};}}) },
+    "@/lib/server/tenant-context": {},
+    "../services/materials-generation-recovery": {markMaterialsGenerationFailed:async()=>{writes.push("parent");}},
+  });
+  await helpers.callMaterialsNetlifyFunction("materials-generation-background", {materialsId:"m",artifactId:"a",version:1,lessonId:"lesson",iterationNumber:2,mode:"single-lesson"},"fallo");
+  await dispatches[0].options.onFailure!(new Error("timeout privado"));
+  assert.deepEqual(writes,["lesson"]);
+  assert.equal(dispatches[1].payload.mode,"process-next");
+  assert.equal(dispatches[1].payload.version,1);
+});
+
+test("respaldo distingue rechazo de citas de indisponibilidad sin filtrar contenido", () => {
+  for (const groundingReason of ["UNSUPPORTED_OUTPUT", "SOURCE_NOT_IN_CONTEXT", "QUOTE_NOT_IN_SOURCE", "CLAIM_NOT_IN_OUTPUT"] as const) {
+    const diagnostic = sourceGroundingFailure(new CourseSourceError(409, "contenido privado", groundingReason));
+    assert.equal(diagnostic.code, groundingReason);
+    assert.doesNotMatch(diagnostic.message, /contenido privado/);
+  }
+  assert.equal(sourceGroundingFailure(new CourseSourceError(503, "privado")).code, "GROUNDING_UNAVAILABLE");
+  assert.equal(sourceGroundingFailure(new CourseSourceError(413, "privado")).code, "GROUNDING_SIZE_LIMIT");
+  assert.equal(sourceGroundingFailure(new DOMException("privado", "TimeoutError")).code, "GROUNDING_TIMEOUT");
+  assert.equal(sourceGroundingFailure(new CourseSourceError(409, "privado")).code, "GROUNDING_CONFLICT");
+  assert.equal(sourceGroundingFailure({ statusCode: 429, message: "privado" }).code, "GROUNDING_PROVIDER_LIMIT");
+  assert.equal(sourceGroundingFailure({ statusCode: 401 }).code, "GROUNDING_PROVIDER_CONFIGURATION");
+  assert.equal(sourceGroundingFailure({ name: "AI_NoObjectGeneratedError" }).code, "GROUNDING_INVALID_RESPONSE");
+});
 
 function recoveredVideoFixture(repetitions = 90) {
   const contract = buildVideoDurationContract(undefined, "VIDEO_DEMO");
@@ -276,9 +310,17 @@ test("los jobs encadenados conservan el deploy y esperan aceptación HTTP sin fl
   assert.equal(localCalls, 0);
 });
 
+const scopePlans = [{ lesson_id: "lesson-1", lesson_title: "Lesson", module_title: "Module", components: [] }];
+function scopeRead(table: string) {
+  const query = { select: () => query, eq: () => query,
+    single: async () => ({ data: table === "artifacts" ? { organization_id: "org" } : { modules: [{ title: "Module", lessons: [{ id: "lesson-1", title: "Lesson" }] }], state: "STEP_APPROVED" }, error: null }),
+    maybeSingle: async () => ({ data: null, error: null }),
+  };
+  return query;
+}
 function databaseStub(writeError: { message: string } | null = null, accepted = true) {
   const writes: Array<Record<string, unknown>> = [];
-  const database = { rpc: async (name: string, payload: Record<string, unknown>) => {
+  const database = { from: scopeRead, rpc: async (name: string, payload: Record<string, unknown>) => {
     assert.equal(name, "commit_material_generation");
     writes.push(payload);
     return { error: writeError, data: accepted };
@@ -298,14 +340,14 @@ test("resume revalidates formerly rejected narration without replacing component
     for (const accepted of [true, false]) {
       const { database, writes } = databaseStub(null, accepted);
       let reads = 0;
-      database.from = (() => ({ select: () => ({ eq: async () => {
+      database.from = ((table: string) => table !== "material_components" ? scopeRead(table) : ({ select: () => ({ eq: async () => {
         reads++;
         return { data: saved, error: null };
       } }) })) as unknown as SupabaseClient["from"];
       const result = await generateLessonMaterials({
         execution, supabase: database, resumePendingOnly: true,
         lesson: { id: "lesson-1", lesson_id: "lesson-1", lesson_title: "Lesson", module_id: "module-1", module_title: "Module", expected_components: ["VIDEO_DEMO"], iteration_count: iteration },
-        generationContext: { artifactId: "artifact", lessonPlans: [], lessonSources: [], requiresSources: false, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
+        generationContext: { artifactId: "artifact", lessonPlans: scopePlans, lessonSources: [], requiresSources: false, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
         logPrefix: "[resume test]", models: [], modelRuntimeConfig: runtime,
       });
       assert.deepEqual(result, accepted ? { success: true } : { success: false, superseded: true });
@@ -324,7 +366,7 @@ test("manual full regeneration still requires generation rather than accepting s
   const result = await generateLessonMaterials({
     execution, supabase: database, componentTypes: [],
     lesson: { id: "lesson-1", lesson_id: "lesson-1", lesson_title: "Lesson", module_id: "module-1", module_title: "Module", expected_components: ["EXERCISE"], iteration_count: 2 },
-    generationContext: { artifactId: "artifact", lessonPlans: [], lessonSources: [], requiresSources: false, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
+    generationContext: { artifactId: "artifact", lessonPlans: scopePlans, lessonSources: [], requiresSources: false, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
     logPrefix: "[manual test]", models: [], modelRuntimeConfig: runtime,
   });
   assert.equal(result.success, false, "manual regeneration cannot succeed without a configured model");
@@ -469,7 +511,7 @@ test("source-required lessons fail before spending provider tokens when coverage
   const { database, writes } = databaseStub();
   const result = await generateLessonMaterials({ execution, supabase: database,
     lesson: { id: "lesson-1", lesson_id: "lesson-1-G1", lesson_title: "Lesson", module_id: "module-1", module_title: "Module", expected_components: ["EXERCISE"], iteration_count: 1 },
-    generationContext: { artifactId: "artifact", lessonPlans: [], lessonSources: [], requiresSources: true, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
+    generationContext: { artifactId: "artifact", lessonPlans: scopePlans, lessonSources: [], requiresSources: true, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
     logPrefix: "[test]", models: ["invalid-model-must-never-be-called"], modelRuntimeConfig: runtime,
   });
   assert.equal(result.success, false);

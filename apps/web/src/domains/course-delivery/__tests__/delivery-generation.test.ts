@@ -65,10 +65,14 @@ test("worker conserva unidades guardadas y reanuda solo pendientes con la config
     await executeDeliveryRun(database, "run", async (_admin, snapshot, unit) => {
       assert.equal(snapshot.snapshot.settings.prompt.content, "PROMPT_FIJADO");
       generated.push(unit.id);
-      if (unit.id === document.agenda[1].id) throw new Error("Fallo simulado del proveedor");
+      if (unit.id === document.agenda[1].id) throw new DOMException("Texto privado del proveedor", "TimeoutError");
       return { output: plan, model: "gpt-4o" };
     });
     assert.equal(run.status, "FAILED");
+    const failure = (run as typeof run & { last_error: string }).last_error;
+    assert.match(failure, /Generación de contenido · TIMEOUT/);
+    assert.match(failure, /90 segundos/);
+    assert.doesNotMatch(failure, /Texto privado/);
     assert.equal(run.units[0].ready, true); assert.equal(run.units[1].ready, false);
     assert.ok(workspace.document.plans[document.agenda[0].id]);
     run.status = "QUEUED";

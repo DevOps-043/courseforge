@@ -1,3 +1,5 @@
+export const BASE_CONTINUATION_LIFETIME_MS = 23 * 60 * 60_000;
+
 export interface DocumentaryBaseProgress {
   phase: "reading" | "writing" | "verifying";
   confirmed: number | null;

@@ -9,6 +9,7 @@ import {
   type SourceLesson,
 } from "./course-source-coverage";
 import type { CourseSourcePolicy } from "./course-source-policy";
+import styles from "./course-source-ui.module.css";
 export interface SourceReviewSnapshot {
   policy: CourseSourcePolicy | null;
   configured: boolean;
@@ -34,6 +35,7 @@ export function CourseSourceReviewPanel({
   const [message, setMessage] = useState("");
   const [activeLesson, setActiveLesson] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState("");
   const root = `/api/artifacts/${artifactId}/sources/review`;
   const refresh = useCallback(async () => {
     const payload = await sourceJsonRequest(
@@ -71,6 +73,7 @@ export function CourseSourceReviewPanel({
   async function command(action: "policy" | "save" | "approve" | "propose") {
     if (!snapshot) return;
     setBusy(true);
+    setPendingAction(action);
     setMessage("");
     try {
       if (
@@ -118,6 +121,7 @@ export function CourseSourceReviewPanel({
       );
     } finally {
       setBusy(false);
+      setPendingAction("");
     }
   }
   const coverage = snapshot?.policy
@@ -128,6 +132,8 @@ export function CourseSourceReviewPanel({
         snapshot.evidence,
       )
     : [];
+  const unsaved = Boolean(snapshot && JSON.stringify(associations) !== JSON.stringify(snapshot.associations));
+  const pendingRequirements = coverage.reduce((sum, lesson) => sum + lesson.missing.length, 0);
   function assign(lessonId: string, requirementId: string, value: string) {
     const next = associations.flatMap((item) =>
       item.lessonId === lessonId && item.requirementIds.includes(requirementId)
@@ -164,21 +170,21 @@ export function CourseSourceReviewPanel({
   return (
     <section
       aria-label="Política y cobertura documental"
-      className="my-4 space-y-3 rounded-xl border p-4 font-sans [&_button]:min-h-10 [&_button]:rounded-md [&_button]:border [&_button]:px-3 [&_button]:py-2 [&_button]:disabled:opacity-50"
+      className={styles.policy}
     >
       <h3 className="font-semibold">Política de fuentes de este curso</h3>
       <p className="text-sm">
-        Elige cómo usar tus documentos. Se conserva la elección al reabrir el
-        curso.
+        Define el respaldo del contenido para todo el curso. La elección se conserva al reabrirlo.
       </p>
-      <div className="flex flex-wrap gap-4">
+      <fieldset className={styles.choices}>
+        <legend className="sr-only">Política de fuentes de este curso</legend>
         {(
           [
-            ["DOCUMENTS_ONLY", "Solo mis archivos"],
-            ["DOCUMENTS_AND_WEB", "Mis archivos + fuentes web"],
+            ["DOCUMENTS_ONLY", "Solo mis archivos", "Materiales utiliza todos los documentos procesados del curso, sin búsqueda web ni selección manual por objetivo."],
+            ["DOCUMENTS_AND_WEB", "Mis archivos + fuentes web", "Materiales utiliza los documentos procesados y todas las fuentes web válidas de cada lección."],
           ] as const
-        ).map(([value, label]) => (
-          <label key={value} className="flex items-center gap-2">
+        ).map(([value, label, description]) => (
+          <label key={value} className={styles.choice}>
             <input
               type="radio"
               name={`source-policy-${artifactId}-${policyOnly}`}
@@ -187,15 +193,16 @@ export function CourseSourceReviewPanel({
               disabled={busy}
               onChange={() => setPolicy(value)}
             />
-            {label}
+            <span><strong>{label}</strong><small>{description}</small></span>
           </label>
         ))}
-      </div>
+      </fieldset>
       {snapshot?.policy === "WEB_ONLY" && (
         <p>Flujo web histórico conservado.</p>
       )}
       <button
         type="button"
+        className={styles.save}
         disabled={busy || !snapshot || !policy || policy === snapshot.policy}
         onClick={() => void command("policy")}
       >
@@ -203,8 +210,7 @@ export function CourseSourceReviewPanel({
       </button>
       {!snapshot?.configured && snapshot && (
         <p className="text-sm">
-          El curso histórico conserva su comportamiento mientras no configures
-          un flujo documental.
+          Tu curso conserva el flujo web actual mientras no configures una política documental.
         </p>
       )}
       {snapshot?.configured && !snapshot.policy && (
@@ -212,6 +218,16 @@ export function CourseSourceReviewPanel({
       )}
       {snapshot && !policyOnly && (
         <>
+          <div className={styles.step}>
+            <h3 className="font-semibold">Revisión de respaldo por lección</h3>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
+              <li>Reúne documentos o busca fuentes web según la política del curso.</li>
+              <li>«Proponer asociaciones» sugiere relaciones con las fuentes disponibles; no busca nuevas fuentes ni las aprueba.</li>
+              <li>Abre cada lección, selecciona una evidencia y comprueba que respalde el objetivo o tema.</li>
+              <li>Marca la verificación, guarda la revisión y después aprueba la cobertura completa.</li>
+            </ol>
+            <p className="mt-3">Evidencias disponibles: {snapshot.evidence.length} · Requisitos pendientes de respaldo verificado: {pendingRequirements}.</p>
+          </div>
           <p className="text-sm">
             Revisión {snapshot.revision} ·{" "}
             {snapshot.approved ? "Aprobada" : "Pendiente de revisión"}. Un mismo
@@ -233,17 +249,18 @@ export function CourseSourceReviewPanel({
               disabled={busy || !snapshot.policy}
               onClick={() => void command("propose")}
             >
-              Proponer asociaciones
+              {pendingAction === "propose" ? "Proponiendo asociaciones…" : "Proponer asociaciones"}
             </button>
             <button
               disabled={busy || !snapshot.policy}
               onClick={() => void command("save")}
             >
-              Guardar revisión
+              {pendingAction === "save" ? "Guardando revisión…" : "Guardar revisión"}
             </button>
             <button
               disabled={
                 busy ||
+                unsaved ||
                 !snapshot.planReady ||
                 snapshot.canApprove === false ||
                 !coverage.length ||
@@ -254,6 +271,10 @@ export function CourseSourceReviewPanel({
               Aprobar cobertura guardada
             </button>
           </div>
+          {busy && <p role="status">{pendingAction === "propose" ? "Relacionando los objetivos y temas con la evidencia disponible…" : "Procesando la revisión…"}</p>}
+          {unsaved && <p role="status">Tienes cambios sin guardar. Guarda la revisión antes de aprobar su cobertura.</p>}
+          {!snapshot.planReady && <p className={styles.intro}>La aprobación de cobertura requiere el plan vigente aprobado.</p>}
+          {!snapshot.evidence.length && <p className={styles.empty}>Todavía no hay evidencia disponible. Procesa documentos o completa la búsqueda web. Después pulsa «Actualizar revisión».</p>}
           {snapshot.lessons.map((lesson) => (
             <fieldset key={lesson.id} className="space-y-3 rounded border p-3">
               <legend className="font-medium">
@@ -272,7 +293,7 @@ export function CourseSourceReviewPanel({
               <p className="text-sm">
                 {coverage.find((item) => item.lessonId === lesson.id)?.missing
                   .length ?? lesson.requirements.length}{" "}
-                requisitos pendientes
+                requisitos pendientes de respaldo verificado
               </p>
               {activeLesson === lesson.id &&
                 lesson.requirements.map((requirement) => {
@@ -321,6 +342,7 @@ export function CourseSourceReviewPanel({
                               </option>
                             ))}
                         </select>
+                        {!association && <span className={styles.intro}>Selecciona el documento o la fuente que respalda este requisito. Si la lista está vacía, primero necesitas incorporar evidencia.</span>}
                       </label>
                       {association && (
                         <>

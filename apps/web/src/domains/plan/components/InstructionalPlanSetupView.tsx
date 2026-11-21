@@ -3,6 +3,7 @@
 import { BookOpen, Play, RotateCcw, Settings2 } from "lucide-react";
 
 interface InstructionalPlanSetupViewProps {
+  academyOnly?: boolean;
   configuredPrompt: string;
   customPrompt: string;
   isGenerating: boolean;
@@ -16,6 +17,7 @@ interface InstructionalPlanSetupViewProps {
 }
 
 export function InstructionalPlanSetupView({
+  academyOnly = false,
   configuredPrompt,
   customPrompt,
   isGenerating,
@@ -36,22 +38,26 @@ export function InstructionalPlanSetupView({
   const canGenerate = !isGenerating && (!useCustomPrompt || Boolean(customPrompt.trim()));
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
+    <div className="w-full space-y-6 pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
       <div className="space-y-2">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
           <div className="p-2 rounded-lg bg-[var(--engine-accent)]/10 text-[var(--engine-accent)]">
             <BookOpen size={24} />
           </div>
-          Paso 3: Plan Instruccional
+          {academyOnly ? "Plan de estudio · Academy" : "Paso 3: Plan Instruccional"}
         </h2>
         <p className="text-gray-500 dark:text-[var(--engine-text-muted)] text-base leading-relaxed max-w-2xl ml-12">
-          La IA generará el plan instruccional detallado para cada lección,
-          definiendo actividades, recursos y evaluaciones validadas
-          pedagógicamente.
+          {academyOnly
+            ? "Genera actividades, recursos y evaluaciones para las lecciones asignadas a Academy en el recorrido del paso 2. Las sesiones en vivo se preparan en el apartado de Hub."
+            : "La IA generará el plan instruccional detallado para cada lección, definiendo actividades, recursos y evaluaciones validadas pedagógicamente."}
         </p>
       </div>
 
-      <div className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-6 shadow-xl shadow-black/10 dark:shadow-black/20 transition-all duration-300">
+      <details className="bg-white dark:bg-[var(--engine-surface-solid)] border border-gray-200 dark:border-[var(--engine-muted)]/10 rounded-2xl p-5 sm:p-6">
+        <summary className="cursor-pointer rounded text-sm font-semibold text-[var(--engine-text)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--engine-accent)]">Opciones avanzadas · Prompt de generación
+          <span className="mt-2 block text-xs font-normal text-[var(--engine-text-muted)]">{promptSourceLabel}{promptVersion ? ` · versión ${promptVersion}` : ""}. Puedes generar con esta configuración o desplegar para personalizarla.</span>
+        </summary>
+        <div className="mt-6">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-gray-900 dark:text-white font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
             <Settings2 size={16} className="text-[var(--engine-accent)]" />
@@ -67,8 +73,11 @@ export function InstructionalPlanSetupView({
             </span>
             <button
               type="button"
+              role="switch"
+              aria-checked={useCustomPrompt}
+              aria-label="Usar prompt personalizado"
               onClick={() => setUseCustomPrompt(!useCustomPrompt)}
-              className={`w-10 h-5 rounded-full relative border transition-all duration-300 focus:outline-none ${
+              className={`w-10 h-5 rounded-full relative border transition-all duration-300 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--engine-accent)] ${
                 useCustomPrompt
                   ? "bg-[var(--engine-accent)]/20 border-[var(--engine-accent)]"
                   : "bg-gray-100 dark:bg-[var(--engine-canvas)] border-gray-300 dark:border-[var(--engine-muted)]/20"
@@ -140,7 +149,8 @@ export function InstructionalPlanSetupView({
             Variables disponibles: {"${courseName}"}, {"${ideaCentral}"}, {"${currentModule}"}, {"${lessonCount}"} y {"${lessonsText}"}. Las reglas técnicas del sistema y el contrato JSON se aplican por separado.
           </p>
         </div>
-      </div>
+        </div>
+      </details>
 
       <button
         onClick={onGenerate}
@@ -164,7 +174,7 @@ export function InstructionalPlanSetupView({
         ) : (
           <>
             <Play size={20} fill="currentColor" />
-            Generar Plan Instruccional
+            {academyOnly ? "Generar plan de Academy" : "Generar Plan Instruccional"}
           </>
         )}
       </button>

@@ -11,18 +11,18 @@ import { ENGINE_PREPARATION_MAX_BYTES } from "../types/engine-session-documents.
 
 async function requestLearning(payload:unknown){
   const base=getOptionalServerEnvValue("SOFLIA_API_URL"),key=getOptionalServerEnvValue("SOFLIA_API_KEY");
-  if(typeof base!=="string"||typeof key!=="string"||!key)throw new Error("Configura la conexión de servidor con Learning para entregar la preparación.");
+  if(typeof base!=="string"||typeof key!=="string"||!key)throw new Error("Configura la conexión de servidor con Academy para entregar la preparación.");
   const endpoint=new URL("/api/internal/jobs/live-engine-preparation",base);
-  if(endpoint.protocol!=="https:"||endpoint.username||endpoint.password||endpoint.port)throw new Error("La conexión con Learning requiere un origen HTTPS válido.");
+  if(endpoint.protocol!=="https:"||endpoint.username||endpoint.password||endpoint.port)throw new Error("La conexión con Academy requiere un origen HTTPS válido.");
   const body=JSON.stringify(payload);
   if(Buffer.byteLength(body)>ENGINE_PREPARATION_MAX_BYTES)throw new Error("La preparación supera 256 KiB. Reduce su contenido antes de entregar.");
   const timestamp=String(Date.now());
   const signature=createHmac("sha256",key).update(`live-preparation:v1:${timestamp}:${body}`).digest("hex");
   const response=await fetch(endpoint,{method:"POST",redirect:"error",cache:"no-store",signal:AbortSignal.timeout(30000),headers:{"Content-Type":"application/json","X-Soflia-Timestamp":timestamp,"X-Soflia-Signature":`v1=${signature}`},body});
-  if(!response.ok)throw new Error(response.status===409?"Learning rechazó la entrega: comprueba que la sesión siga programada, sin respuestas, y que la revisión esté vigente.":response.status===403?"Tu identidad no tiene permiso docente sobre el curso y la organización de destino.":"No se confirmó la entrega en Learning. Revisa la conexión y reintenta con la misma preparación.");
-  const reader=response.body?.getReader();if(!reader)throw new Error("Learning no devolvió la confirmación.");
+  if(!response.ok)throw new Error(response.status===409?"Academy rechazó la entrega: comprueba que la sesión siga programada, sin respuestas, y que la revisión esté vigente.":response.status===403?"Tu identidad no tiene permiso docente sobre el curso y la organización de destino.":"No se confirmó la entrega en Academy. Revisa la conexión y reintenta con la misma preparación.");
+  const reader=response.body?.getReader();if(!reader)throw new Error("Academy no devolvió la confirmación.");
   const chunks:Uint8Array[]=[];let length=0;
-  try{for(let part=await reader.read();!part.done;part=await reader.read()){length+=part.value.byteLength;if(length>65536)throw new Error("Learning devolvió una respuesta demasiado grande.");chunks.push(part.value);}}
+  try{for(let part=await reader.read();!part.done;part=await reader.read()){length+=part.value.byteLength;if(length>65536)throw new Error("Academy devolvió una respuesta demasiado grande.");chunks.push(part.value);}}
   finally{await reader.cancel().catch(()=>{});}
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
@@ -45,6 +45,6 @@ export async function deliverLivePreparation(artifactId:string,revision:number,s
   const documentary=await assertCourseSourcePublication(admin,artifactId);
   if(documentary)assertNoPrivateSourceReferences(payload);
   const result=await requestLearning(payload);
-  if(result.delivered!==true||result.session_id!==target.session_id||result.engine_revision!==payload.manifest.revision)throw new Error("Learning devolvió una confirmación incompatible.");
+  if(result.delivered!==true||result.session_id!==target.session_id||result.engine_revision!==payload.manifest.revision)throw new Error("Academy devolvió una confirmación incompatible.");
   return {delivered:true,sessionId:target.session_id};
 }

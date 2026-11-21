@@ -56,7 +56,7 @@ export async function getArtifactGenerationSnapshotAction(artifactId: string) {
   }
 
   const generationStartedAt = artifact.generation_metadata?.base_progress?.started_at || artifact.updated_at;
-  if (artifact.state === "GENERATING" && isGenerationStale(generationStartedAt)) {
+  if (artifact.state === "GENERATING" && !artifact.generation_metadata?.base_queue && isGenerationStale(generationStartedAt)) {
     await markArtifactGenerationFailed(authorized.admin, artifactId, artifact.generation_metadata?.run_id, new Error("timeout"), artifact.updated_at);
     return getArtifactGenerationSnapshotAction(artifactId);
   }
@@ -249,6 +249,8 @@ export async function regenerateArtifactAction(
 
   const originalInput = artifact.generation_metadata?.original_input;
   if (!originalInput) return { success: false, error: "Original input lost" };
+  const originalMetadata = { ...artifact.generation_metadata };
+  delete originalMetadata.base_queue;
 
   let resetQuery = supabase
     .from("artifacts")
@@ -258,7 +260,7 @@ export async function regenerateArtifactAction(
       descripcion: {},
       state: "GENERATING",
       generation_metadata: {
-        ...artifact.generation_metadata,
+        ...originalMetadata,
         run_id: runId,
         base_progress: null,
         started_at: new Date().toISOString(),

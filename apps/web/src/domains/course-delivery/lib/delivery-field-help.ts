@@ -2,9 +2,9 @@ import type { DeliveryConfig } from "../types/delivery.schemas";
 import type { FieldHelpSelection } from "../../../components/ui/FieldHelp";
 
 export const deliveryModeHelp: Record<DeliveryConfig["mode"], FieldHelpSelection> = {
-  NEXUS: { label: "Asíncrono", description: "Organiza lecciones para que el participante estudie a su ritmo en Learning. No requiere definir sesiones en vivo." },
+  NEXUS: { label: "Asíncrono", description: "Organiza lecciones para que el participante estudie a su ritmo en Academy. No requiere definir sesiones en vivo." },
   SYNCHRONOUS: { label: "Síncrono", description: "Organiza sesiones en vivo con instructor, plan y materiales de apoyo para impartir en Hub. La duración se configura por sesión." },
-  HYBRID: { label: "Híbrido", description: "Combina lecciones asíncronas en Learning y sesiones en vivo en Hub. Define cómo se relacionan ambas partes para mantener un recorrido coherente." },
+  HYBRID: { label: "Híbrido", description: "Combina lecciones asíncronas en Academy y sesiones en vivo en Hub. Define cómo se relacionan ambas partes para mantener un recorrido coherente." },
 };
 export const deliveryBalanceHelp: Record<DeliveryConfig["balance"], FieldHelpSelection> = {
   EXPLANATION: { label: "Más explicación", description: "Prioriza la explicación del instructor y el desarrollo de conceptos y ejemplos durante el taller." },

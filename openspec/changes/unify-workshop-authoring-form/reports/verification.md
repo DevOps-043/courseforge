@@ -1,5 +1,7 @@
 # Verificación del formulario único
 
+El 19 de noviembre se plegó el prompt de Temario bajo «Opciones avanzadas · Prompt del temario», cerrado inicialmente. Se mantienen editor, restauración, origen y versión del prompt y condiciones de generación. Un error de carga conserva un aviso visible fuera del panel para permitir recuperación. En Chrome local se comprobó el estado inicial cerrado, apertura con clic, cierre con Enter y botón de generación habilitado sin abrir la sección. No se modificó el prompt ni se inició generación en esta revisión. Captura: syllabus-advanced-prompt.jpg en las visualizaciones de la conversación.
+
 Preparación para publicación en rama, 18 de noviembre: se repitieron las suites de impartición (41) y fuentes (72), todas aprobadas. verify:pr volvió a detenerse en los cuatro enlaces del reporte previo de Herk; adaptadores y arnés aprobaron. Se seleccionaron únicamente UI, inicialización de modalidad, integración documental del formulario y evidencia. En artifact.actions.ts se seleccionaron seis bloques propios y se conservaron fuera del índice tres bloques ajenos de recuperación documental. Lockfile, migración y continuación documental permanecen locales. La validación se hizo en el checkout compartido; CI sobre el commit aislado y piloto siguen pendientes. Esta publicación de rama no autoriza merge ni despliegue manual.
 
 Revisión local del 18 de noviembre de 2026. Sin commits, despliegue, SQL remoto, creación de cursos ni generación pagada durante la verificación.

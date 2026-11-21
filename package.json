@@ -6,6 +6,8 @@
     "apps/*"
   ],
   "scripts": {
+    "test:coordinated-materials": "npm run test:course-delivery && npm run test:materials-generation -w apps/web && node --test scripts/test-coordinated-material-retries.mjs",
+    "qa:hybrid-materials": "node scripts/qa-hybrid-materials.cjs",
     "test:course-sources": "npm run test:course-sources --workspace=apps/web && node --test scripts/test-course-source-migration.mjs",
     "qa:course-sources": "node scripts/qa-course-source-library.cjs",
     "qa:course-source-policy": "node scripts/qa-course-source-policy.cjs",

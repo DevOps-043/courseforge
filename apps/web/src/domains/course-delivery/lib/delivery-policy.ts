@@ -1,4 +1,5 @@
 import type { AgendaSession, DeliveryConfig, DeliveryDocument, SessionMaterials, SessionPlan } from "../types/delivery.schemas";
+import { routeIssues, hybridPlanIssues } from "./hybrid-route";
 
 export function deliveryRequirements(mode: DeliveryConfig["mode"]) {
   return { nexus: mode !== "SYNCHRONOUS", sessions: mode !== "NEXUS", assembly: mode !== "SYNCHRONOUS" };
@@ -13,7 +14,7 @@ export function curriculumLessons(modules: unknown): CurriculumLesson[] {
     }));
   });
 }
-export function agendaIssues(agenda: AgendaSession[], lessons: CurriculumLesson[], count?: number | null) {
+export function agendaIssues(agenda: AgendaSession[], lessons: CurriculumLesson[], count?: number | null, requireFullCoverage = true) {
   const issues: string[] = [];
   const known = new Set(lessons.map(lesson => lesson.id));
   if (!agenda.length) issues.push("Falta la agenda de sesiones.");
@@ -27,7 +28,7 @@ export function agendaIssues(agenda: AgendaSession[], lessons: CurriculumLesson[
     }
     if (new Set(session.coverage.map(item => item.lessonId)).size !== session.coverage.length) issues.push(`La sesión ${session.title} repite referencias.`);
   }
-  for (const lesson of lessons) if (!covered.has(lesson.id)) issues.push(`Falta cobertura principal para ${lesson.title}.`);
+  if (requireFullCoverage) for (const lesson of lessons) if (!covered.has(lesson.id)) issues.push(`Falta cobertura principal para ${lesson.title}.`);
   return issues;
 }
 export function planIssues(session: AgendaSession, plan: SessionPlan, config: DeliveryConfig) {
@@ -36,8 +37,8 @@ export function planIssues(session: AgendaSession, plan: SessionPlan, config: De
   if (minutes !== session.minutes) issues.push(`Los bloques de ${session.title} suman ${minutes} minutos; deben distribuir sus ${session.minutes} minutos disponibles.`);
   if (new Set(plan.blocks.map(block => block.id)).size !== plan.blocks.length) issues.push("Los bloques repiten identificadores.");
   const covered = new Set(session.coverage.map(item => item.lessonId));
-  if (plan.nexusLinks.some(link => !covered.has(link.lessonId))) issues.push("Las referencias Nexus deben pertenecer a la sesión.");
-  if (config.mode === "HYBRID" && [...covered].some(id => !plan.nexusLinks.some(link => link.lessonId === id))) issues.push("Falta coordinación Nexus para las lecciones de la sesión.");
+  if (config.mode === "SYNCHRONOUS" && plan.nexusLinks.some(link => !covered.has(link.lessonId))) issues.push("Las referencias de estudio deben pertenecer al recorrido de Academy.");
+  // En híbridos, hybridPlanIssues comprueba pertenencia y orden del estudio relacionado.
   return issues;
 }
 export function materialIssues(plan: SessionPlan, material: SessionMaterials, sourceIds: string[]) {
@@ -80,6 +81,6 @@ export function participantMaterials(material: SessionMaterials) {
   };
 }
 export function completeSessionPlan(document: DeliveryDocument, lessons: CurriculumLesson[]) {
-  return [...agendaIssues(document.agenda, lessons, document.config.sessionCount),
-    ...document.agenda.flatMap(session => document.plans[session.id] ? planIssues(session, document.plans[session.id], document.config) : [`Falta el plan de ${session.title}.`])];
+  return [...agendaIssues(document.agenda, lessons, document.config.sessionCount, document.config.mode !== "HYBRID"), ...routeIssues(document, lessons),
+    ...document.agenda.flatMap(session => document.plans[session.id] ? [...planIssues(session, document.plans[session.id], document.config), ...hybridPlanIssues(document, session, document.plans[session.id])] : [`Falta el plan de ${session.title}.`])];
 }

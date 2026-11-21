@@ -1,8 +1,12 @@
 import { Handler } from "@netlify/functions";
+import { randomUUID } from "node:crypto";
 import { prepareCourseGeneration, attestCourseGeneration } from "../../src/domains/course-sources/course-source-generation.service";
 import { courseSourcePrompt } from "../../src/domains/course-sources/course-source-generation";
 import { BASE_BATCH_LIMITS } from "../../src/domains/course-sources/course-source-base-batches";
-import { CourseSourceError } from "../../src/domains/course-sources/course-source-error";
+import { CourseSourceError, DocumentaryBaseBatchError, DocumentaryBasePendingError } from "../../src/domains/course-sources/course-source-error";
+import {
+  commandDocumentaryBaseInvocation, dispatchDocumentaryBase, type DocumentaryBaseInvocation,
+} from "../../src/domains/course-sources/course-source-base-continuation";
 import type { DocumentaryBaseProgress } from "../../src/domains/course-sources/course-source-base-progress";
 import { markArtifactGenerationFailed } from "../../src/domains/artifacts/lib/artifact-generation-failure";
 import { PIPELINE_GENERATION_LIMITS } from "../../src/lib/pipeline-generation-policy";
@@ -63,6 +67,7 @@ interface GenerateArtifactFormData {
 
 interface GenerateArtifactRequestBody {
   documentary?: boolean;
+  continuation?: boolean;
   runId?: string;
   artifactId?: string;
   feedback?: string;
@@ -109,15 +114,16 @@ export const handler: Handler = async (event) => {
 
   let stage = "request";
   let activeModel: string | undefined;
+  let invocation: { execution: DocumentaryBaseInvocation; owner: string } | undefined;
   try {
-    const { artifactId, runId, formData, userId, feedback, useGoogleDrive, organizationId } = body;
+    const { artifactId, runId, feedback, useGoogleDrive, organizationId } = body;
     const cloudStorageProvider = isCloudStorageProvider(body.cloudStorageProvider)
       ? body.cloudStorageProvider
       : useGoogleDrive
         ? "google_drive"
         : null;
 
-    if (!artifactId || !formData || !runId) {
+    if (!artifactId || !runId || (!body.formData && !body.continuation)) {
       return { statusCode: 400, body: "Missing required fields" };
     }
 
@@ -140,6 +146,23 @@ export const handler: Handler = async (event) => {
     if (scopedArtifact.state !== "GENERATING" || scopedArtifact.generation_metadata?.run_id !== runId) {
       return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
     }
+    const formData = (body.continuation ? scopedArtifact.generation_metadata?.original_input : body.formData) as GenerateArtifactFormData | undefined;
+    const queue = scopedArtifact.generation_metadata?.base_queue;
+    const userId = body.continuation ? queue?.user_id : body.userId;
+    if (Boolean(queue) !== Boolean(body.continuation) ||
+      (body.continuation && (!body.documentary || !organizationId ||
+        !Number.isInteger(queue?.revision) || typeof formData?.title !== "string" ||
+        typeof formData?.description !== "string")) || !formData)
+      return { statusCode: 400, body: "No se pudo resolver la entrada reservada para Base." };
+    if (body.continuation && organizationId) {
+      const execution = { artifactId, organizationId, runId };
+      const owner = randomUUID();
+      if (!await commandDocumentaryBaseInvocation(serviceSupabase, execution, owner, "claim")) {
+        return { statusCode: 200, body: JSON.stringify({ claimed: false }) };
+      }
+      invocation = { execution, owner };
+    }
+    const invocationFilter = invocation?.owner;
 
     let baseProgress: DocumentaryBaseProgress | undefined;
     async function publishBaseProgress(progress: DocumentaryBaseProgress) {
@@ -182,6 +205,10 @@ export const handler: Handler = async (event) => {
       purpose: JSON.stringify({ title: formData.title, description: formData.description, feedback }),
       model: modelConfig.model,
       deadline: startedJobAt + BASE_BATCH_LIMITS.workerMs,
+      ...(invocation ? {
+        revision: queue.revision,
+        recoverExpiredBatch: queue.recover_expired_batch === true,
+      } : {}),
       onProgress: (counts) => publishBaseProgress({ phase: "reading", ...counts }),
     });
     if (body.documentary && !sourceContext) throw new CourseSourceError(409, "La política documental cambió antes de generar Base.");
@@ -391,22 +418,23 @@ export const handler: Handler = async (event) => {
         version: researchPromptResolution.version,
       },
     };
-    const { error: diagnosticsError } = await serviceSupabase
-      .from("artifacts")
-      .update({
-        generation_metadata: {
-          ...(scopedArtifact.generation_metadata || {}),
-          ...(baseProgress ? { base_progress: baseProgress } : {}),
-          configuration_warnings: configurationWarnings,
-          prompt_resolution: promptResolution,
-        },
-      })
-      .eq("id", artifactId)
-      .eq("state", "GENERATING")
-      .eq("generation_metadata->>run_id", runId);
-
-    if (diagnosticsError) {
-      throw diagnosticsError;
+    const inputMetadata = { ...scopedArtifact.generation_metadata };
+    delete inputMetadata.base_queue;
+    if (!invocation) {
+      const { error: diagnosticsError } = await serviceSupabase
+        .from("artifacts")
+        .update({
+          generation_metadata: {
+            ...inputMetadata,
+            ...(baseProgress ? { base_progress: baseProgress } : {}),
+            configuration_warnings: configurationWarnings,
+            prompt_resolution: promptResolution,
+          },
+        })
+        .eq("id", artifactId)
+        .eq("state", "GENERATING")
+        .eq("generation_metadata->>run_id", runId);
+      if (diagnosticsError) throw diagnosticsError;
     }
     if (sourceContext) await publishBaseProgress({
       phase: "writing", confirmed: baseProgress?.confirmed ?? null, total: baseProgress?.total ?? null,
@@ -547,7 +575,7 @@ export const handler: Handler = async (event) => {
         objetivos: content.objetivos,
         descripcion: content.descripcion,
         generation_metadata: {
-          ...(scopedArtifact.generation_metadata || {}),
+          ...inputMetadata,
           ...(baseProgress ? { base_progress: baseProgress } : {}),
           source_configuration_dirty: false,
           ...(sourceContext ? { course_source_snapshot_id: sourceContext.snapshotId } : {}),
@@ -570,6 +598,7 @@ export const handler: Handler = async (event) => {
     updateArtifactQuery = organizationId
       ? updateArtifactQuery.eq("organization_id", organizationId)
       : updateArtifactQuery.is("organization_id", null);
+    if (invocationFilter) updateArtifactQuery = updateArtifactQuery.eq("generation_metadata->base_queue->>owner", invocationFilter);
     const { error } = await updateArtifactQuery;
 
     if (error) {
@@ -581,7 +610,30 @@ export const handler: Handler = async (event) => {
     );
     return { statusCode: 200, body: JSON.stringify({ success: true }) };
   } catch (error: unknown) {
-    console.error("[Background Job] Failed", error);
+    if (body.continuation && !invocation) {
+      console.warn("[Fuentes] No se pudo confirmar la reserva de la invocación de Base.", { artifactId: body.artifactId, runId: body.runId });
+      return { statusCode: 503, body: JSON.stringify({ retryable: true }) };
+    }
+    if (invocation && error instanceof DocumentaryBasePendingError) {
+      const { execution, owner } = invocation;
+      try {
+        const released = await commandDocumentaryBaseInvocation(createServiceRoleClient(), execution, owner, error.defer ? "retry" : "yield");
+        if (released && !error.defer)
+          await dispatchDocumentaryBase(execution);
+      } catch {
+        console.warn("[Fuentes] Continuación de Base disponible para reconciliación.", execution);
+      }
+      return { statusCode: 200, body: JSON.stringify({ pending: true }) };
+    }
+    if (invocation) {
+      console.error("[Fuentes] Falló la generación documental de Base.", {
+        ...invocation.execution, stage,
+        ...(error instanceof CourseSourceError ? { status: error.status, groundingReason: error.groundingReason } : {}),
+        ...(error instanceof DocumentaryBaseBatchError ? { batchReason: error.batchReason } : {}),
+      });
+    } else {
+      console.error("[Background Job] Failed", error);
+    }
     if (body.artifactId && body.runId) {
       const status = error && typeof error === "object"
         ? "statusCode" in error ? Number(error.statusCode) : "status" in error ? Number(error.status) : undefined
@@ -589,11 +641,15 @@ export const handler: Handler = async (event) => {
       await markArtifactGenerationFailed(createServiceRoleClient(), body.artifactId, body.runId, error, undefined, {
         stage, model: activeModel, errorName: error instanceof Error ? error.name : "PersistenceError",
         status: Number.isFinite(status) ? status : undefined,
-      });
+        ...(error instanceof DocumentaryBaseBatchError ? { batchReason: error.batchReason } : {}),
+      }, invocation);
     }
     return {
       statusCode: 500,
-      body: JSON.stringify({ success: false, error: getErrorMessage(error) }),
+      body: JSON.stringify({
+        success: false,
+        error: invocation && !(error instanceof CourseSourceError) ? "Falló la generación documental de Base." : getErrorMessage(error),
+      }),
     };
   }
 };

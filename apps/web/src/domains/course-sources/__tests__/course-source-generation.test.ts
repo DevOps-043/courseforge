@@ -3,7 +3,9 @@ import test from "node:test";
 import { load } from "../../../app/login/__tests__/source-test-loader";
 import * as generation from "../course-source-generation";
 import * as baseBatches from "../course-source-base-batches";
-import { CourseSourceError } from "../course-source-error";
+import * as materialSet from "../course-source-material-set";
+import { CourseSourceError, sourceGroundingFailure } from "../course-source-error";
+import { createOperationalLogger } from "../../../lib/server/operational-logger";
 const id = (n: number) =>
   `10000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const text =
@@ -138,7 +140,7 @@ test("el presupuesto rechaza excesos y conserva evidencia posterior a 12000 cara
   assert.throws(() => generation.checkGenerationBudget([]), /Faltan/);
 });
 
-function fixture(policy: string | null = "DOCUMENTS_ONLY", approved = true, longSources: generation.GenerationSource[] = []) {
+function fixture(policy: string | null = "DOCUMENTS_ONLY", approved = true, longSources: generation.GenerationSource[] = [], providerFailure?: Error, auditorOutput: unknown = grounding) {
   const effects: { name: string; payload: Record<string, unknown> }[] = [];
   let modelCalls = 0;
   const service = load<{
@@ -149,24 +151,28 @@ function fixture(policy: string | null = "DOCUMENTS_ONLY", approved = true, long
   }>(
     "src/domains/course-sources/course-source-generation.service.ts",
     {
+      "../../lib/server/operational-logger": { createOperationalLogger },
       ai: {
         generateObject: async (request: Record<string, unknown>) => {
           modelCalls++;
+          if (providerFailure) throw providerFailure;
           assert.equal(request.tools, undefined);
           assert.match(String(request.prompt), /Audita el respaldo/);
-          return { object: grounding, usage: {} };
+          return { object: auditorOutput, usage: {} };
         },
       },
       "../../../netlify/functions/shared/bootstrap": {
         resolveAiModel: (model: string) => model,
       },
-      "../../shared/ai/usage-telemetry": { recordAiSdkUsage: async () => {} },
+      "../../shared/ai/usage-telemetry": { recordAiSdkUsage: async () => {}, recordAiFailure: async () => {} },
       "./course-source-review.service": {
         readCourseSourcePolicy: async () =>
           policy === "LEGACY"
             ? null
             : { policy, revision: 4, organization_id: id(20) },
         readSourceReview: async () => ({
+          policy, planReady: approved,
+          lessons: [{ id: "lesson-1", title: "Primera", requirements: [], webRequired: 2 }],
           approved,
           revision: 4,
           coverage: [{ complete: true }],
@@ -174,16 +180,18 @@ function fixture(policy: string | null = "DOCUMENTS_ONLY", approved = true, long
             { lessonId: "lesson-1", evidenceId: source.id },
             { lessonId: "lesson-2", evidenceId: id(8) },
           ],
-          evidence: [],
+          evidence: [{ ...source, type: "DOCUMENT" }],
         }),
       },
       "./course-source-error": {
         CourseSourceError,
+        sourceGroundingFailure,
         sourcePersistenceError: (error: unknown) => {
           throw error;
         },
       },
       "./course-source-generation": generation,
+      "./course-source-material-set": materialSet,
       "./course-source-base-batches": baseBatches,
     },
     { AbortSignal },
@@ -226,8 +234,12 @@ function fixture(policy: string | null = "DOCUMENTS_ONLY", approved = true, long
       effects.push({ name, payload });
       return {
         data:
-          name === "course_source_generation_fingerprint"
-            ? "hash"
+          name === "snapshot_all_course_source_materials"
+            ? { snapshotId: id(3), artifactId: id(4), stage: "MATERIALS", policy, revision: 4, fingerprint: "a".repeat(32),
+              lessonId: "lesson-1", scope: ["lesson-1"], sources: [{ ...source, lessonIds: ["lesson-1"] },
+                { ...source, id: id(8), documentId: id(9), title: "Segundo documento.txt", lessonIds: ["lesson-1"] }] }
+          : name === "course_source_generation_fingerprint"
+            ? "a".repeat(32)
             : name === "course_source_snapshot_current"
               ? true
               : name === "read_course_source_base_batch_progress"
@@ -307,7 +319,7 @@ test("no vincula inputs anteriores a un fingerprint nuevo y conserva la clave de
     snapshots[1].payload.p_execution,
   );
 });
-test("contexto por lección usa revisión aprobada, localizador real y manifiesto sin duplicar texto documental", async () => {
+test("contexto por lección conserva todos los documentos del snapshot automático y localizadores reales", async () => {
   const { service, database, effects, calls } = fixture();
   const resolved = await service.prepareCourseGeneration(
     database,
@@ -315,17 +327,14 @@ test("contexto por lección usa revisión aprobada, localizador real y manifiest
     "MATERIALS",
     "lesson-1-G2",
   );
-  assert.equal(resolved!.sources.length, 1);
+  assert.equal(resolved!.sources.length, 2);
   assert.deepEqual(resolved!.sources[0].locator, source.locator);
   const snapshot = effects.find(
-    (item) => item.name === "snapshot_course_source_generation",
+    (item) => item.name === "snapshot_all_course_source_materials",
   )!;
   assert.equal(snapshot.payload.p_organization, id(20));
-  assert.equal(snapshot.payload.p_lesson, "lesson-1");
-  assert.equal(
-    (snapshot.payload.p_manifest as Record<string, unknown>[])[0].text,
-    undefined,
-  );
+  assert.deepEqual(Array.from(snapshot.payload.p_lessons as string[]), ["lesson-1"]);
+  assert.equal(snapshot.payload.p_manifest, undefined);
   await service.attestCourseGeneration(
     database,
     resolved,
@@ -337,6 +346,30 @@ test("contexto por lección usa revisión aprobada, localizador real y manifiest
     effects.some((item) => item.name === "attest_course_source_generation"),
   );
 });
+test("un fallo técnico del auditor no crea un recibo ni acepta el componente", async () => {
+  const current = fixture("DOCUMENTS_ONLY", true, [], new DOMException("contenido privado", "TimeoutError"));
+  const resolved = await current.service.prepareCourseGeneration(current.database, id(4), "MATERIALS", "lesson-1-G2");
+  await assert.rejects(current.service.attestCourseGeneration(current.database, resolved, output, "gemini-test"), { status: 503, verificationCode: "GROUNDING_TIMEOUT" });
+  assert.equal(current.calls(), 1);
+  assert.equal(current.effects.some(item => item.name === "attest_course_source_generation"), false);
+});
+
+test("el auditor propaga cada rechazo específico sin crear un recibo", async () => {
+  const candidates = {
+    UNSUPPORTED_OUTPUT: { ...grounding, supported: false },
+    SOURCE_NOT_IN_CONTEXT: { ...grounding, citations: [{ ...grounding.citations[0], sourceId: id(90) }] },
+    QUOTE_NOT_IN_SOURCE: { ...grounding, citations: [{ ...grounding.citations[0], quote: "cita privada inexistente" }] },
+    CLAIM_NOT_IN_OUTPUT: { ...grounding, citations: [{ ...grounding.citations[0], claim: "afirmación privada inexistente" }] },
+  };
+  for (const [reason,candidate] of Object.entries(candidates)) {
+    const current=fixture("DOCUMENTS_ONLY",true,[],undefined,candidate);
+    const resolved=await current.service.prepareCourseGeneration(current.database,id(4),"MATERIALS","lesson-1-G2");
+    await assert.rejects(current.service.attestCourseGeneration(current.database,resolved,output,"gemini-test"), {status:409,groundingReason:reason});
+    assert.equal(current.effects.some(item=>item.name==="attest_course_source_generation"),false);
+    assert.equal(current.calls(),1);
+  }
+});
+
 test("cursos históricos no reciben snapshots; política vacía y revisión pendiente bloquean antes de generar", async () => {
   for (const policy of ["LEGACY", "WEB_ONLY"]) {
     const { service, database, effects, calls } = fixture(policy);

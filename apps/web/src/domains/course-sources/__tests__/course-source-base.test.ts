@@ -43,8 +43,8 @@ function fixture({ ready = true, policy = "DOCUMENTS_ONLY" as string | null } = 
 test("Base reserva una sola ejecución para el mismo borrador y conserva el input para reintentos", async () => {
   const { admin, artifact, writes } = fixture();
   const results = await Promise.allSettled([
-    reserveDocumentaryBase(admin, organizationId, input),
-    reserveDocumentaryBase(admin, organizationId, { ...input, runId: "30000000-0000-4000-8000-000000000002" }),
+    reserveDocumentaryBase(admin, organizationId, input, { scope: "staging", userId: runId }),
+    reserveDocumentaryBase(admin, organizationId, { ...input, runId: "30000000-0000-4000-8000-000000000002" }, { scope: "staging", userId: runId }),
   ]);
   const accepted = results.filter(result => result.status === "fulfilled" && result.value);
   assert.equal(accepted.length, 1);
@@ -52,6 +52,7 @@ test("Base reserva una sola ejecución para el mismo borrador y conserva el inpu
   assert.equal(artifact.id, artifactId);
   assert.equal(artifact.state, "GENERATING");
   assert.equal(artifact.generation_metadata.run_id, runId);
+  assert.equal((artifact.generation_metadata.base_queue as { scope: string }).scope, "staging");
   assert.deepEqual(artifact.generation_metadata.original_input, accepted[0].status === "fulfilled" && accepted[0].value);
   assert.equal(await reserveDocumentaryBase(admin, organizationId, input), null);
 });

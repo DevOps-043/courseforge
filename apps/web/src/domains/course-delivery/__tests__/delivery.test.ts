@@ -8,7 +8,6 @@ import { renderDeliveryExport } from "../services/delivery-export";
 import { deliveryReadiness, planContentHash, sessionPlanInputHash, sessionMaterialInputHash } from "../services/delivery-readiness";
 import type { DeliveryContext } from "../services/delivery-repository";
 import { resolveDeliverySettings } from "../services/delivery-settings";
-import { nexusGenerationRequired } from "../lib/delivery-nexus-policy";
 import { deliveryEnabled } from "../config/delivery-enabled";
 
 const id = "b1986264-1265-478a-b25d-b6b49a2cdd13";
@@ -54,14 +53,6 @@ test("habilitación global exige activación explícita e ignora la antigua list
   assert.equal(deliveryEnabled({ SYNCHRONOUS_COURSES_ENABLED: "true" }), true);
   assert.equal(deliveryEnabled({ SYNCHRONOUS_COURSES_ENABLED: "true", SYNCHRONOUS_COURSES_ORGANIZATIONS: "otra" }), true);
 });
-test("coordinación híbrida reutiliza Nexus listo o en proceso y no inicia esa rama en sincrónico", () => {
-  assert.equal(nexusGenerationRequired("SYNCHRONOUS", "PLAN"), false);
-  assert.equal(nexusGenerationRequired("HYBRID", "AGENDA"), false);
-  assert.equal(nexusGenerationRequired("HYBRID", "PLAN", "STEP_APPROVED"), false);
-  assert.equal(nexusGenerationRequired("HYBRID", "PLAN", "STEP_PROCESSING"), false);
-  assert.equal(nexusGenerationRequired("HYBRID", "MATERIALS", "PHASE3_READY_FOR_QA"), false);
-  assert.equal(nexusGenerationRequired("HYBRID", "MATERIALS", "PHASE3_NEEDS_FIX"), true);
-});
 test("normaliza identidad curricular con el fallback existente", () => {
   assert.equal(curriculumLessons([{ title: "Módulo", lessons: [{ title: "Lección" }] }])[0].id, "lesson-1-1");
 });
@@ -81,7 +72,7 @@ test("plan comprueba tiempo e identidad de bloques y coordinación híbrida", ()
   const config = deliveryConfigSchema.parse({ mode: "SYNCHRONOUS" });
   assert.equal(planIssues(session, plan, config).length, 0);
   assert.ok(planIssues({ ...session, minutes: 60 }, plan, config).length);
-  assert.ok(planIssues(session, plan, { ...config, mode: "HYBRID" }).length);
+  assert.equal(planIssues(session, plan, { ...config, mode: "HYBRID" }).length, 0);
   assert.equal(planIssues(session, { ...plan, nexusLinks: [{ lessonId: "lesson-1-1", timing: "BEFORE", purpose: "Preparación" }] }, { ...config, mode: "HYBRID" }).length, 0);
 });
 test("no aprueba un conjunto con sesiones pendientes", () => {
@@ -182,9 +173,10 @@ test("error de lectura no permite fallback silencioso ni defaults de modelo", as
   await assert.rejects(resolveDeliverySettings(settingsDatabase({ fail: true }).admin, "org", "AGENDA"), /consultar/);
   await assert.rejects(resolveDeliverySettings(settingsDatabase({}).admin, "org", "AGENDA"), /Configura/);
 });
-test("configuración rechaza proveedor no implementado y respaldo idéntico", async () => {
+test("configuración rechaza proveedor no implementado y normaliza respaldo idéntico heredado", async () => {
   await assert.rejects(resolveDeliverySettings(settingsDatabase({ models: [{ ...baseModel, model_name: "proveedor-ajeno" }] }).admin, "org", "AGENDA"));
-  await assert.rejects(resolveDeliverySettings(settingsDatabase({ models: [{ ...baseModel, fallback_model: baseModel.model_name }] }).admin, "org", "AGENDA"));
+  const resolved = await resolveDeliverySettings(settingsDatabase({ models: [{ ...baseModel, fallback_model: baseModel.model_name }] }).admin, "org", "AGENDA");
+  assert.equal(resolved.model.fallback_model, null);
 });
 test("instantánea de configuración conserva prompt y hash aunque se cambie el registro", async () => {
   const prompt = { code: "SYNCHRONOUS_AGENDA", organization_id: "org", is_active: true, content: "Primero", version: "1.0.1" };

@@ -1,7 +1,8 @@
+import { NoObjectGeneratedError } from "ai";
 import { z } from "zod";
 import { planSourceBatches, type SourceBatchFailure } from "./course-source-batches";
-import { CourseSourceError } from "./course-source-error";
-import type { DocumentaryBatchCounts } from "./course-source-base-progress";
+import { CourseSourceError, DocumentaryBaseBatchError, DocumentaryBasePendingError } from "./course-source-error";
+import { BASE_CONTINUATION_LIFETIME_MS, type DocumentaryBatchCounts } from "./course-source-base-progress";
 import { checkGenerationBudget, type GenerationSource } from "./course-source-generation";
 
 export const BASE_BATCH_LIMITS = {
@@ -13,7 +14,7 @@ export const BASE_BATCH_LIMITS = {
   totalUnits: 3_456_000,
   workerMs: 9 * 60_000,
   requestMs: 45_000,
-  lifetimeMs: 23 * 60 * 60_000,
+  lifetimeMs: BASE_CONTINUATION_LIFETIME_MS,
   outputTokens: 4096,
   concurrentBatches: 3,
 } as const;
@@ -39,8 +40,9 @@ export const baseBatchFindingsSchema = z.object({
 }).strict();
 
 type Finding = z.infer<typeof baseBatchFindingsSchema>["findings"][number];
+type InvalidBatchReason = "INVALID_FORMAT" | "TOO_MANY_FINDINGS" | "FRAGMENT_NOT_IN_BATCH" | "QUOTE_NOT_IN_FRAGMENT";
 type BatchCommand = (
-  action: string, path?: number[], lease?: string, payload?: Record<string, unknown>,
+  action: string, path?: number[], lease?: string, payload?: Record<string, unknown>, reason?: InvalidBatchReason,
 ) => Promise<unknown>;
 const pathSchema = z.array(z.number().int().positive()).min(1);
 const progressSchema = z.object({
@@ -48,6 +50,7 @@ const progressSchema = z.object({
   confirmed: z.number().int().nonnegative().optional(),
   total: z.number().int().positive().optional(),
   resumable: z.array(pathSchema).optional(),
+  budgetReason: z.enum(["EXECUTION_EXPIRED", "ATTEMPTS_EXHAUSTED", "UNITS_EXHAUSTED"]).optional(),
   findings: z.array(baseBatchFindingsSchema.shape.findings).optional(),
 });
 const leaseSchema = z.object({
@@ -107,8 +110,13 @@ export function classifyBaseBatchFailure(error: unknown): Exclude<SourceBatchFai
   const detail = error as { name?: string; statusCode?: number; status?: number; message?: string; isRetryable?: boolean } | undefined;
   const status = detail?.statusCode ?? detail?.status;
   if (status === 413 || /context.length|context.window|too many tokens|input.*too long/i.test(detail?.message ?? "")) return "CONTEXT_LIMIT";
-  if (error instanceof z.ZodError || /NoObjectGenerated|TypeValidation|JSONParse/i.test(detail?.name ?? "")) return "INVALID_OUTPUT";
   if (detail?.isRetryable || status === 429 || status === 408 || (status && status >= 500) || /Abort|Timeout|Network/i.test(detail?.name ?? "")) return "TRANSIENT";
+  if (NoObjectGeneratedError.isInstance(error)) {
+    if (error.finishReason === "length") return "CONTEXT_LIMIT";
+    if (error.finishReason === "content-filter") return "PERMANENT";
+    return "INVALID_OUTPUT";
+  }
+  if (error instanceof z.ZodError || /NoObjectGenerated|TypeValidation|JSONParse/i.test(detail?.name ?? "")) return "INVALID_OUTPUT";
   return "PERMANENT";
 }
 
@@ -119,13 +127,17 @@ function assertCurrent(status: string) {
 function pendingBatch(state: z.infer<typeof progressSchema>): never {
   assertCurrent(state.status);
   if (state.status === "BUDGET_EXHAUSTED") {
-    throw new CourseSourceError(422, "Se agotó el presupuesto de lectura de Base. Revisa el alcance de las fuentes antes de generar de nuevo.");
+    if (state.budgetReason === "EXECUTION_EXPIRED")
+      throw new DocumentaryBaseBatchError("Venció el plazo de lectura de Base. Se conservaron los lotes confirmados.", state.budgetReason);
+    if (state.budgetReason === "ATTEMPTS_EXHAUSTED")
+      throw new DocumentaryBaseBatchError("Se agotaron los intentos de lectura de Base. Se conservaron los lotes confirmados.", state.budgetReason);
+    throw new DocumentaryBaseBatchError("Se agotó el presupuesto de lectura de Base. Revisa el alcance de las fuentes antes de generar de nuevo.", state.budgetReason ?? "BUDGET_EXHAUSTED");
   }
   if (state.status === "PAUSED" && !state.resumable?.length) {
     throw new CourseSourceError(422, "La lectura de Base quedó bloqueada. Revisa el modelo configurado y el alcance documental.");
   }
   const progress = state.total ? ` Se guardaron ${state.confirmed ?? 0} de ${state.total} lotes.` : "";
-  throw new CourseSourceError(503, `La lectura de las fuentes quedó pendiente.${progress} Reintenta desde Base para conservar los lotes confirmados.`);
+  throw new DocumentaryBasePendingError(`La lectura de las fuentes quedó pendiente.${progress} Los lotes confirmados se conservan.`);
 }
 
 function evidenceFromFindings(sources: ReadonlyMap<string, GenerationSource>, findings: Finding[][]) {
@@ -151,6 +163,7 @@ export async function readBaseBatches(input: {
   progress: () => Promise<unknown>;
   generate: (prompt: string, timeoutMs: number) => Promise<unknown>;
   resume: boolean;
+  automatic?: boolean;
   findingsPerBatch?: number;
   onProgress?: (counts: DocumentaryBatchCounts) => Promise<void>;
 }) {
@@ -184,21 +197,27 @@ export async function readBaseBatches(input: {
         baseBatchPrompt(purpose, batch, correctionUsed, findingsPerBatch),
         Math.min(BASE_BATCH_LIMITS.requestMs, Math.max(1, deadline - Date.now())),
       )).findings;
-      if (findings.length > findingsPerBatch || findings.some(item => !fragmentIds.includes(item.fragmentId) || !sources.get(item.fragmentId)?.text.includes(item.quote))) {
-        throw new InvalidBatchQuote();
+      if (findings.length > findingsPerBatch) throw new InvalidBatchOutput("TOO_MANY_FINDINGS");
+      for (const finding of findings) {
+        if (!fragmentIds.includes(finding.fragmentId)) throw new InvalidBatchOutput("FRAGMENT_NOT_IN_BATCH");
+        if (!sources.get(finding.fragmentId)?.text.includes(finding.quote))
+          throw new InvalidBatchOutput("QUOTE_NOT_IN_FRAGMENT");
       }
     } catch (error) {
-      const failure = error instanceof InvalidBatchQuote ? "INVALID_OUTPUT" : classifyBaseBatchFailure(error);
-      if (failure === "CONTEXT_LIMIT") {
+      const failure = error instanceof InvalidBatchOutput ? "INVALID_OUTPUT" : classifyBaseBatchFailure(error);
+      const invalidReason = failure === "INVALID_OUTPUT"
+        ? error instanceof InvalidBatchOutput ? error.reason : "INVALID_FORMAT"
+        : undefined;
+      if (failure === "CONTEXT_LIMIT" || (input.automatic && failure === "INVALID_OUTPUT" && correctionUsed && batch.length > 1)) {
         const middle = Math.floor(batch.length / 2);
         const result = z.object({ status: z.string() }).parse(await command("split", path, token, {
           leftTokens: requestUnits(purpose, batch.slice(0, middle)),
           rightTokens: requestUnits(purpose, batch.slice(middle)),
-        }));
+        }, invalidReason));
         assertCurrent(result.status);
       } else {
         const result = z.object({ status: z.string() }).parse(
-          await command("fail", path, token, { diagnostic: failure }),
+          await command("fail", path, token, { diagnostic: failure }, invalidReason),
         );
         assertCurrent(result.status);
       }
@@ -211,7 +230,7 @@ export async function readBaseBatches(input: {
   }
 
   while (state.status !== "COMPLETE") {
-    if (state.status === "BUDGET_EXHAUSTED" || deadline - Date.now() < 1000) pendingBatch(state);
+    if (state.status === "BUDGET_EXHAUSTED" || deadline - Date.now() < (input.automatic ? BASE_BATCH_LIMITS.requestMs : 1000)) pendingBatch(state);
     const wave = waveSchema.parse(await command("claim_wave"));
     if (wave.status === "LEASED") {
       const completed = await Promise.allSettled(wave.leases.map(processLease));
@@ -229,11 +248,21 @@ export async function readBaseBatches(input: {
     }
     state = await readProgress();
     if (state.status === "COMPLETE") break;
+    if (input.automatic && wave.status === "BUSY") {
+      throw new DocumentaryBasePendingError("La lectura de Base espera el vencimiento de un lote reservado.", true);
+    }
     if (wave.status === "BUDGET_EXHAUSTED" || wave.status === "STALE") pendingBatch({ ...state, status: wave.status });
+    if (input.automatic && state.status === "PAUSED") {
+      throw new DocumentaryBaseBatchError("La lectura de Base encontró un lote bloqueado. Se conservaron los lotes confirmados.", "BATCH_BLOCKED");
+    }
     pendingBatch(state);
   }
 
   return evidenceFromFindings(sources, state.findings ?? []);
 }
 
-class InvalidBatchQuote extends Error {}
+class InvalidBatchOutput extends Error {
+  constructor(readonly reason: Exclude<InvalidBatchReason, "INVALID_FORMAT">) {
+    super(reason);
+  }
+}

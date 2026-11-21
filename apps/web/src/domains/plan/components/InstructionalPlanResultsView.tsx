@@ -91,8 +91,8 @@ export function InstructionalPlanResultsView({
   const canRegenerate = canIteratePlan(iterationCount);
 
   return (
-    <div className="mx-auto max-w-5xl animate-in space-y-8 fade-in pb-20 duration-500">
-      <div className="flex items-center justify-between border-b border-gray-200 pb-6 dark:border-gray-800">
+    <div className="w-full animate-in space-y-8 fade-in pb-8 duration-500">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 pb-6 dark:border-gray-800">
         <div>
           <h2 className="flex items-center gap-3 text-2xl font-bold text-gray-900 dark:text-white">
             <div className="rounded-lg bg-green-500/10 p-2 text-green-500">

@@ -102,7 +102,7 @@ export default function ArtifactClientView({
   }>({ show: false, message: "", type: "info" });
 
   const snapshot = buildWorkflowSnapshot(artifact, publicationRequest);
-  const delivery = useCourseDelivery(artifact.id);
+  const delivery = useCourseDelivery(artifact.id, initialArtifact.temario?.state || "");
   const hasSessions = Boolean(delivery.snapshot && delivery.snapshot.workspace.document.config.mode !== "NEXUS");
   const coursePlanApproved = hasSessions ? Boolean(delivery.snapshot?.readiness.planReady) : isInstructionalPlanApproved(snapshot);
   const courseMaterialsApproved = hasSessions ? Boolean(delivery.snapshot?.readiness.materialsReady) : isMaterialsApprovedFromSnapshot(snapshot);

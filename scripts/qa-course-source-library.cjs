@@ -19,15 +19,15 @@ async function main() {
   const scanner = new Scanner({ sources: [{ base: resolve('apps/web/src/domains/course-sources'), pattern: '*.tsx', negated: false }] });
   const css = compiler.build(scanner.scan());
   const component = resolve('apps/web/src/domains/course-sources/CourseSourceLibrary.tsx').replaceAll('\\', '/');
-  const bundle = await build({ bundle: true, write: false, format: 'iife', platform: 'browser', jsx: 'automatic',
+  const bundle = await build({ bundle: true, write: false, outdir: resolve('.tmp/course-source-qa-bundle'), format: 'iife', platform: 'browser', jsx: 'automatic',
     tsconfig: resolve('apps/web/tsconfig.json'), stdin: { loader: 'tsx', resolveDir: process.cwd(), contents:
       `import React from 'react';import{createRoot}from'react-dom/client';import{CourseSourceLibrary}from'${component}';createRoot(document.getElementById('root')).render(<CourseSourceLibrary artifactId='${course}'/>);` } });
   let documents = [{ id: original, filename: 'Manual corporativo con procedimientos y criterios de seguridad.txt', status: 'READY', supersedesId: null }];
   const requests = []; let failList = false;
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://localhost');
-    if (url.pathname === '/bundle.js') { response.setHeader('Content-Type','text/javascript'); response.end(bundle.outputFiles[0].text); return; }
-    if (url.pathname === '/style.css') { response.setHeader('Content-Type','text/css'); response.end(css); return; }
+    if (url.pathname === '/bundle.js') { response.setHeader('Content-Type','text/javascript'); response.end(bundle.outputFiles.find(file=>file.path.endsWith('.js')).text); return; }
+    if (url.pathname === '/style.css') { response.setHeader('Content-Type','text/css'); response.end(css+'\n'+bundle.outputFiles.filter(file=>file.path.endsWith('.css')).map(file=>file.text).join('\n')); return; }
     if (url.pathname.startsWith('/api/') || url.pathname === '/upload') {
       let raw = ''; for await (const part of request) raw += part;
       const body = request.headers['content-type']?.startsWith('application/json') ? JSON.parse(raw) : null;

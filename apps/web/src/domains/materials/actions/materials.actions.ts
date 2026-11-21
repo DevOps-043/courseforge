@@ -1,6 +1,9 @@
 "use server";
 
 import { getErrorMessage } from "@/lib/errors";
+import { materialGenerationError } from "@/lib/material-generation-error";
+import { readAcademyScope, assertAcademyMaterialsCurrent } from "../../course-delivery/services/academy-scope.server";
+import { assertAcademyPlans } from "../../course-delivery/lib/academy-scope";
 import { getAuthorizedMaterialComponentAdmin } from "@/lib/server/artifact-action-auth";
 import { markDownstreamDirtyAction } from "@/lib/server/pipeline-dirty-actions";
 import type { PlanLessonItem } from "@/domains/plan/components/plan-view.types";
@@ -121,6 +124,11 @@ export async function startMaterialsGenerationAction(artifactId: string) {
       return context.errorResult;
     }
 
+    const academy = await readAcademyScope(context.admin, artifactId);
+    const { data: plan, error: planError } = await context.admin.from("instructional_plans").select("lesson_plans").eq("artifact_id", artifactId).single();
+    if (planError) return createMaterialsActionError("No se pudo leer el plan de Academy.");
+    assertAcademyPlans(academy, plan?.lesson_plans);
+
     const { data: existing, error: existingError } =
       await fetchArtifactMaterialsRecord(context.admin, artifactId);
 
@@ -176,6 +184,9 @@ export async function runMaterialsFixIterationAction(
   fixInstructions: string,
   componentTypes?: string[],
 ) {
+  if (typeof fixInstructions !== "string" || fixInstructions.length > 8000 || (componentTypes && (componentTypes.length > 8 || componentTypes.some(type => !["DIALOGUE","READING","QUIZ","DEMO_GUIDE","EXERCISE","VIDEO_THEORETICAL","VIDEO_DEMO","VIDEO_GUIDE"].includes(type))))) {
+    return createMaterialsActionError("Revisa las instrucciones y los tipos de componente del reintento.");
+  }
   const context = await getAuthorizedLessonMaterialsContext(lessonId);
   if (!context.ok) {
     return context.errorResult;
@@ -187,30 +198,23 @@ export async function runMaterialsFixIterationAction(
     );
   }
 
-  const nextIteration = context.lesson.iteration_count + 1;
   if (context.lesson.state === "GENERATING") return createMaterialsActionError("La lección ya está en generación.");
   const { data: parent, error: parentError } = await context.admin.from("materials")
     .select("version").eq("id", context.lesson.materials_id).single();
-  if (parentError) return createMaterialsActionError(parentError.message);
+  if (parentError) return createMaterialsActionError(materialGenerationError(parentError, "PREPARATION").message);
 
-  const { data: claimed, error: updateError } = await context.admin
-    .from("material_lessons")
-    .update({
-      state: "GENERATING",
-      iteration_count: nextIteration,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", lessonId).eq("iteration_count", context.lesson.iteration_count)
-    .neq("state", "GENERATING").select("id").maybeSingle();
+  const { data: nextIteration, error: updateError } = await context.admin.rpc("reserve_material_lesson_retry", {
+    p_materials_id: context.lesson.materials_id, p_version: parent.version,
+    p_lesson: lessonId, p_iteration: context.lesson.iteration_count,
+  });
 
   if (updateError) {
-    console.error(
-      "[MaterialsActions] Error updating lesson for fix iteration:",
-      updateError,
-    );
-    return createMaterialsActionError(updateError.message);
+    console.error("[MaterialsActions] No se pudo reservar la lección:", materialGenerationError(updateError, "PREPARATION"));
+    return createMaterialsActionError(updateError.message.includes("MATERIAL_RETRY_CAPACITY")
+      ? "Hay dos lecciones activas. Puedes reintentar en cuanto termine una, sin esperar al resto de la tanda."
+      : "No se pudo reservar el reintento. Actualiza el estado y verifica la migración 20261121010000_coordinated_material_retries.sql.");
   }
-  if (!claimed) return createMaterialsActionError("Otra solicitud ya modificó la lección.");
+  if (!nextIteration) return createMaterialsActionError("Otra solicitud ya modificó la lección.");
 
   try {
     await callMaterialsNetlifyFunction(
@@ -234,7 +238,7 @@ export async function runMaterialsFixIterationAction(
     await context.admin.from("material_lessons").update({ state: "NEEDS_FIX" })
       .eq("id", lessonId).eq("iteration_count", nextIteration).eq("state", "GENERATING");
     console.error("[MaterialsActions] Error triggering fix iteration:", error);
-    return createMaterialsActionError(getErrorMessage(error));
+    return createMaterialsActionError(materialGenerationError(error, "DISPATCH").message);
   }
 }
 
@@ -394,6 +398,8 @@ export async function submitMaterialsToQaAction(materialsId: string) {
   if (!context.ok) {
     return context.errorResult;
   }
+  try { await assertAcademyMaterialsCurrent(context.admin, context.artifactId); }
+  catch (error) { return createMaterialsActionError(getErrorMessage(error)); }
 
   const { count, error } = await countNonApprovableLessons(
     context.admin,
@@ -439,6 +445,8 @@ export async function applyMaterialsQaDecisionAction(
   }
 
   if (decision === "APPROVED") {
+    try { await assertAcademyMaterialsCurrent(context.admin, context.artifactId); }
+    catch (error) { return createMaterialsActionError(getErrorMessage(error)); }
     if (context.materials.state !== "PHASE3_READY_FOR_QA") {
       return createMaterialsActionError(
         "No se pueden aprobar materiales que todavía no están listos para QA.",

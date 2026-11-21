@@ -62,6 +62,7 @@
   outline: 2px solid var(--engine-accent-strong); outline-offset: 3px;
 }
 .editor { display: grid; gap: 12px; min-width: 0; }
+.routeList { display: grid; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .session { min-width: 0; border: 1px solid var(--engine-border); border-radius: 14px; background: var(--engine-surface-solid); }
 .session > summary { display: flex; flex-wrap: wrap; gap: 8px 12px; justify-content: space-between; cursor: pointer; padding: 16px; list-style: none; }
 .session > summary::-webkit-details-marker { display: none; }
@@ -96,6 +97,18 @@
 .exportCard p { margin: 8px 0 12px; font-size: 12px; }
 .exportDownload { color: var(--engine-text); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
 .panel [role='alert'], .transferNotice[role='alert'] { border-color: var(--engine-danger); color: var(--engine-text); }
+.runStatus { display: flex; align-items: flex-start; gap: 14px; padding: 18px; border: 1px solid var(--engine-border); border-radius: 14px; background: var(--engine-surface-solid); }
+.runStatus > svg { flex-shrink: 0; margin-top: 2px; }
+.runStatus h3 { margin: 0; font: inherit; font-size: 16px; font-weight: 700; color: var(--engine-text); }
+.panel .runStatus p { margin: 0; color: var(--engine-text); line-height: 1.6; font-size: 13px; }
+.runStatus[data-run-state='FAILED'] { border-color: #ef4444; background: color-mix(in srgb, #ef4444 8%, var(--engine-surface-solid)); }
+.runStatus[data-run-state='FAILED'] > svg { color: #ef4444; }
+.runStatus[data-run-state='COMPLETED'] { border-color: #16a34a; background: color-mix(in srgb, #16a34a 8%, var(--engine-surface-solid)); }
+.runStatus[data-run-state='COMPLETED'] > svg { color: #16a34a; }
+.runStatus[data-run-state='RUNNING'], .runStatus[data-run-state='QUEUED'] { border-color: #3b82f6; background: color-mix(in srgb, #3b82f6 8%, var(--engine-surface-solid)); }
+.runStatus[data-run-state='RUNNING'] > svg, .runStatus[data-run-state='QUEUED'] > svg { color: #3b82f6; }
+.runStatus[data-run-state='PAUSED'] { border-color: #d97706; background: color-mix(in srgb, #d97706 8%, var(--engine-surface-solid)); }
+.runStatus[data-run-state='PAUSED'] > svg { color: #d97706; }
 @media (max-width: 520px) {
   .modalityChoices, .configurationFields { grid-template-columns: 1fr; }
   .session > summary, .sessionBody { padding: 12px; }

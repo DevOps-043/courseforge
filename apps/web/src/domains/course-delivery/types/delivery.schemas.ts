@@ -29,6 +29,11 @@ export const agendaSchema = z.array(agendaSessionSchema).min(1).max(limits.sessi
 export const generatedAgendaSchema = z.object({
   sessions: z.array(agendaSessionSchema.omit({ id: true })).min(1).max(limits.sessions),
 }).strict();
+export const hybridRouteSchema = z.array(z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("SYNCHRONOUS"), sessionId: z.uuid() }).strict(),
+  z.object({ kind: z.literal("ASYNCHRONOUS"), id: z.uuid(), title: text, minutes: z.number().int().min(1).max(4800), lessonIds: z.array(reference).min(1).max(limits.lessons) }).strict(),
+])).max(limits.sessions + limits.lessons);
+export type HybridRoute = z.infer<typeof hybridRouteSchema>;
 export const sessionPlanSchema = z.object({
   blocks: z.array(z.object({
     id: reference,
@@ -60,6 +65,7 @@ export type SessionMaterials = z.infer<typeof sessionMaterialsSchema>;
 export type DeliveryOperation = "AGENDA" | "PLAN" | "MATERIALS";
 export interface DeliveryApproval { revision: number; syllabus: string; nexus: string; sources: string; content: string; userId: string }
 export interface DeliveryDocument {
+  hybridRoute?: HybridRoute;
   config: DeliveryConfig;
   syllabusHash: string;
   agenda: AgendaSession[];
@@ -73,6 +79,7 @@ export interface DeliveryDocument {
   materialsApproval: DeliveryApproval | null;
 }
 export const deliveryDocumentSchema = z.object({
+  hybridRoute: hybridRouteSchema.optional(),
   config: deliveryConfigSchema, syllabusHash: z.string(), agenda: z.array(agendaSessionSchema).max(limits.sessions),
   plans: z.record(z.string(), sessionPlanSchema), materials: z.record(z.string(), sessionMaterialsSchema),
   stalePlans: z.array(z.string()).default([]), staleMaterials: z.array(z.string()).default([]),

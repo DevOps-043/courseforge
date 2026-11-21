@@ -459,6 +459,7 @@ export function InstructionalPlanGenerationContainer({
 
   return (
     <InstructionalPlanSetupView
+      academyOnly={coordinatedReview}
       configuredPrompt={configuredPrompt}
       customPrompt={customPrompt}
       isGenerating={isGenerating}

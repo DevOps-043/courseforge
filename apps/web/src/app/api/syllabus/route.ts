@@ -10,6 +10,7 @@ import {
   buildSyllabusGenerationPrompt,
   calculateSyllabusEstimatedHours,
   parseSyllabusResponseText,
+  SyllabusOutputValidationError,
 } from "@/domains/syllabus/lib/syllabus-generation";
 import { SyllabusGenerationMetadata } from "@/domains/syllabus/types/syllabus.types";
 import {
@@ -754,11 +755,10 @@ export async function POST(request: Request) {
     content.generation_metadata = metadata;
     const validation = runAllValidations(content.modules, objetivos);
     if (!validation.passed) {
-      throw new Error(
-        `El temario generado no superó la validación estructural: ${validation.checks
+      throw new SyllabusOutputValidationError(
+        validation.checks
           .filter((check) => !check.pass)
-          .map((check) => check.message)
-          .join(" | ")}`,
+          .map((check) => check.message),
       );
     }
     const completedSyllabus = {
@@ -836,6 +836,16 @@ export async function POST(request: Request) {
     const unavailable = authorizationUnavailableResponse(error, requestId);
     if (unavailable) return unavailable;
     logger.error("syllabus.generation_failed", error);
+    if (error instanceof SyllabusOutputValidationError) {
+      return apiErrorResponse({
+        code: API_ERROR_CODE.providerError,
+        message: `${error.message}. Ajusta las indicaciones y vuelve a generar.`,
+        requestId,
+        retryable: true,
+        status: 502,
+        details: { checks: error.issues },
+      });
+    }
     return apiErrorResponse({
       code: API_ERROR_CODE.internalError,
       message: "No se pudo generar el temario.",

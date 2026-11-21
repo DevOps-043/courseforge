@@ -167,6 +167,9 @@ export const handler: Handler = async (event) => {
         const targetAudience = resolveInstructionalPlanAudience(artifact);
 
         // --- STEP 2: PREPARE PAYLOAD FOR AI ---
+        const { readAcademyScope } = await import('../../src/domains/course-delivery/services/academy-scope.server');
+        const { assertAcademyPlans } = await import('../../src/domains/course-delivery/lib/academy-scope');
+        assertAcademyPlans(await readAcademyScope(supabase, artifactId, organizationId || undefined), plan.lesson_plans);
         const lessonsPayload = JSON.stringify(plan.lesson_plans, null, 2);
 
         const validationContext = `

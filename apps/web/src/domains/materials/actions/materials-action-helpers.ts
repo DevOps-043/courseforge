@@ -140,8 +140,11 @@ export async function callMaterialsNetlifyFunction<
             p_materials_id: payload.materialsId, p_version: payload.version, p_lesson_id: payload.lessonId,
             p_iteration: payload.iterationNumber, p_rows: [], p_success: false, p_error: generationFailureMessage(error),
           });
+          await dispatchBackgroundFunctionJson(functionName, {
+            artifactId: payload.artifactId, materialsId: payload.materialsId, version: payload.version, mode: "process-next",
+          }, { fallbackError: "No se pudo despertar la cola de Academy; consulta el estado.", localHandlerLoader });
         }
-        if (typeof payload.materialsId === "string" && typeof payload.version === "number") {
+        if (!payload.lessonId && typeof payload.materialsId === "string" && typeof payload.version === "number") {
           await markMaterialsGenerationFailed(admin, payload.materialsId, payload.version, error);
         }
       },

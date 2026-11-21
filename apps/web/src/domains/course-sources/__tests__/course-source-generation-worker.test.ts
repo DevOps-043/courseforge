@@ -4,14 +4,14 @@ import { load } from "../../../app/login/__tests__/source-test-loader";
 import { ArtifactBaseGenerationSchema } from "../../artifacts/lib/artifact-base-generation.schema";
 import { markArtifactGenerationFailed } from "../../artifacts/lib/artifact-generation-failure";
 import { BASE_BATCH_LIMITS } from "../course-source-base-batches";
-import { CourseSourceError } from "../course-source-error";
+import { CourseSourceError, DocumentaryBaseBatchError, DocumentaryBasePendingError } from "../course-source-error";
 import {
   courseSourcePrompt,
   validateSourceGrounding,
   type CourseGenerationContext,
 } from "../course-source-generation";
 
-async function runDocumentaryBase(rejectGrounding = false) {
+async function runDocumentaryBase(outcome: "success" | "reject" | "continue" | "duplicate" = "success") {
   const writes: Record<string, unknown>[] = [];
   const requests: Record<string, unknown>[] = [];
   let searches = 0;
@@ -47,10 +47,16 @@ async function runDocumentaryBase(rejectGrounding = false) {
       diferenciador: "Práctica",
     },
   };
+  const queued = outcome === "continue" || outcome === "duplicate";
+  const invocationActions: string[] = [];
+  const dispatches: unknown[] = [];
   const scoped = {
     organization_id: "organization",
     state: "GENERATING",
-    generation_metadata: { run_id: "run" },
+    generation_metadata: {
+      run_id: "run",
+      ...(queued ? { base_queue: { revision: 2 }, original_input: { title: "Accesos", description: "Seguridad" } } : {}),
+    },
   };
   const query = {
     select: () => query,
@@ -85,7 +91,14 @@ async function runDocumentaryBase(rejectGrounding = false) {
     "netlify/functions/generate-artifact-background.ts",
     {
       "../../src/domains/course-sources/course-source-base-batches": { BASE_BATCH_LIMITS },
-      "../../src/domains/course-sources/course-source-error": { CourseSourceError },
+      "../../src/domains/course-sources/course-source-error": { CourseSourceError, DocumentaryBaseBatchError, DocumentaryBasePendingError },
+      "../../src/domains/course-sources/course-source-base-continuation": {
+        commandDocumentaryBaseInvocation: async (_admin: unknown, _execution: unknown, _owner: string, action: string) => {
+          invocationActions.push(action);
+          return outcome !== "duplicate";
+        },
+        dispatchDocumentaryBase: async (execution: unknown) => { dispatches.push(execution); },
+      },
       "../../src/domains/artifacts/lib/artifact-generation-failure": {
         markArtifactGenerationFailed,
       },
@@ -148,6 +161,7 @@ async function runDocumentaryBase(rejectGrounding = false) {
         prepareCourseGeneration: async (...args: unknown[]) => {
           const options = args.at(-1) as { onProgress: (counts: { confirmed: number; total: number }) => Promise<void> };
           await options.onProgress({ confirmed: 16, total: 23 });
+          if (outcome === "continue") throw new DocumentaryBasePendingError("Quedan lotes pendientes.");
           await options.onProgress({ confirmed: 23, total: 23 });
           return context;
         },
@@ -159,7 +173,7 @@ async function runDocumentaryBase(rejectGrounding = false) {
           assert.equal(received, context);
           assert.deepEqual(JSON.parse(JSON.stringify(output)), content);
           checked++;
-          if (rejectGrounding) {
+          if (outcome === "reject") {
             validateSourceGrounding(context, output, {
               supported: true,
               explanation: "Detalle privado del auditor",
@@ -185,10 +199,10 @@ async function runDocumentaryBase(rejectGrounding = false) {
       artifactId: "artifact",
       runId: "run",
       organizationId: "organization",
-      formData: { title: "Accesos", description: "Seguridad" },
+      ...(queued ? { continuation: true, documentary: true } : { formData: { title: "Accesos", description: "Seguridad" } }),
     }),
   });
-  return { result, searches, requests, checked, writes, phases };
+  return { result, searches, requests, checked, writes, phases, invocationActions, dispatches };
 }
 
 test("Base documental omite investigación en principal/fallback incluso con prompt configurado que pide navegar", async () => {
@@ -205,7 +219,7 @@ test("Base documental omite investigación en principal/fallback incluso con pro
 });
 
 test("Base registra el motivo de verificación sin guardar la salida rechazada ni texto privado", async () => {
-  const { result, checked, writes, phases } = await runDocumentaryBase(true);
+  const { result, checked, writes, phases } = await runDocumentaryBase("reject");
   assert.equal(result.statusCode, 500);
   assert.equal(checked, 1);
   assert.equal(phases.at(-1), "verifying");
@@ -228,4 +242,21 @@ test("Base registra el motivo de verificación sin guardar la salida rechazada n
       },
     },
   });
+});
+
+test("Base cede el lease y despacha el mismo curso cuando quedan lotes pendientes", async () => {
+  const { result, writes, phases, requests, invocationActions, dispatches } = await runDocumentaryBase("continue");
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(invocationActions, ["claim", "yield"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(dispatches)), [{ artifactId: "artifact", runId: "run", organizationId: "organization" }]);
+  assert.deepEqual(phases, ["reading"]);
+  assert.equal(requests.length, 0);
+  assert.equal(writes.length, 0);
+});
+
+test("un despacho duplicado queda fuera de lectura y redacción", async () => {
+  const { result, writes, phases, requests, invocationActions, dispatches } = await runDocumentaryBase("duplicate");
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(invocationActions, ["claim"]);
+  for (const effects of [writes, phases, requests, dispatches]) assert.equal(effects.length, 0);
 });

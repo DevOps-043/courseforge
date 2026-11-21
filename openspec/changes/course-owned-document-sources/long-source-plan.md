@@ -13,6 +13,24 @@ El primer hito de producto incluye los pasos 1–4. La biblioteca y Base compart
 
 ## Contrato para talleres con documentos largos
 
+### Continuación de Base
+
+La reserva del borrador guarda el trabajo pendiente junto con su estado.
+Un lease por invocación protege la continuación, y los leases de cada lote
+siguen protegiendo sus resultados. El worker conserva los lotes confirmados,
+despacha una continuación firmada cuando termina su ventana y permite recuperar
+despachos perdidos mediante un reconciliador. La política, organización y
+revisión deben seguir vigentes. El avance del navegador es de solo lectura
+para estas ejecuciones.
+
+La recuperación automática respeta los plazos y presupuestos existentes.
+El diagnóstico distingue errores de formato, referencias y citas sin registrar
+texto privado. Un lote que vuelve a producir una salida inválida puede
+dividirse dentro del presupuesto de división. Ante un reintento explícito
+de un curso detenido, una ejecución de lotes vencida y compatible puede
+recibir una sola extensión de dos horas si conserva lotes confirmados y saldo.
+La extensión conserva los límites y consumos originales de intentos y unidades.
+
 El autor carga cada original una vez y mantiene el mismo taller durante todo el pipeline. El objetivo de soporte es un rango medido para archivos y conjuntos de archivos de uso habitual. Fijar presupuestos distintos para transferencia, extracción y almacenamiento por archivo, conjunto documental por curso y contexto de cada llamada. Medir los cuatro formatos admitidos, memoria pico, latencia y concurrencia. Validar como mínimo un original del tamaño del documento de referencia de 530,704 unidades UTF-16 antes de aumentar la admisión. Un original que exceda el presupuesto debe recibir un diagnóstico con la longitud medida, el tope aplicado y la etapa, sin registrar su texto.
 
 1. **Biblioteca e índice.** Conservar un original privado e inmutable. Fragmentar internamente con orden, localizador y versión, conservando los límites de sección donde el formato los exponga. Publicar la extracción solo tras confirmar que la secuencia está completa. Sustituir la lectura global de fragmentos por consultas paginadas y acotadas por curso y organización.

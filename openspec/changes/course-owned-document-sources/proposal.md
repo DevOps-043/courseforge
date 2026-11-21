@@ -7,7 +7,7 @@ El usuario necesita crear cursos SofLIA con información ya elaborada, aportada 
 - Biblioteca privada de documentos por curso, disponible desde la preparación de Base y desde Temario/Fuentes, sin volver a subir el mismo archivo.
 - Ingesta y extracción verificadas de PDF con texto, DOCX, PPTX y TXT, con original recuperable, versiones, fragmentos y diagnósticos.
 - Política explícita por curso: el autor elige «Solo mis archivos» (`DOCUMENTS_ONLY`) o «Mis archivos + fuentes web» (`DOCUMENTS_AND_WEB`) antes de generar un curso documental, sin selección automática. `WEB_ONLY` conserva el flujo sin archivos; cursos históricos mantienen su comportamiento.
-- Asociación revisable de documentos/fragmentos con objetivos y temas por lección. La cobertura documental no depende de acumular archivos distintos.
+- Inventario automático de todos los documentos procesados y fuentes web válidas por lección. Materiales no exige seleccionar evidencias manualmente; conserva validación de respaldo y citas. Las asociaciones históricas se mantienen como historial compatible.
 - Contexto documental versionado para Base, Temario, Plan y Materiales; citas verificables, invalidación y recuperación de jobs.
 - Pruebas de contratos, permisos, concurrencia, regresión y aceptación en entorno desplegado antes de declarar la capacidad operativa.
 
@@ -20,5 +20,9 @@ Dominios artifacts, syllabus, plan, curation, materials y guardas de producción
 
 No se cambian el editor multimedia ni los contratos públicos de SofLIA sin evidencia de necesidad. Los originales privados no se publican por defecto. SQL remoto, despliegue y publicación quedan fuera de la ejecución del plan y requieren autorización correspondiente.
 
-## Alcance de esta entrega
+## Alcance inicial (F1, histórico)
 Fase 1 implementada localmente: dominio, contratos, migración aditiva y API de borrador/listado/reserva/confirmación. No contiene interfaz, extracción automática ni integración con generación; tampoco acredita migración remota o activación en producción. Evidencia en `reports/phase-1.md`.
+
+La ampliación local del 2026-11-20 sustituye la selección manual obligatoria en
+Materiales por el conjunto completo de fuentes válidas. Contrato, SQL y activación
+en all-validated-sources.md; evidencia en reports/all-validated-sources.md.

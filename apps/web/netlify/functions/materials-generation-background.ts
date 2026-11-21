@@ -1,6 +1,6 @@
 import { Handler } from "@netlify/functions";
-import { generationFailureMessage } from "../../src/lib/pipeline-generation-policy";
 import { markMaterialsGenerationFailed } from "../../src/domains/materials/services/materials-generation-recovery";
+import { materialGenerationError } from "../../src/lib/material-generation-error";
 import { signBackgroundPayload } from "../../src/lib/server/background-payload-signature";
 import {
   createServiceRoleClient,
@@ -277,8 +277,10 @@ async function processSingleLesson(params: {
     organizationId,
     models,
     modelRuntimeConfig,
+    resumePendingOnly: !fixInstructions?.trim() && !componentTypes?.length,
   });
 
+  await triggerNextLessonWithLocalFallback(materialsId, artifactId, logPrefix, params.version);
   return {
     statusCode: 200,
     body: JSON.stringify(output),
@@ -369,8 +371,9 @@ async function processNextPendingLesson(params: {
       resumePendingOnly: true,
     });
   } catch (error) {
-    const message = getErrorMessage(error);
-    console.error(`${logPrefix} Unexpected lesson failure:`, error);
+    const diagnostic = materialGenerationError(error, "GENERATION");
+    const message = diagnostic.message;
+    console.error(`${logPrefix} Fallo de lección:`, diagnostic);
     const { error: saveError } = await supabase.rpc("commit_material_generation", {
       p_materials_id: materialsId, p_version: params.version, p_lesson_id: lesson.id,
       p_iteration: nextIteration, p_rows: [], p_success: false, p_error: message,
@@ -518,22 +521,26 @@ export const handler: Handler = async (event) => {
 
     throw new Error(`Unknown mode: ${mode}`);
   } catch (error) {
-    console.error(`${logPrefix} Error:`, error);
+    const diagnostic = materialGenerationError(error, "GENERATION");
+    console.error(`${logPrefix} Fallo de generación:`, diagnostic);
     if (body.materialsId && body.version !== undefined) {
       const supabase = createServiceRoleClient();
       if (body.lessonId) {
         await supabase.rpc("commit_material_generation", {
           p_materials_id: body.materialsId, p_version: body.version, p_lesson_id: body.lessonId,
-          p_iteration: body.iterationNumber, p_rows: [], p_success: false, p_error: generationFailureMessage(error),
+          p_iteration: body.iterationNumber, p_rows: [], p_success: false, p_error: diagnostic.message,
         });
       }
-      await markMaterialsGenerationFailed(supabase, body.materialsId, body.version, error);
+      if (!body.lessonId) await markMaterialsGenerationFailed(supabase, body.materialsId, body.version, error);
+      else await triggerNextLessonWithLocalFallback(body.materialsId, body.artifactId!, logPrefix, body.version);
     }
     return {
       statusCode: 500,
       body: JSON.stringify({
         success: false,
-        error: getErrorMessage(error),
+        error: diagnostic.message,
+        code: diagnostic.code,
+        retryable: diagnostic.retryable,
       }),
     };
   }

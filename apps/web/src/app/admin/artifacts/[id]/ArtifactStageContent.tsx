@@ -2,7 +2,9 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import dynamic from "next/dynamic";
+import { HybridPlanLayout } from "@/domains/plan/components/HybridPlanLayout";
 import { DeliveryStagePanel } from "@/domains/course-delivery/components/DeliveryStagePanel";
+import { academyLessonId } from "@/domains/course-delivery/lib/academy-scope";
 import type { CourseDeliveryController } from "@/domains/course-delivery/hooks/useCourseDelivery";
 import type {
   PublicationProfile,
@@ -27,6 +29,7 @@ const SyllabusGenerationContainer = dynamic(() => import("@/domains/syllabus/com
 const InstructionalPlanGenerationContainer = dynamic(() => import("@/domains/plan/components/InstructionalPlanGenerationContainer").then((module) => module.InstructionalPlanGenerationContainer), { loading: StageLoading });
 const SourcesCurationGenerationContainer = dynamic(() => import("@/domains/curation/components/SourcesCurationGenerationContainer").then((module) => module.SourcesCurationGenerationContainer), { loading: StageLoading });
 const MaterialsForm = dynamic(() => import("@/domains/materials/components/MaterialsForm").then((module) => module.MaterialsForm), { loading: StageLoading });
+const HybridMaterialsWorkspace = dynamic(() => import("@/domains/materials/components/HybridMaterialsWorkspace").then(module => module.HybridMaterialsWorkspace), { loading: StageLoading });
 const VisualProductionContainer = dynamic(() => import("@/domains/materials/components/VisualProductionContainer").then((module) => module.VisualProductionContainer), { loading: StageLoading });
 const PostproductionAssemblyContainer = dynamic(() => import("@/domains/materials/components/PostproductionAssemblyContainer").then((module) => module.PostproductionAssemblyContainer), { loading: StageLoading });
 const PublicationClientView = dynamic(() => import("./publish/PublicationClientView"), { loading: StageLoading });
@@ -96,6 +99,11 @@ export function ArtifactStageContent({
   const sessions = mode !== "NEXUS";
   const nexus = mode !== "SYNCHRONOUS";
   const sessionPanel = <DeliveryStagePanel controller={delivery} stage={currentStep} />;
+  const academyLessonIds = new Set(delivery.snapshot?.workspace.document.hybridRoute?.flatMap(item => item.kind === "ASYNCHRONOUS" ? item.lessonIds : []) || []);
+  const academyNotice = mode === "HYBRID" ? <aside role="note" className="mb-6 space-y-2 rounded-xl border border-[var(--engine-border)] bg-[var(--engine-surface-solid)] p-5 text-sm leading-relaxed text-[var(--engine-text)]">
+    <strong className="block">Estudio asíncrono · Academy</strong>
+    <p>Este apartado trabaja con las lecciones asignadas a Academy en el recorrido del paso 2. Las sesiones en vivo y sus documentos se preparan por separado para Hub. Producción y ensamble corresponden a los recursos asíncronos.</p>
+  </aside> : null;
   if (sessions && [3, 5, 6, 8].includes(currentStep) && !nexus) return sessionPanel;
   if (sessions && currentStep === 7 && !nexus) return <div className={STAGE_WRAPPER}><p>Ensamble no requerido: este curso no necesita producción audiovisual.</p><button className="mt-4 rounded border px-4 py-2" onClick={() => setCurrentStep(8)}>Continuar a entrega</button></div>;
   if (currentStep === 1) {
@@ -142,24 +150,24 @@ export function ArtifactStageContent({
   }
 
   if (currentStep === 3) {
-    return (
-      <div className={STAGE_WRAPPER}>
-        {sessions && sessionPanel}
-        <InstructionalPlanGenerationContainer
-          coordinatedReview={sessions}
-          artifactId={artifact.id}
-          onNext={() => setCurrentStep(4)}
-          profile={profile}
-        />
-      </div>
-    );
+    const academyPlan = <InstructionalPlanGenerationContainer
+      coordinatedReview={sessions}
+      artifactId={artifact.id}
+      onNext={() => setCurrentStep(4)}
+      profile={profile}
+    />;
+    return <div className={STAGE_WRAPPER}>
+      {mode === "HYBRID"
+        ? <HybridPlanLayout hub={sessionPanel} academy={academyPlan} />
+        : academyPlan}
+    </div>;
   }
 
   if (currentStep === 4) {
     return (
       <div className={STAGE_WRAPPER}>
         <CourseSourceLibrary artifactId={artifact.id} />
-        <CourseSourceCuration artifactId={artifact.id}><SourcesCurationGenerationContainer
+        <CourseSourceCuration artifactId={artifact.id} onNext={() => setCurrentStep(5)}><SourcesCurationGenerationContainer
           artifactId={artifact.id}
           courseId={artifact.courseId || artifact.course_id || undefined}
           temario={artifact.temario?.modules ?? undefined}
@@ -172,9 +180,11 @@ export function ArtifactStageContent({
   }
 
   if (currentStep === 5) {
+    if (mode === "HYBRID") return <div className={STAGE_WRAPPER}><HybridMaterialsWorkspace artifactId={artifact.id} delivery={delivery} profile={profile} /></div>;
     return (
       <div className={STAGE_WRAPPER}>
         {sessions && sessionPanel}
+        {academyNotice}
         <MaterialsForm artifactId={artifact.id} profile={profile} coordinatedReview={sessions} />
       </div>
     );
@@ -184,6 +194,7 @@ export function ArtifactStageContent({
     return (
       <div className={STAGE_WRAPPER}>
         {sessions && sessionPanel}
+        {academyNotice}
         <VisualProductionContainer
           artifactId={artifact.id}
           assetsComplete={assetsComplete}
@@ -197,6 +208,7 @@ export function ArtifactStageContent({
   if (currentStep === 7) {
     return (
       <div className={`${STAGE_WRAPPER} h-full min-h-0`}>
+        {academyNotice}
         <PostproductionAssemblyContainer
           artifactId={artifact.id}
           onNext={() => setCurrentStep(8)}
@@ -210,10 +222,11 @@ export function ArtifactStageContent({
     return (
       <div className={STAGE_WRAPPER}>
         {sessions && sessionPanel}
+        {academyNotice}
         <PublicationClientView
           artifactId={artifact.id}
           artifactTitle={artifact.idea_central || "Artefacto"}
-          lessons={publicationLessons || []}
+          lessons={mode === "HYBRID" ? (publicationLessons || []).filter(lesson => academyLessonIds.has(academyLessonId(lesson.id))) : publicationLessons || []}
           existingRequest={publicationRequest}
           profile={profile}
           basePath={basePath}

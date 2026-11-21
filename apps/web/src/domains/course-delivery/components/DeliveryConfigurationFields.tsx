@@ -45,7 +45,7 @@ export function DeliveryConfigurationFields({ value, onChange, disabled = false,
         <option value="EXPLANATION">Más explicación</option><option value="BALANCED">Explicación y práctica</option><option value="PRACTICE">Más práctica</option>
       </select></div>
       {value.mode === "HYBRID" && <div><div className={styles.configurationLabel}><label htmlFor={`${id}-approach`}>Relación con las lecciones asíncronas</label><FieldHelp label="Relación con las lecciones asíncronas"
-        description="Indica cómo se conectan las sesiones en vivo con las lecciones que se estudian en Learning." selection={deliveryApproachHelp[value.approach]} /></div><select id={`${id}-approach`} value={value.approach} onChange={event => onChange({ ...value, approach: event.target.value as DeliveryConfig["approach"] })}>
+        description="Indica cómo se conectan las sesiones en vivo con las lecciones que se estudian en Academy." selection={deliveryApproachHelp[value.approach]} /></div><select id={`${id}-approach`} value={value.approach} onChange={event => onChange({ ...value, approach: event.target.value as DeliveryConfig["approach"] })}>
         <option value="COMPLEMENTARY">Taller complementario</option><option value="CLASS_VERSION">Versión en vivo de la clase</option>
       </select></div>}
     </div>}

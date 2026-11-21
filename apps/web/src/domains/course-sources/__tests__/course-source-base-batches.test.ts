@@ -26,6 +26,48 @@ test("el presupuesto de Base admite el máximo de un archivo con texto multibyte
   assert.ok(findingsPerBatch > 0 && findingsPerBatch < 4);
 });
 
+test("Base divide un lote con una cita inválida después de su corrección y conserva la cobertura", async () => {
+  const sources: GenerationSource[] = [1, 2].map(index => ({
+    id: randomUUID(), kind: "DOCUMENT", title: "Manual", locator: {}, hash: "hash",
+    text: `Regla ${index}: exige una autorización expresa.`,
+  }));
+  const findings = new Map<number, unknown[]>();
+  let divided = false;
+  let reason: string | undefined;
+  const evidence = await readBaseBatches({
+    purpose: "Preparar taller", sources, resume: true, automatic: true,
+    deadline: Date.now() + 120_000,
+    progress: async () => ({ status: findings.size === 2 ? "COMPLETE" : "ACTIVE", findings: [...findings.values()] }),
+    command: async (action, path, _lease, payload, invalidReason) => {
+      if (action === "claim_wave") {
+        return { status: "LEASED", leases: divided
+          ? sources.map((source, index) => ({
+            status: "LEASED", path: [1, index + 1], lease: randomUUID(), fragmentIds: [source.id], correctionUsed: false,
+          }))
+          : [{ status: "LEASED", path: [1], lease: randomUUID(), fragmentIds: sources.map(source => source.id), correctionUsed: true }] };
+      }
+      if (action === "split") {
+        assert.deepEqual(path, [1]);
+        reason = invalidReason;
+        divided = true;
+        return { status: "SPLIT" };
+      }
+      assert.equal(action, "complete");
+      findings.set(path![1], payload!.findings as unknown[]);
+      return { status: "CONFIRMED" };
+    },
+    generate: async (prompt) => {
+      const source = sources.find(fragment => prompt.includes(fragment.id))!;
+      return { findings: [{
+        fragmentId: source.id, quote: divided ? source.text : "Cita que no consta en el documento.",
+        finding: "Verificar la autorización",
+      }] };
+    },
+  });
+  assert.equal(reason, "QUOTE_NOT_IN_FRAGMENT");
+  assert.deepEqual(evidence.map(source => source.id), sources.map(source => source.id));
+});
+
 test("Base lee tres lotes en paralelo y reanuda solo el que falló", async () => {
   const sources: GenerationSource[] = Array.from({ length: 6 }, (_, index) => ({
     id: randomUUID(), kind: "DOCUMENT", title: "Manual", locator: {},

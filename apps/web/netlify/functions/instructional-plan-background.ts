@@ -41,6 +41,8 @@ import { buildInstructionalPlanContextPrompt } from "../../src/domains/plan/lib/
 import { getInstructionalPlanCompletenessIssues } from "../../src/domains/plan/lib/plan-completeness";
 import { alignPlanLessonsById } from "../../src/domains/plan/lib/plan-lesson-identity";
 import { readSyllabusWithOrigin } from "../../src/domains/syllabus/services/syllabus-workflow-read";
+import { readAcademyScope } from "../../src/domains/course-delivery/services/academy-scope.server";
+import { assertAcademyPlans } from "../../src/domains/course-delivery/lib/academy-scope";
 import { recordAiFailure, recordAiSdkUsage } from "../../src/shared/ai/usage-telemetry";
 
 type BackgroundSupabaseClient = SupabaseClient;
@@ -72,6 +74,7 @@ interface SyllabusLessonRecord {
 }
 
 interface SyllabusModuleRecord {
+  delivery_module_index?: number;
   id?: string | null;
   lessons?: SyllabusLessonRecord[] | null;
   title: string;
@@ -381,7 +384,8 @@ export const handler: Handler = async (event) => {
     const videoDurationPolicy = resolveArtifactVideoDurationPolicy(
       artifact.generation_metadata,
     );
-    const syllabusModules = normalizeSyllabusModules(syllabusRecord.modules);
+    const academy = await readAcademyScope(supabase, artifactId, artifact.organization_id || undefined);
+    const syllabusModules = normalizeSyllabusModules(academy.modules);
 
     const promptOrganizationId = artifact.organization_id || null;
     const [systemPromptTemplate, contextPromptTemplateFromDb] =
@@ -463,7 +467,7 @@ export const handler: Handler = async (event) => {
           artifact,
           contextPromptTemplate,
           module,
-          moduleIndex,
+          moduleIndex: module.delivery_module_index ?? moduleIndex,
           modelName,
           systemPromptTemplate,
           temperature: modelConfig.temperature,
@@ -473,7 +477,9 @@ export const handler: Handler = async (event) => {
           supabase,
         });
 
-        allGeneratedPlans = [...allGeneratedPlans, ...moduleResult.lessonPlans];
+        allGeneratedPlans = [...allGeneratedPlans, ...moduleResult.lessonPlans.map(lesson => ({ ...lesson,
+          ...(academy.routeHash ? { delivery_route_hash: academy.routeHash } : {}),
+        }))];
         allBlockers = [...allBlockers, ...moduleResult.blockers];
 
         const { data: heartbeat, error: heartbeatError } = await supabase
@@ -518,6 +524,9 @@ export const handler: Handler = async (event) => {
       );
     }
 
+    const currentAcademy = await readAcademyScope(supabase, artifactId, artifact.organization_id || undefined);
+    if (currentAcademy.routeHash !== academy.routeHash) throw new Error("El recorrido cambió durante la generación del plan de Academy. Vuelve a generar.");
+    assertAcademyPlans(currentAcademy, allGeneratedPlans);
     const sourceEvidenceId = await attestCourseGeneration(supabase, sourceContext, allGeneratedPlans, [modelName, modelConfig.fallbackModel]);
     const { data: completedPlan, error: completionError } = await supabase
       .from("instructional_plans")

@@ -69,6 +69,7 @@ async function database(generation = false) {
     await db.exec(await readFile('supabase/migrations/20261110040000_align_base_source_snapshot_budget.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261111010000_documentary_base_progress.sql', 'utf8'));
     await db.exec(await readFile('supabase/migrations/20261111020000_parallel_documentary_base_batches.sql', 'utf8'));
+    await db.exec(await readFile('supabase/migrations/20261114010000_documentary_base_continuation.sql', 'utf8'));
   }
   await db.exec('set role service_role');
   return db;
@@ -76,6 +77,54 @@ async function database(generation = false) {
 async function draft(db, request = key, org = organization, title = 'Curso documental') {
   return (await db.query('select public.create_course_source_draft($1,$2,$3,$4) as id', [org, actor, request, title])).rows[0].id;
 }
+
+test('Base durable reclama, cede y recupera solo la ejecución y el ámbito vigentes', async () => {
+  const db = await database(true);
+  try {
+    const { course } = await generationFixture(db);
+    const run = identifier(), owner = identifier(), nextOwner = identifier();
+    const scope = 'staging';
+    const now = new Date().toISOString();
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const future = new Date(Date.now() + 3_600_000).toISOString();
+    const revision = (await db.query('select revision from course_source_settings where artifact_id=$1', [course])).rows[0].revision;
+    await db.query("update artifacts set state='GENERATING', generation_metadata=$2 where id=$1", [
+      course, JSON.stringify({ run_id: run, base_queue: { scope, due_at: past, expires_at: future, revision, invocations: 0 } }),
+    ]);
+    const list = async (queueScope) => (await db.query('select * from list_due_documentary_base($1,$2)', [queueScope, now])).rows;
+    const command = async (invocationOwner, action, org = organization, runId = run) =>
+      (await db.query('select command_documentary_base_invocation($1,$2,$3,$4,$5,$6) as accepted',
+        [course, org, runId, scope, invocationOwner, action])).rows[0].accepted;
+    assert.equal((await list(scope))[0].artifact_id, course);
+    assert.deepEqual(await list('production'), []);
+    assert.equal(await command(owner, 'claim', otherOrganization), false);
+    assert.equal(await command(owner, 'claim', organization, identifier()), false);
+    assert.equal(await command(owner, 'claim'), true);
+    assert.deepEqual(await list(scope), []);
+    assert.equal(await command(nextOwner, 'claim'), false);
+    assert.equal(await command(nextOwner, 'yield'), false);
+    assert.equal(await command(owner, 'yield'), true);
+    assert.equal(await command(nextOwner, 'claim'), true);
+    await db.query("update artifacts set generation_metadata=jsonb_set(generation_metadata,'{base_queue,due_at}',to_jsonb($2::text)) where id=$1", [course, past]);
+    assert.equal((await list(scope))[0].artifact_id, course);
+    assert.equal(await command(owner, 'claim'), true);
+    assert.equal(await command(nextOwner, 'yield'), false);
+    await db.query(`update artifacts set generation_metadata =
+      generation_metadata || jsonb_build_object('base_queue', generation_metadata->'base_queue' ||
+      jsonb_build_object('due_at',$2::text,'expires_at',$2::text)) where id=$1`, [course, past]);
+    assert.equal(await command(nextOwner, 'claim'), false);
+    const row = (await db.query('select state, validation_report from artifacts where id=$1', [course])).rows[0];
+    assert.equal(row.state, 'ESCALATED');
+    assert.equal(row.validation_report.diagnostics.batchReason, 'EXECUTION_EXPIRED');
+    await db.exec('set role authenticated');
+    await assert.rejects(list(scope), /permission denied/);
+    await assert.rejects(command(owner, 'claim'), /permission denied/);
+    await db.exec('reset role; grant select, update on artifacts to authenticated; set role authenticated');
+    await assert.rejects(db.query("update artifacts set generation_metadata=jsonb_set(generation_metadata,'{base_queue,owner}','null') where id=$1", [course]), /SOURCE_BASE_QUEUE_PRIVATE/);
+  } finally {
+    await db.close();
+  }
+});
 async function reserve(db, course, overrides = {}) {
   const input = { org: organization, actor, key: identifier(), filename: 'manual.txt', mime: 'text/plain', bytes: 100,
     hash: sequence.toString(16).padStart(64, '0'), ...overrides };
@@ -523,6 +572,99 @@ async function generationFixture(db, seedBase = true) {
   return {course,document,fragment,text,change,snapshot,attest};
 }
 
+test('conjunto completo: varias fuentes, política, aislamiento, citas y vigencia sin revisión humana',async()=>{
+  const db=await database(true);
+  try{
+    const {course,fragment,text,document,change,attest}=await generationFixture(db,false);
+    await db.exec('reset role; alter table curation_rows add column source_title text,add column source_kind text; grant select on profiles to service_role;');
+    await db.exec(await readFile('supabase/migrations/20261120010000_all_validated_material_sources.sql','utf8'));
+    await db.exec('set role service_role');
+    await change('policy',{policy:'DOCUMENTS_AND_WEB'});
+    const modules=[{lessons:[{id:'lesson-1',title:'Verificar identidad'}]}];
+    await db.query('insert into syllabus(artifact_id,modules) values($1,$2::jsonb)',[course,JSON.stringify(modules)]);
+    const curation=(await db.query('insert into curation(artifact_id) values($1) returning id',[course])).rows[0].id;
+    const web=async(lesson,status='valid',apta=true,excerpt='Una fuente validada describe cómo verificar identidad.')=>{
+      const id=identifier();await db.query('insert into curation_rows(id,curation_id,lesson_id,source_ref,apta,validation_report,source_title) values($1,$2,$3,$4,$5,$6::jsonb,$7)',
+        [id,curation,lesson,`https://example.com/${id}`,apta,JSON.stringify({status,content_excerpt:excerpt}),'Fuente de prueba']);return id;
+    };
+    const first=await web('lesson-1'),second=await web('lesson-1');
+    await web('lesson-1','invalid');await web('lesson-1','valid',false);await web('lesson-1','valid',true,'');await web('otra-leccion');
+    const execute=identifier();
+    const snapshot=async(org=organization,execution=execute,scope=['lesson-1-G2'])=>(await db.query('select snapshot_all_course_source_materials($1,$2,$3,$4) as context',[course,org,execution,scope])).rows[0].context;
+    await assert.rejects(snapshot(otherOrganization),/SOURCE_NOT_FOUND/);
+    await assert.rejects(snapshot(organization,identifier(),['leccion-ajena']),/SOURCE_CONFLICT/);
+    const context=await snapshot();
+    assert.deepEqual(new Set(context.sources.map(item=>item.id)),new Set([fragment,first,second]));
+    const preparation=(await db.query('select read_course_source_delivery_evidence($1) as context',[course])).rows[0].context;
+    assert.deepEqual(new Set(preparation.sources.map(item=>item.id)),new Set([fragment,first,second]));
+    assert.ok(preparation.sources.every(item=>item.evidence.content_sha256 && item.evidence.content_excerpt===undefined));
+    assert.equal(context.sources.find(item=>item.id===fragment).text,text);
+    assert.equal((await snapshot()).snapshotId,context.snapshotId);
+    assert.equal((await db.query('select count(*)::int as total from course_source_review_approvals where artifact_id=$1',[course])).rows[0].total,0);
+    assert.equal((await db.query('select course_source_snapshot_current($1) as valid',[context.snapshotId])).rows[0].valid,true);
+    const output={text:'Verificar identidad antes de conceder acceso al curso.'};
+    await attest(context.snapshotId,output);
+    await assert.rejects(attest(context.snapshotId,output,'Cita inexistente que no está en ninguna fuente'),/SOURCE_CITATION_INVALID/);
+    await web('lesson-1');
+    assert.equal((await db.query('select course_source_snapshot_current($1) as valid',[context.snapshotId])).rows[0].valid,false);
+    await assert.rejects(snapshot(),/SOURCE_CONFLICT/);
+    await change('policy',{policy:'DOCUMENTS_ONLY'});
+    const exclusive=await snapshot(organization,identifier());
+    assert.deepEqual(exclusive.sources.map(item=>item.id),[fragment]);
+    await db.query("update course_source_documents set status='RETIRED' where id=$1",[document.id]);
+    assert.equal((await db.query('select course_source_snapshot_current($1) as valid',[exclusive.snapshotId])).rows[0].valid,false);
+    await assert.rejects(snapshot(organization,identifier()),/SOURCE_SET_INCOMPLETE/);
+    await db.exec('set role authenticated');
+    await assert.rejects(snapshot(organization,identifier()),/permission denied/);
+  }finally{await db.close();}
+});
+
+test('conjunto completo: continuación sin selección, recibos por lección y presupuesto explícito',async()=>{
+  const db=await database(true);
+  try{
+    const {course,fragment,document,change,snapshot,attest}=await generationFixture(db,false);
+    await db.exec('reset role; alter table curation_rows add column source_title text,add column source_kind text; grant select on profiles to service_role;');
+    const migration=await readFile('supabase/migrations/20261120010000_all_validated_material_sources.sql','utf8');
+    await db.exec(migration);await db.exec(migration);await db.exec('set role service_role');
+    await db.exec('reset role; alter table curation add column updated_at timestamptz default now(); alter table curation_rows add column lesson_title text,add column component text,add column is_critical boolean,add column source_rationale text,add column url_status text,add column cobertura_completa boolean,add column auto_evaluated boolean,add column auto_reason text,add column origin text;');
+    const commitMigration=await readFile('supabase/migrations/20260915120000_pipeline_generation_commits.sql','utf8');
+    await db.exec(commitMigration.match(/create or replace function public\.commit_curation_progress\([\s\S]*?end \$\$;/)[0]);
+    await db.exec('revoke all on function public.commit_curation_progress(uuid,integer,jsonb,jsonb) from public; grant execute on function public.commit_curation_progress(uuid,integer,jsonb,jsonb) to service_role; set role service_role;');
+    const modules=[{lessons:[{id:'lesson-1',title:'Verificar identidad'},{id:'lesson-2',title:'Verificar identidad'}]}];
+    await db.query('insert into syllabus(artifact_id,modules) values($1,$2::jsonb)',[course,JSON.stringify(modules)]);
+    const context=async()=>(await db.query('select course_source_all_material_context($1,$2,null) as context',[course,organization])).rows[0].context;
+    const accept=async(org=organization,revision=null)=>{const c=await context();return db.query('select accept_all_course_source_materials($1,$2,$3,$4,$5)',[course,org,actor,revision??c.revision,c.fingerprint]);};
+    await assert.rejects(accept(),/SOURCE_PLAN_REQUIRED/);
+    const plans=[{lesson_id:'lesson-1',lesson_title:'Verificar identidad',oa_text:'Verificar identidad',components:[]},{lesson_id:'lesson-2',lesson_title:'Verificar identidad',oa_text:'Verificar identidad',components:[]}];
+    const planReceipt=await attest(await snapshot('PLAN'),plans);
+    await db.query("insert into instructional_plans(artifact_id,lesson_plans,state,source_evidence_id) values($1,$2::jsonb,'STEP_APPROVED',$3)",[course,JSON.stringify(plans),planReceipt]);
+    await assert.rejects(accept(otherOrganization),/SOURCE_NOT_FOUND/);
+    await assert.rejects(accept(organization,-1),/SOURCE_CONFLICT/);
+    await accept();
+    assert.equal((await db.query('select state from curation where artifact_id=$1',[course])).rows[0].state,'PHASE2_APPROVED');
+    assert.equal((await db.query('select count(*)::int as total from course_source_review_approvals')).rows[0].total,0);
+    const prepared=(await db.query('select snapshot_all_course_source_materials($1,$2,$3,$4) as context',[course,organization,identifier(),['lesson-1','lesson-2']])).rows[0].context;
+    const output={text:'Verificar identidad antes de conceder acceso al curso.'};
+    const receipt=await attest(prepared.snapshotId,output);
+    const valid=async(lesson)=>(await db.query("select course_source_receipt_valid($1,$2,'MATERIALS',$3::jsonb,$4) as valid",[receipt,course,JSON.stringify(output),lesson])).rows[0].valid;
+    assert.equal(await valid('lesson-1-G3'),true);assert.equal(await valid('lesson-2'),true);assert.equal(await valid('otra-leccion'),false);
+    await db.query("insert into materials(artifact_id,state) values($1,'PHASE3_GENERATING')",[course]);
+    await db.query("update curation set state='PHASE2_GENERATING' where artifact_id=$1",[course]);
+    await assert.rejects(accept(),/SOURCE_GENERATION_RUNNING/);
+    const activeContext=await context();
+    const active=(await db.query('select id from curation where artifact_id=$1',[course])).rows[0].id;
+    const checkpoint=async(attempt)=>(await db.query('select commit_course_source_curation_progress($1,$2,$3,$4,$5::jsonb,$6::jsonb) as accepted',
+      [active,attempt,activeContext.revision,activeContext.fingerprint,'[]',JSON.stringify({state:'PHASE2_APPROVED',qa_decision:{decision:'APPROVED'}})])).rows[0].accepted;
+    assert.equal(await checkpoint(2),false);assert.equal(await checkpoint(1),true);
+    assert.equal((await db.query('select state from curation where artifact_id=$1',[course])).rows[0].state,'PHASE2_APPROVED');
+    const long='Contenido documentado con suficiente extensión. '.repeat(230);
+    for(let ordinal=1;ordinal<=6;ordinal++) await db.query('insert into course_source_fragments(id,artifact_id,document_id,ordinal,text_content,content_sha256,locator) values($1,$2,$3,$4,$5,$6,$7::jsonb)',[identifier(),course,document.id,ordinal,long,createHash('sha256').update(long).digest('hex'),'{}']);
+    await assert.rejects(db.query('select snapshot_all_course_source_materials($1,$2,$3,$4)',[course,organization,identifier(),['lesson-1']]),/SOURCE_CONTEXT_BUDGET/);
+    await db.exec('set role authenticated');
+    await assert.rejects(db.query('select accept_all_course_source_materials($1,$2,$3,0,$4)',[course,organization,actor,'a'.repeat(32)]),/permission denied/);
+  }finally{await db.close();}
+});
+
 test('solo la ejecución vigente registra avance documental y conserva los demás metadatos', async () => {
   const db = await database(true);
   try {
@@ -757,6 +899,31 @@ test('la reserva paralela limita los leases y descuenta cada lote del presupuest
     const status = await command('status');
     assert.equal(status.confirmed, 4);
     assert.equal(status.reservedTokens, 400);
+    const read = async () => (await db.query('select read_documentary_base_batch_status($1,$2,$3) as result',
+      [run, course, organization])).rows[0].result;
+    assert.equal((await read()).budgetReason, 'UNITS_EXHAUSTED');
+    await db.exec('reset role');
+    await db.query('update course_source_batch_runs set deadline=now(), max_tokens=500 where id=$1', [run]);
+    await db.exec('set role service_role');
+    assert.equal((await read()).budgetReason, 'EXECUTION_EXPIRED');
+    const recover = async (org) => (await db.query('select recover_documentary_base_batch_run($1,$2,$3) as recovered',
+      [run, course, org])).rows[0].recovered;
+    assert.equal(await recover(otherOrganization), false);
+    assert.equal(await recover(organization), true);
+    const recovered = await read();
+    assert.equal(recovered.confirmed, 4);
+    assert.equal(recovered.attempts, status.attempts);
+    assert.equal(recovered.reservedTokens, status.reservedTokens);
+    assert.equal(await recover(organization), false);
+    const remaining = (await command('claim_wave')).leases[0];
+    const invalid = async (reason) => db.query('select record_documentary_base_invalid_output($1,$2,$3,$4,$5,$6,$7)', [
+      run, organization, remaining.path, remaining.lease, 'fail', JSON.stringify({ diagnostic: 'INVALID_OUTPUT' }), reason,
+    ]);
+    await assert.rejects(invalid('provider response text'), /check constraint/);
+    await invalid('QUOTE_NOT_IN_FRAGMENT');
+    await db.exec('reset role');
+    const detail = (await db.query('select diagnostic, invalid_output_reason from course_source_batches where run_id=$1 and path=$2', [run, remaining.path])).rows[0];
+    assert.deepEqual(detail, { diagnostic: 'INVALID_OUTPUT', invalid_output_reason: 'QUOTE_NOT_IN_FRAGMENT' });
   } finally { await db.close(); }
 });
 

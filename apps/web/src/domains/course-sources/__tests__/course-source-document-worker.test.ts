@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { load } from "../../../app/login/__tests__/source-test-loader";
-import { sourceCoverage } from "../course-source-coverage";
+import * as materialSet from "../course-source-material-set";
 import { PIPELINE_GENERATION_LIMITS } from "../../../lib/pipeline-generation-policy";
 
 function fixture(
@@ -26,6 +26,7 @@ function fixture(
     "../../../../src/domains/course-sources/course-source-review.service": {
       readSourceReview: async () => ({
         policy,
+        planReady: true,
           organizationId:"org-sintetica",
         revision: 3,
         curriculumHash: "hash",
@@ -43,6 +44,7 @@ function fixture(
         ],
         evidence: [
           { id: "doc", type: "DOCUMENT", title: "Manual", text: "Contenido" },
+          ...(complete ? [1,2].map(index => ({ id: `web-${index}`, type: "WEB", lessonId: "lesson", title: "Web", text: "Contenido validado", sourceRef: `https://example.invalid/${index}` })) : []),
         ],
         associations: [
           {
@@ -57,9 +59,7 @@ function fixture(
         ],
       }),
     },
-    "../../../../src/domains/course-sources/course-source-coverage": {
-      sourceCoverage,
-    },
+    "../../../../src/domains/course-sources/course-source-material-set": materialSet,
     "./search": {
       searchLessonCandidates: async (input: {
           lessons: { topics: string[]; remaining_sources: number }[];
@@ -67,8 +67,8 @@ function fixture(
       }) => {
         searches++;
           assert.equal(input.organizationId,"org-sintetica");
-        assert.deepEqual(input.lessons[0].topics, ["Permisos"]);
-        assert.equal(input.lessons[0].remaining_sources, 1);
+        assert.deepEqual(input.lessons[0].topics, ["Verificar identidad", "Permisos"]);
+        assert.equal(input.lessons[0].remaining_sources, 2);
         if (cancelAfterSearch) active = false;
         return [
           {
@@ -85,7 +85,7 @@ function fixture(
       validateUrlSource: async (url: string) => ({
         isValid: true,
         normalizedUrl: url,
-        report: { status: "valid", reason: "Contenido válido" },
+        report: { status: "valid", reason: "Contenido válido", content_excerpt: "El contenido de la fuente respalda los permisos." },
       }),
     },
     "../../../../src/lib/pipeline-generation-policy": {
@@ -113,17 +113,17 @@ function fixture(
       }),
   };
 }
-test("solo archivos no crea cliente ni busca web y los vacíos quedan bloqueados", async () => {
+test("solo archivos usa documentos procesados sin cliente web ni aprobación humana", async () => {
   const f = fixture("DOCUMENTS_ONLY");
   assert.equal(await f.run(), 0);
   assert.equal(f.searches(), 0);
   assert.equal(f.clients(), 0);
   assert.equal(
     (f.writes.at(-1)?.p_completion as { state: string }).state,
-    "PHASE2_BLOCKED",
+    "PHASE2_APPROVED",
   );
 });
-test("documentación completa aprobada no busca complementos en modo mixto", async () => {
+test("conjunto web ya completo no vuelve a buscar en modo mixto", async () => {
   const f = fixture("DOCUMENTS_AND_WEB", true);
   await f.run();
   assert.equal(f.searches(), 0);
@@ -133,13 +133,13 @@ test("documentación completa aprobada no busca complementos en modo mixto", asy
     "PHASE2_APPROVED",
   );
 });
-test("mixto busca solo el tema faltante pero exige revisar la nueva URL", async () => {
+test("mixto completa la investigación y conserva el documento junto a la nueva fuente válida", async () => {
   const f = fixture("DOCUMENTS_AND_WEB");
   assert.equal(await f.run(), 1);
   assert.equal(f.searches(), 1);
   assert.equal(
     (f.writes.at(-1)?.p_completion as { state: string }).state,
-    "PHASE2_BLOCKED",
+    "PHASE2_APPROVED",
   );
 });
 test("cancelación durante búsqueda no confirma filas ni aprobación", async () => {

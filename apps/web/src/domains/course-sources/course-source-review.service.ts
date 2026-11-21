@@ -23,6 +23,7 @@ import {
 } from "./course-source-review.schema";
 
 import { readCourseSourcePolicy } from "./course-source-settings";
+import { materialSourceSetAvailability, isUsableMaterialWebSource } from "./course-source-material-set";
 export { readCourseSourcePolicy } from "./course-source-settings";
 
 type CurriculumLesson = {
@@ -182,8 +183,7 @@ export async function readSourceReview(
     if (row.source_kind === "pdf") continue;
     if (!row.lesson_id) continue;
     if (
-      row.validation_report?.status &&
-      row.validation_report.status !== "valid"
+      row.validation_report?.status !== "valid" || !isUsableMaterialWebSource(row.validation_report?.content_excerpt, row.source_ref)
     )
       continue;
     evidence.push({
@@ -192,7 +192,7 @@ export async function readSourceReview(
       lessonId: row.lesson_id,
       title: row.source_title || row.source_ref,
       sourceRef: row.source_ref,
-      text: row.validation_report?.content_excerpt || row.source_title || "",
+      text: row.validation_report.content_excerpt,
     });
   }
   if (
@@ -252,6 +252,17 @@ export async function changeSourceReview(
         ),
       ),
     };
+  if (command.action === "use-all") {
+    if (snapshot.revision !== command.expectedRevision || snapshot.curriculumHash !== command.curriculumHash) throw new CourseSourceError(409, "Las fuentes o el plan cambiaron. Actualiza antes de continuar.");
+    const availability = materialSourceSetAvailability(snapshot.policy, snapshot.planReady, snapshot.lessons, snapshot.evidence);
+    if (!availability.ready) throw new CourseSourceError(409, availability.issues.join(" "));
+    const result = await admin.rpc("accept_all_course_source_materials", {
+      p_artifact: artifactId, p_organization: organizationId, p_actor: actorId,
+      p_revision: snapshot.revision, p_curriculum: snapshot.curriculumHash,
+    });
+    if (result.error) sourcePersistenceError(result.error);
+    return { revision: snapshot.revision, consumptionMode: "ALL_VALIDATED" };
+  }
   if (
     snapshot.revision !== command.expectedRevision ||
     snapshot.curriculumHash !== command.curriculumHash

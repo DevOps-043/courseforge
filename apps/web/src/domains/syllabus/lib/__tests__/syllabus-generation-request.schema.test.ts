@@ -7,6 +7,16 @@ import {
 import { syllabusManagementRequestSchema } from "../../syllabus-management-request.schema";
 import { buildSyllabusGenerationPrompt } from "../syllabus-generation";
 
+test("las restricciones del temario permanecen aunque la plantilla pida módulos extra", () => {
+  const prompt = buildSyllabusGenerationPrompt({
+    promptTemplate: "Genera ocho módulos extensos.", ideaCentral: "Comunicación",
+    objetivos: ["Comprender", "Aplicar", "Identificar", "Analizar", "Implementar"],
+  });
+  assert.match(prompt, /exactamente 5 módulos/);
+  assert.match(prompt, /entre 3 y 6 lecciones/);
+  assert.match(prompt, /no debe exceder 12 horas/);
+});
+
 const validRequest = {
   artifactId: "8d15ec09-d2ae-4f24-a565-84c337f6c135",
   ideaCentral: "Fundamentos de seguridad de aplicaciones",

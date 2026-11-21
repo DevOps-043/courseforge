@@ -30,6 +30,8 @@ import {
 } from "@/shared/config/prompts/pipeline.prompts";
 import { isGenerationStale } from "@/lib/pipeline-generation-policy";
 import { getInstructionalPlanCompletenessIssues } from "../lib/plan-completeness";
+import { readAcademyScope } from "../../course-delivery/services/academy-scope.server";
+import { assertAcademyPlans } from "../../course-delivery/lib/academy-scope";
 
 export async function generateInstructionalPlanAction(
   artifactId: string,
@@ -57,6 +59,8 @@ export async function generateInstructionalPlanAction(
   let reservedIteration: number | undefined;
 
   try {
+    const academy = await readAcademyScope(admin, artifactId, authorized.artifact.organization_id || undefined);
+    if (!academy.lessonIds.length) return { success: false, error: "Este curso solo genera planes de sesiones en vivo para Hub." };
     const { data: currentPlan, error: lookupError } = await admin
       .from("instructional_plans")
       .select("id, iteration_count, lesson_plans, state")
@@ -253,10 +257,10 @@ export async function updateInstructionalPlanStatusAction(
     if (syllabusResult.error) {
       return { success: false, error: syllabusResult.error.message };
     }
-    const completenessIssues = getInstructionalPlanCompletenessIssues(
-      syllabusResult.data.modules,
-      planResult.data.lesson_plans,
-    );
+    const scope = await readAcademyScope(admin, artifactId, authorized.artifact.organization_id || undefined);
+    try { assertAcademyPlans(scope, planResult.data.lesson_plans); }
+    catch (error) { return { success: false, error: getErrorMessage(error) }; }
+    const completenessIssues = getInstructionalPlanCompletenessIssues(scope.modules, planResult.data.lesson_plans);
     if (completenessIssues.length > 0) {
       return {
         success: false,

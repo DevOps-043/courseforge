@@ -3,6 +3,7 @@ import { z } from "zod";
 import { resolveVideoDurationPolicy } from "../video-duration/video-duration-policy";
 import { CourseSourceError, sourcePersistenceError } from "./course-source-error";
 import { readCourseSourcePolicy } from "./course-source-settings";
+import { BASE_CONTINUATION_LIFETIME_MS } from "./course-source-base-progress";
 
 export const documentaryBaseSchema = z.object({
   artifactId: z.uuid(),
@@ -14,6 +15,7 @@ export async function reserveDocumentaryBase(
   admin: SupabaseClient,
   organizationId: string,
   input: z.infer<typeof documentaryBaseSchema>,
+  queue?: { scope: string; userId: string },
 ) {
   const { artifactId, runId, description } = input;
   const draft = await admin.from("course_source_drafts").select("artifact_id")
@@ -44,13 +46,21 @@ export async function reserveDocumentaryBase(
 
   const videoDurationPolicy = resolveVideoDurationPolicy(undefined);
   const formData = { title: idea_central as string, description, videoDurationPolicy };
+  const startedAt = Date.now();
+  const originalMetadata = { ...generation_metadata };
+  delete originalMetadata.base_queue;
   const reservation = await admin.from("artifacts").update({
     state: "GENERATING",
     generation_metadata: {
-      ...generation_metadata,
+      ...originalMetadata,
       run_id: runId,
       base_progress: null,
-      started_at: new Date().toISOString(),
+      started_at: new Date(startedAt).toISOString(),
+      ...(queue ? { base_queue: {
+        scope: queue.scope, user_id: queue.userId, due_at: new Date(startedAt).toISOString(),
+        expires_at: new Date(startedAt + BASE_CONTINUATION_LIFETIME_MS).toISOString(),
+        revision: settings.revision, invocations: 0, recover_expired_batch: state === "ESCALATED",
+      } } : {}),
       original_input: formData,
       video_duration_policy: videoDurationPolicy,
     },

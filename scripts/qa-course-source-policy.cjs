@@ -8,7 +8,7 @@ async function main(){
   const compiler=await compile(readFileSync('apps/web/src/app/globals.css','utf8'),{base:resolve('apps/web/src/app'),onDependency(){}});
   const css=compiler.build(new Scanner({sources:[{base:resolve('apps/web/src/domains/course-sources'),pattern:'*.tsx',negated:false}]}).scan());
   const component=resolve('apps/web/src/domains/course-sources/CourseSourceReviewPanel.tsx').replaceAll('\\','/');
-  const bundle=await build({bundle:true,write:false,format:'iife',platform:'browser',jsx:'automatic',tsconfig:resolve('apps/web/tsconfig.json'),stdin:{loader:'tsx',resolveDir:process.cwd(),contents:
+  const bundle=await build({bundle:true,write:false,outdir:resolve('.tmp/source-policy-qa-bundle'),format:'iife',platform:'browser',jsx:'automatic',tsconfig:resolve('apps/web/tsconfig.json'),stdin:{loader:'tsx',resolveDir:process.cwd(),contents:
     `import React from'react';import{createRoot}from'react-dom/client';import{CourseSourceReviewPanel}from'${component}';createRoot(document.getElementById('root')).render(<CourseSourceReviewPanel artifactId='10000000-0000-4000-8000-000000000001'/>);`}});
   const document='20000000-0000-4000-8000-000000000001';const requests=[];
   const state={configured:true,policy:null,revision:0,approved:false,curriculumHash:'a'.repeat(32),planReady:true,
@@ -17,8 +17,8 @@ async function main(){
   let malformed=false;
   const server=createServer(async(request,response)=>{
     const url=new URL(request.url,'http://localhost');
-    if(url.pathname==='/bundle.js'){response.setHeader('Content-Type','text/javascript');response.end(bundle.outputFiles[0].text);return;}
-    if(url.pathname==='/style.css'){response.setHeader('Content-Type','text/css');response.end(css);return;}
+    if(url.pathname==='/bundle.js'){response.setHeader('Content-Type','text/javascript');response.end(bundle.outputFiles.find(file=>file.path.endsWith('.js')).text);return;}
+    if(url.pathname==='/style.css'){response.setHeader('Content-Type','text/css');response.end(css+'\n'+bundle.outputFiles.filter(file=>file.path.endsWith('.css')).map(file=>file.text).join('\n'));return;}
     if(url.pathname.includes('/api/')){
       response.setHeader('Content-Type','application/json');if(request.method==='GET'){response.end(JSON.stringify(malformed?{}:state));return;}
       let raw='';for await(const chunk of request)raw+=chunk;const body=JSON.parse(raw);requests.push(body);

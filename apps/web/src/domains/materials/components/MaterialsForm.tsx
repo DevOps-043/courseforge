@@ -61,11 +61,19 @@ function groupLessonsByModule(lessons: MaterialLesson[]) {
 }
 
 export function MaterialsForm({
+  ...props
+}: MaterialsFormProps) {
+  const controller = useMaterials(props.artifactId);
+  return <MaterialsContent {...props} controller={controller} />;
+}
+
+export function MaterialsContent({
   coordinatedReview = false,
   artifactId,
   className = "",
   profile,
-}: MaterialsFormProps) {
+  controller,
+}: MaterialsFormProps & { controller: ReturnType<typeof useMaterials> }) {
   const {
     materials,
     loading,
@@ -85,7 +93,8 @@ export function MaterialsForm({
     isApproved,
     isStartingGeneration,
     generationStuckInfo,
-  } = useMaterials(artifactId);
+    actionError,
+  } = controller;
 
   const { label: stateLabel, color: stateColor } = useMaterialStateStyles(
     materials?.state,
@@ -136,7 +145,7 @@ export function MaterialsForm({
     );
   }
 
-  if (error) {
+  if (error && !materials) {
     return (
       <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
         <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
@@ -196,6 +205,7 @@ export function MaterialsForm({
             )}
             {isStartingGeneration ? "Iniciando..." : "Iniciar Generacion"}
           </button>
+          {(error || actionError) && <p role="alert" className="mt-4 px-4 text-sm text-orange-700 dark:text-orange-300">{error || actionError}</p>}
         </div>
       </div>
     );
@@ -203,6 +213,7 @@ export function MaterialsForm({
 
   return (
     <div className={`space-y-6 ${className}`}>
+      {(error || actionError) && <div role="alert" className="space-y-2 rounded-xl border border-orange-300 bg-[var(--engine-surface-solid)] p-4 text-[var(--engine-text)]"><p>{error || actionError}</p><button type="button" onClick={refresh}>Consultar estado</button></div>}
       <MaterialsStepHeader
         title="Materiales (Fase 3)"
         stateLabel={stateLabel}
@@ -279,12 +290,7 @@ export function MaterialsForm({
                   lesson={lesson}
                   onIterationStart={runFixIteration}
                   onValidateLesson={validateLesson}
-                  onRegenerateLesson={(lessonId) =>
-                    runFixIteration(
-                      lessonId,
-                      "Regenerar completamente esta leccion siguiendo el plan original.",
-                    )
-                  }
+                  onRegenerateLesson={(lessonId) => runFixIteration(lessonId, "")}
                   onMarkForFix={markLessonForFix}
                 />
               ))}

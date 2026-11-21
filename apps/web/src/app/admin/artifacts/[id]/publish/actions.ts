@@ -25,6 +25,8 @@ import {
 } from '@/lib/server/artifact-action-auth';
 import { getActiveOrganizationId } from '@/utils/auth/session';
 import { resolveActiveTenantContext } from '@/lib/server/tenant-context';
+import { readAcademyScope } from '@/domains/course-delivery/services/academy-scope.server';
+import { academyLessonId } from '@/domains/course-delivery/lib/academy-scope';
 
 interface RawMaterialLessonRow {
     lesson_id: string;
@@ -194,6 +196,7 @@ export async function getPublicationData(
         .maybeSingle();
 
     let lessons: PublicationLesson[] = [];
+    const academy = await readAcademyScope(admin, artifactId, artifact.organization_id);
 
     if (materials?.id) {
         const { data: rawLessons } = await admin
@@ -215,12 +218,12 @@ export async function getPublicationData(
 
         const hydratedLessons = await hydrateLessonsFromDurableFinalVideos(
             admin,
-            (rawLessons || []) as RawMaterialLessonRow[],
+            ((rawLessons || []) as RawMaterialLessonRow[]).filter(lesson => academy.lessonIds.includes(academyLessonId(lesson.lesson_id))),
             artifact.organization_id,
         );
         const sorted = sortLessonsNaturally(hydratedLessons);
         lessons = sorted
-            .filter((lesson) => hasVideoComponent(selectLatestComponentsByType(lesson.material_components || [])))
+            .filter((lesson) => academy.routeHash || hasVideoComponent(selectLatestComponentsByType(lesson.material_components || [])))
             .map((lesson) => mapLessonToPublicationLesson(lesson));
     }
 

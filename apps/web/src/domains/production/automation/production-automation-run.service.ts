@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readAcademyScope } from "../../course-delivery/services/academy-scope.server";
+import { academyLessonId } from "../../course-delivery/lib/academy-scope";
 import { createOperationalLogger } from "@/lib/server/operational-logger";
 import { ensureProductionNativeCaptions } from "./production-native-captions.service";
 import { productionNativeCaptionPorts } from "./production-native-captions.server";
@@ -262,9 +264,11 @@ export class ProductionAutomationRunService {
   }
 
   private async loadVideoComponents(params: { artifactId: string; organizationId: string }) {
+    const scope = await readAcademyScope(this.supabase, params.artifactId, params.organizationId);
     const { data, error } = await this.supabase
       .from("material_components")
       .select("id, assets, content, material_lesson_id, type, material_lessons!inner(lesson_id, module_id, materials!inner(artifact_id))")
+      .eq("material_lessons.materials.artifact_id", params.artifactId)
       .in("type", ["VIDEO_THEORETICAL", "VIDEO_DEMO", "VIDEO_GUIDE"]);
     if (error) throw error;
     return (data || [])
@@ -272,7 +276,7 @@ export class ProductionAutomationRunService {
         const component = this.toAutomationComponent(row as ComponentRow);
         return component ? [component] : [];
       })
-      .filter((component) => component.artifactId === params.artifactId)
+      .filter((component) => component.artifactId === params.artifactId && scope.lessonIds.includes(academyLessonId(component.lessonId)) && (!scope.routeHash || component.assets?.delivery_route_hash === scope.routeHash))
       .sort((left, right) => left.moduleOrder - right.moduleOrder || left.lessonOrder - right.lessonOrder);
   }
 

@@ -1,0 +1,48 @@
+.library {
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--engine-border);
+  border-radius: 1rem;
+  background: var(--engine-surface-solid);
+  color: var(--engine-text);
+  font-family: var(--font-sans), sans-serif;
+}
+.summary { cursor: pointer; padding: 1.25rem; font-weight: 600; }
+.body { padding: 0 1.25rem 1.25rem; display: grid; gap: 1.25rem; }
+.intro { color: var(--engine-text-muted); font-size: .875rem; line-height: 1.6; }
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+.step { border: 1px solid var(--engine-border); border-radius: .75rem; padding: 1rem; background: var(--engine-canvas); }
+.step strong { display: block; margin-bottom: .5rem; font-size: .875rem; }
+.step p { color: var(--engine-text-muted); font-size: .8125rem; line-height: 1.6; }
+.policy { border: 1px solid var(--engine-border); border-radius: .875rem; padding: 1.25rem; display: grid; gap: 1rem; background: var(--engine-surface-solid); color: var(--engine-text); }
+.choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: 0; padding: 0; border: 0; min-width: 0; }
+.choice { display: flex; align-items: flex-start; gap: .75rem; border: 1px solid var(--engine-border); border-radius: .75rem; padding: 1rem; cursor: pointer; background: var(--engine-canvas); }
+.choice:has(input:checked) { border-color: var(--engine-accent); }
+.choice input { margin-top: .25rem; accent-color: var(--engine-accent); flex-shrink: 0; }
+.choice strong { display: block; font-size: .875rem; }
+.choice small { display: block; margin-top: .375rem; color: var(--engine-text-muted); font-size: .8125rem; line-height: 1.6; }
+.upload { display: grid; gap: .75rem; border: 1px dashed var(--engine-accent); border-radius: .875rem; padding: 1.25rem; background: var(--engine-canvas); }
+.upload input { width: 100%; min-width: 0; font-size: .875rem; }
+.upload input::file-selector-button { border: 1px solid var(--engine-border); border-radius: .5rem; padding: .625rem .875rem; margin-right: .75rem; background: var(--engine-surface-solid); color: var(--engine-text); cursor: pointer; }
+.library button, .policy button { min-height: 2.5rem; border: 1px solid var(--engine-border); border-radius: .5rem; padding: .5rem .875rem; font-size: .875rem; font-weight: 500; color: var(--engine-text); background: var(--engine-canvas); }
+.library button:hover:not(:disabled), .policy button:hover:not(:disabled) { border-color: var(--engine-accent); }
+.library button:disabled, .policy button:disabled { opacity: .5; cursor: not-allowed; }
+.library :is(button, input, summary):focus-visible, .policy :is(button, input):focus-visible { outline: 2px solid var(--engine-accent); outline-offset: 3px; }
+.policy .save { justify-self: start; background: var(--engine-accent); color: var(--engine-primary); border-color: var(--engine-accent); }
+.empty { padding: 1rem; border: 1px solid var(--engine-border); border-radius: .75rem; color: var(--engine-text-muted); font-size: .875rem; }
+.versions { margin: 0; padding: 0; list-style: none; }
+.versions li { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; border-bottom: 1px solid var(--engine-border); padding: 1rem 0; }
+.maintenance { padding-top: 1rem; border-top: 1px solid var(--engine-border); }
+.search { margin-bottom: 1.25rem; padding: 1.25rem; border: 1px solid var(--engine-accent); border-radius: .875rem; background: var(--engine-surface-solid); color: var(--engine-text); display: grid; gap: 1rem; }
+.searchState { display: flex; align-items: center; gap: .75rem; }
+.spinner { width: 1rem; height: 1rem; border: 2px solid var(--engine-accent); border-right-color: transparent; border-radius: 50%; animation: source-spin 1s linear infinite; flex-shrink: 0; }
+.search button { min-height: 2.5rem; padding: .5rem .875rem; border: 1px solid var(--engine-border); border-radius: .5rem; background: var(--engine-canvas); }
+.search button:disabled { opacity: .5; cursor: not-allowed; }
+.search button:focus-visible { outline: 2px solid var(--engine-accent); outline-offset: 3px; }
+@keyframes source-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+@media (max-width: 640px) {
+  .steps, .choices { grid-template-columns: 1fr; }
+  .summary { padding: 1rem; }
+  .body { padding: 0 1rem 1rem; }
+  .policy { padding: 1rem; }
+}

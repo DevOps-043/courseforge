@@ -58,7 +58,7 @@ El sistema SHALL admitir originales largos dentro de presupuestos medidos y reut
 #### Scenario: La evidencia relevante está al final del original
 - **WHEN** un autor autorizado aporta un documento largo válido y una regla relevante aparece en su última sección
 - **THEN** el sistema recorre todos los fragmentos, recupera la regla para el objetivo o tema correspondiente y permite verificar la cita contra el original
-- **AND** Materiales recibe el contexto aprobado de la lección, acotado a su presupuesto
+- **AND** Materiales recibe el conjunto completo válido permitido por la política, acotado a su presupuesto sin recortarlo silenciosamente
 
 #### Scenario: El curso contiene varios originales largos
 - **WHEN** el total de texto no cabe en una llamada pero cumple el presupuesto de trabajo del curso
@@ -73,7 +73,7 @@ El sistema SHALL admitir originales largos dentro de presupuestos medidos y reut
 #### Scenario: El archivo menciona una página externa
 - **WHEN** una URL aparece como cita o ejemplo dentro del texto aportado
 - **THEN** la mención conserva su procedencia documental y el modo exclusivo no consulta la página
-- **AND** en modo mixto solo una evidencia web validada en Curaduría, asociada al requisito y aprobada en su revisión, puede respaldar Materiales con procedencia web
+- **AND** en modo mixto únicamente las fuentes web validadas en Curaduría y vinculadas a la lección pueden respaldar Materiales con procedencia web
 
 ### Requirement: Sustitución conserva versiones inmutables
 El sistema SHALL crear un original nuevo vinculado a su predecesor y conservar el anterior disponible hasta que la extracción del sucesor se confirme atómicamente.
@@ -119,11 +119,11 @@ El sistema SHALL resolver y fijar en servidor una política documental exclusiva
 - **AND** no envía fragmentos privados como consulta a un buscador
 
 #### Scenario: Información insuficiente
-- **WHEN** un componente necesita contenido no respaldado por las fuentes aprobadas
+- **WHEN** un componente necesita contenido no respaldado por el conjunto de fuentes válidas
 - **THEN** se muestra el vacío y se impide aprobar el componente sin inventar citas o habilitar web implícitamente
 
 ### Requirement: Cobertura por evidencia curricular
-El sistema SHALL evaluar cobertura documental por objetivos y temas de lección mediante asociaciones revisables y versionadas, con el mismo criterio en interfaz, API y jobs.
+El sistema SHALL usar todos los documentos procesados permitidos por la política y todas las fuentes web válidas de la lección, sin exigir selección ni confirmación manual por objetivo. La validación de respaldo y citas de cada material se conserva.
 
 #### Scenario: Manual único
 - **WHEN** un documento contiene evidencia suficiente para todas las lecciones
@@ -133,9 +133,14 @@ El sistema SHALL evaluar cobertura documental por objetivos y temas de lección 
 - **WHEN** se autoriza complementar documentos con web
 - **THEN** la cobertura distingue ambas procedencias y expone vacíos y contradicciones para revisión
 
-#### Scenario: Propuesta todavía no revisada
-- **WHEN** el sistema propone fragmentos coincidentes con un objetivo o tema
-- **THEN** se conservan como sugerencias sin suficiencia confirmada y no permiten aprobar hasta su revisión
+#### Scenario: Varias fuentes válidas por lección
+- **WHEN** una lección tiene tres fuentes web validadas y el curso tiene documentos procesados
+- **THEN** el conjunto incluye todas esas fuentes según la política y no se reduce a una elección manual
+- **AND** el servidor construye el snapshot sin aceptar IDs de evidencia seleccionados por el cliente
+
+#### Scenario: Compatibilidad de revisiones históricas
+- **WHEN** se consulta un snapshot manual previo
+- **THEN** conserva su contrato de revisión; los nuevos snapshots identifican ALL_VALIDATED sin fabricar una aprobación humana
 
 #### Scenario: URL sin identidad curricular
 - **WHEN** una URL heredada no identifica la lección a la que pertenece
@@ -150,7 +155,7 @@ El sistema SHALL evaluar cobertura documental por objetivos y temas de lección 
 - **THEN** se revierte también la revisión, política y demás modificaciones de esa transacción
 
 ### Requirement: Contexto completo dentro de límites explícitos
-El sistema SHALL conservar el texto extraído válido y recuperar los fragmentos aprobados relevantes para cada consumidor, sin limitarse al extracto inicial de validación.
+El sistema SHALL conservar el texto extraído válido y recuperar el conjunto completo permitido para cada consumidor, sin limitarse al extracto inicial de validación.
 
 #### Scenario: Sección posterior al extracto histórico
 - **WHEN** el respaldo de una lección aparece después del carácter 12,000
@@ -158,7 +163,7 @@ El sistema SHALL conservar el texto extraído válido y recuperar los fragmentos
 
 #### Scenario: Presupuesto insuficiente
 - **WHEN** el contexto seleccionado excede el presupuesto de la operación
-- **THEN** se explica la limitación y se requiere selección o división, sin omisión silenciosa
+- **THEN** se explica la limitación y se requiere reducir el alcance o dividir el curso, sin omisión silenciosa
 
 ### Requirement: Trazabilidad e invalidación transaccional
 El sistema SHALL congelar política, versiones y fragmentos por ejecución, validar citas contra ese snapshot y controlar vigencia al aprobar y consumir los resultados.
@@ -205,6 +210,16 @@ El sistema SHALL congelar política, versiones y fragmentos por ejecución, vali
 - **WHEN** el autor reintenta con el mismo propósito, revisión y modelo tras un fallo recuperable
 - **THEN** el job conserva los lotes confirmados y continúa con los pendientes dentro del presupuesto vigente
 - **AND** la salida solo puede llegar a revisión tras completar todos los lotes y verificar su respaldo
+
+#### Scenario: Continuación automática de Base documental
+- **WHEN** una invocación llega a su ventana de lectura con lotes recuperables pendientes
+- **THEN** el worker guarda la continuación y despacha otra invocación firmada sobre la misma ejecución
+- **AND** si se pierde el despacho o vence el lease, el reconciliador del mismo ambiente puede recuperar el trabajo
+- **AND** una invocación duplicada u obsoleta no puede confirmar el resultado del curso
+
+#### Scenario: Recuperación explícita de un plazo de lectura vencido
+- **WHEN** un autor reintenta Base en un curso detenido y la ejecución vencida conserva revisión, plan, progreso confirmado y saldo
+- **THEN** se concede una sola extensión acotada, sin reiniciar los contadores de la ejecución ni repetir lotes confirmados
 
 #### Scenario: Fallo de la primera generación de Base
 - **WHEN** la generación falla antes de obtener un recibo de evidencia
