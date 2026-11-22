@@ -3,6 +3,7 @@ import test from "node:test";
 import { load } from "../../../app/login/__tests__/source-test-loader";
 import * as materialSet from "../course-source-material-set";
 import { PIPELINE_GENERATION_LIMITS } from "../../../lib/pipeline-generation-policy";
+import * as pipelinePolicy from "../../../lib/pipeline-generation-policy";
 
 function fixture(
   policy: "DOCUMENTS_ONLY" | "DOCUMENTS_AND_WEB",
@@ -13,6 +14,19 @@ function fixture(
   let clients = 0;
   let active = true;
   const writes: Record<string, unknown>[] = [];
+  const searchInputs: { organizationId?: string | null; topics: string[]; remaining: number }[] = [];
+  const validation = {
+    SOURCE_VALIDATION_TIMEOUT_MS: 15000,
+    normalizeSourceUrl: (url: string) => new URL(url).toString(),
+    validateUrlSource: async (url: string) => ({ isValid: true, normalizedUrl: url,
+      report: { status: "valid", reason: "Contenido válido", content_excerpt: "El contenido de la fuente respalda los permisos." } }),
+  };
+  const candidates = load("netlify/functions/shared/curation-v2/candidate-validation.ts", { "./validation": validation });
+  const webWorkflow = load("netlify/functions/shared/curation-v2/web-workflow.ts", {
+    "./candidate-validation": candidates, "./validation": validation, "./search": {},
+    "../../../../src/lib/pipeline-generation-policy": pipelinePolicy,
+    "../../../../src/lib/server/operational-logger": { createOperationalLogger: () => ({ info() {}, warn() {} }) },
+  }, { setTimeout });
   const worker = load<{
     runDocumentCuration: (params: Record<string, unknown>) => Promise<number>;
   }>("netlify/functions/shared/curation-v2/document-workflow.ts", {
@@ -60,24 +74,22 @@ function fixture(
       }),
     },
     "../../../../src/domains/course-sources/course-source-material-set": materialSet,
+    "./web-workflow": webWorkflow,
     "./search": {
       searchLessonCandidates: async (input: {
           lessons: { topics: string[]; remaining_sources: number }[];
           organizationId?:string|null;
       }) => {
         searches++;
-          assert.equal(input.organizationId,"org-sintetica");
-        assert.deepEqual(input.lessons[0].topics, ["Verificar identidad", "Permisos"]);
-        assert.equal(input.lessons[0].remaining_sources, 2);
+        searchInputs.push({ organizationId: input.organizationId, topics: Array.from(input.lessons[0].topics),
+          remaining: input.lessons[0].remaining_sources });
         if (cancelAfterSearch) active = false;
-        return [
-          {
+        return [1, 2].map(index => ({
             lesson_id: "lesson",
-            url: "https://example.invalid/permisos",
+            url: `https://example.invalid/permisos-${index}`,
             title: "Permisos",
             rationale: "Vacío documental",
-          },
-        ];
+          }));
       },
     },
     "./validation": {
@@ -95,6 +107,7 @@ function fixture(
   return {
     searches: () => searches,
     clients: () => clients,
+    searchInputs,
     writes,
     run: () =>
       worker.runDocumentCuration({
@@ -135,8 +148,9 @@ test("conjunto web ya completo no vuelve a buscar en modo mixto", async () => {
 });
 test("mixto completa la investigación y conserva el documento junto a la nueva fuente válida", async () => {
   const f = fixture("DOCUMENTS_AND_WEB");
-  assert.equal(await f.run(), 1);
+  assert.equal(await f.run(), 2);
   assert.equal(f.searches(), 1);
+  assert.deepEqual(f.searchInputs, [{ organizationId: "org-sintetica", topics: ["Verificar identidad", "Permisos"], remaining: 2 }]);
   assert.equal(
     (f.writes.at(-1)?.p_completion as { state: string }).state,
     "PHASE2_APPROVED",
@@ -145,8 +159,8 @@ test("mixto completa la investigación y conserva el documento junto a la nueva 
 test("cancelación durante búsqueda no confirma filas ni aprobación", async () => {
   const f = fixture("DOCUMENTS_AND_WEB", false, true);
   await f.run();
-  assert.equal(f.writes.length, 2);
+  assert.equal(f.writes.length, 3);
   assert.ok(
-    f.writes.every((write) => (write.p_rows as unknown[]).length === 0),
+    f.writes.every((write) => (write.p_rows as unknown[]).length === 0 && write.p_completion === null),
   );
 });

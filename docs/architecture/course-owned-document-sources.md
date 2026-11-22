@@ -17,7 +17,20 @@ sigue pasando la validación de respaldo, citas y vigencia antes de guardarse.
 La biblioteca está disponible en Base, Temario y Fuentes. DOCUMENTS_ONLY excluye
 web; DOCUMENTS_AND_WEB permite completar la investigación en curación. Base,
 Temario y Plan documentales mantienen su contexto sin investigación web implícita.
-WEB_ONLY y cursos sin configuración documental conservan el flujo histórico.
+WEB_ONLY y cursos sin configuración documental conservan sus contratos de
+persistencia y consumo histórico. La búsqueda web usa el mismo motor que
+DOCUMENTS_AND_WEB: una lección por solicitud, contexto del curso y objetivo/temas,
+reintentos acotados, respaldo, deduplicación de URLs y guardado de cada fuente
+válida antes de contarla. El mínimo sigue calculándose desde el plan: dos fuentes
+como base y una por cada tres minutos objetivo de video, hasta diez; siete minutos
+requieren tres fuentes. El tamaño de lote no determina esa cuota.
+
+La ejecución conserva hasta seis rondas y se detiene tras dos sin avance o al
+agotar el presupuesto de diez minutos. Solo busca faltantes y mantiene las fuentes
+confirmadas. Los contadores distinguen búsquedas, rechazos, destinos duplicados y
+errores técnicos sin registrar respuestas privadas. Cada política conserva sus
+guardas de revisión, currículo y aprobación; el modo mixto comprueba además que
+la evidencia web sea utilizable para Materiales. DOCUMENTS_ONLY no navega.
 
 La pantalla de Fuentes muestra inventario por lección, conteos, progreso, errores y
 un botón para continuar con todo el conjunto. No muestra selectores obligatorios

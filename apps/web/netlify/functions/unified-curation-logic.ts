@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { resolveModelSetting } from "./shared/bootstrap";
 import { runCurationWorkflowV2 } from "./shared/curation-v2/workflow";
+import { buildCourseContextSummary } from "./shared/unified-curation-helpers";
 import { COURSE_TEXT_MODELS, getTextModelProvider } from "../../src/shared/ai/text-model-provider";
 import { resolvePromptWithFallback } from "../../src/shared/config/prompts/prompt-resolver.service";
 import {
@@ -43,7 +44,7 @@ export async function processUnifiedCuration({
   const supabase = createClient(supabaseUrl, supabaseKey);
   const { data: artifact, error } = await supabase
     .from("artifacts")
-    .select("organization_id")
+    .select("organization_id,idea_central,nombres,objetivos,descripcion,generation_metadata")
     .eq("id", artifactId)
     .single();
   if (error) throw new Error(error.message);
@@ -73,6 +74,7 @@ export async function processUnifiedCuration({
     artifactId,
     curationId,
     systemPrompt,
+    courseContext: buildCourseContextSummary(artifact, null).fullCourseContext,
     model,
     fallbackModel: getTextModelProvider(setting.fallbackModel) === "openai" ? setting.fallbackModel : OPENAI_CURATION_DEFAULTS.fallbackModel,
     reasoningEffort: setting.thinkingLevel,
