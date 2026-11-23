@@ -6,6 +6,7 @@
     "apps/*"
   ],
   "scripts": {
+    "test:slide-worker-session": "tsc -p apps/web/tsconfig.remotion-test.json && node --test apps/web/.tmp/remotion-tests/domains/production/slides/__tests__/slide-worker-access.test.js",
     "test:production-asset-flow": "npm run test:course-delivery -w apps/web && tsc -p apps/web/tsconfig.remotion-test.json && node --test apps/web/.tmp/remotion-tests/lib/client/__tests__/slide-generation.test.js apps/web/.tmp/remotion-tests/domains/production/jobs/__tests__/production-jobs.service.test.js apps/web/.tmp/remotion-tests/domains/production/validation/__tests__/broll-output.test.js && node scripts/test-production-review-ui.cjs",
     "test:coordinated-materials": "npm run test:course-delivery && npm run test:materials-generation -w apps/web && node --test scripts/test-coordinated-material-retries.mjs",
     "qa:hybrid-materials": "node scripts/qa-hybrid-materials.cjs",

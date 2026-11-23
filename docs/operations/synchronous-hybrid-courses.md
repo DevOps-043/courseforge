@@ -122,6 +122,19 @@ Learning debe publicar primero su endpoint interno live-engine-preparation. La m
 
 ## Revisión integrada de producción
 
+Diagnóstico de slides en cola: `SLIDES_STILL_PENDING` sólo significa que terminó
+el plazo del sondeo. Consultar el job y los logs de `slides-generation-background`.
+El worker verifica firma/nonce, reserva, creador, membresía y rol vigentes y el
+componente del mismo curso/organización; no puede usar helpers que requieren
+cookies de Next.js. Los eventos `worker_received`, `worker_authorized`,
+`worker_finished` y `worker_failed` permiten distinguir preparación de ejecución.
+Un error de acceso previo a generar marca FAILED sólo en la reserva verificada
+que continúa pendiente/en cola. No se modifica otro job ni se rebaja QA.
+Si el primer intento consume el nonce y después falla, repetir el mismo sobre
+firmado puede registrar `nonce_consumido`. Es protección de replay, no evidencia
+de éxito: corregir el fallo inicial y usar el reintento explícito, que firma una
+solicitud nueva para el mismo job. No desactivar el control de nonce.
+
 En Producción, las sesiones de Hub se revisan en tarjetas desplegables dentro del
 curso. Cada sesión ofrece Presentación, Guía del facilitador y Material del
 participante; el estado muestra contenido pendiente o desactualizado y la revisión
