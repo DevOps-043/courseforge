@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useRef, useState } from "react";
 import { CompositionAutosaveBoundary } from "./CompositionAutosaveBoundary";
 import { HTML_EDITING_LIMITS, isHtmlEditingDeclaredAttributeValue } from "@/domains/production/composition-editor/html-editing/html-editing.contract";
@@ -91,28 +92,65 @@ function EditableScalarField({ element, view, busy, onChange }: {
         <span>{textCharacters}/{element.maxCharacters}</span>
       </label>}
       {element.kind === "TEXT" && element.localePolicy && <label className="block">Idioma y dirección declarados
-        <select className="block w-full" value={localeKey} onChange={event => setLocaleKey(event.target.value)}>
-          {localeChoices.map(locale => <option key={`${locale.language}:${locale.direction}`} value={`${locale.language}:${locale.direction}`}>
-            {locale.language} · {locale.direction}
-          </option>)}
-        </select>
+        <EngineSelect
+          aria-label="Idioma y dirección declarados"
+          size="compact"
+          value={localeKey}
+          onValueChange={setLocaleKey}
+          options={localeChoices.map((locale) => ({
+            value: `${locale.language}:${locale.direction}`,
+            label: `${locale.language} · ${locale.direction}`,
+          }))}
+        />
       </label>}
       {element.kind === "IMAGE" && <>
-        <label className="block">Imagen autorizada<select className="block w-full" value={assetId} onChange={event => setAssetId(event.target.value)}>
-          <option value="">Selecciona un recurso vigente</option>{imageChoices.map(id => <option key={id} value={id}>{id}</option>)}
-        </select></label>
-        <label className="block">Ajuste<select className="block w-full" value={fit} onChange={event => setFit(event.target.value as "CONTAIN" | "COVER")}>
-          {element.allowedFits.map(value => <option key={value} value={value}>{value}</option>)}
-        </select></label>
+        <label className="block">Imagen autorizada
+          <EngineSelect
+            aria-label="Imagen autorizada"
+            size="compact"
+            value={assetId}
+            onValueChange={setAssetId}
+            options={[
+              { value: "", label: "Selecciona un recurso vigente" },
+              ...imageChoices.map((id) => ({ value: id, label: id })),
+            ]}
+          />
+        </label>
+        <label className="block">Ajuste
+          <EngineSelect
+            aria-label="Ajuste"
+            size="compact"
+            value={fit}
+            onValueChange={(nextValue) => setFit(nextValue as "CONTAIN" | "COVER")}
+            options={element.allowedFits.map((value) => ({ value, label: value }))}
+          />
+        </label>
       </>}
-      {element.kind === "THEME" && <label className="block">Tema<select className="block w-full" value={choiceId} onChange={event => setChoiceId(event.target.value)}>
-        <option value="">Selecciona un tema declarado</option>{element.allowedChoiceIds.map(id => <option key={id} value={id}>{id}</option>)}
-      </select></label>}
+      {element.kind === "THEME" && <label className="block">Tema
+        <EngineSelect
+          aria-label="Tema"
+          size="compact"
+          value={choiceId}
+          onValueChange={setChoiceId}
+          options={[
+            { value: "", label: "Selecciona un tema declarado" },
+            ...element.allowedChoiceIds.map((id) => ({ value: id, label: id })),
+          ]}
+        />
+      </label>}
       {element.kind === "ATTRIBUTE" && <label className="block">Atributo declarado ({element.attributeName})
-        {element.allowedValues ? <select className="block w-full" value={attributeValue} onChange={event => setAttributeValue(event.target.value)}>
-          {!element.allowedValues.includes(attributeValue) && <option value="">Selecciona un valor declarado</option>}
-          {element.allowedValues.map(value => <option key={value} value={value}>{value || "(vacío)"}</option>)}
-        </select> : <input className="block w-full" type="text" value={attributeValue}
+        {element.allowedValues ? <EngineSelect
+          aria-label={`Atributo declarado (${element.attributeName})`}
+          size="compact"
+          value={attributeValue}
+          onValueChange={setAttributeValue}
+          options={[
+            ...(!element.allowedValues.includes(attributeValue)
+              ? [{ value: "", label: "Selecciona un valor declarado" }]
+              : []),
+            ...element.allowedValues.map((value) => ({ value, label: value || "(vacío)" })),
+          ]}
+        /> : <input className="block w-full" type="text" value={attributeValue}
           maxLength={Math.min(HTML_EDITING_LIMITS.textCharacters, element.maxCharacters * 2)} onChange={event => setAttributeValue(event.target.value)} />}
         <span className="block">{Array.from(attributeValue).length}/{element.maxCharacters}</span>
       </label>}

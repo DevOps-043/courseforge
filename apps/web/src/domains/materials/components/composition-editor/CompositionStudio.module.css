@@ -645,8 +645,7 @@
   white-space: nowrap;
 }
 
-.sfxSearch input,
-.sfxCategory {
+.sfxSearch input {
   width: 100%;
   border: 1px solid var(--studio-border);
   border-radius: 0.5rem;
@@ -654,15 +653,7 @@
   background: var(--studio-panel-raised);
   font: inherit;
   font-size: 0.68rem;
-}
-
-.sfxSearch input {
   padding: 0.5rem 0.6rem;
-}
-
-.sfxCategory {
-  margin-top: 0.38rem;
-  padding: 0.42rem 0.5rem;
 }
 
 .libraryEmpty {
@@ -2238,8 +2229,7 @@
 }
 
 .studio input:not([type="range"]),
-.studio textarea,
-.studio select {
+.studio textarea {
   border-color: var(--studio-border) !important;
   color: var(--studio-text) !important;
   background: var(--studio-canvas-deep) !important;
@@ -2494,12 +2484,10 @@
 .studio button:focus-visible,
 .studio input:focus-visible,
 .studio textarea:focus-visible,
-.studio select:focus-visible,
 .studio [tabindex]:focus-visible,
 .keyboardPanel button:focus-visible,
 .keyboardPanel input:focus-visible,
 .keyboardPanel textarea:focus-visible,
-.keyboardPanel select:focus-visible,
 .keyboardPanel a:focus-visible {
   outline: 2px solid var(--engine-accent, #06b6d4);
   outline-offset: 2px;
@@ -2531,6 +2519,10 @@
 }
 @container (max-width: 26rem) {
   .canvasFormat { width: 3.75rem; }
+  .canvasFormat[data-size="compact"] > button {
+    gap: 0.15rem;
+    padding-inline: 0.23rem;
+  }
   .previewTools,
   .previewUtilities { gap: 0.08rem; }
   .previewToolbar [aria-label="Edición principal"] {

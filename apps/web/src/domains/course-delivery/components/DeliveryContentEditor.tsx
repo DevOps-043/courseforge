@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useState } from "react";
 import type { CourseDeliveryController } from "../hooks/useCourseDelivery";
 import styles from "./delivery-ui.module.css";
@@ -30,7 +31,18 @@ function ContentFields({ value, onChange, label }: { value: EditableValue; onCha
   if (typeof value === "number") return <label className={styles.field}>{label}<input type="number" min="1" value={value} onChange={event => onChange(Number(event.target.value))} /></label>;
   if (typeof value === "boolean") return <label className={styles.field}><input type="checkbox" checked={value} onChange={event => onChange(event.target.checked)} /> {label}</label>;
   if (typeof value !== "string") return null;
-  if (label === "Momento de uso") return <label className={styles.field}>{label}<select value={value} onChange={event => onChange(event.target.value)}><option value="BEFORE">Antes de la clase</option><option value="AFTER">Después de la clase</option></select></label>;
+  if (label === "Momento de uso") return <label className={styles.field}>{label}
+    <EngineSelect
+      aria-label={label}
+      className={styles.selectField}
+      value={value}
+      onValueChange={onChange}
+      options={[
+        { value: "BEFORE", label: "Antes de la clase" },
+        { value: "AFTER", label: "Después de la clase" },
+      ]}
+    />
+  </label>;
   return <label className={styles.field}>{label}<textarea rows={value.length > 180 ? 5 : 2} value={value} onChange={event => onChange(event.target.value)} /></label>;
 }
 function SessionEditor({ controller, kind, sessionId, initial }: { controller: CourseDeliveryController; kind: "PLAN" | "MATERIALS"; sessionId: string; initial: EditableValue }) {

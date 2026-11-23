@@ -1,3 +1,4 @@
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { AlertTriangle } from "lucide-react";
 import type { CompositionClip, CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionAnimation } from "@/domains/production/composition-editor/composition-motion.types";
@@ -77,7 +78,21 @@ export function CompositionTimelineWorkspace({ assetLabels, assets, brandingAvai
           <button type="button" disabled={saving} onClick={onOrganize} className={styles.durationAction}>Organizar timeline</button>
           {componentId !== null && <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={onRefreshProductionAssets} className={styles.durationAction}>{refreshingProductionAssets ? "Actualizando…" : "Actualizar assets"}</button>}
           {componentId !== null && <button type="button" disabled={saving || refreshingProductionAssets || recoveringHistoricalAssets} onClick={onRecoverHistoricalAssets} className={styles.durationAction}>{recoveringHistoricalAssets ? "Recuperando…" : "Recuperar históricos"}</button>}
-          {brandingAvailability && <select value={brandingAvailability.selectedOutroAssetId || ""} disabled={saving} onChange={(event) => onOutroChange(event.target.value || null)} className={styles.durationAction} aria-label="Outro de este video"><option value="">Sin outro</option>{brandingAvailability.outros.map((outro) => <option key={outro.id} value={outro.id}>{outro.name} · {(outro.duration_milliseconds / 1000).toFixed(1)} s</option>)}</select>}
+          {brandingAvailability && <EngineSelect
+            aria-label="Outro de este video"
+            disabled={saving}
+            className="w-44"
+            size="compact"
+            value={brandingAvailability.selectedOutroAssetId || ""}
+            onValueChange={(nextValue) => onOutroChange(nextValue || null)}
+            options={[
+              { value: "", label: "Sin outro" },
+              ...brandingAvailability.outros.map((outro) => ({
+                value: outro.id,
+                label: `${outro.name} · ${(outro.duration_milliseconds / 1000).toFixed(1)} s`,
+              })),
+            ]}
+          />}
           {brandingClips.map((clip) => <button key={clip.id} type="button" disabled={saving}
             className={styles.durationAction} title={`Editar capas, animaciones y transformación de ${clip.label}`}
             onClick={() => {

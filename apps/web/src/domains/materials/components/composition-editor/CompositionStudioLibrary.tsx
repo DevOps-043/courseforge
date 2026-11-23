@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import {
@@ -132,8 +133,35 @@ export function CompositionStudioLibrary({ assets, captionTranscriptWordCount, d
     </div>
 
     <div className={`${styles.libraryBody} ${activeView === "delivery" ? styles.libraryBodyDelivery : ""}`}>
-      {activeView === "assets" && <label className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-600 dark:border-white/10 dark:text-gray-300"><span>Modo de inserción</span><select value={insertionMode} onChange={(event) => onInsertionModeChange(event.target.value as CompositionAssetInsertionMode)} className={styles.sfxCategory} aria-label="Modo para añadir medios"><option value="APPEND">Añadir</option><option value="INSERT">Insertar y desplazar</option><option value="OVERWRITE">Sobrescribir intervalo</option></select></label>}
-      {activeView === "assets" && <div className="flex gap-2 border-b border-slate-200 p-2 dark:border-white/10"><label className={styles.sfxSearch}><span className="sr-only">Buscar medios</span><input value={assetQuery} onChange={(event) => setAssetQuery(event.target.value)} placeholder="Buscar medios…" /></label><select className={styles.sfxCategory} value={assetKind} onChange={(event) => setAssetKind(event.target.value as typeof assetKind)} aria-label="Tipo de medio"><option value="ALL">Todos</option><option value="VIDEO">Video</option><option value="IMAGE">Imagen</option><option value="AUDIO">Audio</option></select></div>}
+      {activeView === "assets" && <label className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-600 dark:border-white/10 dark:text-gray-300"><span>Modo de inserción</span>
+        <EngineSelect
+          aria-label="Modo para añadir medios"
+          className="w-36"
+          size="compact"
+          value={insertionMode}
+          onValueChange={(nextValue) => onInsertionModeChange(nextValue as CompositionAssetInsertionMode)}
+          options={[
+            { value: "APPEND", label: "Añadir" },
+            { value: "INSERT", label: "Insertar y desplazar" },
+            { value: "OVERWRITE", label: "Sobrescribir intervalo" },
+          ]}
+        />
+      </label>}
+      {activeView === "assets" && <div className="flex gap-2 border-b border-slate-200 p-2 dark:border-white/10"><label className={styles.sfxSearch}><span className="sr-only">Buscar medios</span><input value={assetQuery} onChange={(event) => setAssetQuery(event.target.value)} placeholder="Buscar medios…" /></label>
+        <EngineSelect
+          aria-label="Tipo de medio"
+          className="w-24 shrink-0"
+          size="compact"
+          value={assetKind}
+          onValueChange={(nextValue) => setAssetKind(nextValue as typeof assetKind)}
+          options={[
+            { value: "ALL", label: "Todos" },
+            { value: "VIDEO", label: "Video" },
+            { value: "IMAGE", label: "Imagen" },
+            { value: "AUDIO", label: "Audio" },
+          ]}
+        />
+      </div>}
       {activeView === "assets" && replacementTarget && replacementTargetUnavailable && <p role="status" className="border-b border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100">La fuente de este clip no está disponible. Selecciona un medio compatible y usa «Revincular»; se conservarán sus ediciones.</p>}
       {activeView === "lessons" ? <div className={styles.lessonList} role="tabpanel">{lessons.map((lesson, index) => <button key={lesson.id} type="button" onClick={() => onSelectLesson(lesson.id)} className={`${styles.lessonItem} ${selectedLessonId === lesson.id ? styles.lessonItemActive : ""}`}><span className={`${styles.lessonIndex} ${lesson.completed ? styles.lessonIndexComplete : ""}`}>{lesson.completed ? <CheckCircle2 size={12} aria-label="Completado" /> : index + 1}</span><span className="min-w-0"><span className={styles.itemTitle}>{lesson.title}</span><span className={styles.itemMeta}>{lesson.subtitle}</span></span><ChevronRight className={styles.lessonChevron} size={13} aria-hidden="true" /></button>)}</div>
         : activeView === "assets" ? <div className={styles.assetList} role="tabpanel">{filteredAssets.length === 0 && <p className={styles.libraryEmpty}>No hay medios que coincidan con la búsqueda.</p>}{filteredAssets.map((asset) => {
@@ -144,7 +172,25 @@ export function CompositionStudioLibrary({ assets, captionTranscriptWordCount, d
         })}</div>
         : activeView === "captions" ? <div role="tabpanel"><CompositionCaptionCreationPanel transcriptWordCount={captionTranscriptWordCount} onCreateManual={onAddCaptionLayer} onGenerateTranscript={onGenerateTranscriptCaptions} /></div>
         : activeView === "text" ? <div className="space-y-3 p-3" role="tabpanel"><p className="text-xs leading-5 text-slate-500 dark:text-gray-400">Crea texto editable en el cursor. Para escribir subtítulos, abre la pestaña Subtítulos.</p><button type="button" onClick={onAddTextLayer} className="flex w-full items-center gap-3 rounded-lg border border-slate-200 p-3 text-left hover:border-cyan-400 hover:bg-cyan-50 dark:border-white/10 dark:hover:bg-cyan-400/10"><Type size={19} className="text-cyan-600" /><span><span className={styles.itemTitle}>Capa de texto</span><span className={styles.itemMeta}>Título, etiqueta o llamada visual</span></span></button></div>
-        : activeView === "sfx" ? <div className={styles.assetList} role="tabpanel"><label className={styles.sfxSearch}><span className="sr-only">Buscar efectos de sonido</span><input value={soundEffectQuery} onChange={(event) => setSoundEffectQuery(event.target.value)} placeholder="Buscar whoosh, click…" /></label><select className={styles.sfxCategory} value={soundEffectCategory} onChange={(event) => setSoundEffectCategory(event.target.value as "" | SoundEffectCatalogItem["category"])} aria-label="Categoría de efectos"><option value="">Todas las categorías</option><option value="TRANSITION">Transición</option><option value="EMPHASIS">Énfasis</option><option value="UI">UI</option><option value="IMPACT">Impacto</option><option value="AMBIENCE">Ambiente</option><option value="OTHER">Otros</option></select>{soundEffectsLoading ? <p className={styles.libraryEmpty}>Cargando efectos…</p> : soundEffectsError ? <p className={styles.libraryEmpty}>{soundEffectsError}</p> : soundEffects.length === 0 ? <p className={styles.libraryEmpty}>No hay efectos disponibles todavía.</p> : soundEffects.map((soundEffect) => <div key={soundEffect.id} className={styles.assetItem}><span className={styles.assetMain}><span className="relative flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-violet-100 text-violet-700 dark:border-white/10 dark:bg-violet-500/10 dark:text-violet-200"><Music2 size={18} /></span><span className="min-w-0 flex-1"><span className={styles.itemTitle}>{soundEffect.name}</span><span className={styles.assetMetaRow}><span className={styles.itemMeta}>{soundEffect.category.toLowerCase()}</span><span className={styles.itemMeta}>{(soundEffect.durationMilliseconds / 1000).toFixed(2)} s</span></span></span></span><span className="flex flex-none items-center gap-1"><SoundEffectPreviewButton soundEffectId={soundEffect.id} /><a href={`/api/production/sound-effects/${soundEffect.id}/download`} title={`Descargar ${soundEffect.name}`} className={styles.assetAdd}><Download size={12} /><span>Descargar</span></a><button type="button" onClick={() => onAddSoundEffect(soundEffect)} title={`Añadir ${soundEffect.name} al cursor`} className={styles.assetAdd}><Plus size={12} /><span>Añadir al cursor</span></button></span></div>)}</div>
+        : activeView === "sfx" ? <div className={styles.assetList} role="tabpanel"><label className={styles.sfxSearch}><span className="sr-only">Buscar efectos de sonido</span><input value={soundEffectQuery} onChange={(event) => setSoundEffectQuery(event.target.value)} placeholder="Buscar whoosh, click…" /></label>
+          <EngineSelect
+            aria-label="Categoría de efectos"
+            className="mt-1"
+            size="compact"
+            value={soundEffectCategory}
+            onValueChange={(nextValue) =>
+              setSoundEffectCategory(nextValue as "" | SoundEffectCatalogItem["category"])
+            }
+            options={[
+              { value: "", label: "Todas las categorías" },
+              { value: "TRANSITION", label: "Transición" },
+              { value: "EMPHASIS", label: "Énfasis" },
+              { value: "UI", label: "UI" },
+              { value: "IMPACT", label: "Impacto" },
+              { value: "AMBIENCE", label: "Ambiente" },
+              { value: "OTHER", label: "Otros" },
+            ]}
+          />{soundEffectsLoading ? <p className={styles.libraryEmpty}>Cargando efectos…</p> : soundEffectsError ? <p className={styles.libraryEmpty}>{soundEffectsError}</p> : soundEffects.length === 0 ? <p className={styles.libraryEmpty}>No hay efectos disponibles todavía.</p> : soundEffects.map((soundEffect) => <div key={soundEffect.id} className={styles.assetItem}><span className={styles.assetMain}><span className="relative flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-violet-100 text-violet-700 dark:border-white/10 dark:bg-violet-500/10 dark:text-violet-200"><Music2 size={18} /></span><span className="min-w-0 flex-1"><span className={styles.itemTitle}>{soundEffect.name}</span><span className={styles.assetMetaRow}><span className={styles.itemMeta}>{soundEffect.category.toLowerCase()}</span><span className={styles.itemMeta}>{(soundEffect.durationMilliseconds / 1000).toFixed(2)} s</span></span></span></span><span className="flex flex-none items-center gap-1"><SoundEffectPreviewButton soundEffectId={soundEffect.id} /><a href={`/api/production/sound-effects/${soundEffect.id}/download`} title={`Descargar ${soundEffect.name}`} className={styles.assetAdd}><Download size={12} /><span>Descargar</span></a><button type="button" onClick={() => onAddSoundEffect(soundEffect)} title={`Añadir ${soundEffect.name} al cursor`} className={styles.assetAdd}><Plus size={12} /><span>Añadir al cursor</span></button></span></div>)}</div>
         : activeView === "narrative" ? <div className={styles.narrativeMenu} role="tabpanel">{narrative}</div>
           : <div className={styles.deliveryMenu} role="tabpanel">{delivery}</div>}
     </div>

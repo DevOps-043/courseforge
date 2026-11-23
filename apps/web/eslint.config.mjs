@@ -26,6 +26,10 @@ export default defineConfig([
       "react/no-unescaped-entities": "warn",
     },
   },
+  {
+    files: ["**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
   globalIgnores([
     ".next/**",
     ".netlify/**",

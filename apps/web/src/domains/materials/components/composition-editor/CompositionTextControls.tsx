@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { buildCompositionInspectorPatches } from "@/domains/production/composition-editor/composition-inspector-patches";
 
 import { CompositionAutosaveBoundary, useCompositionAutosavePending } from "./CompositionAutosaveBoundary";
@@ -201,14 +202,28 @@ export function CompositionTextControls({
           <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 dark:border-white/15 dark:text-gray-300"><FileUp size={12} /> {isImportingCaptions ? "Importando…" : "Seleccionar archivo"}<input type="file" accept=".srt,.vtt,text/vtt,application/x-subrip" disabled={disabled || isImportingCaptions} className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void importCaptions(file); event.currentTarget.value = ""; }} /></label>
         </div>
         {captionImportSummary && <p role="status" className="rounded-md bg-emerald-50 px-2 py-1.5 text-[10px] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">{captionImportSummary}</p>}
-        <label className="block text-[10px] font-medium text-slate-600 dark:text-gray-300">Preset visual<select value={captionPreset} disabled={disabled} onChange={(event) => {
-          const value = event.target.value as CompositionCaptionPresetId | "";
-          setCaptionPreset(value);
-          if (value) setStyle((current) => current ? applyCompositionCaptionPreset(current, value) : current);
-        }} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-white/15 dark:bg-slate-950">
-          <option value="">Aplicar un preset…</option>
-          {listCompositionCaptionPresets().map((preset) => <option key={preset.id} value={preset.id}>{preset.label} · {preset.description}</option>)}
-        </select></label>
+        <label className="block text-[10px] font-medium text-slate-600 dark:text-gray-300">Preset visual
+          <EngineSelect
+            aria-label="Preset visual"
+            disabled={disabled}
+            className="mt-1"
+            size="compact"
+            value={captionPreset}
+            onValueChange={(nextValue) => {
+              const value = nextValue as CompositionCaptionPresetId | "";
+              setCaptionPreset(value);
+              if (value)
+                setStyle((current) => (current ? applyCompositionCaptionPreset(current, value) : current));
+            }}
+            options={[
+              { value: "", label: "Aplicar un preset…" },
+              ...listCompositionCaptionPresets().map((preset) => ({
+                value: preset.id,
+                label: `${preset.label} · ${preset.description}`,
+              })),
+            ]}
+          />
+        </label>
         {(areCaptionEffectsEnabled() || source.type === "NATIVE_CAPTIONS" && source.effects) && <CompositionCaptionEffectsControls effects={captionEffects} cues={cues} disabled={disabled || !areCaptionEffectsEnabled()} onEffectsChange={setCaptionEffects} onCuesChange={setCues} />}
         <p className="text-[10px] text-slate-500">Cambiar el texto retira los timestamps por palabra y las palabras clave de esa frase. Al acortar sus tiempos, se recortan las palabras fuera del intervalo.</p>
         {cues.map((cue, index) => <div key={cue.id} className="rounded-md border border-slate-200 p-2 dark:border-white/10">
@@ -219,20 +234,62 @@ export function CompositionTextControls({
         <button type="button" disabled={disabled} onClick={appendCaptionCue} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-700 disabled:opacity-50 dark:border-white/15 dark:text-gray-300"><Plus size={12} /> Agregar subtítulo</button>
       </div>}
     <div className="mt-3 grid grid-cols-2 gap-2">
-      <label className="text-[10px] font-medium text-slate-600 dark:text-gray-300">Fuente<select value={fontAssetId ? `asset:${fontAssetId}` : `builtin:${style.fontFamily}`} disabled={disabled} onChange={(event) => {
-        const value = event.target.value;
-        if (value.startsWith("asset:")) {
-          const id = value.slice("asset:".length);
-          const font = organizationFonts.find((candidate) => candidate.id === id);
-          if (font) { setFontAssetId(font.id); updateStyle("fontFamily", font.family); }
-          return;
-        }
-        setFontAssetId(null);
-        updateStyle("fontFamily", value.slice("builtin:".length));
-      }} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-white/15 dark:bg-slate-950"><optgroup label="Incluidas">{DETERMINISTIC_FONT_FAMILIES.map((family) => <option key={family} value={`builtin:${family}`}>{family}</option>)}</optgroup>{organizationFonts.length > 0 && <optgroup label="Organización">{organizationFonts.map((font) => <option key={font.id} value={`asset:${font.id}`}>{font.family}</option>)}</optgroup>}</select></label>
+      <label className="text-[10px] font-medium text-slate-600 dark:text-gray-300">Fuente
+        <EngineSelect
+          aria-label="Fuente"
+          disabled={disabled}
+          className="mt-1"
+          size="compact"
+          value={fontAssetId ? `asset:${fontAssetId}` : `builtin:${style.fontFamily}`}
+          onValueChange={(nextValue) => {
+            const value = nextValue;
+            if (value.startsWith("asset:")) {
+              const id = value.slice("asset:".length);
+              const font = organizationFonts.find((candidate) => candidate.id === id);
+              if (font) {
+                setFontAssetId(font.id);
+                updateStyle("fontFamily", font.family);
+              }
+              return;
+            }
+            setFontAssetId(null);
+            updateStyle("fontFamily", value.slice("builtin:".length));
+          }}
+          options={[
+            ...DETERMINISTIC_FONT_FAMILIES.map((family) => ({
+              value: `builtin:${family}`,
+              label: family,
+              group: "Incluidas",
+            })),
+            ...(organizationFonts.length > 0
+              ? organizationFonts.map((font) => ({
+                  value: `asset:${font.id}`,
+                  label: font.family,
+                  group: "Organización",
+                }))
+              : []),
+          ]}
+        />
+      </label>
       <NumberField label="Tamaño" value={style.fontSize} min={8} max={400} disabled={disabled} onChange={(value) => updateStyle("fontSize", value)} />
       <NumberField label="Peso" value={style.fontWeight} min={100} max={900} step={100} disabled={disabled} onChange={(value) => updateStyle("fontWeight", value)} />
-      <label className="text-[10px] font-medium text-slate-600 dark:text-gray-300">Alineación<select value={style.horizontalAlign} disabled={disabled} onChange={(event) => updateStyle("horizontalAlign", event.target.value as CompositionTextLayerStyle["horizontalAlign"])} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-white/15 dark:bg-slate-950"><option value="LEFT">Izquierda</option><option value="CENTER">Centro</option><option value="RIGHT">Derecha</option></select></label>
+      <label className="text-[10px] font-medium text-slate-600 dark:text-gray-300">Alineación
+        <EngineSelect
+          aria-label="Alineación"
+          disabled={disabled}
+          className="mt-1"
+          size="compact"
+          value={style.horizontalAlign}
+          onValueChange={(nextValue) =>
+            updateStyle("horizontalAlign", nextValue as CompositionTextLayerStyle["horizontalAlign"])
+          }
+          options={[
+            { value: "LEFT", label: "Izquierda" },
+            { value: "CENTER", label: "Centro" },
+            { value: "RIGHT", label: "Derecha" },
+          ]}
+        />
+      </label>
       <ColorField label="Texto" value={style.color} disabled={disabled} onChange={(value) => updateStyle("color", value)} />
       <ColorField label="Fondo" value={style.backgroundColor} disabled={disabled} onChange={(value) => updateStyle("backgroundColor", value)} />
       <NumberField label="Opacidad texto" value={style.textOpacity} min={0} max={1} step={0.05} disabled={disabled} onChange={(value) => updateStyle("textOpacity", value)} />

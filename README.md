@@ -138,6 +138,8 @@ SofLIA Architect funciona desde `apps/web`:
 
 La regla en `apps/web/src/domains` es crear carpetas por capacidad solo cuando hacen falta: `actions`, `components`, `config`, `hooks`, `lib`, `services`, `types` y `validators`.
 
+Los formularios y editores comparten el diseño de sus selectores de valor. La guía de implementación está en el [contexto operativo](docs/architecture/system-context.md#patrones-importantes).
+
 Los jobs largos se ejecutan como Netlify Background Functions firmadas con `BACKGROUND_FUNCTION_SECRET` y nonces de un solo uso (`background_request_nonces`). Las generaciones de syllabus, curacion y materiales hacen commits atomicos mediante RPCs (`start_/claim_/commit_/reset_material_generation`, `commit_curation_progress`) y tienen logica de recuperacion de corridas atascadas.
 
 ---

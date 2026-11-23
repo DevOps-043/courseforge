@@ -29,8 +29,8 @@
 .configurationFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--engine-border); }
 .configurationFields label { display: block; min-width: 0; font-size: 13px; font-weight: 500; }
 .configurationFields label span { font-weight: 400; color: var(--engine-text-muted); }
-.configurationFields input, .configurationFields select { display: block; width: 100%; min-width: 0; margin-top: 7px; padding: 10px 12px; border: 1px solid var(--engine-border); border-radius: 10px; background: var(--engine-canvas); color: var(--engine-text); font: inherit; }
-.configurationFields :is(input, select):focus-visible { outline: 2px solid var(--engine-accent-strong); outline-offset: 3px; }
+.configurationFields input { display: block; width: 100%; min-width: 0; margin-top: 7px; padding: 10px 12px; border: 1px solid var(--engine-border); border-radius: 10px; background: var(--engine-canvas); color: var(--engine-text); font: inherit; }
+.configurationFields :is(input, button[role='combobox']):focus-visible { outline: 2px solid var(--engine-accent-strong); outline-offset: 3px; }
 .configurationHint { margin-top: 12px; font-size: 12px; color: var(--engine-text-muted); }
 .configurationError { margin-top: 12px; padding: 12px; border: 1px solid var(--engine-danger); border-radius: 10px; color: var(--engine-text); font-size: 13px; }
 .configurationSummary > summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; cursor: pointer; font-size: 14px; }
@@ -40,25 +40,25 @@
 .eyebrow { margin: 0 0 6px; color: var(--engine-text-muted); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
 .panelHeader { padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--engine-border); }
 .panel p { color: var(--engine-text-muted); }
-.panel button, .actions button, .transfer button {
+.panel button:not([role='combobox']), .actions button, .transfer button:not([role='combobox']) {
   min-height: 40px; border: 1px solid var(--engine-border); border-radius: 10px; padding: 9px 14px;
   color: var(--engine-text); background: var(--engine-surface-solid); font: inherit; font-size: 13px;
   font-weight: 500; cursor: pointer;
 }
-.panel button:hover:not(:disabled), .actions button:hover:not(:disabled), .transfer button:hover:not(:disabled) { border-color: var(--engine-accent-strong); background: var(--engine-surface-hover); }
-.panel button:disabled, .actions button:disabled, .transfer button:disabled { opacity: .5; cursor: not-allowed; }
+.panel button:hover:not(:disabled, [role='combobox']), .actions button:hover:not(:disabled), .transfer button:hover:not(:disabled, [role='combobox']) { border-color: var(--engine-accent-strong); background: var(--engine-surface-hover); }
+.panel button:disabled:not([role='combobox']), .actions button:disabled, .transfer button:disabled:not([role='combobox']) { opacity: .5; cursor: not-allowed; }
 .panel .primary, .transfer .primary { background: var(--engine-action); color: var(--engine-on-action); border-color: var(--engine-action); }
 .panel .primary:hover:not(:disabled), .transfer .primary:hover:not(:disabled) { background: var(--engine-action); filter: brightness(1.08); }
 .panel .approve { background: var(--engine-surface-soft); border-color: var(--engine-border-active); color: var(--engine-text); }
 .panel label, .field { display: block; font-size: 13px; font-weight: 500; }
-.panel input:not([type='checkbox']):not([type='radio']), .panel select, .panel textarea, .field input:not([type='checkbox']):not([type='radio']), .field select, .field textarea {
+.panel input:not([type='checkbox']):not([type='radio']), .panel textarea, .field input:not([type='checkbox']):not([type='radio']), .field textarea {
   display: block; width: 100%; max-width: 100%; min-width: 0; margin-top: 6px; padding: 10px 12px;
   border: 1px solid var(--engine-border); border-radius: 10px; background: var(--engine-canvas);
   color: var(--engine-text); font: inherit; font-size: 14px; line-height: 1.6;
 }
 .panel textarea, .field textarea { resize: vertical; min-height: 76px; }
 .panel input[type='checkbox'], .field input[type='checkbox'] { accent-color: var(--engine-accent-strong); margin-right: 7px; }
-.panel :is(button, input, textarea, select, summary, a):focus-visible, .editor :is(button, input, textarea, select, summary):focus-visible, .transfer :is(button, select):focus-visible {
+.panel :is(button, input, textarea, summary, a):focus-visible, .editor :is(button, input, textarea, summary):focus-visible, .transfer button:focus-visible {
   outline: 2px solid var(--engine-accent-strong); outline-offset: 3px;
 }
 .editor { display: grid; gap: 12px; min-width: 0; }
@@ -87,7 +87,7 @@
 .transferSteps li { border: 1px solid var(--engine-border); border-radius: 6px; padding: 4px 8px; background: var(--engine-surface-solid); }
 .transferFields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; }
 .transfer label { font-size: 13px; font-weight: 500; }
-.transfer select { display: block; width: 100%; min-width: 0; margin-top: 6px; padding: 10px; border: 1px solid var(--engine-border); border-radius: 10px; background: var(--engine-surface-solid); color: var(--engine-text); font: inherit; }
+.selectField { margin-top: 6px; }
 .transferNotice, .panel [role='alert'] { padding: 12px 14px; border: 1px solid var(--engine-border); border-radius: 10px; background: var(--engine-surface-solid); font-size: 13px; }
 .exports { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; }
 .previewAudiences { display: flex; flex-wrap: wrap; gap: 8px; }

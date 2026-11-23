@@ -33,7 +33,7 @@ async function main() {
     ] }, assets: [], plan: { title: "Capas", subtitle: "", accentColor: "#38BDF8", durationSeconds: 8 },
   });
   const fixtureJson = JSON.stringify(initial).replaceAll("<", "\\u003c");
-  await writeFile(resolve(directory, "index.html"), `<!doctype html><html lang="es"><meta charset="utf-8"><title>QA capas</title><div id="root"></div><script>window.layersQaDocument=${fixtureJson};</script><script src="fixture.js"></script></html>`);
+  await writeFile(resolve(directory, "index.html"), `<!doctype html><html lang="es"><meta charset="utf-8"><title>QA capas</title><link rel="stylesheet" href="fixture.css"><div id="root"></div><script>window.layersQaDocument=${fixtureJson};</script><script src="fixture.js"></script></html>`);
   const browser = await launchCompositionQaBrowser({ profilePrefix: "courseforge-layers-" });
   try {
     const client = browser.client;
@@ -45,10 +45,16 @@ async function main() {
     await waitFor(client, `${state}.extraLayerDepths.length === 1`);
     await evaluate(client, clickAdd);
     await waitFor(client, `${state}.extraLayerDepths.length === 2`);
-    assert.equal(await evaluate(client, "[...document.querySelectorAll('select option')].some(option => option.value === '12')"), true);
+    const toggleDepthSelect = "document.querySelector('[role=combobox]').click()";
+    const layer12Option = "[...document.querySelectorAll('[role=option]')].find(option => option.textContent.trim() === 'Capa 12')";
+    await evaluate(client, toggleDepthSelect);
+    await waitFor(client, `Boolean(${layer12Option})`);
+    await evaluate(client, toggleDepthSelect);
     await evaluate(client, "document.querySelector('[aria-label=\"Quitar capa 11\"]').click()");
     await waitFor(client, `${state}.extraLayerDepths.join(',') === '12'`);
-    await evaluate(client, "const selector = document.querySelector('select'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(selector, '12'); selector.dispatchEvent(new Event('change', { bubbles: true })); true");
+    await evaluate(client, toggleDepthSelect);
+    await waitFor(client, `Boolean(${layer12Option})`);
+    await evaluate(client, `${layer12Option}.click()`);
     await waitFor(client, `${state}.clips[0].layout.zIndex === 12`);
     await evaluate(client, "document.querySelector('button[title=\"Enviar un plano atrás\"]').click()");
     await waitFor(client, `${state}.clips[0].layout.zIndex === 10`);

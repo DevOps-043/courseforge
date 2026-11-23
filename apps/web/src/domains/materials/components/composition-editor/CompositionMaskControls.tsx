@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useEffect, useRef, useState } from "react";
 import type { CompositionClip } from "@/domains/production/composition-editor/composition-document.types";
 import type { CompositionEditorPatchOperation } from "@/domains/production/composition-editor/editor-patch.types";
@@ -24,13 +25,28 @@ export function CompositionMaskControls({ clip, disabled, onPatch, onPreview }: 
     <fieldset disabled={disabled} className="space-y-2 border-t border-slate-200 pt-3 disabled:opacity-50 dark:border-white/10">
       <legend className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Máscara visual</legend>
       <label className="block text-xs text-slate-600 dark:text-gray-300">Forma
-        <select value={mask?.shape ?? "NONE"} onChange={(event) => {
-          const shape = event.target.value;
-          change(shape === "CIRCLE" || shape === "ELLIPSE" ? { shape } : shape === "ROUNDED_RECT" ? { shape, radiusPercent: 15 } : null);
-        }} className="mt-1 w-full rounded-md border border-slate-300 bg-white p-2 text-sm text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white">
-          <option value="NONE">Sin máscara</option><option value="CIRCLE">Círculo</option>
-          <option value="ELLIPSE">Elipse</option><option value="ROUNDED_RECT">Rectángulo redondeado</option>
-        </select>
+        <EngineSelect
+          aria-label="Forma"
+          className="mt-1"
+          size="compact"
+          value={mask?.shape ?? "NONE"}
+          onValueChange={(nextValue) => {
+            const shape = nextValue;
+            change(
+              shape === "CIRCLE" || shape === "ELLIPSE"
+                ? { shape }
+                : shape === "ROUNDED_RECT"
+                  ? { shape, radiusPercent: 15 }
+                  : null,
+            );
+          }}
+          options={[
+            { value: "NONE", label: "Sin máscara" },
+            { value: "CIRCLE", label: "Círculo" },
+            { value: "ELLIPSE", label: "Elipse" },
+            { value: "ROUNDED_RECT", label: "Rectángulo redondeado" },
+          ]}
+        />
       </label>
       {mask?.shape === "ROUNDED_RECT" && <label className="block text-xs text-slate-600 dark:text-gray-300">
         Redondeo: {mask.radiusPercent}%

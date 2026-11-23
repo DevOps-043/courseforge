@@ -2,7 +2,7 @@
 
 La [ampliación de preparación hacia Academy y Hub](../architecture/live-preparation-expansion.md) documenta la entrega local de bloques, tiempos y notas privadas y el orden de publicación requerido.
 
-Fecha: 2026-10-26. Estado: implementación local bajo habilitación explícita; sin despliegue ni aplicación de SQL remoto.
+La funcionalidad exige habilitación explícita. La [evidencia de ejecución](../../openspec/changes/complete-live-preparation-delivery/reports/engine-manual-execution.md) registra la aplicación manual del esquema base de Engine y la verificación posterior. El [registro de pruebas y release](../../openspec/changes/complete-live-preparation-delivery/reports/testing-release.md) documenta un despliegue previo de Engine QA y el estado del historial remoto y del piloto.
 
 El [análisis](../architecture/synchronous-hybrid-course-flow-analysis.md) conserva la intención y el [plan](../architecture/synchronous-hybrid-course-implementation-plan.md) las entregas. Este documento describe los contratos implementados y sus límites.
 
@@ -26,7 +26,7 @@ La guía y el cuaderno son HTML imprimible, no archivos Word/PPTX ni un servicio
 - API: [GET/POST de impartición](../../apps/web/src/app/api/artifacts/[artifactId]/delivery/route.ts). Valida tamaño, comando, identidad, rol y organización.
 - Exportación: [ruta de documentos](../../apps/web/src/app/api/artifacts/[artifactId]/delivery/export/route.ts), con audiencia, vigencia, escape HTML, CSP y ausencia de caché compartida.
 - Generación: [job firmado](../../apps/web/netlify/functions/course-delivery-background.ts). El cuerpo solo contiene el ID reservado; contexto y configuración se leen de una instantánea privada.
-- Persistencia: [migración aditiva](../../supabase/migrations/20261026160000_synchronous_course_delivery.sql), aún no aplicada a un servidor remoto.
+- Persistencia: [migración aditiva](../../supabase/migrations/20261026160000_synchronous_course_delivery.sql), aplicada manualmente en Engine main según [evidencia del usuario y postflight](../../openspec/changes/complete-live-preparation-delivery/reports/engine-manual-execution.md).
 
 Las tablas nuevas son course_delivery_workspaces, course_delivery_versions y course_delivery_runs. No se guardan sesiones como lecciones Nexus ficticias. El borrador es un agregado JSON validado y acotado por curso; las unidades del run conservan progreso por sesión. Un trigger conserva las revisiones anteriores antes de modificar el agregado.
 
@@ -60,7 +60,7 @@ La ejecución fija texto, versión, origen, modelo, parámetros, hash y contexto
 
 ## Activación controlada
 
-1. Revisar y aplicar la migración mediante el proceso autorizado y comprobar catálogo/permisos antes y después. El [plan de activación de Engine](../../openspec/changes/complete-live-preparation-delivery/reports/engine-activation-plan.md) registra la aprobación de emsjctbdevufloxntjll y el acceso pendiente a Supabase. No se ha ejecutado esa migración remota. El guard de versiones no aplica SQL.
+1. El [plan de activación de Engine](../../openspec/changes/complete-live-preparation-delivery/reports/engine-activation-plan.md) registra la aprobación de emsjctbdevufloxntjll. La migración se ejecutó manualmente; el catálogo y permisos esperados constan en el postflight aportado. Comprobar/reconciliar el historial antes de db push y no repetir el archivo de creación. El guard de versiones no aplica SQL ni verifica el historial remoto.
 2. Confirmar modelos de fases heredadas o configurar capacidades propias.
 3. Configurar SYNCHRONOUS_COURSES_ENABLED=true en el entorno autorizado.
 4. La habilitación es global para todas las organizaciones. SYNCHRONOUS_COURSES_ORGANIZATIONS ya no se utiliza y puede eliminarse del entorno; los permisos de curso siguen siendo obligatorios.
@@ -110,15 +110,16 @@ La [QA de documentos](../../scripts/qa-course-delivery-exports.mjs) requiere com
 
 La evidencia y límites se conservan en el [reporte de implementación](../../openspec/changes/archive/2026-10-26-add-synchronous-hybrid-course-flow/reports/implementation.md).
 
-## Entrega a una sesión de Learning
+## Entrega a una sesión de Academy y Hub
 
-La etapa final permite a revisores consultar sus sesiones programadas de Learning en la organización activa y entregar láminas/prácticas aprobadas. La modalidad debe incluir sesiones; cambiar a Nexus conserva los materiales antiguos, pero no autoriza entregarlos. El destino vuelve a validar instructor, organización, curso, revisión y ausencia de respuestas.
+La etapa final permite a revisores consultar sus sesiones programadas de Academy en la organización activa y entregar la preparación aprobada para impartirla en Hub. La modalidad debe incluir sesiones. El destino vuelve a validar instructor, organización, curso, revisión y estado de la sesión.
 
 La conexión usa SOFLIA_API_URL HTTPS y SOFLIA_API_KEY exclusivamente en servidor; Learning verifica su COURSEFORGE_API_KEY mediante HMAC con propósito y fecha de cinco minutos. No se envían credenciales al navegador ni se aceptan URLs de destino del formulario. La entrega reemplaza la preparación anterior de la sesión elegida. Reintentar una respuesta perdida conserva el comando determinista del mismo payload.
 
-El contrato del aula admite 32 KiB, doce láminas con título de 160 y contenido de 500 caracteres y veinte prácticas con instrucciones de 2000 caracteres. El exceso se rechaza con diagnóstico, sin truncar. Guía, notas, respuestas y criterios del facilitador permanecen en Engine; no se convierten respuestas privadas en materiales públicos.
+La entrega admite 256 KiB de JSON, hasta doce láminas con título de 160 y contenido de 500 caracteres y hasta veinte prácticas con instrucciones de 2000 caracteres. Si se excede un límite, se rechaza la entrega completa. El manifiesto incluye bloques, criterios y notas del ponente y admite documentos de sesión con secciones privadas para facilitación. [Contrato de entrega ampliado](../architecture/live-preparation-expansion.md).
 
-Learning debe publicar primero su endpoint interno live-engine-preparation. La migración de participación/guardas 20261103120000 ya se aplicó con aprobación a Learning principal, con versión remota 20261103184120; la de Video tiene versión 20261103184110. El reporte canónico está en docs/reports/live-activation-2026-11-03/ de Learning. La migración de autoría de Engine sigue pendiente de acceso, con autorización recibida. La autoría y descarga HTML existentes conservan su comportamiento. No se publicaron cursos. Para comprobar la copia canónica: definir LEARNING_CHECKOUT y ejecutar node scripts/sync-live-preparation-contract.mjs --check.
+Learning debe publicar primero su endpoint interno live-engine-preparation. La migración de participación/guardas 20261103120000 ya se aplicó con aprobación a Learning principal, con versión remota 20261103184120; la de Video tiene versión 20261103184110. El reporte canónico está en docs/reports/live-activation-2026-11-03/ de Learning. La migración de autoría de Engine ya se ejecutó manualmente y su postflight fue aportado y verificado; sigue pendiente comprobar/reconciliar el historial remoto. La autoría y descarga HTML existentes conservan su comportamiento. No se publicaron cursos. Para comprobar la copia canónica: definir LEARNING_CHECKOUT y ejecutar node scripts/sync-live-preparation-contract.mjs --check.
+
 ## Revisión integrada de producción
 
 En Producción, las sesiones de Hub se revisan en tarjetas desplegables dentro del

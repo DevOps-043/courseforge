@@ -1,4 +1,5 @@
 .root {
+  display: block;
   position: relative;
   min-width: 0;
 }
@@ -32,6 +33,8 @@
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
   font-family: var(--font-system-ui);
   text-align: left;
+  text-transform: none;
+  cursor: pointer;
   transition:
     border-color 180ms ease,
     background 180ms ease,
@@ -57,6 +60,24 @@
 .trigger:disabled {
   cursor: not-allowed;
   opacity: 0.46;
+}
+
+.root[data-size="compact"] .trigger {
+  min-height: 2rem;
+  gap: 0.35rem;
+  border-radius: 0.65rem;
+  padding: 0.25rem 0.35rem 0.25rem 0.55rem;
+}
+
+.root[data-size="compact"] .chevron {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.4rem;
+}
+
+.root[data-size="compact"] .chevron svg {
+  width: 0.8rem;
+  height: 0.8rem;
 }
 
 .valueWrap {
@@ -108,7 +129,7 @@
 
 .trigger[data-open="true"] .chevron {
   transform: rotate(180deg);
-  color: var(--engine-accent-strong);
+  color: color-mix(in srgb, var(--engine-accent-strong) 78%, var(--engine-text));
 }
 
 :global(.dark) .trigger[data-open="true"] .chevron {
@@ -117,7 +138,10 @@
 
 .menu {
   position: fixed;
+  inset: auto;
   z-index: 1000005;
+  box-sizing: border-box;
+  margin: 0;
   max-height: min(19rem, calc(100svh - 1.5rem));
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -134,6 +158,15 @@
   animation: select-menu-in 180ms var(--engine-ease) both;
 }
 
+.groupLabel {
+  display: block;
+  padding: 0.6rem 0.68rem 0.3rem;
+  color: var(--engine-text-muted);
+  font-family: var(--font-system-label);
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
 .option {
   display: flex;
   width: 100%;
@@ -146,18 +179,19 @@
   padding: 0.58rem 0.68rem;
   color: var(--engine-text);
   background: transparent;
+  cursor: pointer;
+  font-family: var(--font-system-ui);
   text-align: left;
-  transition: color 150ms ease, background 150ms ease, transform 150ms var(--engine-ease);
+  transition: color 150ms ease, background 150ms ease;
 }
 
-.option:hover,
+.option:not([aria-disabled="true"]):hover,
 .option[data-active="true"] {
-  transform: translateX(2px);
-  background: color-mix(in srgb, var(--engine-accent) 7%, transparent);
+  background: color-mix(in srgb, var(--engine-accent) 14%, transparent);
 }
 
 .option[data-selected="true"] {
-  color: var(--engine-accent-strong);
+  color: color-mix(in srgb, var(--engine-accent-strong) 78%, var(--engine-text));
   background: color-mix(in srgb, var(--engine-accent) 9%, transparent);
 }
 
@@ -165,7 +199,7 @@
   color: var(--engine-accent);
 }
 
-.option:disabled {
+.option[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.42;
 }
@@ -178,11 +212,9 @@
 }
 
 .optionTitle {
-  overflow: hidden;
   font-size: 0.78rem;
   font-weight: 580;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .check {
@@ -200,17 +232,14 @@
   }
 }
 
-@media (max-width: 40rem) {
-  .menu {
-    right: 0.65rem !important;
-    left: 0.65rem !important;
-    width: auto !important;
-    max-height: min(22rem, calc(100svh - 1.3rem));
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .menu {
-    animation-duration: 1ms;
+    animation: none;
+  }
+
+  .trigger,
+  .chevron,
+  .option {
+    transition: none;
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { deliveryConfigSchema, type DeliveryConfig } from "../types/delivery.schemas";
 import { DELIVERY_LIMITS } from "../config/delivery.config";
 import styles from "./delivery-ui.module.css";
@@ -41,13 +42,34 @@ export function DeliveryConfigurationFields({ value, onChange, disabled = false,
         description={`Duración inicial de cada encuentro en vivo, de 15 a ${DELIVERY_LIMITS.sessionMinutes} minutos. La agenda y sus bloques deben respetar el tiempo de la sesión.`} /></div><input id={`${id}-minutes`} type="number" min={15} max={DELIVERY_LIMITS.sessionMinutes}
         value={value.sessionMinutes} onChange={event => onChange({ ...value, sessionMinutes: Number(event.target.value) })} /></div>
       <div><div className={styles.configurationLabel}><label htmlFor={`${id}-balance`}>Enfoque del taller</label><FieldHelp label="Enfoque del taller"
-        description="Orienta el equilibrio entre explicación del instructor y aplicación por parte del participante durante las sesiones." selection={deliveryBalanceHelp[value.balance]} /></div><select id={`${id}-balance`} value={value.balance} onChange={event => onChange({ ...value, balance: event.target.value as DeliveryConfig["balance"] })}>
-        <option value="EXPLANATION">Más explicación</option><option value="BALANCED">Explicación y práctica</option><option value="PRACTICE">Más práctica</option>
-      </select></div>
+        description="Orienta el equilibrio entre explicación del instructor y aplicación por parte del participante durante las sesiones." selection={deliveryBalanceHelp[value.balance]} /></div>
+        <EngineSelect
+          id={`${id}-balance`}
+          className={styles.selectField}
+          disabled={disabled}
+          value={value.balance}
+          onValueChange={balance => onChange({ ...value, balance: balance as DeliveryConfig["balance"] })}
+          options={[
+            { value: "EXPLANATION", label: "Más explicación" },
+            { value: "BALANCED", label: "Explicación y práctica" },
+            { value: "PRACTICE", label: "Más práctica" },
+          ]}
+        />
+      </div>
       {value.mode === "HYBRID" && <div><div className={styles.configurationLabel}><label htmlFor={`${id}-approach`}>Relación con las lecciones asíncronas</label><FieldHelp label="Relación con las lecciones asíncronas"
-        description="Indica cómo se conectan las sesiones en vivo con las lecciones que se estudian en Academy." selection={deliveryApproachHelp[value.approach]} /></div><select id={`${id}-approach`} value={value.approach} onChange={event => onChange({ ...value, approach: event.target.value as DeliveryConfig["approach"] })}>
-        <option value="COMPLEMENTARY">Taller complementario</option><option value="CLASS_VERSION">Versión en vivo de la clase</option>
-      </select></div>}
+        description="Indica cómo se conectan las sesiones en vivo con las lecciones que se estudian en Academy." selection={deliveryApproachHelp[value.approach]} /></div>
+        <EngineSelect
+          id={`${id}-approach`}
+          className={styles.selectField}
+          disabled={disabled}
+          value={value.approach}
+          onValueChange={approach => onChange({ ...value, approach: approach as DeliveryConfig["approach"] })}
+          options={[
+            { value: "COMPLEMENTARY", label: "Taller complementario" },
+            { value: "CLASS_VERSION", label: "Versión en vivo de la clase" },
+          ]}
+        />
+      </div>}
     </div>}
     {hasSessions && !validation.success && <p role="alert" className={styles.configurationError}>Elige entre 1 y {DELIVERY_LIMITS.sessions} sesiones, con una duración de 15 a {DELIVERY_LIMITS.sessionMinutes} minutos por sesión.</p>}
   </fieldset>;
