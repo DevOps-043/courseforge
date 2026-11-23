@@ -11,11 +11,6 @@
         "d060f090ad8ac5387255d7391dd540851ebc5af519d5b41eec8d4ff119d475ca": 1
       }
     },
-    "netlify/functions/shared/curation-v2/workflow.ts": {
-      "@next/next/no-assign-module-variable": {
-        "2bdaaacfa20068112c82b717c61218f45a23a248f46358a44cb91ab609f0341c": 1
-      }
-    },
     "scripts/check_lesson_assets.ts": {
       "@typescript-eslint/no-explicit-any": {
         "c24e474629392ec1032b6fb0752fa54c159c30c3ca1176752e3bf06fd8b81c52": 1

@@ -119,3 +119,27 @@ La conexión usa SOFLIA_API_URL HTTPS y SOFLIA_API_KEY exclusivamente en servido
 El contrato del aula admite 32 KiB, doce láminas con título de 160 y contenido de 500 caracteres y veinte prácticas con instrucciones de 2000 caracteres. El exceso se rechaza con diagnóstico, sin truncar. Guía, notas, respuestas y criterios del facilitador permanecen en Engine; no se convierten respuestas privadas en materiales públicos.
 
 Learning debe publicar primero su endpoint interno live-engine-preparation. La migración de participación/guardas 20261103120000 ya se aplicó con aprobación a Learning principal, con versión remota 20261103184120; la de Video tiene versión 20261103184110. El reporte canónico está en docs/reports/live-activation-2026-11-03/ de Learning. La migración de autoría de Engine sigue pendiente de acceso, con autorización recibida. La autoría y descarga HTML existentes conservan su comportamiento. No se publicaron cursos. Para comprobar la copia canónica: definir LEARNING_CHECKOUT y ejecutar node scripts/sync-live-preparation-contract.mjs --check.
+## Revisión integrada de producción
+
+En Producción, las sesiones de Hub se revisan en tarjetas desplegables dentro del
+curso. Cada sesión ofrece Presentación, Guía del facilitador y Material del
+participante; el estado muestra contenido pendiente o desactualizado y la revisión
+del workspace. La aprobación y corrección siguen en Materiales. La bibliografía
+permanece en Fuentes y en las exportaciones completas. Descargar HTML es opcional;
+el parámetro de borrador sólo se solicita si los materiales no están aprobados y
+vigentes. Una descarga anterior con `draft=1` no acredita pérdida de aprobación.
+
+Para diagnosticar assets de Academy, distinguir el error de contrato B-roll de un
+trabajo de slides pendiente. Los prompts requieren salida estructurada, validación
+local y mínimo de tomas. Las slides recuperan el último job al abrir la tarjeta;
+«Consultar estado de slides» consulta ese trabajo sin generar otro. Un job ausente
+no se presenta como una cola. Agotar el sondeo no cancela el worker ni autoriza
+marcar un asset como listo. Reintentar slides sin un deck existente conserva el
+mismo job: si lleva más de 90 segundos en cola, reserva de nuevo su despacho. Un
+worker repetido no vuelve a consumir el proveedor. RUNNING nunca se reenvía ni se
+sobrescribe por un error de confirmación del despacho; revisar su estado y logs.
+
+Pruebas locales sin proveedores: `npm run test:production-asset-flow`. La vista
+aislada se inicia con `node scripts/qa-production-asset-flow.cjs` después de
+compilar la suite de impartición. Usa datos simulados; no acredita generación en
+Netlify. No iniciar HeyGen para verificar estos contratos.

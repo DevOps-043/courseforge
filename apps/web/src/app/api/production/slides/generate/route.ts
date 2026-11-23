@@ -20,6 +20,9 @@ import {
   createOrReuseProductionJob,
   failProductionJob,
   markProductionJobRunning,
+  claimQueuedSlideJob,
+  reserveSlideJobDispatch,
+  failQueuedSlideDispatch,
   resolveProductionComponentContext,
 } from "@/domains/production/jobs/production-jobs.service";
 import {
@@ -376,19 +379,22 @@ export async function POST(request: Request) {
     inputSnapshot: queueInputSnapshot,
     jobType: PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION,
     provider: PRODUCTION_PROVIDERS.SOFLIA_ENGINE_SLIDES,
+    retryFailed: true,
   });
 
-  if (queuedJob.status === PRODUCTION_JOB_STATUSES.SUCCEEDED || queuedJob.status === PRODUCTION_JOB_STATUSES.RUNNING || queuedJob.status === PRODUCTION_JOB_STATUSES.QUEUED) {
-    return apiSuccessResponse({ jobId: queuedJob.id, reused: true, status: queuedJob.status }, { requestId, status: 202 });
+  if (queuedJob.status === PRODUCTION_JOB_STATUSES.SUCCEEDED || queuedJob.status === PRODUCTION_JOB_STATUSES.RUNNING) {
+    return apiSuccessResponse({ jobId: queuedJob.id, reused: true, status: queuedJob.status, submissionStatus: "QUEUED" }, { requestId, status: 202 });
   }
 
-  const { error: queueError } = await authorizedComponent.admin
-    .from("production_jobs")
-    .update({ status: PRODUCTION_JOB_STATUSES.QUEUED, updated_at: new Date().toISOString() })
-    .eq("id", queuedJob.id);
-  if (queueError) {
+  let reservedJob;
+  try {
+    reservedJob = await reserveSlideJobDispatch({ componentId, jobId: queuedJob.id, status: queuedJob.status, supabase: authorizedComponent.admin });
+  } catch (queueError) {
     logger.error("production.slides.queue_reset_failed", queueError, { componentId, jobId: queuedJob.id });
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo reactivar el trabajo de slides.", requestId, retryable: true, status: 500 });
+  }
+  if (!reservedJob) {
+    return apiSuccessResponse({ jobId: queuedJob.id, reused: true, submissionStatus: "QUEUED" }, { requestId, status: 202 });
   }
 
   const backgroundRequest = {
@@ -427,11 +433,9 @@ export async function POST(request: Request) {
       },
     );
   } catch (error) {
-    await failProductionJob({
-      error,
-      jobId: queuedJob.id,
-      supabase: authorizedComponent.admin,
-    });
+    // Un ACK perdido no autoriza a sobrescribir un worker que ya comenzó.
+    try { await failQueuedSlideDispatch({ componentId, jobId: queuedJob.id, supabase: authorizedComponent.admin }); }
+    catch (persistError) { logger.error("production.slides.dispatch_state_failed", persistError, { componentId, jobId: queuedJob.id }); }
     logger.error("production.slides.dispatch_failed", error, { componentId, jobId: queuedJob.id });
     return apiErrorResponse({ code: API_ERROR_CODE.dependencyUnavailable, message: "No se pudo iniciar el worker de slides.", requestId, retryable: true, status: 503 });
   }
@@ -475,6 +479,9 @@ export async function runSlideDeckGeneration(params: {
   });
   if (context.artifactId !== authorizedComponent.artifactId) {
     throw new Error("Componente de slides fuera del artefacto autorizado.");
+  }
+  if (params.jobId && !await claimQueuedSlideJob({ componentId, jobId: params.jobId, supabase: authorizedComponent.admin })) {
+    return { success: true, reused: true, assets: authorizedComponent.component.assets || {} };
   }
   const currentAssets = (authorizedComponent.component.assets || {}) as MaterialAssets;
   const sourcePack = await loadSlideSourcePack({
@@ -548,7 +555,7 @@ export async function runSlideDeckGeneration(params: {
   }
 
   try {
-    await markProductionJobRunning({
+    if (!params.jobId) await markProductionJobRunning({
       jobId: job.id,
       supabase: authorizedComponent.admin,
     });

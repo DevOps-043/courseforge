@@ -653,6 +653,7 @@ interface SofliaHtmlSlidesSectionProps {
   isGeneratingSofliaSlides: boolean;
   generationStatus?: string | null;
   generationError?: string | null;
+  onCheckStatus?: () => void;
   isUploading: boolean;
   isPreparingAnimatedDeck: boolean;
   isLoadingSlideTemplates?: boolean;
@@ -687,6 +688,7 @@ export function SofliaHtmlSlidesSection({
   isGeneratingSofliaSlides,
   generationStatus,
   generationError,
+  onCheckStatus,
   isUploading,
   isPreparingAnimatedDeck,
   isLoadingSlideTemplates = false,
@@ -784,17 +786,18 @@ export function SofliaHtmlSlidesSection({
           )}
           {isGeneratingSofliaSlides && generationStatus && (
             <span className="flex items-center gap-1 text-[10px] font-semibold text-blue-700 dark:text-blue-300">
-              <Loader2 size={10} className="animate-spin" /> {generationStatus === "RUNNING" ? "Generando contenido y visuales" : "En cola de generación"}
+              <Loader2 size={10} className="animate-spin" /> {generationStatus === "CHECKING" ? "Consultando estado guardado" : generationStatus === "RUNNING" ? "Generando contenido y visuales" : "En cola de generación"}
             </span>
           )}
           {generationError && (
             <span role="alert" className="max-w-full text-[10px] font-semibold text-red-700 dark:text-red-300">
-              Generación fallida: {generationError}
+              Estado de generación: {generationError}
             </span>
           )}
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {onCheckStatus && <button type="button" onClick={onCheckStatus} disabled={isGeneratingSofliaSlides} className="rounded border px-2.5 py-1.5 text-xs">Consultar estado de slides</button>}
           {showSofliaGeneration && (
             <button
               onClick={() => onGenerateSofliaSlides(selectedSlideTemplateRunId || null, selectedAppearance, false)}

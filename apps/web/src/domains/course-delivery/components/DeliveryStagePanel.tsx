@@ -13,6 +13,7 @@ import { routeIssues } from "../lib/hybrid-route";
 import type { DeliveryRunUnit } from "../services/delivery-commands";
 import { DELIVERY_LIMITS } from "../config/delivery.config";
 import { DeliveryMaterialRunStatus } from "./DeliveryMaterialRunStatus";
+import { DeliveryProductionReview } from "./DeliveryProductionReview";
 const RUN_LABELS: Record<string, string> = { QUEUED: "En cola", RUNNING: "Generando", PAUSED: "En pausa", FAILED: "Requiere atención", COMPLETED: "Completado", CANCELLED: "Cancelado", AGENDA: "Agenda", PLAN: "Plan", MATERIALS: "Materiales" };
 
 function Configuration({ controller }: { controller: CourseDeliveryController }) {
@@ -96,10 +97,11 @@ export function DeliveryStagePanel({ controller, stage, coordinatedReview = fals
         {snapshot.canReview && <button disabled={controller.busy || active} className={styles.approve} onClick={() => { void controller.command({ action: "APPROVE", operation: stage === 3 ? "PLAN" : "MATERIALS" } as Parameters<typeof controller.command>[0]).catch(() => {}); }}>{stage === 3 ? "Aprobar plan completo" : "Aprobar materiales completos"}</button>}
         <p role="status">{(stage === 3 ? snapshot.readiness.planReady : snapshot.readiness.materialsReady) ? "Aprobado y vigente." : "Pendiente de revisión o reconciliación."}</p></>}
       </>}
-      {(stage === 6 || stage === 8) && <><p>{stage === 6 ? "Revisa las salidas del contenido generado. Puedes volver a Materiales para corregirlo." : "Descarga el paquete aprobado. Abre la guía o el cuaderno y utiliza Imprimir para obtener una copia."}</p>
+      {stage === 6 && <DeliveryProductionReview controller={controller} />}
+      {stage === 8 && <><p>Descarga el paquete aprobado. Abre la guía o el cuaderno y utiliza Imprimir para obtener una copia.</p>
         {!snapshot.readiness.documentsReady && <p role="status">Genera y aprueba los materiales para completar los instrumentos, contingencias y documentos de la sesión.</p>}
         <div className={styles.exports}>{[["presentation", "Presentación web", "Láminas para revisar y presentar."], ["facilitator", "Guía del facilitador", "Preparación y respuestas reservadas."], ["participant", "Material del participante", "Consignas y material para el grupo."]].map(([audience, label, description]) => <div key={audience} className={styles.exportCard}>
-          <a className={styles.exportLink} href={exportUrl(audience, false, stage === 6)} target="_blank" rel="noreferrer">{label}{stage === 6 ? " (borrador)" : ""}<span aria-hidden="true">↗</span></a>
+          <a className={styles.exportLink} href={exportUrl(audience)} target="_blank" rel="noreferrer">{label}<span aria-hidden="true">↗</span></a>
           <p>{description}</p>
           {stage === 8 && snapshot.readiness.materialsReady && <a className={styles.exportDownload} aria-label={`Descargar HTML · ${label}`} href={exportUrl(audience, true)}>Descargar HTML</a>}
         </div>)}</div>

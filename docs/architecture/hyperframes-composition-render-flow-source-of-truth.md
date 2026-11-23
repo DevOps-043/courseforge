@@ -7,6 +7,25 @@ Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega d
 
 ## 1. Regla de mantenimiento
 
+### Seguimiento de producción de slides (2026-11-23)
+
+Antes de preparar una composición, las tarjetas de producción recuperan el último
+trabajo de slides y consultan su identificador sin volver a generarlo. Las respuestas
+de alta y reutilización incluyen el contrato de seguimiento; el estado inexistente
+es `NOT_FOUND`, no una cola. La transición pendiente/en cola a ejecución se reclama
+atómicamente por job y componente antes de consumir el proveedor. El sondeo tiene
+límite, timeout por consulta y cancelación al abandonar la vista. El agotamiento
+no acredita éxito ni fracaso del worker. Un reintento explícito puede reservar
+otra vez el despacho del mismo job si lleva más de 90 segundos en cola; una
+reserva reciente, un worker en ejecución o un ACK perdido no habilitan consumo
+duplicado. No cambia `document.motion`, el snapshot,
+el render ni la validación de calidad.
+
+Evidencia: [cambio y escenarios](../../openspec/changes/repair-production-asset-flow/design.md)
+y pruebas de `slide-generation`, jobs y B-roll ejecutadas mediante
+`npm run test:production-asset-flow`. La revisión real del worker desplegado sigue
+requiriendo un piloto posterior al despliegue autorizado.
+
 Este archivo es la fuente de verdad operativa del flujo de composicion y render
 HyperFrames de Courseforge. Todo cambio que afecte documento, assets, preview,
 snapshot, ZIP, variables, envio a HeyGen, polling, importacion o SFX debe:
@@ -681,6 +700,10 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 - No se ejecuto render pagado ni se descargo el snapshot del borrador reportado.
 
 ## 14. Historial
+
+- 2026-11-23: seguimiento persistente y recuperación del mismo job de slides,
+  reserva/claim atómicos y protección de workers ante confirmación HTTP perdida.
+  Contratos y límites en `openspec/changes/repair-production-asset-flow/`.
 
 - 2026-11-12. Los presets de composición `SEQUENCE` y `STACK` acotan la ventana
   al último frame válido del canvas destino. Una secuencia requiere un frame por

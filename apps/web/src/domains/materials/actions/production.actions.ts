@@ -686,7 +686,9 @@ export async function generateVideoPromptsAction(
       return { success: false, error: "Unauthorized" };
     }
 
-    const admin = getServiceRoleClient();
+    const authorized = await getAuthorizedMaterialComponentAdmin(componentId);
+    if (!authorized) return { success: false, error: "Componente no encontrado para esta empresa." };
+    const admin = authorized.admin;
     const context = await resolveProductionComponentContext({
       componentId,
       supabase: admin,
@@ -709,6 +711,7 @@ export async function generateVideoPromptsAction(
       jobType: PRODUCTION_JOB_TYPES.BROLL_PROMPT_GENERATION,
       provider: PRODUCTION_PROVIDERS.OPENAI,
       providerModel: "gpt-6.1-terra",
+      retryFailed: true,
     });
 
     if (
@@ -736,7 +739,8 @@ export async function generateVideoPromptsAction(
       },
     );
 
-    return { success: true, prompts: data.prompts || "" };
+    if (!data.prompts?.trim()) throw new Error("BROLL_EMPTY_OUTPUT: No se recibieron prompts válidos; actualiza el estado antes de reintentar.");
+    return { success: true, prompts: data.prompts };
   } catch (error: unknown) {
     console.error("[ProductionActions] Error generating prompts:", error);
     return { success: false, error: getErrorMessage(error) };

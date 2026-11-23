@@ -1,0 +1,6 @@
+- [x] Corregir contrato B-roll y diagnósticos, con regresiones.
+- [x] Corregir seguimiento, recuperación y exclusión de workers de slides.
+- [x] Integrar revisión de sesiones y documentos en el curso.
+- [x] Ejecutar pruebas, tipos, lint y compuertas disponibles.
+- [x] Revisar diff y documentar evidencia y límites sin despliegue.
+- [ ] Validar interacción visual y piloto mínimo en staging tras despliegue autorizado.

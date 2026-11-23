@@ -16,6 +16,7 @@ export function buildSessionDocuments(
   plan: SessionPlan,
   material: SessionMaterials,
   context: Pick<DeliveryContext, "sources">,
+  options: { includeSources?: boolean } = {},
 ): EngineSessionDocument[] {
   const supplemental = material.documents;
   if (!supplemental) return [];
@@ -81,7 +82,7 @@ export function buildSessionDocuments(
       section("Campos por participante", supplemental.recordTemplate.participantFields.join("\n")),
       section("Instrucciones", supplemental.recordTemplate.instructions),
     ]),
-    document("sources", context.sources.filter(item => sourceRefs.includes(item.id))
+    ...(options.includeSources === false ? [] : [document("sources", context.sources.filter(item => sourceRefs.includes(item.id))
       .map((item, index) => {
         let reference = `Referencia ${item.id}`;
         try {
@@ -95,7 +96,7 @@ export function buildSessionDocuments(
         ...material.activities.filter(activity => activity.sourceRefs.includes(item.id)).map(activity => `Actividad: ${activity.title}`),
         ...material.slides.filter(slide => slide.sourceRefs.includes(item.id)).map(slide => `Lámina: ${slide.title}`),
         ].join("\n"));
-      }), []),
+      }), [])]),
     document("quick_guide", [], [
       section("Resultado esperado", session.evidence),
       ...plan.blocks.map((block, index) => section(`Bloque ${index + 1} · ${block.minutes} min`, [block.purpose, block.activity, ...block.resources].join("\n"))),

@@ -6,7 +6,7 @@ import JSZip from "jszip";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/lib/errors";
 import { readApiResponse } from "@/lib/client/api-response";
-import { waitForSlideGeneration } from "@/lib/client/slide-generation";
+import { readSlideGenerationState, waitForSlideGeneration } from "@/lib/client/slide-generation";
 import { uploadWithSignedUrl } from "@/lib/storage-upload";
 import { validateHyperframesMediaAsset } from "@/domains/production/hyperframes/hyperframes-media-constraints";
 import { HYPERFRAMES_ASSET_DELIVERY_MODES } from "@/domains/production/hyperframes/hyperframes.types";
@@ -325,9 +325,37 @@ export function useProductionAssetState({
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingSlides, setIsUploadingSlides] = useState(false);
   const [isExportingOpenDesign, setIsExportingOpenDesign] = useState(false);
-  const [isGeneratingSofliaSlides, setIsGeneratingSofliaSlides] = useState(false);
-  const [sofliaSlidesGenerationStatus, setSofliaSlidesGenerationStatus] = useState<string | null>(null);
+  const [isGeneratingSofliaSlides, setIsGeneratingSofliaSlides] = useState(true);
+  const [sofliaSlidesGenerationStatus, setSofliaSlidesGenerationStatus] = useState<string | null>("CHECKING");
   const [sofliaSlidesGenerationError, setSofliaSlidesGenerationError] = useState<string | null>(null);
+  const slideGenerationAbort = useRef<AbortController | null>(null);
+  const [slideStatusRequest, setSlideStatusRequest] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    slideGenerationAbort.current = controller;
+    void (async () => {
+      try {
+        let state = await readSlideGenerationState({ componentId: component.id, signal: controller.signal });
+        if (controller.signal.aborted || state.status === "NOT_FOUND") return;
+        setSofliaSlidesGenerationStatus(state.status);
+        setSofliaSlidesGenerationError(null);
+        if (["PENDING", "QUEUED", "RUNNING"].includes(state.status)) {
+          setIsGeneratingSofliaSlides(true);
+          state = await waitForSlideGeneration({ componentId: component.id, jobId: state.job?.id, signal: controller.signal, onStatus: setSofliaSlidesGenerationStatus });
+        }
+        if (state.status === "FAILED" || state.status === "CANCELLED") throw new Error(state.job?.provider_error?.message || "La generación anterior no se completó.");
+        if (state.status === "SUCCEEDED" && state.assets.slides) {
+          setSlidesAsset(state.assets.slides);
+          setSlidesUrl(state.assets.slides_url || state.assets.slides.html_public_url || "");
+        }
+      } catch (failure) {
+        if (!controller.signal.aborted) setSofliaSlidesGenerationError(getErrorMessage(failure));
+      } finally {
+        if (!controller.signal.aborted) setIsGeneratingSofliaSlides(false);
+      }
+    })();
+    return () => { slideGenerationAbort.current?.abort(); };
+  }, [component.id, slideStatusRequest]);
   const [isPreparingAnimatedDeck, setIsPreparingAnimatedDeck] = useState(false);
 
   // HeyGen generation states
@@ -711,6 +739,9 @@ export function useProductionAssetState({
     appearanceOnly = false,
   ) => {
     let didFail = false;
+    slideGenerationAbort.current?.abort();
+    const generationController = new AbortController();
+    slideGenerationAbort.current = generationController;
     setIsGeneratingSofliaSlides(true);
     setSofliaSlidesGenerationStatus("QUEUED");
     setSofliaSlidesGenerationError(null);
@@ -721,6 +752,7 @@ export function useProductionAssetState({
           : "/api/production/slides/generate",
         {
         method: appearanceOnly ? "PATCH" : "POST",
+        signal: generationController.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           componentId: component.id,
@@ -729,12 +761,12 @@ export function useProductionAssetState({
             : {
                 appearance,
                 appearanceOnly: false,
-                forceRegenerate: true,
+                forceRegenerate: Boolean(slidesAsset),
                 locale: "es",
                 metadata: {
                   brandLabel: APP_CONFIG.name,
                 },
-                regenerationRequestId: crypto.randomUUID(),
+                ...(slidesAsset ? { regenerationRequestId: crypto.randomUUID() } : {}),
                 ...(slideTemplateRunId ? { slideTemplateRunId } : {}),
                 template: "course-module",
               }),
@@ -745,17 +777,19 @@ export function useProductionAssetState({
       if (!response.ok || !data.success) {
         throw new Error(data.error || `No se pudo generar el deck ${APP_CONFIG.name}`);
       }
-      if (response.status === 202 && data.submissionStatus === "QUEUED") {
+      if (response.status === 202 && data.jobId) {
         toast.info("Deck en cola. La generacion continuara en segundo plano.");
         const completed = await waitForSlideGeneration({
           componentId: component.id,
           jobId: data.jobId,
+          signal: generationController.signal,
           onStatus: setSofliaSlidesGenerationStatus,
         });
         data = { success: true, assets: completed.assets };
       }
 
       const generatedSlides = data.assets?.slides as SlidesAsset | undefined;
+      if (!generatedSlides) throw new Error("El trabajo terminó sin devolver un deck de slides válido.");
       const generatedSlidesUrl =
         data.assets?.slides_url || generatedSlides?.html_public_url || slidesUrl;
 
@@ -781,14 +815,17 @@ export function useProductionAssetState({
           : `Deck ${APP_CONFIG.name} regenerado`,
       );
     } catch (err: unknown) {
+      if (generationController.signal.aborted) return;
       didFail = true;
       const message = err instanceof Error ? err.message : `No se pudo generar el deck ${APP_CONFIG.name}.`;
       setSofliaSlidesGenerationStatus("FAILED");
       setSofliaSlidesGenerationError(message);
       toast.error(`Error al generar deck ${APP_CONFIG.name}: ${message}`);
     } finally {
-      setIsGeneratingSofliaSlides(false);
-      if (!didFail) setSofliaSlidesGenerationStatus(null);
+      if (!generationController.signal.aborted) {
+        setIsGeneratingSofliaSlides(false);
+        if (!didFail) setSofliaSlidesGenerationStatus(null);
+      }
     }
   };
 
@@ -1627,6 +1664,7 @@ export function useProductionAssetState({
     isGeneratingSofliaSlides,
     sofliaSlidesGenerationStatus,
     sofliaSlidesGenerationError,
+    handleCheckSlidesStatus: () => setSlideStatusRequest(value => value + 1),
     isPreparingAnimatedDeck,
 
     // Refs
