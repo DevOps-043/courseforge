@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useState } from "react";
 import type { CourseDeliveryController } from "../hooks/useCourseDelivery";
 import { DeliveryAgendaEditor } from "./DeliveryAgendaEditor";
@@ -12,12 +13,48 @@ const RUN_LABELS: Record<string, string> = { QUEUED: "En cola", RUNNING: "Genera
 function Configuration({ controller }: { controller: CourseDeliveryController }) {
   const [config, setConfig] = useState<DeliveryConfig>(controller.snapshot!.workspace.document.config);
   return <div className="grid gap-3 sm:grid-cols-2">
-    <label>Modalidad<select className="block w-full rounded border bg-transparent p-2" value={config.mode} onChange={event => setConfig({ ...config, mode: event.target.value as DeliveryConfig["mode"] })}><option value="NEXUS">Nexus</option><option value="SYNCHRONOUS">Sincrónico</option><option value="HYBRID">Híbrido</option></select></label>
+    <label>Modalidad
+      <EngineSelect
+        aria-label="Modalidad"
+        value={config.mode}
+        onValueChange={(nextValue) => setConfig({ ...config, mode: nextValue as DeliveryConfig["mode"] })}
+        options={[
+          { value: "NEXUS", label: "Nexus" },
+          { value: "SYNCHRONOUS", label: "Sincrónico" },
+          { value: "HYBRID", label: "Híbrido" },
+        ]}
+      />
+    </label>
     {config.mode !== "NEXUS" && <>
       <label>Cantidad de sesiones (vacío: una por módulo)<input type="number" min="1" max={DELIVERY_LIMITS.sessions} className="block w-full rounded border bg-transparent p-2" value={config.sessionCount ?? ""} onChange={event => setConfig({ ...config, sessionCount: event.target.value ? Number(event.target.value) : null })} /></label>
       <label>Duración inicial en minutos<input type="number" min="15" max={DELIVERY_LIMITS.sessionMinutes} className="block w-full rounded border bg-transparent p-2" value={config.sessionMinutes} onChange={event => setConfig({ ...config, sessionMinutes: Number(event.target.value) })} /></label>
-      <label>Enfoque<select className="block w-full rounded border bg-transparent p-2" value={config.balance} onChange={event => setConfig({ ...config, balance: event.target.value as DeliveryConfig["balance"] })}><option value="EXPLANATION">Más explicación</option><option value="BALANCED">Equilibrio</option><option value="PRACTICE">Más práctica</option></select></label>
-      {config.mode === "HYBRID" && <label>Relación con Nexus<select className="block w-full rounded border bg-transparent p-2" value={config.approach} onChange={event => setConfig({ ...config, approach: event.target.value as DeliveryConfig["approach"] })}><option value="COMPLEMENTARY">Complementario</option><option value="CLASS_VERSION">Versión de la clase</option></select></label>}
+      <label>Enfoque
+        <EngineSelect
+          aria-label="Enfoque"
+          value={config.balance}
+          onValueChange={(nextValue) =>
+            setConfig({ ...config, balance: nextValue as DeliveryConfig["balance"] })
+          }
+          options={[
+            { value: "EXPLANATION", label: "Más explicación" },
+            { value: "BALANCED", label: "Equilibrio" },
+            { value: "PRACTICE", label: "Más práctica" },
+          ]}
+        />
+      </label>
+      {config.mode === "HYBRID" && <label>Relación con Nexus
+        <EngineSelect
+          aria-label="Relación con Nexus"
+          value={config.approach}
+          onValueChange={(nextValue) =>
+            setConfig({ ...config, approach: nextValue as DeliveryConfig["approach"] })
+          }
+          options={[
+            { value: "COMPLEMENTARY", label: "Complementario" },
+            { value: "CLASS_VERSION", label: "Versión de la clase" },
+          ]}
+        />
+      </label>}
     </>}
     <button disabled={controller.busy} className="rounded border px-4 py-2" onClick={() => { void controller.command({ action: "SAVE", kind: "CONFIG", value: config } as Parameters<typeof controller.command>[0]).catch(() => {}); }}>Guardar modalidad y preferencias</button>
   </div>;

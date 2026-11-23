@@ -1,4 +1,5 @@
 "use client";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useState } from "react";
 import { SyllabusDocumentUploader } from "./SyllabusDocumentUploader";
 import { SyllabusImportOutlineEditor } from "./SyllabusImportOutlineEditor";
@@ -91,24 +92,20 @@ export function SyllabusImportPanel({ artifactId, onCompleted }: Props) {
           />
           <label className="block text-sm">
             Documento que contiene el temario
-            <select
-              className="mt-1 w-full rounded-lg border bg-white p-2 text-gray-900"
-              value={primaryId}
+            <EngineSelect
+              aria-label="Documento que contiene el temario"
               disabled={blocked}
-              onChange={(event) => {
-                setPrimaryId(event.target.value);
-                setSupportIds((ids) =>
-                  ids.filter((id) => id !== event.target.value),
-                );
+              className="mt-1"
+              value={primaryId}
+              onValueChange={(nextValue) => {
+                setPrimaryId(nextValue);
+                setSupportIds((ids) => ids.filter((id) => id !== nextValue));
               }}
-            >
-              <option value="">Selecciona el documento principal</option>
-              {state.documents.map((document) => (
-                <option key={document.id} value={document.id}>
-                  {document.filename}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "Selecciona el documento principal" },
+                ...state.documents.map((document) => ({ value: document.id, label: document.filename })),
+              ]}
+            />
           </label>
           {state.documents.filter((document) => document.id !== primaryId)
             .length > 0 && (

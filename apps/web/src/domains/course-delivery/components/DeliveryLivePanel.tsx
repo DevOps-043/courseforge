@@ -1,4 +1,5 @@
 "use client";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useRef,useState,type FormEvent } from "react";
 import type { CourseDeliveryController } from "../hooks/useCourseDelivery";
 import { engineTargetsSchema } from "../types/engine-preparation.contract";
@@ -16,7 +17,7 @@ export function DeliveryLivePanel({controller}:{controller:CourseDeliveryControl
     finally{pending.current=false;}
   }
   async function deliver(event:FormEvent){
-    event.preventDefault();if(pending.current)return;
+    event.preventDefault();if(pending.current||!source||!destination)return;
     const target=targets.find(item=>item.session_id===destination);if(!target)return;
     pending.current=true;setNotice("");
     try{await controller.command({action:"DELIVER",sourceSessionId:source,target:{organization_slug:snapshot!.organizationSlug,session_id:target.session_id,course_id:target.course_id}});setNotice("Preparación confirmada en Learning. El aula recibirá las láminas y prácticas al actualizar.");}
@@ -26,9 +27,34 @@ export function DeliveryLivePanel({controller}:{controller:CourseDeliveryControl
   return <form onSubmit={event=>void deliver(event)} className="space-y-3 rounded border p-4">
     <h3 className="font-semibold">Preparar una sesión en Learning</h3>
     <p>Envía las láminas y consignas aprobadas. La guía, notas y respuestas del facilitador se conservan en Engine. La preparación anterior de la sesión elegida será reemplazada.</p>
-    <label className="block">Contenido que impartirás<select required value={source} onChange={event=>setSource(event.target.value)} className="block w-full rounded border bg-transparent p-2"><option value="">Elige una sesión del curso</option>{snapshot.workspace.document.agenda.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+    <label className="block">Contenido que impartirás
+      <EngineSelect
+        aria-label="Contenido que impartirás"
+        required
+        value={source}
+        onValueChange={setSource}
+        options={[
+          { value: "", label: "Elige una sesión del curso" },
+          ...snapshot.workspace.document.agenda.map((item) => ({ value: item.id, label: item.title })),
+        ]}
+      />
+    </label>
     <button type="button" disabled={controller.busy} onClick={()=>void load()} className="rounded border px-3 py-2">Consultar mis sesiones de Learning</button>
-    {targets.length>0&&<label className="block">Aula de destino<select required value={destination} onChange={event=>setDestination(event.target.value)} className="block w-full rounded border bg-transparent p-2"><option value="">Elige una sesión programada</option>{targets.map(item=><option key={item.session_id} value={item.session_id}>{item.title} · {new Date(item.starts_at).toLocaleString("es-MX")}</option>)}</select></label>}
+    {targets.length>0&&<label className="block">Aula de destino
+      <EngineSelect
+        aria-label="Aula de destino"
+        required
+        value={destination}
+        onValueChange={setDestination}
+        options={[
+          { value: "", label: "Elige una sesión programada" },
+          ...targets.map((item) => ({
+            value: item.session_id,
+            label: `${item.title} · ${new Date(item.starts_at).toLocaleString("es-MX")}`,
+          })),
+        ]}
+      />
+    </label>}
     <button disabled={controller.busy||!source||!destination} type="submit" className="rounded bg-cyan-700 px-4 py-2 text-white">{controller.busy?"Entregando…":"Entregar preparación a Learning"}</button>
     {notice&&<p role="status">{notice}</p>}
   </form>;

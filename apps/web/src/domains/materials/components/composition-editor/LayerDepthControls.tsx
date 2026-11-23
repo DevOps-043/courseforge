@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { CompositionAutosaveBoundary, useCompositionAutosavePending } from "./CompositionAutosaveBoundary";
 
 import { useEffect, useState } from "react";
@@ -83,13 +84,15 @@ export function LayerDepthControls({ clip, extraLayerDepths, disabled, onPatch }
       </div>
       <label className="mt-2 flex items-end gap-2 text-[10px] font-semibold text-slate-600 dark:text-gray-300">
         <span className="flex-1">Plano exacto
-          <select
+          <EngineSelect
             aria-label={`Profundidad visual de ${clip.label}`}
             disabled={disabled}
-            value={depth}
-            onChange={(event) => setDepth(event.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white"
-          >{depths.map(value => <option key={value} value={value}>Capa {value}</option>)}</select>
+            className="mt-1"
+            size="compact"
+            value={String(depth)}
+            onValueChange={setDepth}
+            options={depths.map((value) => ({ value: String(value), label: `Capa ${value}` }))}
+          />
         </span>
 
       </label>

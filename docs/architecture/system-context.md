@@ -398,6 +398,7 @@ API/Remotion legacy, solo si se usa `apps/api`:
 
 ## Patrones Importantes
 
+- Usar [EngineSelect](../../apps/web/src/components/ui/EngineSelect.tsx) para elegir valores en la interfaz. La variante compacta mantiene el patrón en barras e inspectores. Proveer un nombre accesible y validar las selecciones obligatorias en el formulario.
 - Usar `profiles` en lugar de FK directas a `auth.users`.
 - Mantener `organization_id` en flujos tenant-aware.
 - No ejecutar bundles Remotion subidos sin validacion, versionado y aprobacion.

@@ -40,10 +40,10 @@ async function main() {
     await evaluate(browser.client, `setInputValue('input[placeholder="Buscar medios…"]', 'nuevo')`);
     await waitFor(browser.client, "document.querySelectorAll('[data-asset-id]').length === 2", "búsqueda de medios");
     await evaluate(browser.client, `setInputValue('input[placeholder="Buscar medios…"]', '')`);
-    await evaluate(browser.client, `setSelectValue('select[aria-label="Tipo de medio"]', 'AUDIO')`);
+    await chooseMediaType(browser.client, "Audio");
     await waitFor(browser.client, "document.querySelectorAll('[data-asset-id]').length === 1", "filtro de audio");
     await assertValue(browser.client, "document.querySelector('[data-asset-id]')?.getAttribute('data-asset-id')", AUDIO_ID, "medio filtrado");
-    await evaluate(browser.client, `setSelectValue('select[aria-label="Tipo de medio"]', 'VIDEO')`);
+    await chooseMediaType(browser.client, "Video");
     await waitFor(browser.client, "document.querySelectorAll('[data-asset-id]').length === 3", "filtro de video");
 
     for (const assetId of [ORIGINAL_ID, SHORT_ID]) {
@@ -76,6 +76,12 @@ async function main() {
   }
 }
 
+async function chooseMediaType(client: CompositionQaCdpClient, label: string) {
+  await evaluate(client, `document.querySelector('[role="combobox"][aria-label="Tipo de medio"]').click()`);
+  await waitFor(client, `Boolean(document.querySelector('[role="listbox"]'))`, "selector de medios abierto");
+  await evaluate(client, `Array.from(document.querySelectorAll('[role="option"]')).find(option => option.textContent.trim() === ${JSON.stringify(label)}).click()`);
+}
+
 async function waitFor(client: CompositionQaCdpClient, expression: string, label: string) {
   const deadline = Date.now() + TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -97,12 +103,6 @@ async function evaluate<T>(client: CompositionQaCdpClient, expression: string): 
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       setter.call(input, value);
       input.dispatchEvent(new Event('input', { bubbles: true }));
-    };
-    window.setSelectValue = (selector, value) => {
-      const select = document.querySelector(selector);
-      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
-      setter.call(select, value);
-      select.dispatchEvent(new Event('change', { bubbles: true }));
     };
     window.replaceButton = (assetId) => Array.from(document.querySelectorAll('[data-asset-id="' + assetId + '"] button')).find((button) => button.textContent.includes('Reemplazar'));
     return (${expression});

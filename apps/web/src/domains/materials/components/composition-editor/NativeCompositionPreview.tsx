@@ -1049,7 +1049,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
       if (event.defaultPrevented || event.isComposing) return;
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
-        || (target instanceof HTMLElement && (target.isContentEditable || target.closest('[role="dialog"], [aria-modal="true"]')))) return;
+        || (target instanceof HTMLElement && (target.isContentEditable || target.closest('[role="combobox"], [role="dialog"], [aria-modal="true"]')))) return;
       const command = resolveCompositionEditorShortcut(event);
       if (!command) return;
       if (["DELETE", "RIPPLE_DELETE", "COPY", "DUPLICATE", "TIMELINE_LEFT", "TIMELINE_RIGHT"].includes(command)

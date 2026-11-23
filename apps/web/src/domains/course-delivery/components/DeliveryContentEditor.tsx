@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useState } from "react";
 import type { CourseDeliveryController } from "../hooks/useCourseDelivery";
 
@@ -19,7 +20,17 @@ function ContentFields({ value, onChange, label }: { value: EditableValue; onCha
   if (value !== null && typeof value === "object") return <fieldset className="my-2 space-y-2 rounded border p-3"><legend>{label}</legend>{Object.entries(value).filter(([key]) => !["id", "sourceRefs", "lessonId"].includes(key)).map(([key, entry]) => <ContentFields key={key} label={LABELS[key] || key} value={entry} onChange={next => onChange({ ...value, [key]: next })} />)}</fieldset>;
   if (typeof value === "number") return <label className="block">{label}<input type="number" min="1" className="block rounded border bg-transparent p-2" value={value} onChange={event => onChange(Number(event.target.value))} /></label>;
   if (typeof value !== "string") return null;
-  if (label === "Momento de uso") return <label className="block">{label}<select className="block rounded border bg-transparent p-2" value={value} onChange={event => onChange(event.target.value)}><option value="BEFORE">Antes de la clase</option><option value="AFTER">Después de la clase</option></select></label>;
+  if (label === "Momento de uso") return <label className="block">{label}
+    <EngineSelect
+      aria-label={`${label}`}
+      value={value}
+      onValueChange={onChange}
+      options={[
+        { value: "BEFORE", label: "Antes de la clase" },
+        { value: "AFTER", label: "Después de la clase" },
+      ]}
+    />
+  </label>;
   return <label className="block">{label}<textarea rows={value.length > 180 ? 5 : 2} className="block w-full rounded border bg-transparent p-2" value={value} onChange={event => onChange(event.target.value)} /></label>;
 }
 function SessionEditor({ controller, kind, sessionId, initial }: { controller: CourseDeliveryController; kind: "PLAN" | "MATERIALS"; sessionId: string; initial: EditableValue }) {

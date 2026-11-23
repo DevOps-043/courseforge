@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import {
   DEFAULT_VIDEO_DURATION_POLICY,
   VIDEO_DURATION_PRESETS,
@@ -53,12 +54,11 @@ export function VideoDurationPolicyFields({
         Duración objetivo por video
       </legend>
 
-      <select
+      <EngineSelect
         aria-label="Perfil de duración por video"
-        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[var(--engine-accent)]/40 focus:outline-none dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
         value={selectedPreset?.label || "CUSTOM"}
-        onChange={(event) => {
-          const preset = VIDEO_DURATION_PRESETS.find(({ label }) => label === event.target.value);
+        onValueChange={(nextValue) => {
+          const preset = VIDEO_DURATION_PRESETS.find(({ label }) => label === nextValue);
           if (!preset) return;
           onChange({
             ...value,
@@ -67,12 +67,11 @@ export function VideoDurationPolicyFields({
             targetDurationSeconds: preset.targetDurationSeconds,
           });
         }}
-      >
-        {VIDEO_DURATION_PRESETS.map((preset) => (
-          <option key={preset.label} value={preset.label}>{preset.label}</option>
-        ))}
-        {!selectedPreset ? <option value="CUSTOM">Personalizado</option> : null}
-      </select>
+        options={[
+          ...VIDEO_DURATION_PRESETS.map((preset) => ({ value: preset.label, label: preset.label })),
+          ...(!selectedPreset ? [{ value: "CUSTOM", label: "Personalizado" }] : []),
+        ]}
+      />
 
       <div className="grid grid-cols-3 gap-3">
         <DurationInput

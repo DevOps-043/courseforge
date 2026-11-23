@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useEffect, useState } from "react";
 import { getDeliverySettingsAction, saveDeliverySettingsAction } from "../actions/delivery-settings.actions";
 import type { DeliverySettings } from "../services/delivery-settings";
@@ -27,7 +28,16 @@ function SettingCard({ operation, settings, reload }: { operation: DeliveryOpera
       <label>Modelo principal<input className="block w-full rounded border bg-transparent p-2" value={model.model_name} onChange={event => setModel({ ...model, model_name: event.target.value })} /></label>
       <label>Respaldo opcional<input className="block w-full rounded border bg-transparent p-2" value={model.fallback_model || ""} onChange={event => setModel({ ...model, fallback_model: event.target.value || null })} /></label>
       <label>Temperatura<input type="number" min="0" max="2" step="0.1" className="block rounded border bg-transparent p-2" value={model.temperature} onChange={event => setModel({ ...model, temperature: Number(event.target.value) })} /></label>
-      <label>Razonamiento<select className="block rounded border bg-transparent p-2" value={model.thinking_level || "medium"} onChange={event => setModel({ ...model, thinking_level: event.target.value as typeof model.thinking_level })}>{["minimal", "low", "medium", "high"].map(level => <option key={level}>{level}</option>)}</select></label>
+      <label>Razonamiento
+        <EngineSelect
+          aria-label="Razonamiento"
+          value={model.thinking_level || "medium"}
+          onValueChange={(nextValue) =>
+            setModel({ ...model, thinking_level: nextValue as typeof model.thinking_level })
+          }
+          options={["minimal", "low", "medium", "high"].map((level) => ({ value: level, label: level }))}
+        />
+      </label>
     </fieldset>
     <label className="block">Prompt editable<textarea rows={7} className="my-2 block w-full rounded border bg-transparent p-2" value={prompt} onChange={event => setPrompt(event.target.value)} /></label>
     <button disabled={busy} onClick={save} className="rounded bg-cyan-700 px-4 py-2 text-white">{busy ? "Guardando…" : "Guardar configuración"}</button>

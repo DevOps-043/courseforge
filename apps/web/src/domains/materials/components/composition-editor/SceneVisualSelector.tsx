@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useEffect, useRef, useState } from "react";
 import type { SceneVisualCatalog, SceneVisualPlan } from "@/domains/production/composition-editor/composition-narrative.types";
 
@@ -54,12 +55,20 @@ export function SceneVisualSelector({ catalog, scriptText, plan, disabled, onCha
   return <section aria-label="Visuales de la escena" className="mt-3 space-y-2 rounded-xl border border-cyan-500/30 p-3 text-xs">
     <div className="flex flex-wrap items-center justify-between gap-2"><strong>Visuales de esta escena</strong><span role="status">{confirmed ? "Asociación revisada · guarda las escenas" : "Pendiente de revisión"}</span></div>
     <p>Selecciona las slides en el orden de aparición. El audio determina la duración; puedes repartirla con pesos relativos o dejar la escena sin slides.</p>
-    <select aria-label="Agregar slide a la escena" disabled={disabled || busy || selected.length >= 30} value="" onChange={(event) => {
-      const slide = catalog.slides.find((item) => item.key === event.target.value);
-      if (slide) setSelected((items) => [...items, { key: slide.key, label: slide.label, weight: 1 }]);
-    }} className="w-full rounded border bg-white p-2 text-slate-900 dark:bg-slate-900 dark:text-white">
-      <option value="">Agregar slide…</option>{catalog.slides.map((slide) => <option key={`${slide.key}-${slide.index}`} value={slide.key}>{slide.index + 1}. {slide.label}</option>)}
-    </select>
+    <EngineSelect
+      aria-label="Agregar slide a la escena"
+      disabled={disabled || busy || selected.length >= 30}
+      size="compact"
+      value={""}
+      onValueChange={(nextValue) => {
+        const slide = catalog.slides.find((item) => item.key === nextValue);
+        if (slide) setSelected((items) => [...items, { key: slide.key, label: slide.label, weight: 1 }]);
+      }}
+      options={[
+        { value: "", label: "Agregar slide…" },
+        ...catalog.slides.map((slide) => ({ value: slide.key, label: `${slide.index + 1}. ${slide.label}` })),
+      ]}
+    />
     {selected.map((slide, index) => <div key={`${slide.key}-${index}`} className="rounded border border-slate-400/20 p-2">
       <div className="flex items-center gap-2"><span className="min-w-0 flex-1">{index + 1}. {slide.label || "Slide"}</span>
         <label> Peso <input aria-label={`Peso de slide ${index + 1}`} type="number" min="0.1" max="100" step="0.1" value={slide.weight} disabled={disabled || busy} onChange={(event) => {

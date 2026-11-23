@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getSlideTemplatePackagesAction } from "../../slide-template-library.actions";
@@ -19,9 +20,15 @@ export function ImportedTemplateBasePicker({ adminBasePath, revision = 0 }: { ad
   }, [revision]);
   return <div className="flex flex-wrap items-end gap-2 rounded-lg border border-[var(--engine-border)] bg-[var(--engine-surface-solid)] p-3 text-sm">
     <label className="flex min-w-48 flex-1 flex-col gap-1 font-semibold">Base para crear una plantilla nueva
-      <select value={selected} onChange={event => setSelected(event.target.value)} className="rounded-md border border-[var(--engine-border)] bg-[var(--engine-canvas)] p-2 text-[var(--engine-text)]">
-        <option value="">Base predeterminada</option>{bases.map(base => <option key={base.id} value={base.id}>{base.title}</option>)}
-      </select>
+      <EngineSelect
+        aria-label="Base para crear una plantilla nueva"
+        value={String(selected)}
+        onValueChange={setSelected}
+        options={[
+          { value: String(""), label: "Base predeterminada" },
+          ...bases.map((base) => ({ value: String(base.id), label: base.title })),
+        ]}
+      />
     </label>
     {selected && <Link href={`${adminBasePath}/slides/templates?baseRunId=${selected}`} className="rounded-md bg-[var(--engine-action)] px-3 py-2 font-bold text-[var(--engine-on-action)]">Crear desde esta base</Link>}
     {error && <p role="alert">{error}</p>}

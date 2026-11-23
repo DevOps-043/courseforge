@@ -1733,19 +1733,31 @@ export default function HeygenStudioClient({
                           <>
                             <label className="mt-3 flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">
                               Medio esperado
-                              <select
+                              <EngineSelect
+                                aria-label="Medio esperado"
+                                disabled={
+                                  isGeneratingClips ||
+                                  clip.status === "WAITING_PROVIDER" ||
+                                  clip.voice_status === "WAITING_PROVIDER"
+                                }
                                 value={clip.expected_media_mode || ""}
-                                disabled={isGeneratingClips || clip.status === "WAITING_PROVIDER" || clip.voice_status === "WAITING_PROVIDER"}
-                                onChange={(event) => updateSceneClip(clip.id, {
-                                  expected_media_mode: (event.target.value || undefined) as AvatarSceneClip["expected_media_mode"],
-                                })}
-                                className="h-[38px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-gray-800 outline-none transition focus:border-rose-500 disabled:opacity-60 dark:border-white/10 dark:bg-[var(--engine-canvas)] dark:text-white"
-                              >
-                                <option value="" disabled={Boolean(clip.expected_media_mode)}>Pendiente de definir</option>
-                                <option value="avatar">Avatar y voz separada</option>
-                                <option value="voice_only">Sólo voz en off</option>
-                                <option value="none">No requiere medio hablado</option>
-                              </select>
+                                onValueChange={(nextValue) =>
+                                  updateSceneClip(clip.id, {
+                                    expected_media_mode: (nextValue ||
+                                      undefined) as AvatarSceneClip["expected_media_mode"],
+                                  })
+                                }
+                                options={[
+                                  {
+                                    value: "",
+                                    label: "Pendiente de definir",
+                                    disabled: Boolean(clip.expected_media_mode),
+                                  },
+                                  { value: "avatar", label: "Avatar y voz separada" },
+                                  { value: "voice_only", label: "Sólo voz en off" },
+                                  { value: "none", label: "No requiere medio hablado" },
+                                ]}
+                              />
                               <span className="font-normal normal-case tracking-normal text-gray-400 dark:text-slate-500">
                                 Define qué debe existir para considerar completa esta escena.
                               </span>

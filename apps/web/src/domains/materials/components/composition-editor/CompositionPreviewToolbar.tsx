@@ -1,3 +1,4 @@
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { COMPOSITION_PREVIEW_ZOOM } from "@/domains/production/composition-editor/composition-preview-view.config";
 import { CompositionPreviewZoomControls } from "./CompositionPreviewZoomControls";
 import { APP_CONFIG } from "../../../../config/app";
@@ -90,13 +91,20 @@ export function CompositionPreviewToolbar({ monitorExpanded, onToggleMonitorExpa
       <span className={styles.previewTitle}>Ensamble <small>v{currentVersion} · {formatSeconds(duration)}</small>{previewStatusLabel ? <span className={styles.pendingBadge}>{previewStatusLabel}</span> : null}</span>
     </div>
     <div className={styles.previewTools}>
-      <select aria-label="Formato del lienzo" disabled={saving || agentProposalActive}
+      <EngineSelect
+        aria-label="Formato del lienzo"
+        disabled={saving || agentProposalActive}
         title="Cambia el lienzo y conserva posiciones y animaciones. Ajusta el encuadre después."
+        className={styles.canvasFormat}
+        size="compact"
         value={canvas.width === canvas.height ? "1:1" : canvas.width > canvas.height ? "16:9" : "9:16"}
-        onChange={(event) => onCanvasFormatChange(event.target.value as "16:9" | "9:16" | "1:1")}
-        className={`${styles.canvasFormat} rounded border bg-transparent px-2 py-1 text-xs`}>
-        <option value="16:9">16:9 · Horizontal</option><option value="9:16">9:16 · Vertical</option><option value="1:1">1:1 · Cuadrado</option>
-      </select>
+        onValueChange={(nextValue) => onCanvasFormatChange(nextValue as "16:9" | "9:16" | "1:1")}
+        options={[
+          { value: "16:9", label: "16:9", description: "Horizontal" },
+          { value: "9:16", label: "9:16", description: "Vertical" },
+          { value: "1:1", label: "1:1", description: "Cuadrado" },
+        ]}
+      />
       <div className={styles.toolbarGroup} aria-label="Edición principal">
         <button type="button" disabled={saving || !canUndo} onClick={onUndo} title={undoLabel ? `Deshacer: ${undoLabel} (Ctrl+Z)` : "Nada que deshacer"} aria-label="Deshacer último cambio" className={styles.toolIconButton}><Undo2 size={13} /></button>
         <button type="button" disabled={saving || !canRedo} onClick={onRedo} title={redoLabel ? `Rehacer: ${redoLabel} (Ctrl+Mayús+Z)` : "Nada que rehacer"} aria-label="Rehacer último cambio" className={styles.toolIconButton}><Redo2 size={13} /></button>

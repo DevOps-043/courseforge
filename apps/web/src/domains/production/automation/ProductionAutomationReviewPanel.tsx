@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { APP_CONFIG } from "../../../config/app";
 import { useCallback, useMemo, useState } from "react";
 import { ChevronDown, CircleHelp, Loader2, Play, Settings2, Sparkles } from "lucide-react";
@@ -213,7 +214,44 @@ export function ProductionAutomationReviewPanel({ artifactId }: { artifactId: st
     <details className="rounded-xl border border-[#E9ECEF] bg-[#F8FAFB] p-4 transition open:bg-white dark:border-white/10 dark:bg-black/10 dark:open:bg-[#1E2329]"><summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-[#0A2540] marker:hidden dark:text-white"><ChevronDown size={16} className="text-[#00A98F]" /> Sobrescrituras por lección o componente <Help text="Una sobrescritura cambia únicamente esta lección; el resto del curso conserva el perfil general." /></summary><p className="mt-2 pl-6 text-xs leading-5 text-[#6C757D] dark:text-white/65">Úsalo para excepciones puntuales, como una plantilla distinta, otro avatar o configuraciones específicas por clip.</p>{requiredItems.length === 0 && <div className="mt-4 rounded-lg border border-[#F59E0B]/30 bg-[#F59E0B]/10 px-4 py-3 text-xs leading-5 text-[#805300] dark:text-[#F8C65D]">Este borrador no tiene componentes de video asociados, por eso no hay lecciones que personalizar. Puedes guardar el perfil general; prepara una nueva revisión cuando los materiales de video estén disponibles.</div>}<div className="mt-4 space-y-4">{requiredItems.map((item) => {
       const override = overrides[item.material_component_id];
       const clips = clipDrafts[item.material_component_id];
-      return <div key={item.material_component_id} className="rounded-xl border border-[#E9ECEF] bg-white p-4 dark:border-white/10 dark:bg-[#1E2329]"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-semibold text-[#0A2540] dark:text-white">Módulo {item.module_order || 1} <span className="mx-1 text-[#6C757D]">·</span> Lección {item.lesson_order || 1}</p><div className="flex flex-wrap gap-3"><button type="button" onClick={() => { if (clips) { setClipDrafts((current) => { const next = { ...current }; delete next[item.material_component_id]; return next; }); } else { void prepareClips(item.material_component_id); } }} className="text-xs font-semibold text-[#008E78] transition hover:underline dark:text-[#00D4B3]">{clips ? "Cerrar configuración de clips" : "Configurar clips individuales"}</button><button type="button" onClick={() => setOverrides((current) => { const next = { ...current }; if (next[item.material_component_id]) delete next[item.material_component_id]; else next[item.material_component_id] = structuredClone(profile); return next; })} className="text-xs font-semibold text-[#0A2540] transition hover:text-[#008E78] dark:text-[#00D4B3]">{override ? "Usar perfil general" : "Personalizar esta lección"}</button></div></div>{item.readiness?.nativeCaptions && <p role="status" className="mt-3 text-xs text-[#6C757D] dark:text-white/65">Subtítulos: {item.readiness.nativeCaptions.detail}</p>}{item.readiness?.nativeCaptions?.overwrite && <button type="button" disabled={refreshing || saving || savingDraft} onClick={() => confirmCaptionOverwrite(item)} className="mt-2 rounded-lg border border-amber-500 px-3 py-2 text-xs font-semibold text-amber-700 disabled:opacity-50 dark:text-amber-300">Sobrescribir subtítulos…</button>}{override && <div className="mt-4"><ProfileFields value={override} onChange={(value) => setOverrides((current) => ({ ...current, [item.material_component_id]: value }))} avatars={avatars} voices={voices} templates={templates} compact /></div>}{clips && <div className="mt-4 space-y-3 rounded-lg border border-[#E9ECEF] bg-[#F8FAFB] p-4 dark:border-white/10 dark:bg-black/10">{clips.filter((clip) => !clip.deleted).map((clip) => <div key={clip.id} className="grid gap-3 md:grid-cols-[1fr_180px_180px]"><p className="text-xs leading-5 text-[#6C757D] dark:text-white/65"><span className="font-semibold text-[#0A2540] dark:text-white">Clip {clip.order + 1}</span> · {clip.script_text.slice(0, 110)}</p><select className="rounded-lg border border-[#E9ECEF] bg-white px-3 py-2 text-xs text-[#0A2540] dark:border-white/10 dark:bg-[#1E2329] dark:text-white" value={clip.avatar_preset_id || ""} onChange={(event) => setClipDrafts((current) => ({ ...current, [item.material_component_id]: current[item.material_component_id].map((entry) => entry.id === clip.id ? { ...entry, avatar_preset_id: event.target.value } : entry) }))}><option value="">Avatar del perfil</option>{avatars.map((avatar) => <option key={avatar.id} value={avatar.id}>{avatar.name}</option>)}</select><select className="rounded-lg border border-[#E9ECEF] bg-white px-3 py-2 text-xs text-[#0A2540] dark:border-white/10 dark:bg-[#1E2329] dark:text-white" value={clip.voice_preset_id || ""} onChange={(event) => setClipDrafts((current) => ({ ...current, [item.material_component_id]: current[item.material_component_id].map((entry) => entry.id === clip.id ? { ...entry, voice_preset_id: event.target.value } : entry) }))}><option value="">Voz del perfil</option>{voices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}</option>)}</select></div>)}<button type="button" onClick={() => void saveClips(item.material_component_id)} className="rounded-lg bg-[#0A2540] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#0D3B56] dark:bg-[#00A98F] dark:text-[#0A2540] dark:hover:bg-[#00D4B3]">Guardar configuraciones por clip</button></div>}</div>;
+      return <div key={item.material_component_id} className="rounded-xl border border-[#E9ECEF] bg-white p-4 dark:border-white/10 dark:bg-[#1E2329]"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-semibold text-[#0A2540] dark:text-white">Módulo {item.module_order || 1} <span className="mx-1 text-[#6C757D]">·</span> Lección {item.lesson_order || 1}</p><div className="flex flex-wrap gap-3"><button type="button" onClick={() => { if (clips) { setClipDrafts((current) => { const next = { ...current }; delete next[item.material_component_id]; return next; }); } else { void prepareClips(item.material_component_id); } }} className="text-xs font-semibold text-[#008E78] transition hover:underline dark:text-[#00D4B3]">{clips ? "Cerrar configuración de clips" : "Configurar clips individuales"}</button><button type="button" onClick={() => setOverrides((current) => { const next = { ...current }; if (next[item.material_component_id]) delete next[item.material_component_id]; else next[item.material_component_id] = structuredClone(profile); return next; })} className="text-xs font-semibold text-[#0A2540] transition hover:text-[#008E78] dark:text-[#00D4B3]">{override ? "Usar perfil general" : "Personalizar esta lección"}</button></div></div>{item.readiness?.nativeCaptions && <p role="status" className="mt-3 text-xs text-[#6C757D] dark:text-white/65">Subtítulos: {item.readiness.nativeCaptions.detail}</p>}{item.readiness?.nativeCaptions?.overwrite && <button type="button" disabled={refreshing || saving || savingDraft} onClick={() => confirmCaptionOverwrite(item)} className="mt-2 rounded-lg border border-amber-500 px-3 py-2 text-xs font-semibold text-amber-700 disabled:opacity-50 dark:text-amber-300">Sobrescribir subtítulos…</button>}{override && <div className="mt-4"><ProfileFields value={override} onChange={(value) => setOverrides((current) => ({ ...current, [item.material_component_id]: value }))} avatars={avatars} voices={voices} templates={templates} compact /></div>}{clips && <div className="mt-4 space-y-3 rounded-lg border border-[#E9ECEF] bg-[#F8FAFB] p-4 dark:border-white/10 dark:bg-black/10">{clips.filter((clip) => !clip.deleted).map((clip) => <div key={clip.id} className="grid gap-3 md:grid-cols-[1fr_180px_180px]"><p className="text-xs leading-5 text-[#6C757D] dark:text-white/65"><span className="font-semibold text-[#0A2540] dark:text-white">Clip {clip.order + 1}</span> · {clip.script_text.slice(0, 110)}</p>
+        <EngineSelect
+          aria-label="Avatar del clip"
+          className="self-center"
+          size="compact"
+          value={clip.avatar_preset_id || ""}
+          onValueChange={(nextValue) =>
+            setClipDrafts((current) => ({
+              ...current,
+              [item.material_component_id]: current[item.material_component_id].map((entry) =>
+                entry.id === clip.id ? { ...entry, avatar_preset_id: nextValue } : entry,
+              ),
+            }))
+          }
+          options={[
+            { value: "", label: "Avatar del perfil" },
+            ...avatars.map((avatar) => ({ value: avatar.id, label: avatar.name })),
+          ]}
+        />
+        <EngineSelect
+          aria-label="Voz del clip"
+          className="self-center"
+          size="compact"
+          value={clip.voice_preset_id || ""}
+          onValueChange={(nextValue) =>
+            setClipDrafts((current) => ({
+              ...current,
+              [item.material_component_id]: current[item.material_component_id].map((entry) =>
+                entry.id === clip.id ? { ...entry, voice_preset_id: nextValue } : entry,
+              ),
+            }))
+          }
+          options={[
+            { value: "", label: "Voz del perfil" },
+            ...voices.map((voice) => ({ value: voice.id, label: voice.name })),
+          ]}
+        />
+      </div>)}<button type="button" onClick={() => void saveClips(item.material_component_id)} className="rounded-lg bg-[#0A2540] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#0D3B56] dark:bg-[#00A98F] dark:text-[#0A2540] dark:hover:bg-[#00D4B3]">Guardar configuraciones por clip</button></div>}</div>;
     })}</div></details>
     <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[#E9ECEF] pt-5 dark:border-white/10"><p className="max-w-2xl text-xs leading-5 text-[#6C757D]">Al finalizar la generación podrás revisar los segmentos en el editor. <strong className="font-semibold text-[#0A2540] dark:text-white">READY FOR ASSEMBLY</strong> sólo indica que los assets están listos; incluye los subtítulos nativos si los activaste; no inicia el render final.</p><div className="flex flex-wrap gap-3"><button type="button" disabled={refreshing || savingDraft || saving} onClick={() => void refreshStatus()} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-[#0A2540] disabled:opacity-60 dark:text-white">{refreshing ? "Actualizando…" : "Actualizar estado"}</button><button type="button" disabled={savingDraft || saving} onClick={saveDraft} className="inline-flex items-center gap-2 rounded-xl border border-[#0A2540] px-4 py-2.5 text-sm font-semibold text-[#0A2540] transition hover:bg-[#0A2540]/5 disabled:cursor-not-allowed disabled:opacity-60 dark:border-[#00D4B3] dark:text-[#00D4B3] dark:hover:bg-[#00D4B3]/10">{savingDraft ? <Loader2 size={16} className="animate-spin" /> : <Settings2 size={16} />} Guardar borrador</button><button type="button" disabled={saving || savingDraft} onClick={saveAndDispatch} className="inline-flex items-center gap-2 rounded-xl bg-[#0A2540] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#0D3B56] disabled:cursor-not-allowed disabled:opacity-60">{saving ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />} Aprobar y generar assets</button></div></div>
   </section>;
@@ -222,17 +260,121 @@ export function ProductionAutomationReviewPanel({ artifactId }: { artifactId: st
 function ProfileFields({ value, onChange, avatars, voices, templates, label, compact = false }: { value: Profile; onChange: (value: Profile) => void; avatars: AvatarPreset[]; voices: VoicePreset[]; templates: SlideTemplateLibraryItem[]; label?: string; compact?: boolean }) {
   const updateAvatar = <K extends keyof AvatarConfiguration>(key: K, next: AvatarConfiguration[K]) => onChange({ ...value, avatar: { ...value.avatar, [key]: next } });
   const updateSlides = <K extends keyof SlidesConfiguration>(key: K, next: SlidesConfiguration[K]) => onChange({ ...value, slides: { ...value.slides, [key]: next } });
-  const inputClass = "mt-1.5 w-full rounded-xl border border-[#E9ECEF] bg-white px-3 py-2 text-sm text-[#0A2540] shadow-sm outline-none transition focus:border-[#00D4B3] focus:ring-2 focus:ring-[#00D4B3]/20 dark:border-white/10 dark:bg-[#1E2329] dark:text-white";
   return <fieldset className={compact ? "grid gap-4 font-[var(--font-system-label)]" : "rounded-xl border border-[#E9ECEF] bg-[#F8FAFB] p-5 font-[var(--font-system-label)] dark:border-white/10 dark:bg-black/10"}><legend className="px-1 font-[var(--font-system-display)] text-base font-semibold text-[#0A2540] dark:text-white">{label}</legend><p className="mb-4 px-1 text-xs leading-5 text-[#6C757D]">Configura los valores predeterminados. Las excepciones de lección y clip tienen prioridad.</p><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-    <label className="text-xs font-semibold text-[#0A2540] dark:text-white"><Help text="Motor de HeyGen que interpreta el avatar. El catálogo indica cuáles avatares son compatibles." /> Tipo / engine<select className={inputClass} value={value.avatar.engine} onChange={(event) => updateAvatar("engine", event.target.value as AvatarConfiguration["engine"])}><option value="avatar_iv">Avatar IV</option><option value="avatar_v">Avatar V</option></select></label>
-    <label className="text-xs font-medium"><Help text="Avatar base para el curso. Puede sustituirse por lección o por clip antes del despacho." /> Avatar<select className={inputClass} value={value.avatar.avatarPresetId} onChange={(event) => updateAvatar("avatarPresetId", event.target.value)}><option value="">Seleccionar avatar…</option>{avatars.map((avatar) => <option key={avatar.id} value={avatar.id}>{avatar.name}{avatar.avatar_type ? ` · ${avatar.avatar_type}` : ""}</option>)}</select></label>
-    <label className="text-xs font-medium"><Help text="Voz base asociada a los clips. Se puede cambiar por clip cuando el formato sea Clips por escena." /> Voz<select className={inputClass} value={value.avatar.voicePresetId} onChange={(event) => updateAvatar("voicePresetId", event.target.value)}><option value="">Seleccionar voz…</option>{voices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}{voice.language ? ` · ${voice.language}` : ""}</option>)}</select></label>
-    <label className="text-xs font-medium"><Help text="Clips por escena permite personalizar cada segmento. Video completo usa una sola toma para toda la lección." /> Formato de avatar<select className={inputClass} value={value.avatar.generationMode} onChange={(event) => updateAvatar("generationMode", event.target.value as AvatarConfiguration["generationMode"])}><option value="scene_clips">Clips por escena</option><option value="single_video">Video completo</option></select></label>
-    <label className="text-xs font-medium"><Help text="Proporción del video que se generará." /> Relación<select className={inputClass} value={value.avatar.aspectRatio} onChange={(event) => updateAvatar("aspectRatio", event.target.value as AvatarConfiguration["aspectRatio"])}><option value="16:9">16:9</option><option value="9:16">9:16</option></select></label>
-    <label className="text-xs font-medium"><Help text="Resolución de los assets de avatar. Verifica que el plan de HeyGen soporte la resolución elegida." /> Resolución<select className={inputClass} value={value.avatar.resolution} onChange={(event) => updateAvatar("resolution", event.target.value as AvatarConfiguration["resolution"])}><option value="720p">720p</option><option value="1080p">1080p</option><option value="4k">4K</option></select></label>
-    <label className="text-xs font-medium"><Help text="Estructura editorial que el motor usará para organizar el deck generado." /> Plantilla de deck<select className={inputClass} value={value.slides.template} onChange={(event) => updateSlides("template", event.target.value as SlidesConfiguration["template"])}><option value="concept-lesson">Lección conceptual</option><option value="course-module">Módulo de curso</option><option value="data-explainer">Explicador de datos</option><option value="demo-guide">Guía demostrativa</option></select></label>
-    <label className="text-xs font-medium"><Help text="Diseño visual reutilizable. Diseño estándar usa los estilos base; una plantilla guardada aplica su sistema de diseño." /> Plantilla visual<select className={inputClass} value={value.slides.slideTemplateRunId || ""} onChange={(event) => updateSlides("slideTemplateRunId", event.target.value || undefined)}><option value="">Diseño estándar</option>{templates.filter((template) => template.status === "PACKAGED").map((template) => <option key={template.id} value={template.id}>{template.title}</option>)}</select></label>
-    <label className="text-xs font-medium"><Help text={`Apariencia del deck renderizado. Claro es el valor predeterminado; oscuro conserva los acentos de marca sobre superficies ${APP_CONFIG.shortName} oscuras.`} /> Apariencia de slides<select className={inputClass} value={value.slides.appearance} onChange={(event) => updateSlides("appearance", event.target.value as SlidesConfiguration["appearance"])}><option value="light">Claro</option><option value="dark">Oscuro</option></select></label>
+    <div className="text-xs font-semibold text-[#0A2540] dark:text-white"><Help text="Motor de HeyGen que interpreta el avatar. El catálogo indica cuáles avatares son compatibles." /> Tipo / engine
+      <EngineSelect
+        aria-label="Tipo / engine"
+        value={value.avatar.engine}
+        onValueChange={(nextValue) => updateAvatar("engine", nextValue as AvatarConfiguration["engine"])}
+        options={[
+          { value: "avatar_iv", label: "Avatar IV" },
+          { value: "avatar_v", label: "Avatar V" },
+        ]}
+      />
+    </div>
+    <div className="text-xs font-medium"><Help text="Avatar base para el curso. Puede sustituirse por lección o por clip antes del despacho." /> Avatar
+      <EngineSelect
+        aria-label="Avatar"
+        value={value.avatar.avatarPresetId}
+        onValueChange={(nextValue) => updateAvatar("avatarPresetId", nextValue)}
+        options={[
+          { value: "", label: "Seleccionar avatar…" },
+          ...avatars.map((avatar) => ({
+            value: avatar.id,
+            label: `${avatar.name}${avatar.avatar_type ? ` · ${avatar.avatar_type}` : ""}`,
+          })),
+        ]}
+      />
+    </div>
+    <div className="text-xs font-medium"><Help text="Voz base asociada a los clips. Se puede cambiar por clip cuando el formato sea Clips por escena." /> Voz
+      <EngineSelect
+        aria-label="Voz"
+        value={value.avatar.voicePresetId}
+        onValueChange={(nextValue) => updateAvatar("voicePresetId", nextValue)}
+        options={[
+          { value: "", label: "Seleccionar voz…" },
+          ...voices.map((voice) => ({
+            value: voice.id,
+            label: `${voice.name}${voice.language ? ` · ${voice.language}` : ""}`,
+          })),
+        ]}
+      />
+    </div>
+    <div className="text-xs font-medium"><Help text="Clips por escena permite personalizar cada segmento. Video completo usa una sola toma para toda la lección." /> Formato de avatar
+      <EngineSelect
+        aria-label="Formato de avatar"
+        value={value.avatar.generationMode}
+        onValueChange={(nextValue) =>
+          updateAvatar("generationMode", nextValue as AvatarConfiguration["generationMode"])
+        }
+        options={[
+          { value: "scene_clips", label: "Clips por escena" },
+          { value: "single_video", label: "Video completo" },
+        ]}
+      />
+    </div>
+    <div className="text-xs font-medium"><Help text="Proporción del video que se generará." /> Relación
+      <EngineSelect
+        aria-label="Relación"
+        value={value.avatar.aspectRatio}
+        onValueChange={(nextValue) =>
+          updateAvatar("aspectRatio", nextValue as AvatarConfiguration["aspectRatio"])
+        }
+        options={[
+          { value: "16:9", label: "16:9" },
+          { value: "9:16", label: "9:16" },
+        ]}
+      />
+    </div>
+    <div className="text-xs font-medium"><Help text="Resolución de los assets de avatar. Verifica que el plan de HeyGen soporte la resolución elegida." /> Resolución
+      <EngineSelect
+        aria-label="Resolución"
+        value={value.avatar.resolution}
+        onValueChange={(nextValue) => updateAvatar("resolution", nextValue as AvatarConfiguration["resolution"])}
+        options={[
+          { value: "720p", label: "720p" },
+          { value: "1080p", label: "1080p" },
+          { value: "4k", label: "4K" },
+        ]}
+      />
+    </div>
+    <div className="text-xs font-medium"><Help text="Estructura editorial que el motor usará para organizar el deck generado." /> Plantilla de deck
+      <EngineSelect
+        aria-label="Plantilla de deck"
+        value={value.slides.template}
+        onValueChange={(nextValue) => updateSlides("template", nextValue as SlidesConfiguration["template"])}
+        options={[
+          { value: "concept-lesson", label: "Lección conceptual" },
+          { value: "course-module", label: "Módulo de curso" },
+          { value: "data-explainer", label: "Explicador de datos" },
+          { value: "demo-guide", label: "Guía demostrativa" },
+        ]}
+      />
+    </div>
+    <div className="text-xs font-medium"><Help text="Diseño visual reutilizable. Diseño estándar usa los estilos base; una plantilla guardada aplica su sistema de diseño." /> Plantilla visual
+      <EngineSelect
+        aria-label="Plantilla visual"
+        value={value.slides.slideTemplateRunId || ""}
+        onValueChange={(nextValue) => updateSlides("slideTemplateRunId", nextValue || undefined)}
+        options={[
+          { value: "", label: "Diseño estándar" },
+          ...templates
+            .filter((template) => template.status === "PACKAGED")
+            .map((template) => ({ value: template.id, label: template.title })),
+        ]}
+      />
+    </div>
+    <div className="text-xs font-medium"><Help text={`Apariencia del deck renderizado. Claro es el valor predeterminado; oscuro conserva los acentos de marca sobre superficies ${APP_CONFIG.shortName} oscuras.`} /> Apariencia de slides
+      <EngineSelect
+        aria-label="Apariencia de slides"
+        value={value.slides.appearance}
+        onValueChange={(nextValue) => updateSlides("appearance", nextValue as SlidesConfiguration["appearance"])}
+        options={[
+          { value: "light", label: "Claro" },
+          { value: "dark", label: "Oscuro" },
+        ]}
+      />
+    </div>
   </div><label className="mt-5 flex items-center gap-2 text-xs font-medium text-[#0A2540] dark:text-white"><input className="h-4 w-4 rounded border-[#6C757D] text-[#00A98F] focus:ring-[#00D4B3]" type="checkbox" checked={value.avatar.caption} onChange={(event) => updateAvatar("caption", event.target.checked)} /> <Help text="Solicita captions/subtítulos al proveedor del avatar." /> Incluir captions en avatar</label>
     <label className="mt-3 flex items-center gap-2 text-xs font-medium text-[#0A2540] dark:text-white">
       <input type="checkbox" checked={value.nativeCaptions} onChange={event => onChange({ ...value, nativeCaptions: event.target.checked })} />

@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useDeferredValue, useId, useMemo, useState } from "react";
 import type { CompositionSceneSummary } from "@/domains/production/composition-editor/composition-scene.service";
 import type { CompositionEditorDocument } from "@/domains/production/composition-editor/composition-document.types";
@@ -48,12 +49,19 @@ export function CompositionNarrativeSearch({ document, documentHash, draftId, sc
     <input id={inputId} type="search" value={query} maxLength={NARRATIVE_SEARCH_LIMITS.queryCharacters}
       onChange={(event) => setQuery(event.target.value)} aria-describedby={`${inputId}-help`}
       className="w-full rounded border border-slate-400/30 bg-transparent px-2 py-1" />
-    <select aria-label="Ámbito de búsqueda" value={scopeMissing ? "missing" : sceneId}
-      onChange={(event) => setSceneId(event.target.value)} className="w-full rounded border border-slate-400/30 bg-transparent px-2 py-1">
-      <option value="">Todas las escenas</option>
-      {scopeMissing && <option value="missing" disabled>La escena seleccionada ya no existe</option>}
-      {scenes.map((scene) => <option key={scene.id} value={scene.id}>{scene.label}</option>)}
-    </select>
+    <EngineSelect
+      aria-label="Ámbito de búsqueda"
+      size="compact"
+      value={scopeMissing ? "missing" : sceneId}
+      onValueChange={setSceneId}
+      options={[
+        { value: "", label: "Todas las escenas" },
+        ...(scopeMissing
+          ? [{ value: "missing", label: "La escena seleccionada ya no existe", disabled: true }]
+          : []),
+        ...scenes.map((scene) => ({ value: scene.id, label: scene.label })),
+      ]}
+    />
     <label className="flex items-center gap-2"><input type="checkbox" checked={ignoreAccents}
       onChange={(event) => setIgnoreAccents(event.target.checked)} />Ignorar acentos en vocales</label>
     <p id={`${inputId}-help`} className="text-[10px] text-slate-500">Guion/título: inicio de escena. Palabras temporizadas: posición en su toma. No verifica lo pronunciado ni autoriza cortes.</p>
