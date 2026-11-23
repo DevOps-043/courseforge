@@ -12,6 +12,12 @@ El usuario confirmó presentación web, guía y cuaderno imprimibles, descarga H
 
 Se conservan las ocho etapas. En híbrido una intención de aprobación coordina las acciones QA existentes de Nexus y confirma la revisión sincrónica. La migración no autoaprueba tablas Nexus ni omite sus validadores. Si la segunda confirmación falla, Nexus puede quedar aprobado por separado; la etapa híbrida sigue incompleta y se reconcilia al reintentar.
 
+En Materiales, el resumen «Revisión QA de materiales» permanece visible al cambiar
+entre Hub y Academy. La aprobación conjunta exige permiso de revisión y pasa por
+las validaciones existentes de ambos destinos; una generación completada no
+equivale a aprobación. Academy conserva envío a QA, notas, aprobación y rechazo
+en su apartado. Los pendientes de generación/validación bloquean la acción conjunta.
+
 La guía y el cuaderno son HTML imprimible, no archivos Word/PPTX ni un servicio nuevo de PDF. La presentación es web estática con notas desplegables. No se modifica HyperFrames, motion ni render audiovisual.
 
 ## Componentes y persistencia

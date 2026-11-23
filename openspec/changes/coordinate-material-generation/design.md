@@ -15,4 +15,10 @@ Hub conserva un solo worker por run y una cola persistida de IDs solicitados sep
 
 # Validación y recuperación
 
+La revisión híbrida se muestra fuera de los dos apartados. Academy conserva su
+QA individual; Hub conserva el editor y la aprobación de modalidades puras.
+La vista coordinada oculta únicamente el botón conjunto duplicado al pie de Hub.
+El resumen usa canReview del servidor y estados locales para orientar al revisor;
+APPROVE/MATERIALS conserva sus verificaciones de ambos destinos y versiones.
+
 Pruebas de permisos y estados en SQL local, concurrencia e idempotencia; workers con proveedor simulado, conservación de resultados y estados parciales; UI con datos simulados sin gasto. Errores técnicos no equivalen a ausencia de fuentes. No se registran textos privados. Migración aditiva; reversión de aplicación conserva campos y no elimina contenidos.

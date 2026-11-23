@@ -24,7 +24,7 @@ function Configuration({ controller }: { controller: CourseDeliveryController })
     </div>
   </details>;
 }
-export function DeliveryStagePanel({ controller, stage }: { controller: CourseDeliveryController; stage: number }) {
+export function DeliveryStagePanel({ controller, stage, coordinatedReview = false }: { controller: CourseDeliveryController; stage: number; coordinatedReview?: boolean }) {
   const snapshot = controller.snapshot;
   const [localError, setLocalError] = useState("");
   if (!snapshot) return stage === 1 ? <p role="status">{controller.error || "Cargando modalidad…"}</p> : null;
@@ -92,9 +92,9 @@ export function DeliveryStagePanel({ controller, stage }: { controller: CourseDe
         ? <HybridRouteEditor key={snapshot.workspace.revision} controller={controller} />
         : <DeliveryAgendaEditor key={snapshot.workspace.revision} controller={controller} />)}
       {(stage === 3 || stage === 5) && <><DeliveryContentEditor controller={controller} kind={stage === 3 ? "PLAN" : "MATERIALS"} />
-        <p>La aprobación confirma todas las partes requeridas por la modalidad y sus versiones actuales.</p>
+        {!(coordinatedReview && stage === 5) && <><p>La aprobación confirma todas las partes requeridas por la modalidad y sus versiones actuales.</p>
         {snapshot.canReview && <button disabled={controller.busy || active} className={styles.approve} onClick={() => { void controller.command({ action: "APPROVE", operation: stage === 3 ? "PLAN" : "MATERIALS" } as Parameters<typeof controller.command>[0]).catch(() => {}); }}>{stage === 3 ? "Aprobar plan completo" : "Aprobar materiales completos"}</button>}
-        <p role="status">{(stage === 3 ? snapshot.readiness.planReady : snapshot.readiness.materialsReady) ? "Aprobado y vigente." : "Pendiente de revisión o reconciliación."}</p>
+        <p role="status">{(stage === 3 ? snapshot.readiness.planReady : snapshot.readiness.materialsReady) ? "Aprobado y vigente." : "Pendiente de revisión o reconciliación."}</p></>}
       </>}
       {(stage === 6 || stage === 8) && <><p>{stage === 6 ? "Revisa las salidas del contenido generado. Puedes volver a Materiales para corregirlo." : "Descarga el paquete aprobado. Abre la guía o el cuaderno y utiliza Imprimir para obtener una copia."}</p>
         {!snapshot.readiness.documentsReady && <p role="status">Genera y aprueba los materiales para completar los instrumentos, contingencias y documentos de la sesión.</p>}

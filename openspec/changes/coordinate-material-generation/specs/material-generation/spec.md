@@ -1,4 +1,18 @@
 ## ADDED Requirements
+### Requirement: QA visible por destino y aprobación conjunta
+La vista híbrida SHALL mostrar la revisión conjunta de Materiales fuera de los
+apartados de destino, indicando requisitos pendientes y el permiso de revisión.
+Academy SHALL conservar sus controles existentes de envío, notas, aprobación y
+rechazo. La aprobación conjunta SHALL usar el comando autorizado existente y no
+modificar estados ni saltar validadores desde el cliente.
+#### Scenario: Ambos destinos generados
+- **WHEN** Hub terminó sus sesiones y Academy está listo para QA
+- **THEN** el revisor encuentra la aprobación conjunta sin cambiar de apartado
+- **AND** puede revisar y rechazar Academy con sus acciones existentes
+#### Scenario: Materiales pendientes o usuario sin permiso
+- **WHEN** falta contenido o validación, existe generación activa o no hay permiso
+- **THEN** se informa el bloqueo y no se habilita la aprobación conjunta
+
 ### Requirement: Inicio coordinado con destinos independientes
 La vista de Materiales SHALL permitir iniciar los destinos requeridos y conservar progreso y controles separados de Hub y Academy.
 #### Scenario: Fallo parcial de inicio

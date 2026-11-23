@@ -6,6 +6,7 @@ import { MaterialsContent } from "./MaterialsForm";
 import { DeliveryStagePanel } from "../../course-delivery/components/DeliveryStagePanel";
 import type { CourseDeliveryController } from "../../course-delivery/hooks/useCourseDelivery";
 import type { DeliveryRunUnit } from "../../course-delivery/services/delivery-commands";
+import { HybridMaterialsQaPanel } from "./HybridMaterialsQaPanel";
 
 const RUN_STATES: Record<string,string> = { RUNNING: "Generando", QUEUED: "En cola", FAILED: "Finalizado con errores", COMPLETED: "Completado", PAUSED: "En pausa", CANCELLED: "Cancelado" };
 
@@ -49,7 +50,8 @@ export function HybridMaterialsWorkspace({ artifactId, delivery, profile }: {
           <strong className="block">Asíncronos · Academy</strong><span className="block text-sm">{academy.materials?.lessons.filter(lesson => ["GENERATED", "APPROVABLE"].includes(lesson.state)).length || 0} generadas · {academy.materials?.lessons.filter(lesson => ["NEEDS_FIX", "BLOCKED"].includes(lesson.state)).length || 0} con error · {academy.isGenerating ? "Generando" : academy.loading ? "Consultando…" : "Disponible"}</span></button>
       </div>
     </header>
-    <section hidden={destination !== "hub"} aria-label="Materiales síncronos de Hub"><DeliveryStagePanel controller={delivery} stage={5} /></section>
-    <section hidden={destination !== "academy"} aria-label="Materiales asíncronos de Academy"><MaterialsContent controller={academy} artifactId={artifactId} profile={profile} coordinatedReview /></section>
+    <HybridMaterialsQaPanel delivery={delivery} academy={academy} />
+    <section hidden={destination !== "hub"} aria-label="Materiales síncronos de Hub"><DeliveryStagePanel controller={delivery} stage={5} coordinatedReview /></section>
+    <section hidden={destination !== "academy"} aria-label="Materiales asíncronos de Academy"><MaterialsContent controller={academy} artifactId={artifactId} profile={profile} /></section>
   </div>;
 }
