@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, Loader2 } from "lucide-react";
@@ -129,18 +130,40 @@ export function ImportSlideTemplateDialog({ onSaved, conversationId }: { onSaved
         <div className={styles.workspace}>
           <div className={styles.previewColumn}>
             <label className={styles.field}>Diseño que deseas revisar
-              <select value={selected} onChange={event => setSelected(Number(event.target.value))} className={styles.control}>
-                {design.layouts.map((item, index) => <option key={item.id} value={index}>{index + 1}. {item.label}</option>)}
-              </select>
+              <EngineSelect
+                aria-label="Diseño que deseas revisar"
+                value={String(selected)}
+                onValueChange={(nextValue) => setSelected(Number(nextValue))}
+                options={design.layouts.map((item, index) => ({
+                  value: String(index),
+                  label: `${index + 1}. ${item.label}`,
+                }))}
+              />
             </label>
             <p className={styles.muted}>Vista estática del diseño procesado · animaciones no conservadas</p>
             <ImportedSlidePreview html={analysis.previews[selected]} title={`Preview de ${layout.label}`} assets={design.assets} />
             <label className={styles.field}>Uso del diseño
-              <select value={layout.purpose} disabled={busy || saved} onChange={event => { const purpose = event.target.value as typeof layout.purpose;
-                setReviewed(false); setDesign({ ...design, layouts: design.layouts.map((item, index) => index === selected ? { ...item, purpose } : item) });
-              }} className={styles.control}>
-                <option value="any">Cualquier diapositiva compatible</option><option value="cover">Portada</option><option value="content">Contenido</option><option value="summary">Cierre</option>
-              </select>
+              <EngineSelect
+                aria-label="Uso del diseño"
+                disabled={busy || saved}
+                value={layout.purpose}
+                onValueChange={(nextValue) => {
+                  const purpose = nextValue as typeof layout.purpose;
+                  setReviewed(false);
+                  setDesign({
+                    ...design,
+                    layouts: design.layouts.map((item, index) =>
+                      index === selected ? { ...item, purpose } : item,
+                    ),
+                  });
+                }}
+                options={[
+                  { value: "any", label: "Cualquier diapositiva compatible" },
+                  { value: "cover", label: "Portada" },
+                  { value: "content", label: "Contenido" },
+                  { value: "summary", label: "Cierre" },
+                ]}
+              />
             </label>
           </div>
           <div className={styles.fields}><h3>Campos reutilizables</h3><p className={styles.muted}>Un título por diseño. «Contenido» se llena en orden; «Decoración» conserva su texto original. Si el contenido excede la capacidad, la generación lo indicará.</p>
@@ -148,9 +171,22 @@ export function ImportSlideTemplateDialog({ onSaved, conversationId }: { onSaved
               {layout.fields.map(field => <div key={field.id} className={styles.fieldCard}>
                 <p className={styles.sample}>{field.sample}</p>
                 <div className={styles.fieldControls}>
-                  <label className={styles.field}>Rol<select aria-label={`Rol de ${field.id}`} value={field.role} disabled={busy || saved} onChange={event => updateField(field.id, { role: event.target.value as ImportedSlideField["role"] })} className={styles.control}>
-                    <option value="title">Título</option><option value="subtitle">Subtítulo</option><option value="body">Contenido</option><option value="decoration">Decoración</option>
-                  </select></label>
+                  <label className={styles.field}>Rol
+                    <EngineSelect
+                      aria-label={`Rol de ${field.id}`}
+                      disabled={busy || saved}
+                      value={field.role}
+                      onValueChange={(nextValue) =>
+                        updateField(field.id, { role: nextValue as ImportedSlideField["role"] })
+                      }
+                      options={[
+                        { value: "title", label: "Título" },
+                        { value: "subtitle", label: "Subtítulo" },
+                        { value: "body", label: "Contenido" },
+                        { value: "decoration", label: "Decoración" },
+                      ]}
+                    />
+                  </label>
                   <label className={styles.field}>Máx. caracteres<input aria-label={`Capacidad de ${field.id}`} type="number" min={1} max={900} value={field.maxCharacters} disabled={busy || saved || field.role === "decoration"} onChange={event => updateField(field.id, { maxCharacters: Number(event.target.value) })} className={styles.control} /></label>
                 </div>
               </div>)}

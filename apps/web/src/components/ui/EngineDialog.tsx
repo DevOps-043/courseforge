@@ -65,6 +65,7 @@ export function EngineDialog({
     }, 0);
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         if (!closeDisabled) onCloseRef.current();

@@ -1,4 +1,5 @@
 "use client";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { CompositionGroupSelectionControls } from "./CompositionGroupSelectionControls";
 
 
@@ -104,16 +105,17 @@ export function CompositionSelectionPanel({ canCreateNestedGroups = false, canNe
       <section className="space-y-2 rounded-lg border border-slate-200 p-2 dark:border-white/10">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-gray-400">Layout visual</p>
-          <select
+          <EngineSelect
             aria-label="Referencia de alineación"
-            className="rounded border border-slate-300 bg-transparent px-1.5 py-1 text-[10px] text-slate-800 dark:border-white/15 dark:text-white"
             disabled={saving}
-            onChange={(event) => setAlignmentTarget(event.target.value as CompositionSelectionAlignmentTarget)}
+            size="compact"
             value={alignmentTarget}
-          >
-            <option value="CANVAS">Al canvas</option>
-            <option value="SELECTION">A la selección</option>
-          </select>
+            onValueChange={(nextValue) => setAlignmentTarget(nextValue as CompositionSelectionAlignmentTarget)}
+            options={[
+              { value: "CANVAS", label: "Al canvas" },
+              { value: "SELECTION", label: "A la selección" },
+            ]}
+          />
         </div>
         <div className="grid grid-cols-3 gap-1.5" aria-label="Alinear elementos visuales">
           <LayoutButton disabled={saving || hasLockedTrack || visualClipCount < (alignmentTarget === "CANVAS" ? 1 : 2)} label="Izquierda" onClick={() => onAlign("LEFT", alignmentTarget)}><AlignStartVertical size={13} /></LayoutButton>
@@ -149,17 +151,20 @@ export function CompositionSelectionPanel({ canCreateNestedGroups = false, canNe
         </div>
         <label className="flex items-center justify-between gap-2 text-[10px] font-semibold text-slate-500 dark:text-gray-400">
           Atajo Alt + ←/→
-          <select
+          <EngineSelect
             aria-label="Operación del atajo de edición por frame"
-            className="rounded border border-slate-300 bg-transparent px-1.5 py-1 text-[10px] text-slate-800 dark:border-white/15 dark:text-white"
             disabled={saving}
-            onChange={(event) => onKeyboardEditModeChange(event.target.value as CompositionTimelineKeyboardEditMode)}
+            size="compact"
             value={keyboardEditMode}
-          >
-            <option value="SLIDE">Slide</option>
-            <option value="ROLL_LEFT">Roll entrada</option>
-            <option value="ROLL_RIGHT">Roll salida</option>
-          </select>
+            onValueChange={(nextValue) =>
+              onKeyboardEditModeChange(nextValue as CompositionTimelineKeyboardEditMode)
+            }
+            options={[
+              { value: "SLIDE", label: "Slide" },
+              { value: "ROLL_LEFT", label: "Roll entrada" },
+              { value: "ROLL_RIGHT", label: "Roll salida" },
+            ]}
+          />
         </label>
         <p className="text-[10px] leading-4 text-slate-500 dark:text-gray-400">Los grupos alineados y pares avatar‑voz se ajustan como una sola edición atómica. También puedes mantener Alt mientras arrastras el bloque o sus bordes.</p>
         <div className="grid grid-cols-2 gap-1.5">

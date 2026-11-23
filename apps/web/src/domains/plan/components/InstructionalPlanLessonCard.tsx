@@ -12,9 +12,9 @@ import {
   Target,
   X,
 } from "lucide-react";
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import {
   PremiumInput,
-  PremiumSelect,
   PremiumTextarea,
 } from "./PlanFieldControls";
 import { COMPONENT_TYPES, getComponentBadge } from "./plan-component-config";
@@ -200,21 +200,20 @@ export function InstructionalPlanLessonCard({
                     key={`component-${componentIndex}`}
                     className="group/edit-card relative space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4 transition-colors hover:border-gray-300 dark:border-gray-700/50 dark:bg-[var(--engine-surface-solid)]/50 dark:hover:border-gray-600"
                   >
-                    <div className="flex gap-4">
-                      <div className="w-48 flex-shrink-0 space-y-3">
-                        <div>
-                          <label className="mb-1 block text-[10px] font-bold uppercase text-gray-500">
-                            Tipo
-                          </label>
-                          <PremiumSelect
+                    <div className="flex flex-col gap-4 sm:flex-row">
+                      <div className="w-full shrink-0 space-y-3 sm:w-48">
+                        <label className="block text-[10px] font-bold uppercase text-gray-500">
+                          Tipo
+                          <EngineSelect
+                            aria-label="Tipo de componente"
+                            className="mt-1"
+                            size="compact"
                             options={COMPONENT_TYPES}
-                            value={component.type}
-                            onChange={(value: string) =>
-                              onComponentTypeChange(componentIndex, value)
-                            }
-                            className="border-gray-200 bg-white text-gray-900 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                            value={component.type ?? ""}
+                            placeholder={component.type || undefined}
+                            onValueChange={(value) => onComponentTypeChange(componentIndex, value)}
                           />
-                        </div>
+                        </label>
                         <div>
                           <label className="mb-1 block text-[10px] font-bold uppercase text-gray-500">
                             Duracion

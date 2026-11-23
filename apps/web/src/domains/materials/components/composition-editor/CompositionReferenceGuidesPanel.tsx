@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useEffect, useRef, useState } from "react";
 import { COMPOSITION_REFERENCE_GUIDE_COLOR, COMPOSITION_REFERENCE_GUIDE_LIMIT, type CompositionReferenceGuide, type CompositionReferenceGuides } from "@/domains/production/composition-editor/composition-reference-guides";
 
@@ -53,10 +54,17 @@ function GuideRow({ guide, index, canvas, onChange, onRemove }: {
   useEffect(() => setValue(String(position)), [position]);
   const inputClass = "rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-white";
   return <div className="flex flex-wrap items-center gap-2">
-    <select aria-label={`Orientación de guía ${index + 1}`} className={inputClass} value={guide.axis}
-      onChange={event => onChange({ ...guide, axis: event.target.value === "x" ? "x" : "y" })}>
-      <option value="x">Vertical</option><option value="y">Horizontal</option>
-    </select>
+    <EngineSelect
+      aria-label={`Orientación de guía ${index + 1}`}
+      className="w-28 shrink-0"
+      size="compact"
+      value={guide.axis}
+      onValueChange={(nextValue) => onChange({ ...guide, axis: nextValue === "x" ? "x" : "y" })}
+      options={[
+        { value: "x", label: "Vertical" },
+        { value: "y", label: "Horizontal" },
+      ]}
+    />
     <label className="text-slate-600 dark:text-gray-300">Posición (px) <input aria-label={`Posición de guía ${index + 1} en píxeles`}
       className={`${inputClass} w-24`} type="number" step="any" min="0" max={extent} value={value}
       onBlur={() => setValue(String(position))} onChange={event => {

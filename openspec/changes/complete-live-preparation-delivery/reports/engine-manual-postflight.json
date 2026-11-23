@@ -1,0 +1,124 @@
+{
+  "counts": {
+    "runs": 0,
+    "versions": 0,
+    "workspaces": 0
+  },
+  "tables": [
+    {
+      "rls": true,
+      "name": "course_delivery_runs",
+      "public_access": false
+    },
+    {
+      "rls": true,
+      "name": "course_delivery_versions",
+      "public_access": false
+    },
+    {
+      "rls": true,
+      "name": "course_delivery_workspaces",
+      "public_access": false
+    }
+  ],
+  "trigger": true,
+  "policies": [
+    {
+      "name": "course_delivery_prompts_backend_only",
+      "check": "(code <> ALL (ARRAY['SYNCHRONOUS_AGENDA'::text, 'SYNCHRONOUS_PLAN'::text, 'SYNCHRONOUS_MATERIALS'::text]))",
+      "roles": [
+        "anon",
+        "authenticated"
+      ],
+      "table": "system_prompts",
+      "using": "(code <> ALL (ARRAY['SYNCHRONOUS_AGENDA'::text, 'SYNCHRONOUS_PLAN'::text, 'SYNCHRONOUS_MATERIALS'::text]))",
+      "command": "ALL",
+      "permissive": "RESTRICTIVE"
+    },
+    {
+      "name": "course_delivery_models_backend_only",
+      "check": "(setting_type <> ALL (ARRAY['SYNCHRONOUS_AGENDA'::text, 'SYNCHRONOUS_PLAN'::text, 'SYNCHRONOUS_MATERIALS'::text]))",
+      "roles": [
+        "anon",
+        "authenticated"
+      ],
+      "table": "model_settings",
+      "using": "(setting_type <> ALL (ARRAY['SYNCHRONOUS_AGENDA'::text, 'SYNCHRONOUS_PLAN'::text, 'SYNCHRONOUS_MATERIALS'::text]))",
+      "command": "ALL",
+      "permissive": "RESTRICTIVE"
+    }
+  ],
+  "functions": [
+    {
+      "anon": false,
+      "name": "approve_course_delivery",
+      "definer": false,
+      "settings": [
+        "search_path=\"\""
+      ],
+      "service_role": true,
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "claim_course_delivery_run",
+      "definer": false,
+      "settings": [
+        "search_path=\"\""
+      ],
+      "service_role": true,
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "commit_course_delivery_unit",
+      "definer": false,
+      "settings": [
+        "search_path=\"\""
+      ],
+      "service_role": true,
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "preserve_course_delivery_version",
+      "definer": false,
+      "settings": [
+        "search_path=\"\""
+      ],
+      "service_role": true,
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "reserve_course_delivery_run",
+      "definer": false,
+      "settings": [
+        "search_path=\"\""
+      ],
+      "service_role": true,
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "save_course_delivery",
+      "definer": false,
+      "settings": [
+        "search_path=\"\""
+      ],
+      "service_role": true,
+      "authenticated": false
+    },
+    {
+      "anon": false,
+      "name": "save_course_delivery_setting",
+      "definer": false,
+      "settings": [
+        "search_path=\"\""
+      ],
+      "service_role": true,
+      "authenticated": false
+    }
+  ],
+  "model_type_check": "CHECK (((setting_type = ANY (ARRAY['ARTIFACT_BASE'::text, 'SYLLABUS'::text, 'INSTRUCTIONAL_PLAN'::text, 'MATERIALS'::text, 'CURATION'::text, 'BUNDLE_AGENT'::text, 'LIA_MODEL'::text, 'LIA MODEL'::text, 'COMPUTER'::text, 'SEARCH'::text, 'LIA_REASONING'::text, 'LIA_COMPUTER_USE'::text])) OR (setting_type = ANY (ARRAY['SYNCHRONOUS_AGENDA'::text, 'SYNCHRONOUS_PLAN'::text, 'SYNCHRONOUS_MATERIALS'::text])))) NOT VALID"
+}

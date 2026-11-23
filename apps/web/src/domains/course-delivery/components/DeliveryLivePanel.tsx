@@ -1,4 +1,6 @@
 "use client";
+
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useId, useRef, useState, type FormEvent } from "react";
 import type { CourseDeliveryController } from "../hooks/useCourseDelivery";
 import { engineTargetsSchema } from "../types/engine-preparation.contract";
@@ -20,7 +22,7 @@ export function DeliveryLivePanel({controller}:{controller:CourseDeliveryControl
     finally{pending.current=false;setPhase("idle");}
   }
   async function deliver(event:FormEvent){
-    event.preventDefault();if(pending.current)return;
+    event.preventDefault();if(pending.current||!source||!destination)return;
     const target=targets.find(item=>item.session_id===destination);if(!target)return;
     pending.current=true;setNotice("");setFailed(false);setPhase("delivering");
     try{await controller.command({action:"DELIVER",sourceSessionId:source,target:{organization_slug:snapshot!.organizationSlug,session_id:target.session_id,course_id:target.course_id}});setNotice("Preparación confirmada en Academy. Abre o actualiza el aula en Hub para consultar la revisión recibida.");}
@@ -33,8 +35,39 @@ export function DeliveryLivePanel({controller}:{controller:CourseDeliveryControl
     <p>Envía a Academy la preparación aprobada para consultarla en Hub. Las notas y respuestas reservadas estarán disponibles solo para instructores autorizados.</p></header>
     <ol className={styles.transferSteps} aria-label="Recorrido de la preparación"><li>1. Architect · Preparar</li><li>2. Academy · Validar</li><li>3. Hub · Impartir</li></ol>
     <div className={styles.transferFields}>
-      <div><label htmlFor={`${fieldId}-source`}>Contenido que impartirás</label><select id={`${fieldId}-source`} required disabled={busy} value={source} onChange={event=>setSource(event.target.value)}><option value="">Elige una sesión del curso</option>{snapshot.workspace.document.agenda.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select></div>
-      <div><label htmlFor={`${fieldId}-destination`}>Aula de destino</label><select id={`${fieldId}-destination`} required disabled={busy || !targets.length} value={destination} onChange={event=>setDestination(event.target.value)}><option value="">{targets.length ? "Elige una sesión programada" : "Consulta tus sesiones para elegir el aula"}</option>{targets.map(item=><option key={item.session_id} value={item.session_id}>{item.title} · {new Date(item.starts_at).toLocaleString("es-MX")}</option>)}</select></div>
+      <div>
+        <label htmlFor={`${fieldId}-source`}>Contenido que impartirás</label>
+        <EngineSelect
+          id={`${fieldId}-source`}
+          className={styles.selectField}
+          required
+          disabled={busy}
+          value={source}
+          onValueChange={setSource}
+          options={[
+            { value: "", label: "Elige una sesión del curso" },
+            ...snapshot.workspace.document.agenda.map(item => ({ value: item.id, label: item.title })),
+          ]}
+        />
+      </div>
+      <div>
+        <label htmlFor={`${fieldId}-destination`}>Aula de destino</label>
+        <EngineSelect
+          id={`${fieldId}-destination`}
+          className={styles.selectField}
+          required
+          disabled={busy || !targets.length}
+          value={destination}
+          onValueChange={setDestination}
+          options={[
+            { value: "", label: targets.length ? "Elige una sesión programada" : "Consulta tus sesiones para elegir el aula" },
+            ...targets.map(item => ({
+              value: item.session_id,
+              label: `${item.title} · ${new Date(item.starts_at).toLocaleString("es-MX")}`,
+            })),
+          ]}
+        />
+      </div>
     </div>
     <p>La entrega sustituye la preparación previa de la sesión elegida. Academy valida su estado y protege las respuestas y entregas existentes.</p>
     <div className={styles.actions}>

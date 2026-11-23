@@ -1276,8 +1276,7 @@ code,
 }
 
 .soflia-engine-shell .engine-content input,
-.soflia-engine-shell .engine-content textarea,
-.soflia-engine-shell .engine-content select {
+.soflia-engine-shell .engine-content textarea {
   border-radius: 0.9rem !important;
   border-color: var(--engine-border) !important;
   color: var(--engine-text) !important;
@@ -1285,8 +1284,7 @@ code,
 }
 
 .soflia-engine-shell .engine-content input:focus,
-.soflia-engine-shell .engine-content textarea:focus,
-.soflia-engine-shell .engine-content select:focus {
+.soflia-engine-shell .engine-content textarea:focus {
   border-color: var(--engine-border-active) !important;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--engine-accent) 11%, transparent) !important;
 }

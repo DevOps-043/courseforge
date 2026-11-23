@@ -7,6 +7,12 @@ Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega d
 
 ## 1. Regla de mantenimiento
 
+Continuación 2026-11-03: se preparan fronteras de importación acíclicas para
+contratos de fuentes, planificación de captions, descriptor del render controlado
+y autorización HTTP narrativa. Se conservan algoritmos, exports públicos,
+presupuestos y guardas de ejecución. No cambia el formato persistido ni el artefacto
+compilado. Alcance y verificación: [cambio de fronteras internas](../../openspec/changes/remove-composition-import-cycles/proposal.md).
+
 Este archivo es la fuente de verdad operativa del flujo de composicion y render
 HyperFrames de Courseforge. Todo cambio que afecte documento, assets, preview,
 snapshot, ZIP, variables, envio a HeyGen, polling, importacion o SFX debe:
