@@ -25,4 +25,17 @@ Las pruebas del contenedor ejecutan sus hooks con fronteras simuladas; no acredi
 
 ## Staging
 
-Compuerta local completa; subida y piloto pendientes. No se genera contenido de HeyGen, avatar, locución ni video final. No se publican cursos. Los logs de desarrollo quedan ignorados en `.tmp/assembly-stability-*.log`.
+Commit de código `2e2d1d4b`, subido a staging indicando directamente el usuario Pedro-Echeverria01. Netlify identificó ese usuario y commit; despliegue 6b0598f81893314e63e62f92 completado correctamente.
+
+Piloto mediante una pestaña nueva del mismo taller y sesión existente:
+
+- Ensamble abre sin el aviso superior de Academy.
+- Se recuperó el mismo borrador y la misma versión/hash de documento; no se recrearon los materiales.
+- El monitor mostró las diapositivas y habilitó Reproducir, sin errores en la consola consultada.
+- Reproducir avanzó el cursor a 00:01; Pausar funcionó.
+- La pestaña Guion abrió sus 21 escenas. La URL del iframe mantuvo el mismo borrador, hash y generación r=1 entre esas acciones.
+- Se tomó una captura visual del monitor durante la sesión de herramientas; no se exportó a un archivo del repositorio.
+
+La prueba real de pérdida/recuperación de foco y una observación prolongada quedan pendientes. Al preparar el control nativo de Chrome, la herramienta detuvo Computer Use porque no pudo verificar la URL activa en Windows con confianza suficiente para aplicar su política. No se intentó eludir ese límite ni controlar el navegador con otra tecnología. No se afirma que este piloto parcial descarte todos los posibles reinicios.
+
+No se generó contenido de HeyGen, avatar, locución ni video final. No se publicaron cursos ni se ejecutó SQL manual. Los logs de desarrollo quedan ignorados en `.tmp/assembly-stability-*.log`. La enumeración de cuentas guardadas fue rechazada por revisión automática; el acceso y push posteriores usaron directamente el usuario solicitado sin enumerar ni leer credenciales.
