@@ -9,6 +9,7 @@ import {
   validateHyperframesCompositionId,
 } from "@/domains/production/hyperframes/hyperframes-request-validation";
 import { CompositionDocumentError } from "@/domains/production/composition-editor/composition-document.service";
+import { GeneratedDeckReadError } from "@/domains/production/slides/generation/course-deck-editorial-reader.server";
 import { createClient } from "@/utils/supabase/server";
 import { API_ERROR_CODE } from "@/lib/server/api-contract";
 import { apiErrorResponse, apiSuccessResponse } from "@/lib/server/api-response";
@@ -70,6 +71,15 @@ async function initializeDraftResponse(params: {
         timelineBoundaryIssues: summarizeCompositionTimelineBoundaryIssues(error),
       });
       return apiErrorResponse({ code: API_ERROR_CODE.invalidRequest, details: { reason: "COMPOSITION_DATA_INVALID" }, message: "Los datos de la composición no cumplen el formato requerido.", requestId: params.requestId, status: 422 });
+    }
+    if (error instanceof GeneratedDeckReadError) {
+      const retryable = error.code === "UNAVAILABLE";
+      logger.warn("production.hyperframes.composition.draft_deck_rejected", { compositionId: params.compositionId, reason: error.code });
+      return apiErrorResponse({ code: retryable ? API_ERROR_CODE.dependencyUnavailable : API_ERROR_CODE.invalidRequest,
+        details: { reason: `GENERATED_DECK_${error.code}` }, requestId: params.requestId, retryable,
+        status: retryable ? 503 : 422, message: retryable ? "No se pudieron verificar temporalmente las diapositivas guardadas. Reintenta preparar el editor."
+          : error.code === "FONT_BINDING_REQUIRED" ? "Vincula las fuentes de las diapositivas antes de abrir el editor."
+            : "Las diapositivas no superaron la verificación de integridad para el editor. Revisa su diagnóstico en Producción antes de continuar." });
     }
     if (error instanceof HyperframesDraftError) return apiErrorResponse({ code: mapStatusToErrorCode(error.status), message: error.message, requestId: params.requestId, status: error.status });
     if (error instanceof CompositionDocumentError) {

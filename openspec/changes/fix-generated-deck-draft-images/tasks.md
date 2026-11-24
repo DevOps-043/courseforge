@@ -1,0 +1,6 @@
+- [x] Localizar ruta y consultar estado guardado sin modificar el curso.
+- [x] Reproducir el fallo con datos guardados y comprobar hashes/registro.
+- [x] Corregir referencias exactas y clasificación de errores conocidos.
+- [x] Ejecutar regresiones de lector, integración, HTTP, seguridad y tipos.
+- [x] Registrar evidencia y límites de validación.
+- [ ] Validar apertura real tras despliegue autorizado.

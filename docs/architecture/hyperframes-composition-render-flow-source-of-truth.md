@@ -7,6 +7,16 @@ Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega d
 
 ## 1. Regla de mantenimiento
 
+### Inicialización editorial con imágenes verificadas (2026-11-23)
+
+La proyección narrativa del deck generado pasa al preprocesador únicamente las
+URLs exactas de imágenes cuyo registro tenant/componente, ruta, checksum y hashes
+ya verificó el lector editorial. Esto evita rechazar las imágenes legítimas al
+crear el documento inicial sin autorizar dominios completos ni entradas del
+cliente. La ruta del borrador distingue rechazo editorial 422 de indisponibilidad
+503 y conserva correlación sin exponer URLs. No cambia formato, artefactos,
+motion ni permisos. [Diagnóstico y evidencia](../../openspec/changes/fix-generated-deck-draft-images/design.md).
+
 ### B-rolls opcionales de sesiones (2026-11-23)
 
 Las sesiones pueden asociar clips manuales privados desde Producción sin componente

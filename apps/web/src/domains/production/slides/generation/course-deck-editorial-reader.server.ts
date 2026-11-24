@@ -70,7 +70,16 @@ export async function readGeneratedCourseDeckEditorial(input: {
     let fontBindings;
     try { fontBindings = await resolveGeneratedCourseDeckFonts({ ...input, requirements: artifact.fontRequirements }); }
     catch { throw new GeneratedDeckReadError("FONT_BINDING_REQUIRED"); }
-    return { artifact, fontBindings, presentationSource: () => prepareAnimatedDeckForRemotion(renderCourseDeckHtml(deck)).deck,
+    // La proyección narrativa conserva las imágenes del deck, pero solo tras
+    // comprobar su registro tenant/componente, ruta, checksum y hash del spec.
+    // No se autoriza un dominio completo ni URLs suministradas por el cliente.
+    const allowedRemoteAssetUrls = [...new Set(deck.slides
+      .flatMap(slide => [slide.visualAssets?.background, slide.visualAssets?.supporting])
+      .flatMap(asset => asset?.status === "READY" && asset.url && imageIds.has(asset.id) ? [asset.url] : []))];
+    return { artifact, fontBindings, presentationSource: () => {
+      try { return prepareAnimatedDeckForRemotion(renderCourseDeckHtml(deck), { allowedRemoteAssetUrls }).deck; }
+      catch { throw new GeneratedDeckReadError("INTEGRITY_MISMATCH"); }
+    },
       instance: (clipId: string, slideIndex: number) => {
       if (!htmlEditingBindingSchema.shape.clipId.safeParse(clipId).success) throw new GeneratedDeckReadError("INTEGRITY_MISMATCH");
       const key = `${clipId}:${slideIndex}`;
