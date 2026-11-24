@@ -7,6 +7,17 @@ Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega d
 
 ## 1. Regla de mantenimiento
 
+### Continuidad del editor y vínculos de imágenes (2026-11-24)
+
+Ensamble conserva el editor montado durante las actualizaciones del listado y
+errores transitorios; un alcance equivalente de Academy no inicia otra carga.
+Se retira su aviso superior extenso. La preparación vincula las imágenes
+editoriales ausentes únicamente desde el artefacto reconstruido y verificado
+para el tenant/componente; conserva esas dependencias al limpiar medios
+obsoletos. Un alias no concede acceso y preview/snapshot mantienen sus guardas
+independientes. No cambia documento, motion ni proveedor.
+[Diseño y seguimiento](../../openspec/changes/fix-assembly-editor-stability/design.md).
+
 ### Inicialización editorial con imágenes verificadas (2026-11-23)
 
 La proyección narrativa del deck generado pasa al preprocesador únicamente las

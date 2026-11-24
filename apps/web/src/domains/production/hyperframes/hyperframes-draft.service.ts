@@ -26,6 +26,9 @@ import {
   listHyperframesSourceAssets,
 } from "./hyperframes-source-asset.service";
 
+import { compositionDeckImageAssetIds } from "../composition-editor/composition-deck-image-aliases.server";
+import { ensureGeneratedDeckDraftImageLinks } from "./hyperframes-generated-image-links.server";
+
 const DRAFT_PROJECT_PREFIX = "video-composition-drafts";
 const GENERATED_DECK_FONT_UNAVAILABLE_MESSAGE = "Las diapositivas usan una fuente personalizada pendiente de vinculación al editor. No se sustituirá la tipografía ni se creará un borrador con campos incompletos.";
 
@@ -194,25 +197,6 @@ export async function initializeHyperframesDraft(params: {
       })), { onConflict: "draft_id,production_asset_id" });
     if (assetLinkError) throw assetLinkError;
   }
-  const activeAssetIds = new Set(candidates.map((asset) => asset.productionAssetId));
-  const { data: existingAssetLinks, error: existingAssetLinksError } = await params.supabase
-    .from("video_composition_draft_assets")
-    .select("production_asset_id")
-    .eq("draft_id", draftId)
-    .eq("organization_id", params.organizationId);
-  if (existingAssetLinksError) throw existingAssetLinksError;
-  const staleAssetIds = (existingAssetLinks || [])
-    .map((link) => link.production_asset_id as string)
-    .filter((assetId) => !activeAssetIds.has(assetId));
-  if (staleAssetIds.length > 0) {
-    const { error: staleAssetLinkError } = await params.supabase
-      .from("video_composition_draft_assets")
-      .delete()
-      .eq("draft_id", draftId)
-      .eq("organization_id", params.organizationId)
-      .in("production_asset_id", staleAssetIds);
-    if (staleAssetLinkError) throw staleAssetLinkError;
-  }
 
   const { data: standaloneProject, error: standaloneError } = await params.supabase.from("standalone_assembly_projects")
     .select("id").eq("backing_component_id", composition.material_component_id).eq("organization_id", params.organizationId).maybeSingle();
@@ -232,6 +216,29 @@ export async function initializeHyperframesDraft(params: {
     supabase: params.supabase,
     userId: params.userId,
   });
+
+  // Las imágenes editoriales usan SLIDE_IMAGE_SET, fuera de SOURCE_MEDIA.
+  // Se conservan sus vínculos sin crear clips de imagen duplicados.
+  const activeAssetIds = new Set([...candidates.map((asset) => asset.productionAssetId),
+    ...compositionDeckImageAssetIds(persistedDocument.document)]);
+  const { data: existingAssetLinks, error: existingAssetLinksError } = await params.supabase
+    .from("video_composition_draft_assets")
+    .select("production_asset_id")
+    .eq("draft_id", draftId)
+    .eq("organization_id", params.organizationId);
+  if (existingAssetLinksError) throw existingAssetLinksError;
+  const staleAssetIds = (existingAssetLinks || [])
+    .map((link) => link.production_asset_id as string)
+    .filter((assetId) => !activeAssetIds.has(assetId));
+  if (staleAssetIds.length > 0) {
+    const { error: staleAssetLinkError } = await params.supabase
+      .from("video_composition_draft_assets")
+      .delete()
+      .eq("draft_id", draftId)
+      .eq("organization_id", params.organizationId)
+      .in("production_asset_id", staleAssetIds);
+    if (staleAssetLinkError) throw staleAssetLinkError;
+}
 
   if (persistedDocument.created) {
     const { error: changeError } = await params.supabase
@@ -287,6 +294,7 @@ async function loadOrCreateInitialDocument(params: {
         throw new HyperframesDraftError("Desbloquea la pista de slides antes de aplicar el preensamble.", 422);
       }
     }
+    await ensureGeneratedDeckDraftImageLinks({ ...params, componentId: params.generatedComponentId, document: current.document });
     const operations = buildProductionAssetReconciliationOperations(
       params.manualSourceInsertion ? { ...current.document, sourceInsertionMode: "MANUAL" } : current.document,
       params.assets,
@@ -364,6 +372,7 @@ async function loadOrCreateInitialDocument(params: {
     }
     throw error;
   }
+  await ensureGeneratedDeckDraftImageLinks({ ...params, componentId: params.generatedComponentId, document, verified: verified ?? undefined });
   return ensureInitialCompositionDocument({
     document,
     draftId: params.draftId,

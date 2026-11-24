@@ -1,0 +1,8 @@
+- [x] Inspeccionar estado Git, instrucciones y flujo.
+- [x] Verificar diagnóstico del preview desplegado.
+- [x] Retirar aviso de Ensamble y conservar editor durante actualizaciones.
+- [x] Implementar recuperación verificada de imágenes y conservación de vínculos.
+- [x] Ejecutar regresiones, tipos y compuerta del proyecto.
+- [x] Revisar diff, seguridad y evidencia.
+- [ ] Subir mediante la cuenta solicitada a staging.
+- [ ] Comprobar despliegue e interacción real sin consumo de proveedores.
