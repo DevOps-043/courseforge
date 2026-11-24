@@ -5,4 +5,5 @@
 - [x] Aplicar y validar SQL autorizado.
 - [x] Reproducir el pin narrativo inconsistente y preparar recuperación versionada exacta.
 - [x] Ejecutar regresiones, revisión adversarial y compuerta.
-- [ ] Publicar cambios autorizados de staging y verificar la herramienta visual.
+- [x] Subir el cambio autorizado a staging con Pedro-Echeverria01 (81b1fdd7).
+- [ ] Confirmar despliegue y verificar la preparación real en la herramienta visual; acceso al navegador deshabilitado.
