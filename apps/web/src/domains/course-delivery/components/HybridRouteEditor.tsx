@@ -7,6 +7,7 @@ import { agendaSchema, hybridRouteSchema } from "../types/delivery.schemas";
 import { agendaIssues } from "../lib/delivery-policy";
 import { hybridRouteIssues, routeTotals } from "../lib/hybrid-route";
 import styles from "./delivery-ui.module.css";
+import { HybridLessonAssignments } from "./HybridLessonAssignments";
 
 export function HybridRouteEditor({ controller }: { controller: CourseDeliveryController }) {
   const snapshot = controller.snapshot!;
@@ -29,6 +30,16 @@ export function HybridRouteEditor({ controller }: { controller: CourseDeliveryCo
     <h3>Recorrido del curso híbrido</h3>
     <p>Ordena los encuentros en Hub y los tramos de estudio en Academy. La cobertura de una sesión indica sus temas; no obliga a repetirlos en el estudio asíncrono.</p>
     <p role="status">Hub: {totals.synchronous} min · Academy: {totals.asynchronous} min · Total: {totals.synchronous + totals.asynchronous} min</p>
+    <div className={styles.actions}>
+      <button type="button" disabled={controller.busy || !snapshot.syllabusApproved || agenda.length >= 24} onClick={() => {
+        const id = crypto.randomUUID();
+        setAgenda(current => [...current, { id, title: "Sesión en vivo", minutes: document.config.sessionMinutes, objectives: [""], evidence: "", coverage: [] }]);
+        setRoute(current => [...current, { kind: "SYNCHRONOUS", sessionId: id }]);
+      }}>Añadir sesión en Hub</button>
+      <button type="button" disabled={controller.busy || !snapshot.syllabusApproved || route.length >= 324} onClick={() => setRoute(current => [...current, { kind: "ASYNCHRONOUS", id: crypto.randomUUID(), title: "Estudio en Academy", minutes: 60, lessonIds: [] }])}>Añadir tramo en Academy</button>
+    </div>
+    <HybridLessonAssignments agenda={agenda} route={route} lessons={snapshot.lessons} disabled={controller.busy || !snapshot.syllabusApproved}
+      onChange={value => { setAgenda(value.agenda); setRoute(value.route); }} onError={setError} />
     <fieldset className={styles.routeList} disabled={controller.busy || !snapshot.syllabusApproved}>
       {route.map((item, index) => {
         const session = item.kind === "SYNCHRONOUS" ? agenda.find(value => value.id === item.sessionId) : undefined;
@@ -43,13 +54,10 @@ export function HybridRouteEditor({ controller }: { controller: CourseDeliveryCo
               <label className={styles.field}>Objetivos de la sesión {index + 1}, uno por línea<textarea value={session.objectives.join("\n")} onChange={event => updateSession(id, { objectives: event.target.value.split("\n") })} /></label>
               <label className={styles.field}>Evidencia de la sesión {index + 1}<textarea value={session.evidence} onChange={event => updateSession(id, { evidence: event.target.value })} /></label>
             </>}
-            <fieldset><legend>{session ? "Temas que se trabajarán en vivo" : "Lecciones que se estudiarán en Academy"}</legend>
-              {snapshot.lessons.map(lesson => <label key={lesson.id} className={styles.field}><span><input type="checkbox" checked={selected.includes(lesson.id)} onChange={event => {
-                const next = event.target.checked ? [...selected, lesson.id] : selected.filter(value => value !== lesson.id);
-                if (session) updateSession(id, { coverage: next.map(lessonId => session.coverage.find(coverage => coverage.lessonId === lessonId) || { lessonId, scope: snapshot.lessons.find(value => value.id === lessonId)!.objective, review: false }) });
-                else setAsync(index, { lessonIds: next });
-              }} /> {lesson.module} · {lesson.title}</span></label>)}
-            </fieldset>
+            <div><p>{session ? "Temas que se trabajarán en vivo" : "Lecciones que se estudiarán en Academy"}: {selected.length}</p>
+              <ul>{snapshot.lessons.filter(lesson => selected.includes(lesson.id)).map(lesson => <li key={lesson.id}>{lesson.module} · {lesson.title}</li>)}</ul>
+              <p>Modifica la selección en «Destino de cada lección», arriba.</p>
+            </div>
             <div className={styles.actions}>
               <button type="button" aria-label={`Subir tramo ${index + 1}`} disabled={index === 0} onClick={() => move(index, -1)}>Subir</button>
               <button type="button" aria-label={`Bajar tramo ${index + 1}`} disabled={index === route.length - 1} onClick={() => move(index, 1)}>Bajar</button>
@@ -59,12 +67,6 @@ export function HybridRouteEditor({ controller }: { controller: CourseDeliveryCo
         </details>;
       })}
       <div className={styles.actions}>
-        <button type="button" disabled={agenda.length >= 24} onClick={() => {
-          const id = crypto.randomUUID();
-          setAgenda(current => [...current, { id, title: "Sesión en vivo", minutes: document.config.sessionMinutes, objectives: [""], evidence: "", coverage: [] }]);
-          setRoute(current => [...current, { kind: "SYNCHRONOUS", sessionId: id }]);
-        }}>Añadir sesión en Hub</button>
-        <button type="button" disabled={route.length >= 324} onClick={() => setRoute(current => [...current, { kind: "ASYNCHRONOUS", id: crypto.randomUUID(), title: "Estudio en Academy", minutes: 60, lessonIds: [] }])}>Añadir tramo en Academy</button>
         <button type="button" disabled={Boolean(issues.length)} onClick={() => void save()}>Guardar recorrido híbrido</button>
       </div>
     </fieldset>

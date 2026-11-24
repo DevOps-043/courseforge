@@ -22,8 +22,12 @@ import { PRODUCTION_THEME } from './production-asset-ui';
 import { ProductionAutomationReviewPanel } from '@/domains/production/automation/ProductionAutomationReviewPanel';
 import { LessonProductionSection } from './LessonProductionSection';
 import { getProductionProgress } from './lesson-production-progress';
+import { isAcademyProductionLesson } from '../../course-delivery/lib/delivery-production-scope';
+import { academyLessonId } from '../../course-delivery/lib/academy-scope';
 
 interface VisualProductionContainerProps {
+    academyLessonIds?: readonly string[] | null;
+    sharedLessonIds?: readonly string[];
     artifactId: string;
     assetsComplete?: boolean;
     onStatusChange?: (isComplete: boolean) => void;
@@ -35,7 +39,7 @@ interface ProductionGroup {
     components: MaterialComponent[];
 }
 
-export function VisualProductionContainer({ artifactId, assetsComplete, onStatusChange }: VisualProductionContainerProps) {
+export function VisualProductionContainer({ artifactId, assetsComplete, onStatusChange, academyLessonIds, sharedLessonIds }: VisualProductionContainerProps) {
     const pathname = usePathname();
     const { materials, getArtifactComponents, refresh } = useMaterials(artifactId);
     const [productionItems, setProductionItems] = useState<ProductionGroup[]>([]);
@@ -80,7 +84,7 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
             setIsLoading(true);
             try {
                 const artifactComponents = await getArtifactComponents();
-                const results = materials.lessons.map((lesson) => {
+                const results = materials.lessons.filter(lesson => isAcademyProductionLesson(lesson.lesson_id, academyLessonIds)).map((lesson) => {
                     const components = artifactComponents.filter(
                         (component) => component.material_lesson_id === lesson.id,
                     );
@@ -137,7 +141,7 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
         };
 
         fetchProductionItems();
-    }, [materials, getArtifactComponents]);
+    }, [materials, getArtifactComponents, academyLessonIds]);
 
     const handleGeneratePrompts = async (
         componentId: string,
@@ -454,6 +458,7 @@ export function VisualProductionContainer({ artifactId, assetsComplete, onStatus
                                     lesson={group.lesson}
                                     components={group.components}
                                     lessonNumber={lessonNumber}
+                                    deliveryLabel={academyLessonIds ? sharedLessonIds?.includes(academyLessonId(group.lesson.lesson_id)) ? "Compartida · video de Academy y materiales de Hub" : "Academy · estudio asíncrono" : undefined}
                                     expanded={expandedLessonIds.has(group.lesson.id)}
                                     onToggle={() => toggleLesson(group.lesson.id)}
                                     componentCards={mountedLessonIds.has(group.lesson.id) ? group.components.map((component) => (

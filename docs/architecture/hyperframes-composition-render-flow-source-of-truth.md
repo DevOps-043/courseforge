@@ -7,7 +7,24 @@ Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega d
 
 ## 1. Regla de mantenimiento
 
+### B-rolls opcionales de sesiones (2026-11-23)
+
+Las sesiones pueden asociar clips manuales privados desde Producción sin componente
+Academy, avatar, locución, composición ni video final. Reutilizan el inspector de
+medios existente, ahora en production/media-inspection.service con exports standalone
+compatibles. Se valida formato real y límites antes de reproducir; la aprobación
+del apoyo es humana e independiente. No cambia motion, snapshots, ZIP ni render.
+El almacenamiento usa el bucket privado existente; firma de reproducción de cinco
+minutos sin persistir credenciales. Véase [contrato y límites](../../openspec/changes/optional-session-brolls/design.md).
+
 ### Decks visuales de sesiones síncronas (2026-11-23)
+
+Corrección v2: la paginación de sesión busca particiones contiguas bajo el mismo
+mínimo normalizado de QA para evitar una última página artificialmente insuficiente.
+No cambia los límites ni contenido; la versión nueva evita recuperar el asset v1
+fallido. Producción y Ensamble distinguen temas exclusivos de Hub y compartidos
+con Academy. La cobertura en vivo por sí sola no retira la asignación asíncrona.
+Evidencia y alcance: [corrección de recorrido](../../openspec/changes/fix-hybrid-production-scope/design.md).
 
 Producción reutiliza el renderer HTML y QA de slides para convertir materiales de
 sesión aprobados en un asset visual por sesión. El contrato de render admite una

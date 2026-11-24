@@ -1,0 +1,7 @@
+- [x] Contrastar requisitos y datos guardados sin modificar el curso remoto.
+- [x] Reproducir y corregir el caso exacto de QA con versión de conversor nueva.
+- [x] Aplicar alcance explícito a Producción/Ensamble y anticipar la guarda de video.
+- [x] Ejecutar regresión, tipos, lint y revisión adversarial.
+- [x] Confirmar B-rolls como apoyos opcionales sin video final; registrar la superficie pendiente.
+- [x] Incorporar asignación explícita general por lección en el editor de recorrido; no redistribuir el curso de prueba.
+- [ ] Validar tras despliegue autorizado.

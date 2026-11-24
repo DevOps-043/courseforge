@@ -4,9 +4,9 @@ import type { DeliveryWorkspace } from "../types/delivery.schemas";
 import { courseDeckSpecSchema, courseSlideSpecSchema } from "../../production/slides/specs/course-deck.schema";
 import { renderCourseDeckHtml } from "../../production/slides/render/html-deck-renderer.service";
 import { validateCourseDeckQuality } from "../../production/slides/validation/course-deck-qa.service";
-import { copyBudgetForSlideType } from "../../production/slides/content/slide-copy-policy.service";
+import { copyBudgetForSlideType, normalizedVisibleText, MIN_SLIDE_EXPLANATION_CHARACTERS } from "../../production/slides/content/slide-copy-policy.service";
 
-export const SESSION_DECK_VERSION = "session-deck-v1";
+export const SESSION_DECK_VERSION = "session-deck-v2";
 const sessionDeckSchema = courseDeckSpecSchema.omit({ materialComponentId: true }).extend({
   sessionId: z.uuid(), slides: z.array(courseSlideSpecSchema).min(1).max(400),
 });
@@ -49,14 +49,32 @@ function paginatePoints(points: string[]) {
     }
   }
   if (page.length) pages.push(page);
-  // Evita una última página con una frase residual cuando cabe redistribuir
-  // el contenido sin superar el presupuesto ni dejar vacía la página anterior.
-  const last = pages.at(-1);
-  const previous = pages.at(-2);
-  if (last && previous && last.join(" ").length < 60 && previous.length > 1
-    && last.length < budget.maxBodyItems && previous.slice(0, -1).join(" ").length >= 60) {
-    last.unshift(previous.pop()!);
+  const chunks = pages.flat();
+  // Buscar una distribución completa: corregir solo la última página puede
+  // dejar insuficiente la anterior. Medir igual que QA, sin contar puntuación.
+  const next = new Map<number, number>([[chunks.length, chunks.length]]);
+  for (let start = chunks.length - 1; start >= 0; start--) {
+    for (let count = budget.maxBodyItems; count >= 1; count--) {
+      const end = start + count;
+      if (end > chunks.length || !next.has(end)) continue;
+      const items = chunks.slice(start, end);
+      const text = items.join(" ");
+      if (text.length <= budget.maxBodyCharacters
+        && normalizedVisibleText(text).length >= MIN_SLIDE_EXPLANATION_CHARACTERS
+        && items.every(item => item.length <= budget.maxBodyItemCharacters)) {
+        next.set(start, end); break;
+      }
+    }
   }
+  if (next.has(0)) {
+    const balanced: string[][] = [];
+    for (let start = 0; start < chunks.length;) {
+      const end = next.get(start)!;
+      balanced.push(chunks.slice(start, end)); start = end;
+    }
+    return balanced;
+  }
+  // Si no existe partición válida, conservar el contenido y su rechazo real.
   return pages;
 }
 

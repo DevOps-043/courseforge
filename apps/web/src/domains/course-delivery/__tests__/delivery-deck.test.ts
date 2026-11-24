@@ -59,3 +59,16 @@ test("redistribuye una frase residual sin perder palabras ni crear una página i
   assert.equal(output.qa.status, "PASS", JSON.stringify(output.qa.findings));
   assert.equal(output.deck.slides.flatMap(slide => slide.bodyBlocks.flatMap(block => block.items || [])).join(" "), point);
 });
+
+test("regresión de staging: la diapositiva 7 no deja aislado su tercer punto", () => {
+  const { workspace, id, material } = documentFixture();
+  material.slides[0] = { title: "Descomponer y estimar con incertidumbre", notes: "NOTA_RESERVADA", sourceRefs: ["source"], points: [
+    "Considerar preparación, ejecución, coordinación, revisión y correcciones.",
+    "Registrar optimista ≤ más probable ≤ pesimista.",
+    "Distinguir trabajo, espera y reserva; evitar dobles conteos.",
+  ] };
+  const result = buildSessionDeck(workspace, id);
+  assert.equal(result.qa.status, "PASS", JSON.stringify(result.qa.findings));
+  assert.equal(result.deck.slides.flatMap(slide => slide.bodyBlocks.flatMap(block => block.items || [])).join(" "), material.slides[0].points.join(" "));
+  assert.equal(result.version, "session-deck-v2");
+});

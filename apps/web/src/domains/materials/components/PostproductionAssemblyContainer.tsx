@@ -6,8 +6,10 @@ import { useSearchParams } from "next/navigation";
 import { useMaterials } from "../hooks/useMaterials";
 import { HyperframesCompositionPanel } from "./HyperframesCompositionPanel";
 import { PRODUCTION_THEME } from "./production-asset-ui";
+import { isAcademyProductionLesson } from "../../course-delivery/lib/delivery-production-scope";
 
 interface PostproductionAssemblyContainerProps {
+  academyLessonIds?: readonly string[] | null;
   artifactId: string;
   initialComponentId?: string;
   onNext?: () => void;
@@ -56,6 +58,7 @@ export function PostproductionAssemblyContainer({
   initialComponentId,
   onNext,
   singleVideoOnly = false,
+  academyLessonIds,
 }: PostproductionAssemblyContainerProps) {
   const searchParams = useSearchParams();
   const returnedComponentId = searchParams.get("componentId");
@@ -79,14 +82,14 @@ export function PostproductionAssemblyContainer({
     setIsLoading(true);
     try {
       const lessonMetadata = new Map(
-        materials.lessons.map((lesson, index) => [lesson.id, {
+        materials.lessons.filter(lesson => isAcademyProductionLesson(lesson.lesson_id, academyLessonIds)).map((lesson, index) => [lesson.id, {
           order: index,
           title: lesson.lesson_title,
         }]),
       );
       const artifactComponents = await getArtifactComponents();
       const allComponents = artifactComponents
-        .filter((component) => component.type.includes("VIDEO"))
+        .filter((component) => component.type.includes("VIDEO") && lessonMetadata.has(component.material_lesson_id))
         .sort((left, right) =>
           (lessonMetadata.get(left.material_lesson_id)?.order ?? Number.MAX_SAFE_INTEGER)
           - (lessonMetadata.get(right.material_lesson_id)?.order ?? Number.MAX_SAFE_INTEGER))
@@ -116,7 +119,7 @@ export function PostproductionAssemblyContainer({
     } finally {
       setIsLoading(false);
     }
-  }, [getArtifactComponents, initialComponentId, materials, materialsLoading, returnedComponentId, singleVideoOnly]);
+  }, [getArtifactComponents, initialComponentId, materials, materialsLoading, returnedComponentId, singleVideoOnly, academyLessonIds]);
 
   useEffect(() => { void loadComponents(); }, [loadComponents]);
 

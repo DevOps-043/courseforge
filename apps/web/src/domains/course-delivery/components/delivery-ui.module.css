@@ -132,3 +132,8 @@
   border-radius: 12px;
   margin: 16px 0;
 }
+.assignmentList { min-width: 0; border: 1px solid var(--engine-border); border-radius: 12px; padding: 16px; display: grid; gap: 12px; }
+.assignmentRow { min-width: 0; border-top: 1px solid var(--engine-border); padding-top: 12px; display: grid; gap: 8px; }
+.assignmentRow select { width: 100%; min-width: 0; padding: 10px; color: var(--engine-text); background: var(--engine-canvas); border: 1px solid var(--engine-border); border-radius: 8px; }
+.brollItem { display: grid; gap: 10px; padding: 16px 0; border-top: 1px solid var(--engine-border); overflow-wrap: anywhere; }
+.brollVideo { width: 100%; max-height: 540px; background: #10243a; border-radius: 12px; }

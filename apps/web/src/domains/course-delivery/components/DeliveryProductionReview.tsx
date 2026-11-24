@@ -5,6 +5,7 @@ import type { CourseDeliveryController } from "../hooks/useCourseDelivery";
 import type { DeliveryAudience } from "../services/delivery-export";
 import { deliverySessionPreview } from "../lib/delivery-session-preview";
 import { DeliverySessionDeck } from "./DeliverySessionDeck";
+import { DeliverySessionBrolls } from "./DeliverySessionBrolls";
 import styles from "./delivery-ui.module.css";
 
 const AUDIENCES: Array<{ id: DeliveryAudience; label: string }> = [
@@ -37,6 +38,8 @@ function SessionPreview({ controller, sessionId, expanded }: { controller: Cours
       {audience === "presentation" && sections.length > 0
         ? <details><summary>Ver contenido base de las diapositivas</summary>{content}</details> : content}
     </section>
+    {expanded && <DeliverySessionBrolls key={`broll-${workspace.revision}`} artifactId={controller.artifactId} sessionId={sessionId}
+      revision={workspace.revision} approved={controller.snapshot!.readiness.materialsReady} canReview={controller.snapshot!.canReview} />}
   </div>;
 }
 

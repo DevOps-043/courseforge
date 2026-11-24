@@ -1,0 +1,13 @@
+# Diagnóstico y solución
+
+Consulta de solo lectura del curso de prueba en Engine: revisión 9, modo HYBRID/COMPLEMENTARY, veinte lecciones explícitas en un tramo ASYNCHRONOUS y dos sesiones que cubren esas mismas lecciones. Por tanto no hay temas exclusivos de Hub en ese curso. La cobertura en vivo no elimina la asignación asíncrona explícita. No cambiar el recorrido aprobado por inferencia.
+
+La diapositiva 7 de la primera sesión contiene tres puntos. El primero excede 68 caracteres y se divide en dos; el límite de tres puntos por página deja aislado el último punto. La reparación local previa medía caracteres crudos y no buscaba todas las particiones, a diferencia de QA que normaliza puntuación. Se busca una partición completa de fragmentos contiguos bajo los mismos presupuestos y mínimo normalizado de QA. Si es imposible, se conserva el contenido y su rechazo. No añadir, truncar ni sintetizar contenido. Incrementar SESSION_DECK_VERSION a v2 invalida la identidad del asset fallido sin borrar historial ni cambiar aprobaciones.
+
+Producción y Ensamble reciben explícitamente los IDs Academy y vuelven a filtrar recursos históricos en cliente, además del filtrado existente en servidor. No se montan sin snapshot de impartición. La proyección distingue temas compartidos y exclusivos; el resumen informa cantidades y las tarjetas compartidas indican por qué conservan su video. Las guías, actividades, respuestas privadas y cuestionarios existentes no se eliminan.
+
+El usuario aclaró que requiere una solución general, no redistribuir este taller. El editor de Temario incorpora «Destino de cada lección»: solo síncrona, solo asíncrona o compartida. En una misma sección se ven sesiones de Hub y tramo de Academy. La selección actual se deriva del contrato existente, sin nueva columna o migración; cambiar destino actualiza ambas partes del borrador y elimina referencias incompatibles solo por esa elección explícita. La edición detallada por tramo conserva orden, tiempos y objetivos, pero muestra temas como resumen para no duplicar controles. Guardar usa la validación y concurrencia existentes e invalida aprobaciones dependientes. Los tramos o sesiones vacíos siguen pendientes; no se inventan ni eliminan automáticamente.
+
+La ruta de video HeyGen comprueba el contexto de producción vigente antes de consultar credenciales o despachar; el servicio del worker conserva su comprobación. La autorización por tenant existente sigue siendo obligatoria. No se altera el pipeline independiente de videos sin componente ni se inventa un componente Academy para sesiones.
+
+Rollback: revertir UI/guarda nuevas; conservar assets previos. Cambiar el algoritmo exige la versión v2 para que un reintento no reutilice HTML v1. Sin migración ni SQL remoto.

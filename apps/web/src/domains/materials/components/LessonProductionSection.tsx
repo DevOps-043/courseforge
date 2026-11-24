@@ -8,6 +8,7 @@ import type {
 import { getLessonProductionProgress } from "./lesson-production-progress";
 
 interface LessonProductionSectionProps {
+  deliveryLabel?: string;
   componentCards: React.ReactNode;
   components: MaterialComponent[];
   expanded: boolean;
@@ -17,6 +18,7 @@ interface LessonProductionSectionProps {
 }
 
 export function LessonProductionSection({
+  deliveryLabel,
   componentCards,
   components,
   expanded,
@@ -59,6 +61,7 @@ export function LessonProductionSection({
           <span className="block text-base font-bold leading-snug text-gray-950 transition-colors group-hover:text-[var(--engine-info)] dark:text-white sm:text-lg">
             {lesson.lesson_title}
           </span>
+          {deliveryLabel && <span className="mt-1 block text-xs text-[var(--engine-text-muted)]">{deliveryLabel}</span>}
           <span className="mt-1.5 flex items-center gap-2 text-xs text-gray-500 dark:text-[var(--engine-muted)]">
             <span>{progress.total} {progress.total === 1 ? "componente visual" : "componentes visuales"}</span>
             <span aria-hidden="true">·</span>

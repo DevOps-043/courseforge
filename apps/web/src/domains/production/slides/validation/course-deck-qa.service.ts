@@ -12,6 +12,7 @@ import {
   hasUnexpectedVisibleLanguage,
   textLengthForVisibleSlide,
   normalizedVisibleText,
+  MIN_SLIDE_EXPLANATION_CHARACTERS,
 } from "../content/slide-copy-policy.service";
 
 export type CourseDeckQaSeverity = "error" | "warning";
@@ -52,7 +53,7 @@ export interface CourseDeckQaReport {
 
 const MAX_RECOMMENDED_SLIDE_TEXT_CHARS = 260;
 const MAX_BLOCKING_SLIDE_TEXT_CHARS = 340;
-const MIN_CONTENT_EXPLANATION_CHARS = 60;
+const MIN_CONTENT_EXPLANATION_CHARS = MIN_SLIDE_EXPLANATION_CHARACTERS;
 
 // Internal recovery messages must never become learner-facing content. This is
 // intentionally narrow so concise but valid educational copy remains allowed.
