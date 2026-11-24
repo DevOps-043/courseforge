@@ -28,6 +28,7 @@ import {
 
 import { compositionDeckImageAssetIds } from "../composition-editor/composition-deck-image-aliases.server";
 import { ensureGeneratedDeckDraftImageLinks } from "./hyperframes-generated-image-links.server";
+import { matchesLegacyNarrativeUndefinedHash } from "../composition-editor/composition-document-legacy-hash.server";
 
 const DRAFT_PROJECT_PREFIX = "video-composition-drafts";
 const GENERATED_DECK_FONT_UNAVAILABLE_MESSAGE = "Las diapositivas usan una fuente personalizada pendiente de vinculación al editor. No se sustituirá la tipografía ni se creará un borrador con campos incompletos.";
@@ -280,7 +281,18 @@ async function loadOrCreateInitialDocument(params: {
   userId: string;
 }) {
   try {
-    const current = await getCurrentCompositionDocument(params);
+    let current = await getCurrentCompositionDocument(params);
+    if (params.generatedComponentId && !params.manualSourceInsertion && hashCompositionDocument(current.document) !== current.documentHash) {
+      if (params.preassemblyVersion || !matchesLegacyNarrativeUndefinedHash(current.document, current.documentHash))
+        throw new HyperframesDraftError("La versión guardada no coincide con el documento. No se puede recuperar automáticamente; revisa su integridad antes de continuar.", 409);
+      // La lectura no altera historia ni pins. Una inicialización explícita
+      // recupera solo esta firma conocida mediante el guardado versionado normal.
+      current = await applyAndAppendCompositionDocumentPatches({
+        ...params, expectedDocumentHash: current.documentHash, auditSource: "SYSTEM",
+        patch: { operations: [{ type: "document.reconcile", document: current.document }], source: "AGENT",
+          summary: "Normalizó la identidad JSON del documento narrativo sin cambiar su contenido." },
+      });
+    }
     const preserveDeckSources = Boolean(params.generatedComponentId || current.document.htmlEditing?.items.length);
     if (preserveDeckSources && params.preassemblyVersion) {
       throw new HyperframesDraftError("El reensamble de diapositivas editables requiere conservar sus fuentes registradas. No se ha modificado el borrador.", 409);

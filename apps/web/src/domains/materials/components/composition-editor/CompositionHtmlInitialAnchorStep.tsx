@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CompositionHtmlEditorialHost } from "@/domains/production/composition-editor/composition-html-editing-native-host.client";
 import type { HtmlSnapshotLocatorScope } from "@/domains/production/composition-editor/composition-html-snapshot-locator.client";
+import { describeHtmlInitialAnchorFailure } from "@/domains/production/composition-editor/composition-html-initial-anchor.client";
 
 /** Explicit prerequisite only. Availability is not registration or an operation
  * receipt. After an uncertain POST, only an explicit consultation is offered. */
@@ -24,10 +25,10 @@ export function CompositionHtmlInitialAnchorStep({ scope, host, disabled, onAvai
         setStatus(view.activeRevisionId ? "AVAILABLE" : "MISSING");
         onAvailabilityChange(Boolean(view.activeRevisionId));
       }
-    } catch {
+    } catch (failure) {
       if (!controller.signal.aborted) {
         setStatus("UNKNOWN");
-        setError("No se pudo comprobar la revisión guardada. Consulta su disponibilidad; no se repetirá la preparación automáticamente. Si falta calcular la duración, recalcúlala u organiza el timeline antes de continuar.");
+        setError(describeHtmlInitialAnchorFailure(failure));
       }
     } finally {
       if (pending.current === controller) { pending.current = null; if (!controller.signal.aborted) setBusy(false); }

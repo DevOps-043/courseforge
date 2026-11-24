@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readHtmlInitialAnchor, prepareHtmlInitialAnchor, type InitialHtmlAnchorFreezer } from "../composition-html-initial-anchor.server";
-import { requestHtmlInitialAnchor } from "../composition-html-initial-anchor.client";
+import { requestHtmlInitialAnchor, HtmlInitialAnchorClientError, describeHtmlInitialAnchorFailure } from "../composition-html-initial-anchor.client";
 import { createHtmlInitialAnchorHandler } from "../http/composition-html-initial-anchor-handler.server";
 import type { HtmlInitialAnchorCommand } from "../composition-html-initial-anchor.contract";
 import { snapshotCompositionDocument } from "../composition-snapshot.service";
@@ -204,4 +204,29 @@ for (const withFont of [false, true]) test(`real snapshot freezer packages gener
     assert.equal(fontManifest[0].fontAssetId, fontFixture.fontId);
     assert.equal(fontManifest[0].checksumSha256, fontFixture.row.checksum_sha256);
   }
+});
+
+for (const status of [401, 403, 409, 429, 503]) {
+  test('clasifica el error HTTP '+status+' sin filtrar mensajes internos ni repetir consultas', async () => {
+    const f = scenario(); let calls = 0;
+    await assert.rejects(requestHtmlInitialAnchor({ documentId: uuid, expectedDocumentHash: f.command.expectedDocumentHash, action: 'CONSULT', signal: f.signal,
+      fetcher: async () => { calls++; return Response.json({ error: 'PRIVATE_PROVIDER_DETAIL' }, { status, headers: { 'x-request-id': uuid } }); } }), error => {
+        assert.ok(error instanceof HtmlInitialAnchorClientError);
+        assert.equal(error.status, status); assert.equal(error.requestId, uuid);
+        const diagnostic = describeHtmlInitialAnchorFailure(error);
+        assert.match(diagnostic, new RegExp(uuid)); assert.doesNotMatch(diagnostic, /PRIVATE_PROVIDER_DETAIL/);
+        if (status === 503) assert.doesNotMatch(diagnostic, /duraci.n|contrato|antiguas/);
+        return true;
+      });
+    assert.equal(calls, 1);
+  });
+}
+
+test('no usa una referencia de solicitud manipulada como mensaje de interfaz', async () => {
+  const f = scenario();
+  await assert.rejects(requestHtmlInitialAnchor({ documentId: uuid, expectedDocumentHash: f.command.expectedDocumentHash, action: 'CONSULT', signal: f.signal,
+    fetcher: async () => Response.json({}, { status: 503, headers: { 'x-request-id': 'PRIVATE_INJECTED_ID' } }) }), error => {
+      assert.ok(error instanceof HtmlInitialAnchorClientError);
+      assert.equal(error.requestId, null); assert.doesNotMatch(describeHtmlInitialAnchorFailure(error), /PRIVATE_INJECTED_ID/); return true;
+    });
 });

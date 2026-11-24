@@ -7,6 +7,21 @@ Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega d
 
 ## 1. Regla de mantenimiento
 
+### Campos de diapositivas desde Herramientas (2026-11-24)
+
+El monitor integra preparación y recuperación editorial en Herramientas → Campos
+de diapositivas, sin desplegable superior. Abrir la herramienta no ejecuta tareas.
+Si falta el origen de duración, ofrece el cálculo existente que conserva la
+posición de clips; no omite la validación del snapshot. Los errores HTTP previos
+al envío conservan una referencia segura; después del envío persiste el tratamiento
+de resultado incierto. El control de solicitudes mantiene límites y permisos con
+un reloj timestamptz sin colisión con CURRENT_TIME. No cambia documento, motion,
+render ni contrato de campos. La identidad canónica omite opcionales undefined
+que JSON no persiste. La inicialización explícita puede crear una nueva versión
+solo si reconoce exactamente la firma narrativa histórica afectada; conserva
+la historia y rechaza inconsistencias distintas, sin omitir guardas de integridad.
+[Diagnóstico y migración](../../openspec/changes/repair-slide-field-tools/design.md).
+
 ### Continuidad del editor y vínculos de imágenes (2026-11-24)
 
 Ensamble conserva el editor montado durante las actualizaciones del listado y

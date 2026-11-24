@@ -11,6 +11,7 @@ import { CompositionSaveQueue } from "../composition-save-queue";
 import { readGeneratedDeckInitializationJournal, beginGeneratedDeckInitializationJournal } from "../composition-generated-deck-initialization-journal.client";
 import { beginHtmlEditingInitializationJournal } from "../composition-html-editing-initialization-journal.client";
 import { coordinateGeneratedDeckInitialization, verifyGeneratedDeckInitializationRebase } from "../composition-generated-deck-initialization-coordinator.client";
+import { HtmlInitialAnchorClientError } from "../composition-html-initial-anchor.client";
 import type { HtmlEditingNativePayload } from "../composition-html-editing-rebase.client";
 
 async function setup() {
@@ -33,7 +34,7 @@ async function setup() {
   const queue = new CompositionSaveQueue<number>(async () => true), calls: Array<{ url: string; method: string }> = [];
   const state = { scope, payload: base, serverPayload: base, missingAnchor: false, lostAnchor: false, lostAck: false, notFound: false, enabled: true,
     conflicting: false, corruptedCurrent: false, afterPost: null as (() => void) | null, postWait: null as Promise<void> | null,
-    adoptCount: 0, locked: false, busy: [] as boolean[] };
+    adoptCount: 0, locked: false, busy: [] as boolean[], anchorFailure: false };
   const signal = new AbortController().signal;
   const host = new CompositionHtmlEditorialNativeHost({ enabled: () => true, initializationEnabled: () => true,
     generatedDeckEnabled: () => state.enabled, getScope: () => state.scope, getPayload: () => state.payload,
@@ -47,6 +48,7 @@ async function setup() {
       const path = String(url), method = options?.method ?? "GET"; calls.push({ url: path, method });
       let data: unknown;
       if (path.includes("html-editing-initial-anchor")) {
+        if (state.anchorFailure) return Response.json({}, { status: 503, headers: { "x-request-id": fixture.compositionId } });
         if (method === "POST") {
           assert.equal(readGeneratedDeckInitializationJournal(storage, scope).status, "EMPTY");
           state.missingAnchor = false;
@@ -199,4 +201,15 @@ test("pending generated journal blocks anchor, individual initialization, editor
   assert.equal(f.calls.length, 0);
   f.entries.set([...f.entries.keys()][0], "{");
   assert.equal(f.host.generatedDeckTracking(f.scope).status, "UNAVAILABLE"); assert.ok(f.host.isBlocked());
+});
+
+test('un fallo HTTP de anclaje conserva la referencia y no inicia el lote ni su journal', async () => {
+  const f = await setup(); f.state.anchorFailure = true;
+  await assert.rejects(f.send(), error => {
+    assert.ok(error instanceof HtmlInitialAnchorClientError);
+    assert.equal(error.status, 503); assert.equal(error.requestId, f.fixture.compositionId); return true;
+  });
+  assert.equal(f.calls.length, 1); assert.equal(f.calls[0].method, 'GET');
+  assert.equal(readGeneratedDeckInitializationJournal(f.storage, f.scope).status, 'EMPTY');
+  assert.equal(f.state.adoptCount, 0); assert.equal(f.host.isBlocked(), false);
 });

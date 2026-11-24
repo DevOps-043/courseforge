@@ -1,0 +1,8 @@
+- [x] Confirmar el 400 de rate limiting y PostgreSQL 42804.
+- [x] Preparar migración incremental y prueba transaccional.
+- [x] Obtener autorización explícita sobre la base compartida.
+- [x] Integrar las acciones en herramientas y mejorar errores previos al envío.
+- [x] Aplicar y validar SQL autorizado.
+- [x] Reproducir el pin narrativo inconsistente y preparar recuperación versionada exacta.
+- [x] Ejecutar regresiones, revisión adversarial y compuerta.
+- [ ] Publicar cambios autorizados de staging y verificar la herramienta visual.

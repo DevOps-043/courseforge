@@ -25,7 +25,8 @@ test("inicializar repetidamente conserva el vínculo editorial y limpia el medio
     "src/domains/production/hyperframes/hyperframes-draft.service.ts", {
       "../standalone/standalone-html.service": { loadStandaloneHtmlDecks: async () => null },
       "../composition-editor/composition-document.factory": { reconcileCompositionDocument: () => ({ changed: false, document }) },
-      "../composition-editor/composition-document.service": { getCurrentCompositionDocument: async () => ({ document, version: 1 }) },
+      "../composition-editor/composition-document.service": { getCurrentCompositionDocument: async () => ({ document, version: 1, documentHash: "canonical" }), hashCompositionDocument: () => "canonical" },
+      "../composition-editor/composition-document-legacy-hash.server": {},
       "../composition-editor/composition-duration.service": {}, "./hyperframes-plan.service": {},
       "../composition-editor/composition-narrative-source.service": { buildCompositionNarrativeScenes: () => [], buildSceneVisualCatalog: () => [] },
       "../slides/generation/course-deck-editorial-reader.server": {},

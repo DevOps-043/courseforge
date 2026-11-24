@@ -9,6 +9,7 @@
     "test:slide-worker-session": "tsc -p apps/web/tsconfig.remotion-test.json && node --test apps/web/.tmp/remotion-tests/domains/production/slides/__tests__/slide-worker-access.test.js",
     "test:session-decks": "npm run test:course-delivery -w apps/web && node scripts/test-session-decks.cjs && node scripts/test-production-review-ui.cjs",
     "test:session-brolls": "npm run test:course-delivery -w apps/web && node scripts/test-session-broll-ui.cjs && node scripts/test-production-review-ui.cjs",
+    "test:slide-fields": "npm run test:slide-fields -w apps/web",
     "test:assembly-stability": "npm run test:assembly-stability -w apps/web",
     "test:generated-deck-draft": "npm run test:generated-deck-draft -w apps/web",
     "test:hybrid-production": "npm run test:session-decks && node scripts/test-hybrid-assignment-ui.cjs",
