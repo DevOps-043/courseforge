@@ -7,6 +7,16 @@ Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega d
 
 ## 1. Regla de mantenimiento
 
+### Decks visuales de sesiones síncronas (2026-11-23)
+
+Producción reutiliza el renderer HTML y QA de slides para convertir materiales de
+sesión aprobados en un asset visual por sesión. El contrato de render admite una
+identidad de sesión sin crear componentes Academy. La entrada de generación
+Academy y su límite no cambian. El deck de sesión no crea ni modifica composición,
+`document.motion`, ZIP o render cloud. Se recupera por contenido/aprobación vigente,
+sin notas reservadas, con vista aislada y descarga autenticada. Un fallo de QA
+bloquea utilizar el deck. Véase [diseño y límites](../../openspec/changes/produce-session-decks/design.md).
+
 ### Seguimiento de producción de slides (2026-11-23)
 
 Antes de preparar una composición, las tarjetas de producción recuperan el último

@@ -124,3 +124,11 @@
   .transfer { padding: 14px; }
   .actions > button { width: 100%; }
 }
+.deckFrame {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--border-color, #d9e1e8);
+  border-radius: 12px;
+  margin: 16px 0;
+}

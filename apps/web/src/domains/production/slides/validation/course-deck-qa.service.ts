@@ -1,5 +1,5 @@
 import type {
-  CourseDeckSpec,
+  RenderableCourseDeck as CourseDeckSpec,
   CourseSlideSpec,
 } from "../specs/course-deck.schema";
 import { isInstructionalChart } from "../charts/chart-eligibility.service";

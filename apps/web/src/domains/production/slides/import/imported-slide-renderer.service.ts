@@ -1,7 +1,7 @@
 import { load } from "cheerio";
 import { createHash } from "node:crypto";
 import postcss from "postcss";
-import type { CourseDeckSpec, CourseSlideSpec } from "../specs/course-deck.schema";
+import type { RenderableCourseDeck as CourseDeckSpec, CourseSlideSpec } from "../specs/course-deck.schema";
 import { HtmlSlideImportError, type ImportedSlideDesign, type ImportedSlideLayout } from "./imported-slide-design.contract";
 import { normalizeImportedSlideDesign } from "./imported-slide-design.service";
 import { materializeImportedAssetCss } from "./imported-slide-asset-renderer";

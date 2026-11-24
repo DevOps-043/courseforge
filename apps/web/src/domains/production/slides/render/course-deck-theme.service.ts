@@ -1,4 +1,4 @@
-import type { CourseDeckAppearance, CourseDeckSpec } from "../specs/course-deck.schema";
+import type { CourseDeckAppearance, RenderableCourseDeck as CourseDeckSpec } from "../specs/course-deck.schema";
 
 interface CourseDeckTheme {
   accent: string;

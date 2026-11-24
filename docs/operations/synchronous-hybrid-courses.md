@@ -18,7 +18,9 @@ las validaciones existentes de ambos destinos; una generación completada no
 equivale a aprobación. Academy conserva envío a QA, notas, aprobación y rechazo
 en su apartado. Los pendientes de generación/validación bloquean la acción conjunta.
 
-La guía y el cuaderno son HTML imprimible, no archivos Word/PPTX ni un servicio nuevo de PDF. La presentación es web estática con notas desplegables. No se modifica HyperFrames, motion ni render audiovisual.
+La guía y el cuaderno son HTML imprimible, no archivos Word/PPTX ni un servicio nuevo de PDF. En Producción, cada sesión aprobada permite producir su deck visual HTML con el renderer y QA compartidos con Academy, verlo dentro del curso y descargarlo. La exportación imprimible del curso se conserva por separado. No se modifica HyperFrames, motion ni render audiovisual.
+
+El deck se guarda en `production_assets` sin componente Academy ficticio. La identidad incorpora tenant, curso, sesión, contenido aprobado y versión del compilador; el reintento recupera el mismo asset. Cambiar o desaprobar entradas impide servir la versión anterior como vigente. Un QA `FAIL` conserva el diagnóstico y bloquea preview/descarga; `WARN` se muestra para revisión. No se incluyen notas ni soluciones privadas en el HTML proyectable. La producción es determinista, sin llamadas a modelos ni proveedores. Contrato y verificación: [presentaciones de sesión](../../openspec/changes/produce-session-decks/design.md).
 
 ## Componentes y persistencia
 
