@@ -16,7 +16,11 @@ Herk es un workspace 2.0.0. Codex lee `.agents/skills` y Claude Code lee `.claud
 
 Los scripts proponen omitir pausas a partir del transcript, vuelven a calcular los tiempos, encuentran candidatos a errores y aplican cortes revisados. Un mapa de segmentos vincula tiempos de fuente y salida. El kit incluye una interfaz de revisión HTML, reglas para sincronizar overlays, validadores de reels y una biblioteca de plantillas y tarjetas. La revisión visual y auditiva del MP4 sigue siendo parte del flujo.
 
-Evidencia en el [workflow de Herk](<D:/Pulse Hub/herk-edit-kit/docs/WORKFLOW.md>), [scripts y dependencias](<D:/Pulse Hub/herk-edit-kit/package.json>), [proveedores](<D:/Pulse Hub/herk-edit-kit/docs/TOOLS-AND-API-KEYS.md>) y [permiso de uso](<D:/Pulse Hub/herk-edit-kit/licenses/PIPELINE-USE-PERMISSION.txt>).
+Evidencia consultada en el repositorio externo Herk Edit Kit, commit `10511e5`:
+workflow en `docs/WORKFLOW.md`, scripts y dependencias en `package.json`,
+proveedores en `docs/TOOLS-AND-API-KEYS.md` y permiso de uso en
+`licenses/PIPELINE-USE-PERMISSION.txt`. Esos archivos pertenecen a Herk, no a
+Courseforge; su consulta requiere disponer de ese repositorio y esa revisión.
 
 ### Encaje con Courseforge
 
@@ -103,3 +107,4 @@ Para esos supuestos, Actions más HeyGen suman USD 1.272 por video. Falta añadi
 ## 6. Mejoras adicionales recomendadas
 
 Orden de inversión: propuesta de cortes y captions en Ensamble, después estilos nativos, después ampliación de formatos y volumen. Abrir OpenSpec al iniciar la implementación para registrar el contrato, los escenarios y la evidencia. Activar por organización y detener nuevos despachos desde el flag si el piloto falla. Conservar versiones, propuestas y la auditoría para terminar o cancelar jobs ya aceptados.
+
