@@ -61,7 +61,7 @@ import { acceptsNarrativeExtractionReload } from "@/domains/production/compositi
 import type { NarrativeEditorReload } from "@/domains/production/composition-editor/composition-narrative-editor-controller";
 import { CompositionHtmlSnapshotRecoveryPanel } from "./CompositionHtmlSnapshotRecoveryPanel";
 import { CompositionHtmlEditorialInspector } from "./CompositionHtmlEditorialInspector";
-import { CompositionHtmlRecoveryCenter } from "./CompositionHtmlRecoveryCenter";
+import { CompositionSlideEditingTools } from "./CompositionSlideEditingTools";
 import { useAuthStore } from "@/core/stores/authStore";
 import { useOrganizationStore } from "@/core/stores/organizationStore";
 import { CompositionHtmlEditorialNativeHost } from "@/domains/production/composition-editor/composition-html-editing-native-host.client";
@@ -688,6 +688,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   const narrativeRangeStopRef = useRef<() => void>(() => {});
   const previewReadyRef = useRef(false);
   const [manualInspectorOpen, setManualInspectorOpen] = useState(false);
+  const [slideEditingToolsOpen, setSlideEditingToolsOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [assetInsertionMode, setAssetInsertionMode] = useState<CompositionAssetInsertionMode>(
@@ -1049,7 +1050,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
       if (event.defaultPrevented || event.isComposing) return;
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
-        || (target instanceof HTMLElement && (target.isContentEditable || target.closest('[role="dialog"], [aria-modal="true"]')))) return;
+        || (target instanceof HTMLElement && (target.isContentEditable || target.closest('[role="combobox"], [role="dialog"], [aria-modal="true"]')))) return;
       const command = resolveCompositionEditorShortcut(event);
       if (!command) return;
       if (["DELETE", "RIPPLE_DELETE", "COPY", "DUPLICATE", "TIMELINE_LEFT", "TIMELINE_RIGHT"].includes(command)
@@ -3784,7 +3785,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
   return (
     <CompositionAutosaveContext.Provider value={autosaveCoordinatorRef.current}><section className={`${styles.studio} courseforge-composition-studio`} inert={htmlEditorialBusy || narrativeExtractionHost?.busy} aria-busy={htmlEditorialBusy || narrativeExtractionHost?.busy}>
       {pendingEdits.length > 0 && !saving && <details className="rounded border border-amber-300 p-2 text-xs text-amber-800 dark:text-amber-200"><summary>{pendingEdits.length} cambios conservados para recuperación</summary><ul>{pendingEdits.map(entry => <li key={entry.id}>{entry.summary}</li>)}</ul><button type="button" disabled={Boolean(failedSave || recoveryConflict)} className="mt-2 underline" onClick={() => void recoverPendingEdits()}>Recuperar cambios no enviados</button></details>}
-      {htmlEditorialHostRef.current && <CompositionHtmlRecoveryCenter draftId={draftId} compositionId={compositionId} host={htmlEditorialHostRef.current} document={payload?.document} />}
+      {htmlEditorialHostRef.current && <CompositionSlideEditingTools open={slideEditingToolsOpen} onClose={() => setSlideEditingToolsOpen(false)} busy={htmlEditorialBusy || saving} draftId={draftId} compositionId={compositionId} host={htmlEditorialHostRef.current} document={payload.document} onRecalculateDuration={recalculateDuration} />}
       {commandPaletteOpen && <CompositionCommandPalette items={commandPaletteItems} onClose={() => setCommandPaletteOpen(false)} onRun={runCompositionCommand} />}
       <CompositionPresetPanel
         activePreview={presetPreview}
@@ -3917,6 +3918,7 @@ function NativeCompositionPreviewSession({ assets, componentId, compositionId, d
               setInspectorTab("assistant");
             }}
             onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+            onOpenSlideEditing={() => setSlideEditingToolsOpen(true)}
             onOpenPresets={() => {
               setPresetPanelOpen(true);
               void loadCompositionPresets();

@@ -1,6 +1,8 @@
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from "@/lib/server/env";
 
+import { COURSE_TEXT_MODELS, resolveOpenAiTextModels } from "../../shared/ai/text-model-provider";
+
 export type PipelineModelSettingType =
   | "ARTIFACT_BASE"
   | "SYLLABUS"
@@ -34,92 +36,92 @@ interface ModelSettingsRecord {
 
 const DEFAULT_MODEL_SETTINGS: Record<PipelineModelSettingType, PipelineModelSettings> = {
   ARTIFACT_BASE: {
-    fallback_model: "gpt-4o-mini",
-    model_name: "gemini-3.5-flash",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "ARTIFACT_BASE",
     temperature: 0.7,
     thinking_level: "medium",
   },
   SYLLABUS: {
-    fallback_model: "gpt-4o-mini",
-    model_name: "gemini-3.5-flash",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "SYLLABUS",
     temperature: 0.7,
     thinking_level: "medium",
   },
   INSTRUCTIONAL_PLAN: {
-    fallback_model: "gpt-4o-mini",
-    model_name: "gemini-3.5-flash",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "INSTRUCTIONAL_PLAN",
     temperature: 0.7,
     thinking_level: "medium",
   },
   CURATION: {
-    fallback_model: "gemini-2.5-flash",
-    model_name: "gpt-4o-mini",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "CURATION",
     temperature: 0.1,
     thinking_level: "low",
   },
   MATERIALS: {
-    fallback_model: "gemini-3.5-flash",
-    model_name: "gemini-3.6-flash",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "MATERIALS",
     temperature: 0.7,
     thinking_level: "minimal",
   },
   BUNDLE_AGENT: {
-    fallback_model: "gpt-4.1-mini",
-    model_name: "gemini-2.5-flash",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "BUNDLE_AGENT",
     temperature: 0.3,
     thinking_level: "medium",
   },
   SLIDES_DECK_BRIEF_AGENT: {
-    fallback_model: "gemini-2.5-flash",
-    model_name: "gpt-4o-mini",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "SLIDES_DECK_BRIEF_AGENT",
     temperature: 0.2,
     thinking_level: "low",
   },
   SLIDES_EVIDENCE_AGENT: {
-    fallback_model: "gemini-2.5-flash",
-    model_name: "gpt-4o-mini",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "SLIDES_EVIDENCE_AGENT",
     temperature: 0.1,
     thinking_level: "low",
   },
   SLIDES_STRATEGY_AGENT: {
-    fallback_model: "gemini-2.5-flash",
-    model_name: "gpt-4o",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "SLIDES_STRATEGY_AGENT",
     temperature: 0.3,
     thinking_level: "medium",
   },
   SLIDE_TEMPLATE_TYPE_AGENT: {
-    fallback_model: "gemini-2.5-flash",
-    model_name: "gpt-4o",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "SLIDE_TEMPLATE_TYPE_AGENT",
     temperature: 0.45,
     thinking_level: "medium",
   },
   SLIDES_VISIBLE_COPY_AGENT: {
-    fallback_model: "gemini-2.5-flash",
-    model_name: "gpt-4o-mini",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "SLIDES_VISIBLE_COPY_AGENT",
     temperature: 0.3,
     thinking_level: "low",
   },
   SLIDES_VISUAL_TEMPLATE_AGENT: {
-    fallback_model: "gemini-2.5-flash",
-    model_name: "gpt-4o",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "SLIDES_VISUAL_TEMPLATE_AGENT",
     temperature: 0.5,
     thinking_level: "medium",
   },
   SLIDES_QA_AGENT: {
-    fallback_model: "gemini-2.5-flash",
-    model_name: "gpt-4o-mini",
+    fallback_model: COURSE_TEXT_MODELS.fallbackModel,
+    model_name: COURSE_TEXT_MODELS.model,
     setting_type: "SLIDES_QA_AGENT",
     temperature: 0.1,
     thinking_level: "low",
@@ -132,6 +134,10 @@ const DEFAULT_MODEL_SETTINGS: Record<PipelineModelSettingType, PipelineModelSett
     thinking_level: "minimal",
   },
 };
+
+function openAiImageModel<T extends string | null>(model: string | null | undefined, fallback: T) {
+  return model && /^gpt-image-/i.test(model) ? model : fallback;
+}
 
 const MODEL_SETTINGS_SELECT_FIELDS =
   "model_name, fallback_model, temperature, thinking_level";
@@ -159,9 +165,12 @@ function normalizeSettings(
 ): PipelineModelSettings {
   const defaults = DEFAULT_MODEL_SETTINGS[settingType];
 
+  const models = settingType === "SLIDES_IMAGE_GENERATION"
+    ? { model: openAiImageModel(record?.model_name, defaults.model_name), fallbackModel: openAiImageModel(record?.fallback_model, defaults.fallback_model) }
+    : resolveOpenAiTextModels(record?.model_name, record?.fallback_model);
   return {
-    fallback_model: record?.fallback_model || defaults.fallback_model,
-    model_name: record?.model_name || defaults.model_name,
+    fallback_model: models.fallbackModel,
+    model_name: models.model,
     setting_type: settingType,
     temperature: parseTemperature(record?.temperature, defaults.temperature),
     thinking_level: record?.thinking_level || defaults.thinking_level,

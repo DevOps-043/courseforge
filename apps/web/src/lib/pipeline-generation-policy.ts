@@ -27,7 +27,7 @@ export function generationFailureMessage(error: unknown): string {
   if (typeof detail.code === "string" && /^(?:[0-9]{5}|PGRST\d+)$/.test(detail.code)) {
     return "No se pudo guardar el resultado en la base de datos. Revisa las migraciones y los registros de esta ejecución antes de reintentar.";
   }
-  if (message.includes("insufficient_quota") || message.includes("billing") || message.includes("credit")) {
+  if (status === 402 || message.includes("insufficient_quota") || message.includes("billing") || message.includes("credit")) {
     return "El proveedor de IA rechazó la solicitud por cuota o saldo. Revisa la facturación del proveedor antes de reintentar.";
   }
   if (status === 429 || message.includes("resource_exhausted")) {

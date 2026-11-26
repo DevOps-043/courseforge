@@ -7,6 +7,105 @@ Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega d
 
 ## 1. Regla de mantenimiento
 
+### Dependencias de producción verificadas (2026-11-26)
+
+Los paquetes de Remotion se actualizan juntos a `4.0.547`. La constante en
+`apps/web/src/config/remotion.ts` determina la versión de los manifiestos y
+dependencias de bundles nuevos; una regresión la compara con el runtime instalado.
+Los bundles históricos no se reescriben. Un servicio de render externo conserva
+su propia instalación y requiere verificar compatibilidad antes de usar estos
+bundles. Next y Zod se actualizan por seguridad, sin cambiar permisos, documento
+canónico ni el bloqueo de publicación híbrida.
+[Alcance y verificación](../../openspec/changes/remediate-promotion-dependencies/design.md).
+
+### Campos de diapositivas desde Herramientas (2026-11-24)
+
+El monitor integra preparación y recuperación editorial en Herramientas → Campos
+de diapositivas, sin desplegable superior. Abrir la herramienta no ejecuta tareas.
+Si falta el origen de duración, ofrece el cálculo existente que conserva la
+posición de clips; no omite la validación del snapshot. Los errores HTTP previos
+al envío conservan una referencia segura; después del envío persiste el tratamiento
+de resultado incierto. El control de solicitudes mantiene límites y permisos con
+un reloj timestamptz sin colisión con CURRENT_TIME. No cambia documento, motion,
+render ni contrato de campos. La identidad canónica omite opcionales undefined
+que JSON no persiste. La inicialización explícita puede crear una nueva versión
+solo si reconoce exactamente la firma narrativa histórica afectada; conserva
+la historia y rechaza inconsistencias distintas, sin omitir guardas de integridad.
+[Diagnóstico y migración](../../openspec/changes/repair-slide-field-tools/design.md).
+
+### Continuidad del editor y vínculos de imágenes (2026-11-24)
+
+Ensamble conserva el editor montado durante las actualizaciones del listado y
+errores transitorios; un alcance equivalente de Academy no inicia otra carga.
+Se retira su aviso superior extenso. La preparación vincula las imágenes
+editoriales ausentes únicamente desde el artefacto reconstruido y verificado
+para el tenant/componente; conserva esas dependencias al limpiar medios
+obsoletos. Un alias no concede acceso y preview/snapshot mantienen sus guardas
+independientes. No cambia documento, motion ni proveedor.
+[Diseño y seguimiento](../../openspec/changes/fix-assembly-editor-stability/design.md).
+
+### Inicialización editorial con imágenes verificadas (2026-11-23)
+
+La proyección narrativa del deck generado pasa al preprocesador únicamente las
+URLs exactas de imágenes cuyo registro tenant/componente, ruta, checksum y hashes
+ya verificó el lector editorial. Esto evita rechazar las imágenes legítimas al
+crear el documento inicial sin autorizar dominios completos ni entradas del
+cliente. La ruta del borrador distingue rechazo editorial 422 de indisponibilidad
+503 y conserva correlación sin exponer URLs. No cambia formato, artefactos,
+motion ni permisos. [Diagnóstico y evidencia](../../openspec/changes/fix-generated-deck-draft-images/design.md).
+
+### B-rolls opcionales de sesiones (2026-11-23)
+
+Las sesiones pueden asociar clips manuales privados desde Producción sin componente
+Academy, avatar, locución, composición ni video final. Reutilizan el inspector de
+medios existente, ahora en production/media-inspection.service con exports standalone
+compatibles. Se valida formato real y límites antes de reproducir; la aprobación
+del apoyo es humana e independiente. No cambia motion, snapshots, ZIP ni render.
+El almacenamiento usa el bucket privado existente; firma de reproducción de cinco
+minutos sin persistir credenciales. Véase [contrato y límites](../../openspec/changes/optional-session-brolls/design.md).
+
+### Decks visuales de sesiones síncronas (2026-11-23)
+
+Corrección v2: la paginación de sesión busca particiones contiguas bajo el mismo
+mínimo normalizado de QA para evitar una última página artificialmente insuficiente.
+No cambia los límites ni contenido; la versión nueva evita recuperar el asset v1
+fallido. Producción y Ensamble distinguen temas exclusivos de Hub y compartidos
+con Academy. La cobertura en vivo por sí sola no retira la asignación asíncrona.
+Evidencia y alcance: [corrección de recorrido](../../openspec/changes/fix-hybrid-production-scope/design.md).
+
+Producción reutiliza el renderer HTML y QA de slides para convertir materiales de
+sesión aprobados en un asset visual por sesión. El contrato de render admite una
+identidad de sesión sin crear componentes Academy. La entrada de generación
+Academy y su límite no cambian. El deck de sesión no crea ni modifica composición,
+`document.motion`, ZIP o render cloud. Se recupera por contenido/aprobación vigente,
+sin notas reservadas, con vista aislada y descarga autenticada. Un fallo de QA
+bloquea utilizar el deck. Véase [diseño y límites](../../openspec/changes/produce-session-decks/design.md).
+
+### Seguimiento de producción de slides (2026-11-23)
+
+Antes de preparar una composición, las tarjetas de producción recuperan el último
+trabajo de slides y consultan su identificador sin volver a generarlo. Las respuestas
+de alta y reutilización incluyen el contrato de seguimiento; el estado inexistente
+es `NOT_FOUND`, no una cola. La transición pendiente/en cola a ejecución se reclama
+atómicamente por job y componente antes de consumir el proveedor. El sondeo tiene
+límite, timeout por consulta y cancelación al abandonar la vista. El agotamiento
+no acredita éxito ni fracaso del worker. Un reintento explícito puede reservar
+otra vez el despacho del mismo job si lleva más de 90 segundos en cola; una
+reserva reciente, un worker en ejecución o un ACK perdido no habilitan consumo
+duplicado. No cambia `document.motion`, el snapshot,
+el render ni la validación de calidad.
+
+Evidencia: [cambio y escenarios](../../openspec/changes/repair-production-asset-flow/design.md)
+y pruebas de `slide-generation`, jobs y B-roll ejecutadas mediante
+`npm run test:production-asset-flow`. La revisión real del worker desplegado sigue
+requiriendo un piloto posterior al despliegue autorizado.
+
+Continuación 2026-11-03: se preparan fronteras de importación acíclicas para
+contratos de fuentes, planificación de captions, descriptor del render controlado
+y autorización HTTP narrativa. Se conservan algoritmos, exports públicos,
+presupuestos y guardas de ejecución. No cambia el formato persistido ni el artefacto
+compilado. Alcance y verificación: [cambio de fronteras internas](../../openspec/changes/remove-composition-import-cycles/proposal.md).
+
 Este archivo es la fuente de verdad operativa del flujo de composicion y render
 HyperFrames de Courseforge. Todo cambio que afecte documento, assets, preview,
 snapshot, ZIP, variables, envio a HeyGen, polling, importacion o SFX debe:
@@ -682,6 +781,15 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
 
 ## 14. Historial
 
+- 2026-11-23: seguimiento persistente y recuperación del mismo job de slides,
+  reserva/claim atómicos y protección de workers ante confirmación HTTP perdida.
+  Contratos y límites en `openspec/changes/repair-production-asset-flow/`.
+
+- 2026-11-12. Los presets de composición `SEQUENCE` y `STACK` acotan la ventana
+  al último frame válido del canvas destino. Una secuencia requiere un frame por
+  clip y una superposición comparte la ventana. El canvas conserva su duración.
+  [Diseño y evaluación de la adaptación asistida](../../openspec/changes/fix-composition-preset-timing/design.md).
+
 - 2026-11-09. La eliminación de intervalos conserva los bordes fuente entre
   fotogramas y la descarga del fragmento confirmado usa el endpoint autorizado
   del borrador, con independencia de la página de biblioteca cargada.
@@ -711,6 +819,17 @@ Salida: evidencia E2E de Courseforge -> HeyGen -> importacion.
   `hyperframes-editor-preparation.client.test.ts` y
   `hyperframes-source-sync-batches.test.ts`. Alcance y evidencia:
   [optimización de carga](../../openspec/changes/optimize-editor-loading/proposal.md).
+
+- La inicialización reutiliza el identificador del borrador ya resuelto. La
+  biblioteca consulta medios registrados y HTML en paralelo tras autorizar
+  la solicitud. La lista muestra iconos para videos y difiere las imágenes
+  fuera del área visible. La vista previa sigue usando las rutas privadas del
+  borrador.
+
+- La sincronización de Ensamble usa la recuperación histórica de HeyGen, que
+  incluye la recuperación local. Si HeyGen falla, aplica solo la recuperación
+  local. `Server-Timing` en la respuesta exitosa separa preparación,
+  recuperación de escenas y registro de medios.
 
 - 2026-11-06: generación documental integra recibos de respaldo y vigencia en
   `production_jobs`/`production_assets`, con revisión, fingerprint y hash del

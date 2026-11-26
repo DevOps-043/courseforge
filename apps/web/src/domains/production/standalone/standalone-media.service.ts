@@ -1,7 +1,5 @@
 import { prepareStandaloneHtml, combineStandaloneHtmlDecks, loadStandaloneHtmlDecks } from "./standalone-html.service";
 import { createHash } from "node:crypto";
-import { ALL_FORMATS, BufferSource, Input } from "mediabunny";
-import sharp from "sharp";
 import type { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveProductionComponentContext } from "../jobs/production-jobs.service";
@@ -10,7 +8,8 @@ import { validateHyperframesMediaAsset } from "../hyperframes/hyperframes-media-
 import { extractHyperframesAnimatedDeck } from "../hyperframes/hyperframes-source-asset.service";
 import { STANDALONE_HTML_MAX_BYTES, STANDALONE_MEDIA_MAX_BYTES, STANDALONE_MEDIA_MIME, standaloneMediaPath, type standaloneMediaInputSchema } from "./standalone-media.types";
 
-export class StandaloneMediaValidationError extends Error {}
+import { inspectStandaloneMedia, StandaloneMediaValidationError } from "../media-inspection.service";
+export { inspectStandaloneMedia, StandaloneMediaValidationError } from "../media-inspection.service";
 
 /** Only registers verified files belonging to an authorized standalone component. */
 export async function registerStandaloneMedia(params: {
@@ -79,30 +78,4 @@ export async function registerStandaloneMedia(params: {
       source_width: metadata.width, source_height: metadata.height, has_audio: metadata.hasAudio },
   }, { onConflict: "id", ignoreDuplicates: true });
   if (error) throw error;
-}
-
-export async function inspectStandaloneMedia(bytes: Uint8Array, mimeType: string) {
-  if (mimeType.startsWith("image/")) {
-    const image = await sharp(bytes, { limitInputPixels: 1920 * 1920 }).metadata();
-    if (`image/${image.format}` !== mimeType || !image.width || !image.height) {
-      throw new StandaloneMediaValidationError("El contenido no corresponde al formato de imagen.");
-    }
-    return { width: image.width, height: image.height, duration: null, hasAudio: false };
-  }
-  const media = new Input({ formats: ALL_FORMATS, source: new BufferSource(bytes) });
-  try {
-    const detectedMime = (await media.getFormat())?.mimeType;
-    if (detectedMime !== mimeType && !(mimeType === "audio/wav" && detectedMime === "audio/x-wav")) {
-      throw new StandaloneMediaValidationError("El contenido no corresponde al formato indicado.");
-    }
-    const video = await media.getPrimaryVideoTrack();
-    const audio = await media.getPrimaryAudioTrack();
-    if (mimeType.startsWith("video/") ? !video : !audio || Boolean(video)) {
-      throw new StandaloneMediaValidationError("El archivo no contiene las pistas esperadas.");
-    }
-    const duration = await media.getDurationFromMetadata() ?? await media.computeDuration();
-    if (!Number.isFinite(duration) || duration <= 0 || duration > 86400) throw new StandaloneMediaValidationError("Duración inválida.");
-    return { duration, hasAudio: Boolean(audio), width: video ? await video.getDisplayWidth() : undefined,
-      height: video ? await video.getDisplayHeight() : undefined };
-  } finally { media.dispose(); }
 }

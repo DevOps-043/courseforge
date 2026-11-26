@@ -14,17 +14,20 @@ describe("generated deck independently trusted reader", () => {
     assert.notEqual(first.html, fixture.artifact.fragments[0].html);
     assert.deepEqual(first.usedAssetIds, [fixture.imageId]);
     assert.equal(result!.instance("deck-slide-1", first.index), first);
+    assert.equal(result!.presentationSource().slides.length, fixture.deck.slides.length,
+      "La proyección narrativa permite únicamente las imágenes que ya verificó el registro");
   });
   it("leaves old material explicitly outside automatic adoption", async () => {
     const fixture = generatedDeckIntegrationFixture();
     delete fixture.state.component!.assets.slides.editable_deck;
     assert.equal(await readGeneratedCourseDeckEditorial({ ...fixture, supabase: fixture.client }), null);
   });
-  for (const tamper of ["tenant", "spec", "hash", "path", "count", "version", "component", "image"] as const) {
+  for (const tamper of ["tenant", "spec", "url", "hash", "path", "count", "version", "component", "image"] as const) {
     it(`rejects ${tamper} mismatches without a permissive legacy fallback`, async () => {
       const fixture = generatedDeckIntegrationFixture(true);
       if (tamper === "tenant") fixture.component.material_lessons.materials.artifacts.organization_id = fixture.imageId;
       if (tamper === "spec") fixture.deck.slides[0].title = "Contenido cambiado";
+      if (tamper === "url") fixture.deck.slides[0].visualAssets!.supporting!.url = "https://unverified.invalid/image.png";
       if (tamper === "hash") fixture.reference.sha256 = "f".repeat(64);
       if (tamper === "path") fixture.reference.storage_path = "production-assets/../foreign.json";
       if (tamper === "count") fixture.reference.field_count++;

@@ -26,30 +26,20 @@ export interface LiaGroundingSource {
   url: string;
 }
 
-export interface LiaGroundingChunk {
-  web?: {
-    title?: string;
-    uri?: string;
-  };
-}
-
-export interface LiaGroundingMetadata {
-  groundingChunks?: LiaGroundingChunk[];
-}
-
 export interface LiaSettingsRecord {
   model_name: string;
   temperature: number;
   setting_type: "COMPUTER" | "LIA_MODEL";
+  fallback_model?: string | null;
+  thinking_level?: string | null;
   thinking_le?: string | null;
 }
 
 export interface LiaConfig {
+  fallbackModel?: string | null;
+  thinkingLevel?: "low" | "medium" | "high";
   temperature: number;
-  thinkingConfig?: {
-    thinkingBudget: number;
-  };
-  tools?: Array<{ googleSearch: Record<string, never> }>;
+  webSearch: boolean;
 }
 
 export interface ParsedLiaResponse {
@@ -58,7 +48,7 @@ export interface ParsedLiaResponse {
   cleanText: string;
 }
 
-export interface GeminiRestResponse {
+export interface LiaProviderResponse {
   text: string;
-  groundingMetadata?: LiaGroundingMetadata;
+  sources: LiaGroundingSource[];
 }

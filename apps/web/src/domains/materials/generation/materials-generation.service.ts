@@ -1,6 +1,7 @@
 import { isVideoComponentType, type VideoComponentType, type VideoDurationContract } from "../../video-duration/video-duration-policy";
 import type { MaterialsGenerationInput, MaterialsGenerationOutput } from "../types/materials.types";
 import type { VideoGenerationResult } from "./video-generation.service";
+import { materialGenerationError } from "../../../lib/material-generation-error";
 
 export type MaterialsGenerationResult = {
   success: true;
@@ -30,8 +31,8 @@ export async function generateMaterialsByComponent(params: {
         output.source_refs_used = [...standard.content.source_refs_used];
       }
       if (!standard.success) errors.push(standard.error);
-    } catch {
-      errors.push("MATERIALS/GENERATION_FAILED: No se pudieron generar los componentes no audiovisuales. Reintenta los pendientes.");
+    } catch (error) {
+      errors.push(`MATERIALS/${materialGenerationError(error, "GENERATION").message}`);
     }
   }
   for (const component of input.lesson.components) {
@@ -46,8 +47,8 @@ export async function generateMaterialsByComponent(params: {
         output.components[component.type] = video.content;
         output.source_refs_used.push(...video.sourceRefs);
       } else errors.push(video.error);
-    } catch {
-      errors.push(`${component.type}/GENERATION_FAILED: No se pudo completar este video. Se conservaron los demás componentes.`);
+    } catch (error) {
+      errors.push(`${component.type}/${materialGenerationError(error, "GENERATION").message}`);
     }
   }
   output.source_refs_used = [...new Set(output.source_refs_used)];

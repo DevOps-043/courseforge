@@ -23,7 +23,7 @@ import { MaterialDetailsModal } from './MaterialDetailsModal';
 
 interface LessonMaterialsCardProps {
     lesson: MaterialLesson;
-    onIterationStart?: (lessonId: string, instructions: string, componentTypes?: string[]) => void;
+    onIterationStart?: (lessonId: string, instructions: string, componentTypes?: string[]) => Promise<void>;
     onValidateLesson?: (lessonId: string) => Promise<void>;
     onRegenerateLesson?: (lessonId: string) => Promise<void>;
     onMarkForFix?: (lessonId: string) => Promise<void>;
@@ -85,9 +85,9 @@ export function LessonMaterialsCard({ lesson, onIterationStart, onValidateLesson
         return labels[state];
     };
 
-    const handleIterationStart = (instructions: string, componentTypes?: string[]) => {
+    const handleIterationStart = async (instructions: string, componentTypes?: string[]) => {
         if (onIterationStart) {
-            onIterationStart(lesson.id, instructions, componentTypes);
+            await onIterationStart(lesson.id, instructions, componentTypes);
         }
     };
 
@@ -223,7 +223,7 @@ export function LessonMaterialsCard({ lesson, onIterationStart, onValidateLesson
                                 className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:hover:bg-orange-900/50 rounded-lg transition-colors disabled:opacity-50"
                             >
                                 {isRegenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
-                                Regenerar ({lesson.iteration_count}/{lesson.max_iterations})
+                                Reintentar pendientes ({lesson.iteration_count}/{lesson.max_iterations})
                             </button>
                         )}
 

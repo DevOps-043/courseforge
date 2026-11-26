@@ -8,7 +8,7 @@ import ts from "typescript";
 export function load<T>(relative: string, imports: Record<string, unknown> = {}, globals: Record<string, unknown> = {}): T {
   const filename = path.resolve(relative);
   const source = ts.transpileModule(readFileSync(filename, "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   const module = { exports: {} };
   const require = createRequire(filename);

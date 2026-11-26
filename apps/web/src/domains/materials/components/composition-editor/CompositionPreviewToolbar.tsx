@@ -1,3 +1,4 @@
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { COMPOSITION_PREVIEW_ZOOM } from "@/domains/production/composition-editor/composition-preview-view.config";
 import { CompositionPreviewZoomControls } from "./CompositionPreviewZoomControls";
 import { APP_CONFIG } from "../../../../config/app";
@@ -42,6 +43,7 @@ interface CompositionPreviewToolbarProps {
   onOpenAssistant: () => void;
   onOpenCommandPalette: () => void;
   onOpenPresets: () => void;
+  onOpenSlideEditing?: () => void;
   onReload: () => void;
   onRedo: () => void;
   onRestoreHistory: (entry: CompositionDocumentHistoryEntry) => void;
@@ -76,7 +78,7 @@ interface CompositionPreviewToolbarProps {
   undoLabel: string | null;
 }
 
-export function CompositionPreviewToolbar({ monitorExpanded, onToggleMonitorExpanded, onToggleReferenceGuides, referenceGuidesOpen, referenceGuidesPanelId, canvas, onCanvasFormatChange, agentProposalActive, canRedo, canUndo, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, libraryOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenCommandPalette, onOpenLibrary, onOpenPresets, onRedo, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSafeAreas, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onUndo, onZoom, previewFullscreen, previewStatusLabel, previewZoom, redoLabel, removalRangeStartSeconds, safeAreasVisible, saveError, saving, pendingEdits, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, undoLabel, visualCropEnabled }: CompositionPreviewToolbarProps) {
+export function CompositionPreviewToolbar({ monitorExpanded, onToggleMonitorExpanded, onToggleReferenceGuides, referenceGuidesOpen, referenceGuidesPanelId, canvas, onCanvasFormatChange, agentProposalActive, canRedo, canUndo, comparisonActive, currentVersion, directEditingEnabled, duration, gridVisible, history, inspectorOpen, libraryOpen, onCloseHistory, onContinueToPublication, onHistoryOpen, onInspectorToggle, onIntervalAction, onOpenAssistant, onOpenCommandPalette, onOpenLibrary, onOpenPresets, onOpenSlideEditing, onRedo, onReload, onRestoreHistory, onSplit, onToggleComparison, onToggleDirectEditing, onToggleFullscreen, onToggleGrid, onToggleSafeAreas, onToggleSnap, onToggleToolMenu, onToggleTrim, onToggleVisualCrop, onUndo, onZoom, previewFullscreen, previewStatusLabel, previewZoom, redoLabel, removalRangeStartSeconds, safeAreasVisible, saveError, saving, pendingEdits, snapEnabled, toolMenuOpen, toolMenuRef, trimToolEnabled, undoLabel, visualCropEnabled }: CompositionPreviewToolbarProps) {
   const toolsPanelRef = useRef<HTMLDivElement>(null);
   const historyPanelRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -90,13 +92,20 @@ export function CompositionPreviewToolbar({ monitorExpanded, onToggleMonitorExpa
       <span className={styles.previewTitle}>Ensamble <small>v{currentVersion} · {formatSeconds(duration)}</small>{previewStatusLabel ? <span className={styles.pendingBadge}>{previewStatusLabel}</span> : null}</span>
     </div>
     <div className={styles.previewTools}>
-      <select aria-label="Formato del lienzo" disabled={saving || agentProposalActive}
+      <EngineSelect
+        aria-label="Formato del lienzo"
+        disabled={saving || agentProposalActive}
         title="Cambia el lienzo y conserva posiciones y animaciones. Ajusta el encuadre después."
+        className={styles.canvasFormat}
+        size="compact"
         value={canvas.width === canvas.height ? "1:1" : canvas.width > canvas.height ? "16:9" : "9:16"}
-        onChange={(event) => onCanvasFormatChange(event.target.value as "16:9" | "9:16" | "1:1")}
-        className={`${styles.canvasFormat} rounded border bg-transparent px-2 py-1 text-xs`}>
-        <option value="16:9">16:9 · Horizontal</option><option value="9:16">9:16 · Vertical</option><option value="1:1">1:1 · Cuadrado</option>
-      </select>
+        onValueChange={(nextValue) => onCanvasFormatChange(nextValue as "16:9" | "9:16" | "1:1")}
+        options={[
+          { value: "16:9", label: "16:9", description: "Horizontal" },
+          { value: "9:16", label: "9:16", description: "Vertical" },
+          { value: "1:1", label: "1:1", description: "Cuadrado" },
+        ]}
+      />
       <div className={styles.toolbarGroup} aria-label="Edición principal">
         <button type="button" disabled={saving || !canUndo} onClick={onUndo} title={undoLabel ? `Deshacer: ${undoLabel} (Ctrl+Z)` : "Nada que deshacer"} aria-label="Deshacer último cambio" className={styles.toolIconButton}><Undo2 size={13} /></button>
         <button type="button" disabled={saving || !canRedo} onClick={onRedo} title={redoLabel ? `Rehacer: ${redoLabel} (Ctrl+Mayús+Z)` : "Nada que rehacer"} aria-label="Rehacer último cambio" className={styles.toolIconButton}><Redo2 size={13} /></button>
@@ -108,6 +117,7 @@ export function CompositionPreviewToolbar({ monitorExpanded, onToggleMonitorExpa
       <div ref={toolMenuRef} className={styles.toolMenuWrap}>
         <button type="button" aria-expanded={toolMenuOpen} aria-haspopup="menu" onClick={onToggleToolMenu} className={`${styles.toolButton} ${comparisonActive || gridVisible || safeAreasVisible || visualCropEnabled || trimToolEnabled || removalRangeStartSeconds !== null ? styles.toolButtonActive : ""}`} title="Abrir herramientas adicionales"><SlidersHorizontal size={13} /><span>Herramientas</span><ChevronDown className={toolMenuOpen ? styles.toolMenuChevronOpen : ""} size={12} /></button>
         {toolMenuOpen && <div ref={toolsPanelRef} popover="manual" className={`${styles.toolMenu} ${styles.anchoredPopover} ${styles.keyboardPanel}`} role="menu" aria-label="Herramientas adicionales">
+          {onOpenSlideEditing && <button type="button" role="menuitem" disabled={saving} onClick={() => { onToggleToolMenu(); onOpenSlideEditing(); }} className={styles.toolMenuItem}><Clapperboard size={14} /><span><strong>Campos de diapositivas</strong><small>Preparar edición y consultar seguimiento</small></span></button>}
           <button type="button" role="menuitemcheckbox" aria-checked={comparisonActive} onClick={onToggleComparison} className={styles.toolMenuItem}><Columns2 size={14} /><span><strong>Comparar antes / después</strong><small>Revisar color y composición</small></span><i data-active={comparisonActive} /></button>
           <button type="button" role="menuitem" onClick={() => { onToggleToolMenu(); if (!referenceGuidesOpen) onToggleReferenceGuides(); }} className={styles.toolMenuItem}><Grid3X3 size={14} /><span><strong>Líneas de referencia</strong><small>Crear y ajustar guías propias</small></span></button>
           <button type="button" role="menuitemcheckbox" aria-checked={gridVisible} onClick={onToggleGrid} className={styles.toolMenuItem}><Grid3X3 size={14} /><span><strong>Rejilla fija</strong><small>Cuadrícula de apoyo; personaliza líneas desde Guías</small></span><i data-active={gridVisible} /></button>

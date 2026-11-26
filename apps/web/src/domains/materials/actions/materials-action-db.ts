@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isGenerationStale } from "@/lib/pipeline-generation-policy";
 import { recoverExpiredMaterialLessons } from "../services/materials-generation-recovery";
+import { readAcademyScope } from "../../course-delivery/services/academy-scope.server";
+import { academyLessonId } from "../../course-delivery/lib/academy-scope";
 import type {
   Esp05StepState,
   QADecision,
@@ -82,6 +84,7 @@ export async function fetchMaterialsSnapshot(
   if (!materials?.id) {
     return { materials: null, lessons: [], error: null };
   }
+  const scope = await readAcademyScope(admin, artifactId);
   if (materials.state === "PHASE3_GENERATING" && isGenerationStale(materials.updated_at)) {
     const { data: recovered, error } = await admin.rpc("reset_material_generation", {
       p_materials_id: materials.id, p_version: materials.version, p_stale_before: materials.updated_at,
@@ -99,7 +102,7 @@ export async function fetchMaterialsSnapshot(
 
   return {
     materials,
-    lessons: lessonsError ? [] : await recoverExpiredMaterialLessons(admin, materials.id, lessons || []),
+    lessons: lessonsError ? [] : await recoverExpiredMaterialLessons(admin, materials.id, (lessons || []).filter(lesson => scope.lessonIds.includes(academyLessonId(lesson.lesson_id)))),
     error: lessonsError,
   };
 }
@@ -119,11 +122,14 @@ export async function fetchArtifactComponentsSnapshot(
   admin: SupabaseClient,
   artifactId: string,
 ) {
-  return admin
+  const scope = await readAcademyScope(admin, artifactId);
+  if (!scope.lessonIds.length) return { data: [], error: null };
+  const result = await admin
     .from("material_components")
     .select(`
       ${MATERIAL_COMPONENTS_SNAPSHOT_SELECT},
       material_lessons!inner (
+        lesson_id,
         materials!inner (
           artifact_id
         )
@@ -131,6 +137,10 @@ export async function fetchArtifactComponentsSnapshot(
     `)
     .eq("material_lessons.materials.artifact_id", artifactId)
     .order("iteration_number", { ascending: false });
+  return { ...result, data: result.data?.filter(component => {
+    const lesson = Array.isArray(component.material_lessons) ? component.material_lessons[0] : component.material_lessons;
+    return lesson && scope.lessonIds.includes(academyLessonId(lesson.lesson_id));
+  }) || null };
 }
 
 export async function fetchArtifactMaterialsRecord(

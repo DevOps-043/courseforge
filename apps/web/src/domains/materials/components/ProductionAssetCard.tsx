@@ -128,6 +128,7 @@ export function ProductionAssetCard({
     isGeneratingSofliaSlides,
     sofliaSlidesGenerationStatus,
     sofliaSlidesGenerationError,
+    handleCheckSlidesStatus,
     isPreparingAnimatedDeck,
 
     // Refs
@@ -356,6 +357,7 @@ export function ProductionAssetCard({
                   isGeneratingSofliaSlides={isGeneratingSofliaSlides}
                   generationStatus={sofliaSlidesGenerationStatus}
                   generationError={sofliaSlidesGenerationError}
+                  onCheckStatus={handleCheckSlidesStatus}
                   isUploading={isUploadingSlides}
                   isPreparingAnimatedDeck={isPreparingAnimatedDeck}
                   isLoadingSlideTemplates={isLoadingSlideTemplates}

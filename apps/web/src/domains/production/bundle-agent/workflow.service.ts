@@ -208,8 +208,6 @@ export class BundleAgentWorkflowService {
         role: "TOOL",
         content_redacted: generated.source === "openai"
           ? `Spec estructurada generada por ${APP_CONFIG.assistant.displayName} con OpenAI y validada por contrato.`
-          : generated.source === "gemini"
-            ? `Spec estructurada generada por ${APP_CONFIG.assistant.displayName} con Gemini y validada por contrato.`
             : importedStudio
               ? "Nueva revisión creada desde la base importada; el diseño de origen se conserva."
               : artifactKind === "slide_template"

@@ -47,6 +47,7 @@ export const sourceReviewSnapshotSchema = z.object({
   associations: z.array(sourceAssociationSchema),
 });
 export const sourceReviewCommandSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("use-all"), ...version }).strict(),
   z
     .object({
       action: z.literal("policy"),

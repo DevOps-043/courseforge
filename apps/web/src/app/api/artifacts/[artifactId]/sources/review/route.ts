@@ -14,6 +14,7 @@ import {
   apiSuccessResponse,
 } from "@/lib/server/api-response";
 import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
+import { rejectCrossOriginMutation } from "@/lib/server/mutation-request-origin";
 import { resolveCorrelationId } from "@/lib/server/operational-logger";
 type Context = { params: Promise<{ artifactId: string }> };
 export async function GET(request: Request, context: Context) {
@@ -34,13 +35,10 @@ async function respond(request: Request, context: Context) {
       request.headers.get("content-type")?.split(";")[0] !== "application/json"
     )
       throw new CourseSourceError(415, "Usa application/json.");
-    if (
-      request.method === "POST" &&
-      (request.headers.get("sec-fetch-site") === "cross-site" ||
-        (request.headers.get("origin") &&
-          request.headers.get("origin") !== new URL(request.url).origin))
-    )
-      throw new CourseSourceError(403, "Formato u origen no autorizado.");
+    if (request.method === "POST") {
+      const rejectedOrigin = rejectCrossOriginMutation(request, { requestId, headers });
+      if (rejectedOrigin) return rejectedOrigin;
+    }
     const { tenant, admin } = await requireCourseSourceAccess(artifactId);
     if (request.method === "GET")
       return apiSuccessResponse(

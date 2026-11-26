@@ -1,10 +1,10 @@
 import { loadAptaSources, buildMaterialSourceValidationContext } from "../materials-source-context";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createRequire } from "node:module";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
-import { requestGeminiJson, requestOpenAiJson } from "../materials-model-client";
+import { requestOpenAiJson } from "../materials-model-client";
 import { commitGeneratedLesson } from "../material-components.repository";
 import { generateLessonMaterials, processGenerationResult, triggerNextLesson } from "../materials-generation-runtime";
 import { resolveVideoDurationPolicy } from "../../../../src/domains/video-duration/video-duration-policy";
@@ -21,6 +21,66 @@ import { buildVideoDurationContract } from "../../../../src/domains/video-durati
 import { normalizeVideoDurationContent } from "../../../../src/domains/video-duration/video-duration-validation";
 import { buildStoryboardNarration } from "../../../../src/domains/materials/generation/video-storyboard-timeline";
 import type { VideoGuideContent } from "../../../../src/domains/materials/types/materials.types";
+import { CourseSourceError, sourceGroundingFailure } from "../../../../src/domains/course-sources/course-source-error";
+import { load } from "../../../../src/app/login/__tests__/source-test-loader";
+import { materialSourceSetAvailability } from "../../../../src/domains/course-sources/course-source-material-set";
+
+test("la validación acepta el conjunto automático y las referencias de la lección sin exigir asociaciones manuales", async () => {
+  const context = load<typeof import("../materials-source-context")>("netlify/functions/shared/materials-source-context.ts", {
+    "../../../src/domains/course-sources/course-source-review.service": {
+      readCourseSourcePolicy: async () => ({ policy: "DOCUMENTS_AND_WEB" }),
+      readSourceReview: async () => ({
+        policy: "DOCUMENTS_AND_WEB", planReady: true, approved: false, coverage: [], associations: [],
+        lessons: [{ id: "lesson", title: "Lección", webRequired: 1 }],
+        evidence: [{ id: "doc", type: "DOCUMENT", text: "Guía" },
+          { id: "web", type: "WEB", lessonId: "lesson", text: "Evidencia" },
+          { id: "foreign", type: "WEB", lessonId: "other", text: "Evidencia ajena" }],
+      }),
+    },
+    "../../../src/domains/course-sources/course-source-material-set": { materialSourceSetAvailability },
+    "../../../src/domains/curation/lib/lesson-source-requirement": {},
+    "./materials-generation-helpers": {},
+  });
+  const database = { rpc: async (name: string) => {
+    assert.equal(name, "current_course_source_component_ids");
+    return { data: ["component"], error: null };
+  } } as unknown as SupabaseClient;
+  const validation = await context.loadMaterialSourceValidationContext(database, "artifact", [{ lesson_id: "lesson-G2" }]);
+  assert.deepEqual([...(validation.validSourceIdsByLesson.get("lesson-G2") || [])], ["doc", "web"]);
+  assert.deepEqual([...(validation.validComponentIds || [])], ["component"]);
+});
+
+test("un fallo de despacho individual despierta la cola sin detener la generación global", async () => {
+  const writes: string[] = [];
+  const dispatches: Array<{ payload: Record<string,unknown>; options: { onFailure?: (error: Error)=>Promise<void> } }> = [];
+  const helpers = load<{callMaterialsNetlifyFunction: (name:string,payload:Record<string,unknown>,fallback:string)=>Promise<unknown>}>("src/domains/materials/actions/materials-action-helpers.ts", {
+    "@/lib/server/background-function-client": { dispatchBackgroundFunctionJson: async (_name:string,payload:Record<string,unknown>,options:typeof dispatches[number]["options"])=>{dispatches.push({payload,options});} },
+    "@/lib/pipeline-generation-policy": { generationFailureMessage },
+    "@/lib/server/artifact-action-auth": { getServiceRoleClient: ()=>({rpc:async()=>{writes.push("lesson");return {error:null};}}) },
+    "@/lib/server/tenant-context": {},
+    "../services/materials-generation-recovery": {markMaterialsGenerationFailed:async()=>{writes.push("parent");}},
+  });
+  await helpers.callMaterialsNetlifyFunction("materials-generation-background", {materialsId:"m",artifactId:"a",version:1,lessonId:"lesson",iterationNumber:2,mode:"single-lesson"},"fallo");
+  await dispatches[0].options.onFailure!(new Error("timeout privado"));
+  assert.deepEqual(writes,["lesson"]);
+  assert.equal(dispatches[1].payload.mode,"process-next");
+  assert.equal(dispatches[1].payload.version,1);
+});
+
+test("respaldo distingue rechazo de citas de indisponibilidad sin filtrar contenido", () => {
+  for (const groundingReason of ["UNSUPPORTED_OUTPUT", "SOURCE_NOT_IN_CONTEXT", "QUOTE_NOT_IN_SOURCE", "CLAIM_NOT_IN_OUTPUT"] as const) {
+    const diagnostic = sourceGroundingFailure(new CourseSourceError(409, "contenido privado", groundingReason));
+    assert.equal(diagnostic.code, groundingReason);
+    assert.doesNotMatch(diagnostic.message, /contenido privado/);
+  }
+  assert.equal(sourceGroundingFailure(new CourseSourceError(503, "privado")).code, "GROUNDING_UNAVAILABLE");
+  assert.equal(sourceGroundingFailure(new CourseSourceError(413, "privado")).code, "GROUNDING_SIZE_LIMIT");
+  assert.equal(sourceGroundingFailure(new DOMException("privado", "TimeoutError")).code, "GROUNDING_TIMEOUT");
+  assert.equal(sourceGroundingFailure(new CourseSourceError(409, "privado")).code, "GROUNDING_CONFLICT");
+  assert.equal(sourceGroundingFailure({ statusCode: 429, message: "privado" }).code, "GROUNDING_PROVIDER_LIMIT");
+  assert.equal(sourceGroundingFailure({ statusCode: 401 }).code, "GROUNDING_PROVIDER_CONFIGURATION");
+  assert.equal(sourceGroundingFailure({ name: "AI_NoObjectGeneratedError" }).code, "GROUNDING_INVALID_RESPONSE");
+});
 
 function recoveredVideoFixture(repetitions = 90) {
   const contract = buildVideoDurationContract(undefined, "VIDEO_DEMO");
@@ -276,9 +336,17 @@ test("los jobs encadenados conservan el deploy y esperan aceptación HTTP sin fl
   assert.equal(localCalls, 0);
 });
 
+const scopePlans = [{ lesson_id: "lesson-1", lesson_title: "Lesson", module_title: "Module", components: [] }];
+function scopeRead(table: string) {
+  const query = { select: () => query, eq: () => query,
+    single: async () => ({ data: table === "artifacts" ? { organization_id: "org" } : { modules: [{ title: "Module", lessons: [{ id: "lesson-1", title: "Lesson" }] }], state: "STEP_APPROVED" }, error: null }),
+    maybeSingle: async () => ({ data: null, error: null }),
+  };
+  return query;
+}
 function databaseStub(writeError: { message: string } | null = null, accepted = true) {
   const writes: Array<Record<string, unknown>> = [];
-  const database = { rpc: async (name: string, payload: Record<string, unknown>) => {
+  const database = { from: scopeRead, rpc: async (name: string, payload: Record<string, unknown>) => {
     assert.equal(name, "commit_material_generation");
     writes.push(payload);
     return { error: writeError, data: accepted };
@@ -298,14 +366,14 @@ test("resume revalidates formerly rejected narration without replacing component
     for (const accepted of [true, false]) {
       const { database, writes } = databaseStub(null, accepted);
       let reads = 0;
-      database.from = (() => ({ select: () => ({ eq: async () => {
+      database.from = ((table: string) => table !== "material_components" ? scopeRead(table) : ({ select: () => ({ eq: async () => {
         reads++;
         return { data: saved, error: null };
       } }) })) as unknown as SupabaseClient["from"];
       const result = await generateLessonMaterials({
         execution, supabase: database, resumePendingOnly: true,
         lesson: { id: "lesson-1", lesson_id: "lesson-1", lesson_title: "Lesson", module_id: "module-1", module_title: "Module", expected_components: ["VIDEO_DEMO"], iteration_count: iteration },
-        generationContext: { artifactId: "artifact", lessonPlans: [], lessonSources: [], requiresSources: false, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
+        generationContext: { artifactId: "artifact", lessonPlans: scopePlans, lessonSources: [], requiresSources: false, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
         logPrefix: "[resume test]", models: [], modelRuntimeConfig: runtime,
       });
       assert.deepEqual(result, accepted ? { success: true } : { success: false, superseded: true });
@@ -324,12 +392,53 @@ test("manual full regeneration still requires generation rather than accepting s
   const result = await generateLessonMaterials({
     execution, supabase: database, componentTypes: [],
     lesson: { id: "lesson-1", lesson_id: "lesson-1", lesson_title: "Lesson", module_id: "module-1", module_title: "Module", expected_components: ["EXERCISE"], iteration_count: 2 },
-    generationContext: { artifactId: "artifact", lessonPlans: [], lessonSources: [], requiresSources: false, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
+    generationContext: { artifactId: "artifact", lessonPlans: scopePlans, lessonSources: [], requiresSources: false, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
     logPrefix: "[manual test]", models: [], modelRuntimeConfig: runtime,
   });
   assert.equal(result.success, false, "manual regeneration cannot succeed without a configured model");
   assert.equal(writes[0].p_success, false);
   assert.match(String(writes[0].p_error), /MODEL_SETTING_NOT_CONFIGURED/);
+});
+
+test("Nexus revisa de nuevo el componente corregido y guarda solo contenido confirmado", async (testContext) => {
+  const requireSibling = createRequire(__filename);
+  const sourceService = requireSibling("../../../../src/domains/course-sources/course-source-generation.service");
+  testContext.mock.method(requireSibling("../../../../src/domains/course-delivery/services/academy-scope.server"), "readAcademyScope", async () => ({ routeHash: null, lessonIds: ["lesson-1"], modules: [{ lessons: [{ id: "lesson-1" }] }] }));
+  const helpers = requireSibling("../materials-generation-helpers");
+  const sourceId = "10000000-0000-4000-8000-000000000001";
+  const receipt = "10000000-0000-4000-8000-000000000002";
+  const original = { ...dialogueFixture(), title: "Versión inicial" };
+  const corrected = { ...original, title: "Versión corregida" };
+  const lesson = { id: "material-lesson", lesson_id: "lesson-1-G1", lesson_title: "Lección", module_id: "module-1", module_title: "Módulo", expected_components: ["DIALOGUE"], iteration_count: 2 };
+  testContext.mock.method(sourceService, "prepareCourseGeneration", async () => ({
+    snapshotId: "snapshot", sources: [{ id: sourceId, kind: "DOCUMENT", title: "Fuente", text: "Evidencia sintética", locator: {} }],
+  }));
+  const requests: MaterialsGenerationInput[] = [];
+  testContext.mock.method(helpers, "generateWithRetry", async (input: MaterialsGenerationInput) => {
+    requests.push(input);
+    const dialogue = normalizeGeneratedDialogueIdentifiers(requests.length === 1 ? original : corrected);
+    return { success: true, content: { components: { DIALOGUE: dialogue }, source_refs_used: [sourceId] } };
+  });
+  const reviews: string[] = [];
+  testContext.mock.method(sourceService, "attestCourseGeneration", async (_admin: unknown, _context: unknown, component: { title: string }) => {
+    reviews.push(component.title);
+    if (component.title === original.title) throw new CourseSourceError(409, "Rechazado", "UNSUPPORTED_OUTPUT");
+    return receipt;
+  });
+  const { database, writes } = databaseStub();
+  const result = await generateLessonMaterials({
+    execution, supabase: database, lesson,
+    generationContext: { artifactId: "artifact", lessonPlans: [{ lesson_id: "lesson-1", lesson_title: "Lección", module_title: "Módulo", components: [{ type: "DIALOGUE" }] }], lessonSources: [], requiresSources: true, documentary: true, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
+    logPrefix: "[Prueba documental]", models: ["gpt-5-test"], modelRuntimeConfig: runtime,
+  });
+  assert.deepEqual(result, { success: true });
+  assert.deepEqual(reviews, [original.title, corrected.title]);
+  assert.equal(requests.length, 2);
+  assert.match(requests[1].fix_instructions || "", /sin respaldo/);
+  assert.equal(writes.length, 1);
+  const [row] = writes[0].p_rows as Array<{ content: { title: string }; assets: Record<string, unknown> }>;
+  assert.equal(row.content.title, corrected.title);
+  assert.equal(row.assets.course_source_evidence_id, receipt);
 });
 
 test("component replacement and lesson state are committed atomically with execution ownership", async () => {
@@ -363,16 +472,6 @@ test("cancelled or replaced executions never report success", async () => {
   assert.deepEqual(result, { success: false, superseded: true });
 });
 
-test("Gemini requests are bounded and report termination and usage", async () => {
-  let received: Record<string, unknown> | undefined;
-  const client = { models: { generateContent: async (request: Record<string, unknown>) => { received = request; return { text: '{"title":"Complete"}', candidates: [{ finishReason: "STOP" }], usageMetadata: { candidatesTokenCount: 80 } }; } } } as unknown as GoogleGenAI;
-  const response = await requestGeminiJson(client, "gemini-test", "prompt", runtime, 5_000);
-  assert.deepEqual(response, { content: { title: "Complete" }, finishReason: "STOP", outputTokens: 80 });
-  const config = received?.config as { abortSignal: AbortSignal; httpOptions: { timeout: number }; maxOutputTokens: number };
-  assert.ok(config.abortSignal instanceof AbortSignal);
-  assert.equal(config.httpOptions.timeout, 5_000);
-  assert.equal(config.maxOutputTokens, 16_000);
-});
 
 test("OpenAI requests disable hidden retries and reject truncated JSON", async () => {
   let options: { maxRetries: number; timeout: number; signal: AbortSignal } | undefined;
@@ -469,7 +568,7 @@ test("source-required lessons fail before spending provider tokens when coverage
   const { database, writes } = databaseStub();
   const result = await generateLessonMaterials({ execution, supabase: database,
     lesson: { id: "lesson-1", lesson_id: "lesson-1-G1", lesson_title: "Lesson", module_id: "module-1", module_title: "Module", expected_components: ["EXERCISE"], iteration_count: 1 },
-    generationContext: { artifactId: "artifact", lessonPlans: [], lessonSources: [], requiresSources: true, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
+    generationContext: { artifactId: "artifact", lessonPlans: scopePlans, lessonSources: [], requiresSources: true, videoDurationPolicy: resolveVideoDurationPolicy(undefined) },
     logPrefix: "[test]", models: ["invalid-model-must-never-be-called"], modelRuntimeConfig: runtime,
   });
   assert.equal(result.success, false);

@@ -23,7 +23,7 @@ export function CompositionHtmlRecoveryCenter({ draftId, host, compositionId, do
   const organizationId = useOrganizationStore(state => state.activeOrganizationId);
   const context = useMemo(() => resolveHtmlEditingRecoveryContext({ actorId, organizationId, draftId }), [actorId, organizationId, draftId]);
   if (!context) return null;
-  return <div className="max-h-64 shrink-0 overflow-y-auto empty:hidden" aria-label="Recuperación HTML del borrador">
+  return <div className="space-y-3 empty:hidden" aria-label="Recuperación HTML del borrador">
     <CompositionGeneratedDeckPreparationPanel key={`generated-deck:${context.key}`} scope={context.scope} host={host} document={document} />
     {compositionId && <CompositionHtmlHistoricalPublicationPanel key={`historical-publication:${context.key}:${compositionId}`} scope={context.scope} compositionId={compositionId} />}
     {compositionId && <CompositionHtmlSnapshotHistoryPanel key={`history:${context.key}:${compositionId}`} scope={context.scope} compositionId={compositionId} />}

@@ -6,42 +6,48 @@ import { deliveryReadiness } from "./delivery-readiness";
 import { editDelivery, approveDelivery, reserveDeliveryRun } from "./delivery-commands";
 import { resolveDeliverySettings } from "./delivery-settings";
 import { dispatchBackgroundFunctionJson } from "../../../lib/server/background-function-client";
-import { generateInstructionalPlanAction } from "../../plan/actions/plan.actions";
-import { startMaterialsGenerationAction } from "../../materials/actions/materials.actions";
-import { nexusGenerationRequired } from "../lib/delivery-nexus-policy";
-import type { DeliveryOperation, DeliveryWorkspace } from "../types/delivery.schemas";
 import { deliveryEnabled } from "../config/delivery-enabled";
 import { deliverLivePreparation,livePreparationTargets } from "./delivery-live";
 
 export const deliveryCommandSchema = z.discriminatedUnion("action", [
   z.object({action:z.literal("LIVE_TARGETS"),revision:z.number().int().nonnegative()}).strict(),
   z.object({action:z.literal("DELIVER"),revision:z.number().int().nonnegative(),sourceSessionId:z.uuid(),target:z.object({organization_slug:z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100),session_id:z.uuid(),course_id:z.uuid()}).strict()}).strict(),
-  z.object({ action: z.literal("SAVE"), revision: z.number().int().nonnegative(), kind: z.enum(["CONFIG", "AGENDA", "PLAN", "MATERIALS"]), sessionId: z.uuid().optional(), value: z.unknown() }).strict(),
+  z.object({ action: z.literal("SAVE"), revision: z.number().int().nonnegative(), kind: z.enum(["CONFIG", "AGENDA", "HYBRID_ROUTE", "PLAN", "MATERIALS"]), sessionId: z.uuid().optional(), value: z.unknown() }).strict(),
   z.object({ action: z.literal("GENERATE"), revision: z.number().int().nonnegative(), operation: z.enum(["AGENDA", "PLAN", "MATERIALS"]) }).strict(),
+  z.object({ action: z.literal("RETRY_UNIT"), revision: z.number().int().nonnegative(), runId: z.uuid(), unitId: z.uuid() }).strict(),
   z.object({ action: z.literal("APPROVE"), revision: z.number().int().nonnegative(), operation: z.enum(["PLAN", "MATERIALS"]) }).strict(),
   z.object({ action: z.enum(["RESUME", "CANCEL"]), revision: z.number().int().nonnegative(), runId: z.uuid() }).strict(),
   z.object({ action: z.literal("REGENERATE"), revision: z.number().int().nonnegative(), sessionId: z.uuid(), operation: z.enum(["PLAN", "MATERIALS"]) }).strict(),
 ]);
 export async function deliverySnapshot(artifactId: string, includeSettings = true) {
   const { tenant, admin } = await requireDeliveryAccess(artifactId);
-  const workspace = await readDeliveryWorkspace(admin, artifactId, tenant.organizationId);
+  let workspace = await readDeliveryWorkspace(admin, artifactId, tenant.organizationId);
   const canReview = ["ADMIN", "ARQUITECTO", "SUPERADMIN"].includes(tenant.platformRole || "");
+  const { data: run, error } = workspace.revision && workspace.document.config.mode !== "NEXUS" ? await admin.from("course_delivery_runs")
+    .select("id,operation,status,units,last_error,lease_expires_at,retry_units,expected_revision").eq("artifact_id", artifactId).eq("organization_id", tenant.organizationId)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle() : { data: null, error: null };
+  if (error) throw new Error("No se pudo leer el progreso de impartición.");
+  // Si el guardado ocurrió entre consultas, devuelve su revisión antes de detener el sondeo.
+  if (run && run.expected_revision > workspace.revision) {
+    workspace = await readDeliveryWorkspace(admin, artifactId, tenant.organizationId);
+  }
   if (workspace.document.config.mode === "NEXUS") return {
     organizationSlug:tenant.organizationSlug, enabled: deliveryEnabled(), workspace,
-    readiness: { planReady: true, materialsReady: true, nexus: true, sessions: false, assembly: true },
+    readiness: { planReady: true, materialsReady: true, documentsReady: true, nexus: true, sessions: false, assembly: true },
     lessons: [] as Awaited<ReturnType<typeof readDeliveryContext>>["lessons"],
     syllabusApproved: false, nexusPlanState: null, nexusMaterialsState: null,
     sourceCount: 0, run: null, settings: [], canReview,
   };
   const context = await readDeliveryContext(admin, artifactId, tenant.organizationId);
-  const { data: run, error } = workspace.revision ? await admin.from("course_delivery_runs")
-    .select("id,operation,status,units,last_error,lease_expires_at").eq("artifact_id", artifactId).eq("organization_id", tenant.organizationId)
-    .order("created_at", { ascending: false }).limit(1).maybeSingle() : { data: null, error: null };
-  if (error) throw new Error("No se pudo leer el progreso de impartición.");
   const settings = includeSettings ? await Promise.all(
     (["AGENDA", "PLAN", "MATERIALS"] as const).map(async operation => {
       try { const effective = await resolveDeliverySettings(admin, tenant.organizationId, operation); return { operation, model: effective.model.model_name, inherited: effective.inherited, source: effective.modelSource, version: effective.prompt.version }; }
-      catch { return { operation, model: "Configuración requerida", inherited: false, source: "organization", version: "" }; }
+      catch (failure) {
+        const configurationError = failure instanceof z.ZodError
+          ? `Revisa la configuración de esta fase: ${failure.issues.map(issue => `${issue.path.join(".") || "modelo"}: ${issue.message}`).join("; ")}`
+          : failure instanceof Error ? failure.message : "No se pudo consultar la configuración de la fase.";
+        return { operation, model: "Configuración requerida", inherited: false, source: "organization", version: "", configurationError };
+      }
     }),
   ) : [];
   return { organizationSlug:tenant.organizationSlug, enabled: deliveryEnabled(), workspace, readiness: deliveryReadiness(workspace.document, context), lessons: context.lessons,
@@ -54,22 +60,20 @@ async function dispatch(runId: string) {
     localHandlerLoader: () => import("../../../../netlify/functions/course-delivery-background"),
   });
 }
-async function coordinateNexus(admin: Parameters<typeof readDeliveryContext>[0], workspace: DeliveryWorkspace, operation: DeliveryOperation) {
-  if (workspace.document.config.mode !== "HYBRID" || operation === "AGENDA") return;
-  const context = await readDeliveryContext(admin, workspace.artifact_id, workspace.organization_id);
-  const state = operation === "PLAN" ? context.nexusState : context.materials?.state;
-  if (!nexusGenerationRequired(workspace.document.config.mode, operation, state)) return;
-  const result = operation === "PLAN"
-    ? await generateInstructionalPlanAction(workspace.artifact_id)
-    : await startMaterialsGenerationAction(workspace.artifact_id);
-  if (!result.success) throw new Error("No se pudo iniciar la rama Nexus. Revisa su panel antes de reanudar.");
-}
 export async function executeDeliveryCommand(artifactId: string, input: z.infer<typeof deliveryCommandSchema>) {
   if(input.action==="DELIVER")return deliverLivePreparation(artifactId,input.revision,input.sourceSessionId,input.target);
   if(input.action==="LIVE_TARGETS")return livePreparationTargets(artifactId);
   const { tenant, admin } = await requireDeliveryAccess(artifactId, input.action === "APPROVE");
   if (!deliveryEnabled()) throw new Error("La autoría sincrónica no está habilitada.");
   const workspace = await readDeliveryWorkspace(admin, artifactId, tenant.organizationId);
+  if (input.action === "RETRY_UNIT") {
+    const { data: shouldDispatch, error } = await admin.rpc("request_delivery_material_retry", {
+      p_artifact: artifactId, p_organization: tenant.organizationId, p_run: input.runId, p_unit: input.unitId,
+    });
+    if (error) throw new Error("No se pudo encolar el reintento. Actualiza el estado y verifica las entradas, el límite de intentos y la migración de reintentos.");
+    if (shouldDispatch) await dispatch(input.runId);
+    return { runId: input.runId, queued: true };
+  }
   if (workspace.revision !== input.revision) throw new Error("Otra edición cambió el curso. Actualiza antes de continuar.");
   if (input.action === "SAVE") return { revision: await editDelivery(admin, workspace, input.kind, input.value, input.sessionId) };
   if (input.action === "APPROVE") return { revision: await approveDelivery(admin, workspace, input.operation, tenant.userId) };
@@ -87,7 +91,6 @@ export async function executeDeliveryCommand(artifactId: string, input: z.infer<
     const runId = await reserveDeliveryRun(admin, workspace, input.operation);
     try {
       // Coordinación autorizada por el usuario: validar y reservar antes de gastar.
-      await coordinateNexus(admin, workspace, input.operation);
       await dispatch(runId);
     } catch {
       await admin.from("course_delivery_runs").update({ status: "FAILED", last_error: "No se pudo despachar la ejecución; puedes reanudarla." }).eq("id", runId).eq("status", "QUEUED");
@@ -111,7 +114,6 @@ export async function executeDeliveryCommand(artifactId: string, input: z.infer<
     .select("id").maybeSingle();
   if (queueError || !queued) throw new Error("Otra solicitud modificó la ejecución.");
   try {
-    await coordinateNexus(admin, workspace, run.operation);
     await dispatch(run.id);
   } catch {
     await admin.from("course_delivery_runs").update({ status: "FAILED", last_error: "Revisa la rama Nexus o el despacho y vuelve a reanudar." }).eq("id", run.id).eq("status", "QUEUED");

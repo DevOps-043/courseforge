@@ -3,7 +3,6 @@ import { prepareCourseGeneration, attestCourseGeneration } from "../../src/domai
 import { courseSourcePrompt } from "../../src/domains/course-sources/course-source-generation";
 import { readSyllabusWithOrigin } from "../../src/domains/syllabus/services/syllabus-workflow-read";
 import {
-  createGeminiClient,
   createOpenAiClient,
   createServiceRoleClient,
   resolveModelSetting,
@@ -49,7 +48,7 @@ import {
   generateSyllabusResearch,
   type SyllabusModelClients,
 } from "../../src/domains/syllabus/lib/syllabus-model-provider";
-import { getTextModelProvider } from "../../src/shared/ai/text-model-provider";
+import { COURSE_TEXT_MODELS } from "../../src/shared/ai/text-model-provider";
 import { syllabusGenerationBackgroundRequestSchema } from "../../src/domains/syllabus/syllabus-generation-request.schema";
 
 function buildCorrectionRules(objectiveCount: number) {
@@ -200,8 +199,7 @@ export const handler: Handler = async (event) => {
 
     const sourceContext = await prepareCourseGeneration(supabase, artifactId, "SYLLABUS", null, undefined, `syllabus:${nextIteration}`, { objectives: objetivos });
     const modelConfig = await resolveModelSetting(supabase, "SYLLABUS", {
-      model: "gemini-3.5-flash",
-      fallbackModel: "gemini-2.5-flash",
+      ...COURSE_TEXT_MODELS,
       temperature: 0.7,
       thinkingLevel: "medium",
     }, artifactScope?.organization_id || null);
@@ -210,13 +208,7 @@ export const handler: Handler = async (event) => {
     const configuredModels = Array.from(
       new Set([modelConfig.model, modelConfig.fallbackModel].filter(Boolean)),
     );
-    const clients: SyllabusModelClients = {};
-    if (configuredModels.some((model) => getTextModelProvider(model) === "gemini")) {
-      clients.gemini = createGeminiClient();
-    }
-    if (configuredModels.some((model) => getTextModelProvider(model) === "openai")) {
-      clients.openai = createOpenAiClient();
-    }
+    const clients: SyllabusModelClients = { openai: createOpenAiClient() };
 
     const promptOrganizationId = artifactScope?.organization_id || null;
     const videoDurationPolicy = resolveArtifactVideoDurationPolicy(
@@ -238,6 +230,7 @@ export const handler: Handler = async (event) => {
     const searchModelName = modelConfig.fallbackModel || modelConfig.model;
     let researchContext = "";
     let searchQueries: string[] = [];
+    let searchSources: Awaited<ReturnType<typeof generateSyllabusResearch>>["groundingMetadata"] | undefined;
 
     try {
       if (!sourceContext) {
@@ -263,6 +256,7 @@ export const handler: Handler = async (event) => {
 
       researchContext = searchResult.text;
       searchQueries = searchResult.searchQueries;
+      searchSources = searchResult.groundingMetadata;
 
       console.log("[Syllabus Background] Investigación completada.");
       console.log(
@@ -270,7 +264,7 @@ export const handler: Handler = async (event) => {
         searchQueries,
       );
       console.log(
-        `[Syllabus Background] Proveedor de research: ${getTextModelProvider(searchModelName)}`,
+        `[Syllabus Background] Proveedor de research: OpenAI`,
       );
       }
     } catch (researchError) {
@@ -382,6 +376,7 @@ export const handler: Handler = async (event) => {
     const metadata: SyllabusGenerationMetadata = {
       research_summary: researchContext,
       search_queries: searchQueries,
+      search_sources: searchSources,
       models: {
         search: searchModelName,
         architect: architectModelName,

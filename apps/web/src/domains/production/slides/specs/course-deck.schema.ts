@@ -229,6 +229,11 @@ export const slideDeckGenerateInputSchema = z.object({
 export type CourseChartSpec = z.infer<typeof courseChartSpecSchema>;
 export type CourseDeckAppearance = z.infer<typeof courseDeckAppearanceSchema>;
 export type CourseDeckSpec = z.infer<typeof courseDeckSpecSchema>;
+/** El render no exige un componente Academy para las sesiones en vivo. */
+export type RenderableCourseDeck = Omit<CourseDeckSpec, "materialComponentId"> & (
+  | { materialComponentId: string; sessionId?: never }
+  | { materialComponentId?: never; sessionId: string }
+);
 export type CourseSlideSpec = z.infer<typeof courseSlideSpecSchema>;
 export type CourseVisualAsset = z.infer<typeof courseVisualAssetSchema>;
 export type CourseVisualAssetPurpose = z.infer<typeof courseVisualAssetPurposeSchema>;

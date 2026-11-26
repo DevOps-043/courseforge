@@ -1,0 +1,5 @@
+- [x] Revisar ruta, firma, autorización y registro de fallos.
+- [x] Separar acceso del worker del contexto HTTP y registrar fallos previos al claim.
+- [x] Verificar contratos, tipos, seguridad y documentación.
+- [x] Contrastar el fallo con logs de staging aportados por el usuario.
+- [ ] Validar estado real del job y generación tras despliegue autorizado; navegador no disponible.

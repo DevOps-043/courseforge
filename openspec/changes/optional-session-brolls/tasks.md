@@ -1,0 +1,6 @@
+- [x] Definir carga, asociación, validación, privacidad y retiro de clips opcionales.
+- [x] Reutilizar inspector y Storage privado sin componente Academy ficticio.
+- [x] Integrar carga, revisión, aprobación y retiro dentro de la sesión.
+- [x] Completar pruebas de errores, concurrencia, permisos y regresiones.
+- [x] Verificar tipos, lint, documentación e interfaz mediante SSR; registrar límite de revisión visual manual.
+- [ ] Realizar piloto con Storage real después de despliegue autorizado.

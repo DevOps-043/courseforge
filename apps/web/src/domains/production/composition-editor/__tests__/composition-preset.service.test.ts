@@ -38,6 +38,47 @@ test("extracts a manual sequence and adapts five authored items to fifteen asset
   assert.equal(clips[0]?.layout.x, clips[5]?.layout.x, "layout variants should repeat for additional assets");
 });
 
+test("SEQUENCE y STACK ajustan el último frame a un canvas fraccionario", () => {
+  const target = createDocument(2, 10);
+  target.canvas.durationSeconds = 10.02;
+  target.canvas.fps = 30;
+
+  for (const mode of ["SEQUENCE", "STACK"] as const) {
+    const authored = createDocument(2, 10);
+    authored.clips.forEach((clip, index) => {
+      clip.startSeconds = mode === "STACK" ? 0 : index * 5;
+      clip.durationSeconds = mode === "STACK" ? 10 : 5;
+    });
+    const { definition } = extractCompositionPresetDefinition(authored);
+    assert.equal(definition.rules[0]?.timing.mode, mode);
+
+    const { document } = applyCompositionPresetDefinition({ definition, document: target });
+    assert.equal(document.canvas.durationSeconds, 10.02);
+    assert.deepEqual(
+      document.clips.map((clip) => [clip.startSeconds, clip.durationSeconds]),
+      mode === "STACK" ? [[0, 10], [0, 10]] : [[0, 5], [5, 5]],
+    );
+  }
+});
+
+test("STACK permite que varios clips compartan el único frame disponible", () => {
+  const authored = createDocument(2, 10);
+  authored.clips.forEach((clip) => {
+    clip.startSeconds = 9.96;
+    clip.durationSeconds = 0.04;
+  });
+  const { definition } = extractCompositionPresetDefinition(authored);
+  assert.equal(definition.rules[0]?.timing.mode, "STACK");
+
+  const target = createDocument(2, 10);
+  target.canvas.fps = 30;
+  const { document } = applyCompositionPresetDefinition({ definition, document: target });
+  assert.deepEqual(
+    document.clips.map((clip) => [clip.startSeconds, clip.durationSeconds]),
+    [[299 / 30, 1 / 30], [299 / 30, 1 / 30]],
+  );
+});
+
 test("keeps locked tracks unchanged and reports that no editable element was found", () => {
   const document = createDocument(2, 10);
   const track = document.tracks.find((candidate) => candidate.semanticRole === "BROLL")!;

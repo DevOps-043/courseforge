@@ -7,6 +7,7 @@ import {
 } from "@/lib/server/artifact-action-auth";
 import { resolveActiveTenantContext } from "@/lib/server/tenant-context";
 import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
+import { resolveProductionComponentContext } from "@/domains/production/jobs/production-jobs.service";
 import { HeygenApiError } from "@/domains/production/providers/heygen/heygen.client";
 import { runHeygenAvatarVideoBackground } from "@/domains/production/providers/heygen/heygen-video-background.service";
 import {
@@ -63,6 +64,13 @@ export async function POST(request: Request) {
     );
     if (!authorizedComponent) {
       return apiErrorResponse({ code: API_ERROR_CODE.resourceNotFound, message: "Componente no encontrado para esta empresa.", requestId, status: 404 });
+    }
+
+    // Rechazar antes del despacho; el worker vuelve a verificar el recorrido.
+    try {
+      await resolveProductionComponentContext({ componentId: payload.componentId, supabase: authorizedComponent.admin });
+    } catch {
+      return apiErrorResponse({ code: API_ERROR_CODE.conflict, message: "Este recurso no está habilitado para video de Academy en el recorrido vigente. Revisa su asignación y los materiales aprobados.", requestId, status: 409 });
     }
 
     await getHeygenClientForOrganization({

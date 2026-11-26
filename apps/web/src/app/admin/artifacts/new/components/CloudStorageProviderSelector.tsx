@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { HardDrive } from "lucide-react";
+import { FieldHelp } from "@/components/ui/FieldHelp";
 import {
   disconnectCloudStorageAction,
   getCloudStorageConnectionsAction,
@@ -64,6 +65,12 @@ export function CloudStorageProviderSelector({
     setSelectedProvider(provider);
   };
 
+  const storageHelp = <FieldHelp label="Almacenamiento de assets"
+    description="Elige la cuenta conectada donde se sincronizarán las carpetas de assets del curso. Puedes continuar sin sincronización externa."
+    selection={{ label: selectedProvider ? PROVIDER_LABELS[selectedProvider] : "No sincronizar", description: selectedProvider
+      ? `Se utilizará la conexión de ${PROVIDER_LABELS[selectedProvider]} para sincronizar las carpetas de este curso.`
+      : "No se sincronizarán carpetas con Google Drive ni OneDrive. Puedes seguir creando el curso sin conectar una cuenta." }} />;
+
   const handleDisconnect = async (provider: CloudStorageProvider) => {
     setDisconnectingProvider(provider);
     try {
@@ -86,10 +93,10 @@ export function CloudStorageProviderSelector({
   if (connectedProviders.length === 0) {
     return (
       <div className="flex flex-col gap-2 pt-3 border-t border-gray-100 dark:border-white/5">
-        <span className="text-xs text-gray-500 dark:text-slate-400 flex items-center gap-1.5 select-none">
+        <div className="flex items-center justify-between gap-3"><span className="text-xs text-gray-500 dark:text-slate-400 flex items-center gap-1.5 select-none">
           <HardDrive size={14} className="text-gray-400" />
           No hay almacenamiento cloud conectado
-        </span>
+        </span>{storageHelp}</div>
         <div className="flex flex-wrap gap-3">
           <CloudStorageConnectButton provider="google_drive" className="text-xs text-[var(--engine-accent)] hover:underline font-semibold">
             Conectar Google Drive
@@ -104,9 +111,9 @@ export function CloudStorageProviderSelector({
 
   return (
     <div className="space-y-3 pt-3 border-t border-gray-100 dark:border-white/5">
-      <label className="text-xs uppercase tracking-wider text-gray-500 dark:text-[var(--engine-muted)] font-bold">
+      <div className="flex items-center justify-between gap-3"><span className="text-xs uppercase tracking-wider text-gray-500 dark:text-[var(--engine-muted)] font-bold">
         Sincronizar carpetas de assets
-      </label>
+      </span>{storageHelp}</div>
       <div className="space-y-2">
         <label className="flex items-center gap-3 text-sm text-gray-700 dark:text-slate-300 font-medium cursor-pointer">
           <input

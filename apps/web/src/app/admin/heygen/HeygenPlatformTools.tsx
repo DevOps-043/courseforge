@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { APP_CONFIG } from "../../../config/app";
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, Loader2, Play, RefreshCw, Save, Sparkles } from "lucide-react";
@@ -212,9 +213,15 @@ export default function HeygenPlatformTools() {
         <div className="rounded-2xl border border-gray-200 p-5 dark:border-white/10">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Herramienta">
-              <select value={action} onChange={(event) => setAction(event.target.value as ToolAction)} className={controlClass}>
-                {ACTIONS.map((item) => <option key={item.value} value={item.value}>{item.group} · {item.label}</option>)}
-              </select>
+              <EngineSelect
+                aria-label="Herramienta"
+                value={action}
+                onValueChange={(nextValue) => setAction(nextValue as ToolAction)}
+                options={ACTIONS.map((item) => ({
+                  value: item.value,
+                  label: `${item.group} · ${item.label}`,
+                }))}
+              />
             </Field>
             <Field label="Título"><input value={title} onChange={(event) => setTitle(event.target.value)} className={controlClass} placeholder={selected.label} /></Field>
             {needsVideo(action) ? <Field label={action === "create_brand_kit" ? "URL HTTPS del sitio de marca" : "Video: URL HTTPS o Asset ID"}><input value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} className={controlClass} placeholder={action === "create_brand_kit" ? "https://marca.example" : "https://.../video.mp4 o asset_id"} /></Field> : null}
@@ -222,9 +229,45 @@ export default function HeygenPlatformTools() {
             {needsName(action) ? <Field label={action === "clone_voice" ? "Nombre de la voz" : "Nombre"}><input value={name} onChange={(event) => setName(event.target.value)} className={controlClass} /></Field> : null}
             {needsPrompt(action) ? <Field label="Instrucción / prompt" wide><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} className={`${controlClass} min-h-24 py-2`} /></Field> : null}
             {needsLanguages(action) ? <Field label="Idiomas de salida (coma)"><input value={languages} onChange={(event) => setLanguages(event.target.value)} className={controlClass} placeholder="es, en, pt" /></Field> : null}
-            {needsResource(action) ? <Field label={resourceLabel(action)}><select value={resourceId} onChange={(event) => setResourceId(event.target.value)} className={controlClass}><option value="">{action === "video_agent" ? "Sin estilo predeterminado" : "Selecciona una plantilla"}</option>{resourceOptions(action, dashboard).map((item, index) => { const id = readItemId(item); return id ? <option key={id} value={id}>{readItemName(item, `${action === "video_agent" ? "Estilo" : "Plantilla"} ${index + 1}`)}</option> : null; })}</select></Field> : null}
+            {needsResource(action) ? <Field label={resourceLabel(action)}>
+              <EngineSelect
+                aria-label={resourceLabel(action)}
+                value={resourceId}
+                onValueChange={setResourceId}
+                options={[
+                  {
+                    value: "",
+                    label: action === "video_agent" ? "Sin estilo predeterminado" : "Selecciona una plantilla",
+                  },
+                  ...resourceOptions(action, dashboard).flatMap((item, index) => {
+                    const id = readItemId(item);
+                    return id
+                      ? [
+                          {
+                            value: id,
+                            label: readItemName(
+                              item,
+                              `${action === "video_agent" ? "Estilo" : "Plantilla"} ${index + 1}`,
+                            ),
+                          },
+                        ]
+                      : [];
+                  }),
+                ]}
+              />
+            </Field> : null}
             {usesDuration(action) ? <Field label="Duración estimada (segundos)"><input type="number" min={1} value={durationSeconds} onChange={(event) => setDurationSeconds(Number(event.target.value) || 1)} className={controlClass} /></Field> : null}
-            {usesMode(action) ? <Field label="Modo"><select value={mode} onChange={(event) => setMode(event.target.value as typeof mode)} className={controlClass}><option value="speed">Speed</option><option value="precision">Precision</option></select></Field> : null}
+            {usesMode(action) ? <Field label="Modo">
+              <EngineSelect
+                aria-label="Modo"
+                value={mode}
+                onValueChange={(nextValue) => setMode(nextValue as typeof mode)}
+                options={[
+                  { value: "speed", label: "Speed" },
+                  { value: "precision", label: "Precision" },
+                ]}
+              />
+            </Field> : null}
             {action === "translate_video" ? <Field label="Salida"><label className={`${controlClass} flex items-center gap-2 normal-case`}><input type="checkbox" checked={audioOnly} onChange={(event) => setAudioOnly(event.target.checked)} /> Solo audio traducido</label></Field> : null}
             {usesJson(action) ? <Field label={jsonLabel(action)} wide><textarea value={jsonInput} onChange={(event) => setJsonInput(event.target.value)} className={`${controlClass} min-h-28 py-2 font-mono text-xs`} /></Field> : null}
           </div>
@@ -243,8 +286,34 @@ export default function HeygenPlatformTools() {
               <Field label="Presupuesto mensual USD"><input type="number" min={0} value={monthlyBudget} onChange={(event) => setMonthlyBudget(event.target.value)} className={controlClass} placeholder="Sin límite" /></Field>
               <Field label="Presupuesto por curso USD"><input type="number" min={0} value={perCourseBudget} onChange={(event) => setPerCourseBudget(event.target.value)} className={controlClass} placeholder="Sin límite" /></Field>
               <Field label="Locale predeterminado"><input value={defaultLocale} onChange={(event) => setDefaultLocale(event.target.value)} className={controlClass} /></Field>
-              <Field label="Glosario predeterminado"><select value={defaultGlossaryId} onChange={(event) => setDefaultGlossaryId(event.target.value)} className={controlClass}><option value="">Sin glosario</option>{(dashboard?.glossaries || []).map((item, index) => { const id = readItemId(item); return id ? <option key={id} value={id}>{readItemName(item, `Glosario ${index + 1}`)}</option> : null; })}</select></Field>
-              <Field label="Brand kit predeterminado"><select value={defaultBrandKitId} onChange={(event) => setDefaultBrandKitId(event.target.value)} className={controlClass}><option value="">Sin brand kit</option>{(dashboard?.brandKits || []).map((item, index) => { const id = readItemId(item); return id ? <option key={id} value={id}>{readItemName(item, `Brand kit ${index + 1}`)}</option> : null; })}</select></Field>
+              <Field label="Glosario predeterminado">
+                <EngineSelect
+                  aria-label="Glosario predeterminado"
+                  value={defaultGlossaryId}
+                  onValueChange={setDefaultGlossaryId}
+                  options={[
+                    { value: "", label: "Sin glosario" },
+                    ...((dashboard?.glossaries || []).flatMap((item, index) => {
+                      const id = readItemId(item);
+                      return id ? [{ value: id, label: readItemName(item, `Glosario ${index + 1}`) }] : [];
+                    }) ?? []),
+                  ]}
+                />
+              </Field>
+              <Field label="Brand kit predeterminado">
+                <EngineSelect
+                  aria-label="Brand kit predeterminado"
+                  value={defaultBrandKitId}
+                  onValueChange={setDefaultBrandKitId}
+                  options={[
+                    { value: "", label: "Sin brand kit" },
+                    ...((dashboard?.brandKits || []).flatMap((item, index) => {
+                      const id = readItemId(item);
+                      return id ? [{ value: id, label: readItemName(item, `Brand kit ${index + 1}`) }] : [];
+                    }) ?? []),
+                  ]}
+                />
+              </Field>
             </div>
             <button type="button" onClick={saveSettings} disabled={busy || !connected} className="mt-3 engine-button engine-button--secondary inline-flex items-center gap-2"><Save size={14} /> Guardar</button>
           </div>
@@ -252,7 +321,31 @@ export default function HeygenPlatformTools() {
           <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4">
             <h3 className="font-bold text-gray-900 dark:text-white">LiveAvatar</h3>
             <p className="mt-1 text-xs text-gray-500">Embed conversacional separado de la API de video.</p>
-            {!liveConnected ? <div className="mt-3 flex gap-2"><input type="password" value={liveApiKey} onChange={(event) => setLiveApiKey(event.target.value)} className={controlClass} placeholder="API key LiveAvatar" /><button type="button" onClick={connectLiveAvatar} disabled={busy || liveApiKey.length < 12} className="engine-button engine-button--secondary">Conectar</button></div> : <div className="mt-3 grid gap-2"><select value={liveAvatarId} onChange={(event) => setLiveAvatarId(event.target.value)} className={controlClass}><option value="">Selecciona avatar</option>{liveAvatars.map((item, index) => { const id = readItemId(item); return id ? <option key={id} value={id}>{readItemName(item, `Avatar ${index + 1}`)}</option> : null; })}</select><select value={liveContextId} onChange={(event) => setLiveContextId(event.target.value)} className={controlClass}><option value="">Selecciona contexto</option>{liveContexts.map((item, index) => { const id = readItemId(item); return id ? <option key={id} value={id}>{readItemName(item, `Contexto ${index + 1}`)}</option> : null; })}</select><button type="button" onClick={createEmbedding} disabled={busy || !liveAvatarId || !liveContextId} className="engine-button engine-button--secondary inline-flex items-center gap-2"><Play size={14} /> Crear embed sandbox</button></div>}
+            {!liveConnected ? <div className="mt-3 flex gap-2"><input type="password" value={liveApiKey} onChange={(event) => setLiveApiKey(event.target.value)} className={controlClass} placeholder="API key LiveAvatar" /><button type="button" onClick={connectLiveAvatar} disabled={busy || liveApiKey.length < 12} className="engine-button engine-button--secondary">Conectar</button></div> : <div className="mt-3 grid gap-2">
+              <EngineSelect
+                aria-label="Avatar de LiveAvatar"
+                value={liveAvatarId}
+                onValueChange={setLiveAvatarId}
+                options={[
+                  { value: "", label: "Selecciona avatar" },
+                  ...liveAvatars.flatMap((item, index) => {
+                    const id = readItemId(item);
+                    return id ? [{ value: id, label: readItemName(item, `Avatar ${index + 1}`) }] : [];
+                  }),
+                ]}
+              />
+              <EngineSelect
+                aria-label="Contexto de LiveAvatar"
+                value={liveContextId}
+                onValueChange={setLiveContextId}
+                options={[
+                  { value: "", label: "Selecciona contexto" },
+                  ...liveContexts.flatMap((item, index) => {
+                    const id = readItemId(item);
+                    return id ? [{ value: id, label: readItemName(item, `Contexto ${index + 1}`) }] : [];
+                  }),
+                ]}
+              /><button type="button" onClick={createEmbedding} disabled={busy || !liveAvatarId || !liveContextId} className="engine-button engine-button--secondary inline-flex items-center gap-2"><Play size={14} /> Crear embed sandbox</button></div>}
             {outputLink ? <a href={outputLink} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-cyan-700 underline"><ExternalLink size={12} /> Abrir experiencia</a> : null}
           </div>
         </div>
@@ -371,7 +464,17 @@ function AudioSearch() {
     } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo buscar audio."); }
     finally { setLoading(false); }
   };
-  return <div className="mt-5 rounded-2xl border border-gray-200 p-4 dark:border-white/10"><div className="flex flex-wrap items-end gap-2"><Field label="Música y efectos"><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void search(); }} className={controlClass} placeholder="Ambiente corporativo, transición..." /></Field><select value={type} onChange={(event) => setType(event.target.value as typeof type)} className={`${controlClass} max-w-44`}><option value="music">Música</option><option value="sound_effects">Efectos</option></select><button type="button" onClick={search} disabled={loading || !query.trim()} className="engine-button engine-button--secondary">{loading ? "Buscando…" : "Buscar"}</button></div>{results.length ? <div className="mt-3 grid gap-2 md:grid-cols-2">{results.slice(0, 8).map((item, index) => { const url = findUrl(item); return <div key={String(item.id || index)} className="rounded-xl bg-gray-50 p-3 text-xs dark:bg-white/5"><strong>{String(item.name || item.title || `Audio ${index + 1}`)}</strong>{url ? <audio src={url} controls preload="none" className="mt-2 h-8 w-full" /> : null}</div>; })}</div> : null}</div>;
+  return <div className="mt-5 rounded-2xl border border-gray-200 p-4 dark:border-white/10"><div className="flex flex-wrap items-end gap-2"><Field label="Música y efectos"><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void search(); }} className={controlClass} placeholder="Ambiente corporativo, transición..." /></Field>
+    <EngineSelect
+      aria-label="Tipo de audio"
+      className="w-full max-w-44"
+      value={type}
+      onValueChange={(nextValue) => setType(nextValue as typeof type)}
+      options={[
+        { value: "music", label: "Música" },
+        { value: "sound_effects", label: "Efectos" },
+      ]}
+    /><button type="button" onClick={search} disabled={loading || !query.trim()} className="engine-button engine-button--secondary">{loading ? "Buscando…" : "Buscar"}</button></div>{results.length ? <div className="mt-3 grid gap-2 md:grid-cols-2">{results.slice(0, 8).map((item, index) => { const url = findUrl(item); return <div key={String(item.id || index)} className="rounded-xl bg-gray-50 p-3 text-xs dark:bg-white/5"><strong>{String(item.name || item.title || `Audio ${index + 1}`)}</strong>{url ? <audio src={url} controls preload="none" className="mt-2 h-8 w-full" /> : null}</div>; })}</div> : null}</div>;
 }
 
 function findUrl(value: unknown): string | null {

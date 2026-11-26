@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -129,9 +130,16 @@ export function ImportedTemplateStudio() {
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,1fr)]">
         <div className="min-w-0 space-y-3">
           <label className="flex flex-col gap-1 text-sm font-semibold">Diseño para revisar
-            <select value={active} disabled={busy} onChange={event => setActive(Number(event.target.value))} className="rounded-lg border border-[var(--engine-border)] bg-[var(--engine-surface-solid)] p-2">
-              {view.design.layouts.map((item, index) => <option key={item.id} value={index}>{index + 1}. {item.label}</option>)}
-            </select>
+            <EngineSelect
+              aria-label="Diseño para revisar"
+              disabled={busy}
+              value={String(active)}
+              onValueChange={(nextValue) => setActive(Number(nextValue))}
+              options={view.design.layouts.map((item, index) => ({
+                value: String(index),
+                label: `${index + 1}. ${item.label}`,
+              }))}
+            />
           </label>
           <ImportedSlidePreview html={view.previews[active]} assets={view.design.assets} title={`Diseño de ${layout.label}`} />
           <p className="text-xs">Vista HTML real · diseño estático · imágenes y fuentes conservadas. La edición no ejecuta scripts importados.</p>

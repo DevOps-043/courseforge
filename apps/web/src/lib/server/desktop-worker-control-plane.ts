@@ -1,4 +1,5 @@
 import { APP_CONFIG } from "../../config/app";
+import { REMOTION_VERSION } from "../../config/remotion";
 import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
@@ -2897,7 +2898,7 @@ export class DesktopWorkerControlPlane {
         sourceBundleHash: version.bundle_hash,
         compositionId: version.composition_id,
         exportMode: version.export_mode === "root" ? "root" : "component",
-        remotionVersion: "4.0.484",
+        remotionVersion: REMOTION_VERSION,
         builtAt: new Date().toISOString(),
       }, null, 2));
       await addDirectoryToZip(zip, outDir);
@@ -2916,7 +2917,7 @@ export class DesktopWorkerControlPlane {
       }
 
       const builtAt = new Date().toISOString();
-      const buildLog = `Server bundler completed. validated remotionVersion=4.0.484 compositionId=${version.composition_id}`;
+      const buildLog = `Server bundler completed. validated remotionVersion=${REMOTION_VERSION} compositionId=${version.composition_id}`;
       const { error: buildUpdateError } = await this.supabase
         .from("remotion_template_builds")
         .update({

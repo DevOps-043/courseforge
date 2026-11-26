@@ -1,3 +1,4 @@
+import * as textModels from "../../../shared/ai/text-model-provider";
 import { load } from "./source-test-loader";
 import * as pipeline from "../../../lib/pipeline-constants";
 import * as contract from "../../../lib/server/api-contract";
@@ -19,7 +20,7 @@ export const SETTINGS_ACTION_CASES = [
   { name: "updateSystemPromptAction", mode: "WRITE", args: [{ id: settingsPromptId, content: "Contenido cambiado" }] },
   { name: "resetPromptToDefaultAction", mode: "WRITE", args: ["ARTIFACT_BASE"] },
   { name: "restorePromptVersionAction", mode: "WRITE", args: [settingsPromptId] },
-  { name: "updateModelSettingsAction", mode: "WRITE", args: [[{ id: 98765, model_name: "modelo-sintetico", setting_type: "SYLLABUS", temperature: 0.5 }]] },
+  { name: "updateModelSettingsAction", mode: "WRITE", args: [[{ id: 98765, model_name: "gpt-6.1-terra", setting_type: "SYLLABUS", temperature: 0.5 }]] },
 ] as const;
 
 export function settingsFixture() {
@@ -99,6 +100,7 @@ export function settingsFixture() {
     "@/lib/server/env": { getSupabaseUrl: () => "https://synthetic.invalid", getSupabaseServiceRoleKey: () => "sintetico" },
     "@/lib/server/tenant-context": tenantModule,
     "@/shared/ai/materials-model-provider": { isSupportedMaterialsModel: () => true },
+    "@/shared/ai/text-model-provider": textModels,
     "@/lib/pipeline-constants": pipeline,
     "next/cache": { revalidatePath: () => effects.push("revalidate") },
   }, { console: { ...console, error: () => effects.push("log.error") } });

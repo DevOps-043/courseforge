@@ -2,6 +2,7 @@ import { participantMaterials } from "../lib/delivery-policy";
 import { deliveryHash } from "../lib/delivery-hash";
 import type { DeliveryWorkspace } from "../types/delivery.schemas";
 import type { DeliveryContext } from "./delivery-repository";
+import { buildSessionDocuments } from "./delivery-documents";
 
 export type DeliveryAudience = "participant" | "facilitator" | "presentation";
 export function escapeDeliveryHtml(value: string) {
@@ -29,7 +30,12 @@ export function renderDeliveryExport(workspace: DeliveryWorkspace, context: Deli
       ["Qué conducir", material.preparation.conduct], ["Dónde profundizar", material.preparation.deepen], ["Cómo ampliar", material.preparation.expand],
     ].map(([title, text]) => heading(title) + paragraph(text)).join("") : "";
     const agenda = audience === "facilitator" ? plan.blocks.map(block => `${heading(`${block.minutes} min · ${block.purpose}`)}${paragraph(block.explanation)}${paragraph(block.activity)}${list(block.criteria)}`).join("") : "";
-    return `<section>${heading(`${index + 1}. ${session.title} · ${session.minutes} min`)}${list(session.objectives)}${preparation}${agenda}${concepts}${activities}</section>`;
+    const documents = buildSessionDocuments(workspace, session, plan, material, context).filter(item => item.applicable).map(item => {
+      const sections = audience === "participant" ? item.participant_sections : [...item.participant_sections, ...item.facilitator_sections];
+      if (!sections.length) return "";
+      return `<article id="${escapeDeliveryHtml(item.id)}">${heading(item.title)}${sections.map(section => heading(section.heading) + paragraph(section.body)).join("")}</article>`;
+    }).join("");
+    return `<section>${heading(`${index + 1}. ${session.title} · ${session.minutes} min`)}${list(session.objectives)}${preparation}${agenda}${concepts}${activities}${documents}</section>`;
   }).join("");
   const sources = context.sources.filter(source => usedRefs.has(source.id)).map(source => {
     let link = "";

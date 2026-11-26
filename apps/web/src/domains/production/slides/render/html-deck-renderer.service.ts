@@ -1,7 +1,7 @@
 import { APP_CONFIG } from "../../../../config/app";
 import { renderCourseChartSvg } from "../charts/svg-chart-renderer.service";
 import { repairCommonUtf8Mojibake } from "../../text/mojibake.service";
-import type { CourseDeckSpec, CourseSlideSpec } from "../specs/course-deck.schema";
+import type { RenderableCourseDeck as CourseDeckSpec, CourseSlideSpec } from "../specs/course-deck.schema";
 import { resolveCourseDeckThemeForAppearance } from "./course-deck-theme.service";
 import { renderImportedCourseDeckSource } from "../import/imported-slide-renderer.service";
 
@@ -785,7 +785,7 @@ html, body {
 }
 
 function renderRuntime(deck: CourseDeckSpec) {
-  const storeKey = JSON.stringify(`soflia-engine-deck:${deck.materialComponentId}`);
+  const storeKey = JSON.stringify(`soflia-engine-deck:${deck.materialComponentId ?? `session:${deck.sessionId}`}`);
 
   return `<script data-soflia-template-runtime="soflia-deck">
 (() => {

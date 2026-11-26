@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { createOperationalLogger } from "../../lib/server/operational-logger";
+import type { DocumentaryBatchCounts } from "./course-source-base-progress";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateObject } from "ai";
 import {
@@ -18,7 +20,10 @@ import {
 } from "./course-source-review.service";
 import {
   CourseSourceError,
+  DocumentaryBasePendingError,
   sourcePersistenceError,
+  sourceGroundingFailure,
+  type CourseSourceGroundingRejection,
 } from "./course-source-error";
 import {
   checkGenerationBudget,
@@ -30,6 +35,14 @@ import {
   type CourseGenerationContext,
   type GenerationSource,
 } from "./course-source-generation";
+import { allMaterialSnapshotSchema, materialSourceSetAvailability } from "./course-source-material-set";
+
+function baseBatchPersistenceFailure(error: { code?: string; message: string }, durable: boolean): never {
+  if (durable && /^(08|PGRST00|40001|40P01|57014|57P0|53)/.test(error.code ?? "")) {
+    throw new DocumentaryBasePendingError("La base de datos no confirmó el estado del lote. Se conservará el avance confirmado.", true);
+  }
+  sourcePersistenceError(error);
+}
 
 /** Resuelve identidad desde el curso. El llamante debe haber autorizado el recurso o verificado su job firmado. */
 export async function prepareCourseGeneration(
@@ -40,9 +53,14 @@ export async function prepareCourseGeneration(
   lessonIds?: string[],
   executionKey?: string,
   expectedInputs?: { modules?: unknown; plans?: unknown; objectives?: unknown },
-  baseBatch?: { purpose: string; model: string; deadline: number },
+  baseBatch?: {
+    purpose: string; model: string; deadline: number; revision?: number; recoverExpiredBatch?: boolean;
+    onProgress?: (counts: DocumentaryBatchCounts) => Promise<void>;
+  },
 ): Promise<CourseGenerationContext | null> {
   const settings = await readCourseSourcePolicy(admin, artifactId);
+  if (baseBatch?.revision !== undefined && settings?.revision !== baseBatch.revision)
+    throw new CourseSourceError(409, "Las fuentes cambiaron durante la lectura de Base. Actualiza el curso y vuelve a generar.");
   if (!settings || settings.policy === "WEB_ONLY") return null;
   if (!settings.policy)
     throw new CourseSourceError(
@@ -75,6 +93,22 @@ export async function prepareCourseGeneration(
     }
     syllabusVersion = Number(current.data.syllabusVersion || 0);
   }
+  if (stage === "MATERIALS") {
+    const review = await readSourceReview(admin, artifactId);
+    const availability = materialSourceSetAvailability(review.policy, review.planReady, review.lessons, review.evidence);
+    if (!availability.ready) throw new CourseSourceError(409, availability.issues.join(" "));
+    const scope = [...new Set((lessonId ? [lessonId] : lessonIds || review.lessons.map(item => item.id)).map(id => id.replace(/-G\d+$/i, "")))].sort();
+    const result = await admin.rpc("snapshot_all_course_source_materials", {
+      p_artifact: artifactId, p_organization: settings.organization_id,
+      p_execution: executionKey ? executionIdentifier(artifactId, stage, executionKey) : randomUUID(), p_lessons: scope,
+    });
+    if (result.error) sourcePersistenceError(result.error);
+    const parsed = allMaterialSnapshotSchema.safeParse(result.data);
+    if (!parsed.success || parsed.data.artifactId !== artifactId || parsed.data.fingerprint !== fingerprint || parsed.data.revision !== settings.revision
+      || JSON.stringify([...parsed.data.scope].sort()) !== JSON.stringify(scope)) throw new CourseSourceError(409, "El conjunto de fuentes cambió o no cumple el contrato. Actualiza antes de generar.");
+    checkGenerationBudget(parsed.data.sources, true);
+    return parsed.data;
+  }
   const { data: fragments, count, error } = await admin
     .from("course_source_fragments")
     .select(
@@ -92,7 +126,7 @@ export async function prepareCourseGeneration(
       413,
       "Demasiados fragmentos para generar. Divide el alcance del curso.",
     );
-  let sources: GenerationSource[] = (fragments || []).map((fragment) => ({
+  const sources: GenerationSource[] = (fragments || []).map((fragment) => ({
     id: fragment.id,
     documentId: fragment.document_id,
     kind: "DOCUMENT",
@@ -105,78 +139,10 @@ export async function prepareCourseGeneration(
     locator: fragment.locator,
   }));
   const canonicalLesson = lessonId?.replace(/-G\d+$/i, "") || null;
-  if (stage === "MATERIALS") {
-    const review = await readSourceReview(admin, artifactId);
-    if (
-      !review.approved ||
-      !review.coverage.length ||
-      !review.coverage.every((item) => item.complete) ||
-      review.revision !== settings.revision
-    )
-      throw new CourseSourceError(
-        409,
-        "Aprueba la cobertura vigente antes de generar materiales.",
-      );
-    const associations = review.associations.filter(
-      (item) =>
-        (!canonicalLesson || item.lessonId === canonicalLesson) &&
-        (!lessonIds || lessonIds.includes(item.lessonId)),
-    );
-    const ids = new Set(associations.map((item) => item.evidenceId));
-    sources = sources.filter((source) => ids.has(source.id));
-    for (const evidence of review.evidence
-      .filter((item) => item.type === "WEB" && ids.has(item.id))
-      .sort((a, b) => a.id.localeCompare(b.id))) {
-      if (settings.policy === "DOCUMENTS_ONLY")
-        throw new CourseSourceError(
-          409,
-          "La política exclusiva no permite evidencia web.",
-        );
-      let url: URL;
-      try {
-        url = new URL(evidence.sourceRef || "");
-      } catch {
-        throw new CourseSourceError(
-          409,
-          "La fuente web no tiene una URL válida. Corrige la evidencia antes de generar.",
-        );
-      }
-      if (
-        url.protocol !== "https:" ||
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash
-      )
-        throw new CourseSourceError(
-          409,
-          "La fuente web necesita una referencia pública sin credenciales ni firma.",
-        );
-      sources.push({
-        id: evidence.id,
-        kind: "WEB",
-        title: evidence.title,
-        text: evidence.text,
-        hash: sourceTextHash(evidence.text),
-        url: evidence.sourceRef!,
-        locator: { url: evidence.sourceRef! },
-      });
-    }
-    sources = sources.map((source) => ({
-      ...source,
-      lessonIds: [
-        ...new Set(
-          associations
-            .filter((item) => item.evidenceId === source.id)
-            .map((item) => item.lessonId),
-        ),
-      ],
-    }));
-  }
   const useBaseBatches = stage === "BASE" && baseBatch && sources.reduce(
     (length, source) => length + source.text.length, 0,
   ) > SOURCE_GENERATION_LIMITS.structureCharacters;
-  if (!useBaseBatches) checkGenerationBudget(sources, stage === "MATERIALS");
+  if (!useBaseBatches) checkGenerationBudget(sources);
   const { data: snapshotId, error: snapshotError } = await admin.rpc(
     "snapshot_course_source_generation",
     {
@@ -209,52 +175,86 @@ export async function prepareCourseGeneration(
   };
   if (useBaseBatches) {
     const { purpose, model, deadline } = baseBatch;
-    const plan = planBaseBatches(purpose, sources);
+    const durable = baseBatch.revision !== undefined;
+    const planningStartedAt = Date.now();
+    const { batches, limits, findingsPerBatch } = planBaseBatches(purpose, sources);
+    const metrics = {
+      planningMs: Date.now() - planningStartedAt, providerRequests: 0, providerMs: 0, databaseMs: 0,
+    };
+    const batchRunStartedAt = Date.now();
     const { data: batchRun, error: batchError } = await admin.rpc("create_course_source_batch_run", {
       p_artifact: artifactId, p_organization: settings.organization_id, p_revision: settings.revision,
-      p_purpose_hash: sourceTextHash(JSON.stringify({ purpose, model })), p_planner: BASE_BATCH_LIMITS.planner, p_plan: plan,
+      p_purpose_hash: sourceTextHash(JSON.stringify({ purpose, model })), p_planner: limits.planner, p_plan: batches,
       p_deadline: new Date(Date.now() + BASE_BATCH_LIMITS.lifetimeMs).toISOString(),
-      p_attempts: BASE_BATCH_LIMITS.attempts, p_splits: BASE_BATCH_LIMITS.splits, p_tokens: BASE_BATCH_LIMITS.totalUnits,
+      p_attempts: limits.attempts, p_splits: limits.splits, p_tokens: limits.totalUnits,
     });
-    if (batchError) sourcePersistenceError(batchError);
+    if (batchError) baseBatchPersistenceFailure(batchError, durable);
+    const batchRunMs = Date.now() - batchRunStartedAt;
     const batchScope = { p_run: batchRun, p_organization: settings.organization_id };
-    context.sources = await readBaseBatches({
-      purpose, sources, deadline, resume: true,
-      command: async (action, path, lease, payload) => {
-        const { data, error: commandError } = await admin.rpc("command_course_source_batch", {
-          ...batchScope, p_action: action, p_path: path ?? null, p_lease: lease ?? null, p_payload: payload ?? {},
-        });
-        if (commandError) sourcePersistenceError(commandError);
-        return data;
-      },
-      progress: async () => {
-        const { data, error: progressError } = await admin.rpc("read_course_source_base_batch_progress", {
-          ...batchScope, p_artifact: artifactId,
-        });
-        if (progressError) sourcePersistenceError(progressError);
-        return data;
-      },
-      generate: async (prompt, timeoutMs) => {
-        const startedAt = Date.now();
-        const telemetry = { artifactId, organizationId: settings.organization_id,
-          pipelineStep: "BASE", operation: "read_course_source_base_batch", runId: batchRun };
-        try {
-          const { object, usage } = await generateObject({
-            model: resolveAiModel(model), schema: baseBatchFindingsSchema, prompt,
-            maxRetries: 0, maxOutputTokens: BASE_BATCH_LIMITS.outputTokens,
-            abortSignal: AbortSignal.timeout(timeoutMs),
+    if (baseBatch.recoverExpiredBatch) {
+      const { error } = await admin.rpc("recover_documentary_base_batch_run", { ...batchScope, p_artifact: artifactId });
+      if (error) baseBatchPersistenceFailure(error, durable);
+    }
+    const readingStartedAt = Date.now();
+    try {
+      context.sources = await readBaseBatches({
+        purpose, sources, deadline, resume: true, findingsPerBatch, onProgress: baseBatch.onProgress,
+        automatic: durable,
+        command: async (action, path, lease, payload, reason) => {
+          const startedAt = Date.now();
+          const persistReason = reason && durable;
+          if (reason) console.warn("[Fuentes] Salida inválida de lote de Base.", {
+            artifactId, batchRunId: batchRun, path, reason,
           });
-          await recordAiSdkUsage({ supabase: admin, usage, model, startedAt, context: telemetry });
-          return object;
-        } catch (error) {
-          await recordAiFailure({ supabase: admin, model, startedAt, context: telemetry,
-            provider: model.startsWith("gemini-") ? "gemini" : "openai",
-            error: new Error("Falló la lectura de un lote documental; no se registra el contenido."),
+          const { data, error: commandError } = await admin.rpc(persistReason
+            ? "record_documentary_base_invalid_output" : "command_course_source_batch", {
+            ...batchScope, p_action: action, p_path: path ?? null, p_lease: lease ?? null, p_payload: payload ?? {},
+            ...(persistReason ? { p_reason: reason } : {}),
           });
-          throw error;
-        }
-      },
-    });
+          metrics.databaseMs += Date.now() - startedAt;
+          if (commandError) baseBatchPersistenceFailure(commandError, durable);
+          return data;
+        },
+        progress: async () => {
+          const startedAt = Date.now();
+          const { data, error: progressError } = await admin.rpc(durable
+            ? "read_documentary_base_batch_status" : "read_course_source_base_batch_progress", {
+            ...batchScope, p_artifact: artifactId,
+          });
+          metrics.databaseMs += Date.now() - startedAt;
+          if (progressError) baseBatchPersistenceFailure(progressError, durable);
+          return data;
+        },
+        generate: async (prompt, timeoutMs) => {
+          const startedAt = Date.now();
+          const telemetry = { artifactId, organizationId: settings.organization_id,
+            pipelineStep: "BASE", operation: "read_course_source_base_batch", runId: batchRun };
+          try {
+            const providerModel = resolveAiModel(model);
+            metrics.providerRequests++;
+            const { object, usage } = await generateObject({
+              model: providerModel, schema: baseBatchFindingsSchema, prompt,
+              maxRetries: 0, maxOutputTokens: BASE_BATCH_LIMITS.outputTokens,
+              abortSignal: AbortSignal.timeout(timeoutMs),
+            }).finally(() => { metrics.providerMs += Date.now() - startedAt; });
+            await recordAiSdkUsage({ supabase: admin, usage, model, startedAt, context: telemetry });
+            return object;
+          } catch (error) {
+            await recordAiFailure({ supabase: admin, model, startedAt, context: telemetry,
+              provider: "openai",
+              error: new Error("Falló la lectura de un lote documental; no se registra el contenido."),
+            });
+            throw error;
+          }
+        },
+      });
+    } finally {
+      console.info("[Fuentes] Duración de lectura de Base", {
+        artifactId, runId: batchRun, batches: batches.length,
+        ...metrics, batchRunMs, readingMs: Date.now() - readingStartedAt,
+        concurrentBatches: BASE_BATCH_LIMITS.concurrentBatches,
+      });
+    }
     await assertCourseGenerationCurrent(admin, context);
   }
   return context;
@@ -282,7 +282,11 @@ export async function attestCourseGeneration(
     runId: context.snapshotId,
   };
   let grounding: ReturnType<typeof validateSourceGrounding> | undefined;
-  for (const model of [...new Set(Array.isArray(models) ? models : [models])]) {
+  let unavailable = { code: "GROUNDING_TIMEOUT", message: "Se agotó el tiempo disponible para comprobar el respaldo." };
+  const reviewers = [...new Set(Array.isArray(models) ? models : [models])];
+  let citationFailure: CourseSourceGroundingRejection | undefined;
+  for (let index = 0; index < reviewers.length; index++) {
+    const model = reviewers[index];
     const startedAt = Date.now();
     const timeoutMs = Math.min(
       SOURCE_GENERATION_LIMITS.timeoutMs,
@@ -293,7 +297,7 @@ export async function attestCourseGeneration(
       const { object, usage } = await generateObject({
         model: resolveAiModel(model),
         schema: sourceGroundingSchema,
-        prompt: groundingPrompt(context, output),
+        prompt: groundingPrompt(context, output, citationFailure),
         maxRetries: 0,
         abortSignal: AbortSignal.timeout(timeoutMs),
       });
@@ -307,13 +311,29 @@ export async function attestCourseGeneration(
       grounding = validateSourceGrounding(context, output, object);
       break;
     } catch (error) {
-      if (error instanceof CourseSourceError) throw error;
+      if (error instanceof CourseSourceError) {
+        createOperationalLogger("fuentes.respaldo", { runId: context.snapshotId }).error(
+          "revision_contenido_rechazada", sourceGroundingFailure(error),
+          { artifactId: context.artifactId, stage: context.stage, model, sourceCount: context.sources.length },
+        );
+        if (context.stage === "MATERIALS" && !citationFailure && error.groundingReason && error.groundingReason !== "UNSUPPORTED_OUTPUT") {
+          citationFailure = error.groundingReason;
+          reviewers.splice(index + 1, 0, model);
+          continue;
+        }
+        throw error;
+      }
+      unavailable = sourceGroundingFailure(error);
+      createOperationalLogger("fuentes.respaldo", { runId: context.snapshotId }).error(
+        "revision_proveedor_fallida", unavailable,
+        { artifactId: context.artifactId, stage: context.stage, model, timeoutMs },
+      );
       await recordAiFailure({
         supabase: admin,
         model,
         startedAt,
         context: telemetry,
-        provider: model.startsWith("gemini-") ? "gemini" : "openai",
+        provider: "openai",
         error: new Error(
           "Falló la comprobación documental; no se registra contenido privado.",
         ),
@@ -323,7 +343,9 @@ export async function attestCourseGeneration(
   if (!grounding)
     throw new CourseSourceError(
       503,
-      "No se pudo comprobar el respaldo dentro del presupuesto de tiempo. Se conserva el trabajo existente; reintenta los pendientes.",
+      `${unavailable.message} Se conserva el trabajo existente.`,
+      undefined,
+      unavailable.code,
     );
   const { data, error } = await admin.rpc("attest_course_source_generation", {
     p_snapshot: context.snapshotId,
@@ -331,7 +353,8 @@ export async function attestCourseGeneration(
     p_citations: grounding.citations,
   });
   if (error) sourcePersistenceError(error);
-  return data as string;
+  if (typeof data !== "string" || !data) throw new CourseSourceError(503, "La base de datos no confirmó el recibo de respaldo.");
+  return data;
 }
 export async function assertCourseGenerationCurrent(
   admin: SupabaseClient,

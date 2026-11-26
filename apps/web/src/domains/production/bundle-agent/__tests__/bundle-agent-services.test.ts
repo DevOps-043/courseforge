@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { describe, it } from "node:test";
 import JSZip from "jszip";
+import { VERSION as installedRemotionVersion } from "remotion";
+import { REMOTION_VERSION } from "../../../../config/remotion";
 import { buildControlledBundleZip, buildExternalAuthorBundleBaseZip } from "../generation.service";
 import { buildBundleBlueprint } from "../blueprint.service";
 import { redactSensitiveText, sanitizeErrorMessage } from "../redaction.service";
@@ -11,6 +14,8 @@ import {
   buildSlideTemplateSpecFromConversation,
 } from "../slide-template-package.service";
 import { DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF, bundleAgentMessageMetadataSchema, type BundleAgentSpec } from "../types";
+
+const requirePackage = createRequire(__filename);
 
 async function zipBuffer(files: Record<string, string>) {
   const zip = new JSZip();
@@ -717,6 +722,14 @@ describe("SofLIA Bundle Agent services", () => {
     const readme = await zip.file("README.md")!.async("text");
 
     assert.equal(report.isValid, true);
+    const dependencies = JSON.parse(await zip.file("package.json")!.async("text")).dependencies;
+    assert.equal(REMOTION_VERSION, installedRemotionVersion);
+    for (const name of ["@remotion/bundler", "@remotion/media", "@remotion/player", "@remotion/renderer", "@remotion/transitions"]) {
+      assert.equal(requirePackage(`${name}/package.json`).version, installedRemotionVersion, name);
+    }
+    assert.equal(dependencies.remotion, installedRemotionVersion);
+    assert.equal(dependencies["@remotion/media"], installedRemotionVersion);
+    assert.equal(report.info.manifest?.remotionVersion, installedRemotionVersion);
     assert.equal(report.info.manifest?.compositionId, "soflia-engine-template-base");
     assert.equal(report.info.manifest?.exportMode, "root");
     assert.equal(report.info.manifest?.layoutCoordinateSpace, "canvas");

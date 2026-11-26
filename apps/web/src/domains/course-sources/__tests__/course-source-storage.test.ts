@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cleanDeletedArtifactSources } from "../../artifacts/services/artifact-source-cleanup";
 import { createSourceStorage } from "../course-source-storage";
 import { COURSE_SOURCE_BUCKET } from "../course-source-policy";
 
@@ -32,4 +33,51 @@ test("metadata ausente o tamaño real distinto bloquea descarga", async () => {
     await assert.rejects(f.storage.read("ruta-reservada", 3));
     assert.deepEqual(f.effects, ["info"]);
   }
+});
+
+test("la limpieza confirma solo rutas reclamadas y conserva la cola ante un error de Storage", async () => {
+  const paths = ["ruta-reclamada"];
+  const acknowledged: string[][] = [];
+  const removalAttempts: string[][] = [];
+  const storageError = new Error("Fallo simulado de Storage");
+  let failure = true;
+  const dueQuery = {
+    lte() { return this; },
+    order() { return this; },
+    async limit() {
+      return { data: [{ storage_path: paths[0] }, { storage_path: "ruta-tomada-por-otro-worker" }], error: null };
+    },
+  };
+  const admin = {
+    from(table: string) {
+      assert.equal(table, "artifact_source_storage_cleanup");
+      return {
+        select: () => dueQuery,
+        update: ({ next_attempt_at }: { next_attempt_at: string }) => ({ in: () => ({
+          lte: (_column: string, cutoff: string) => {
+            assert.ok(next_attempt_at > cutoff);
+            return { select: async () => ({ data: [{ storage_path: paths[0] }], error: null }) };
+          },
+        }) }),
+        delete: () => ({ in: async (_column: string, deleted: string[]) => {
+          acknowledged.push(deleted);
+          return { error: null };
+        } }),
+      };
+    },
+    storage: { from(bucket: string) {
+      assert.equal(bucket, COURSE_SOURCE_BUCKET);
+      return { remove: async (claimed: string[]) => {
+        removalAttempts.push(claimed);
+        return { error: failure ? storageError : null };
+      } };
+    } },
+  } as unknown as SupabaseClient;
+
+  await assert.rejects(cleanDeletedArtifactSources(admin), storageError);
+  assert.deepEqual(acknowledged, []);
+  failure = false;
+  assert.equal(await cleanDeletedArtifactSources(admin), 1);
+  assert.deepEqual(removalAttempts, [paths, paths]);
+  assert.deepEqual(acknowledged, [paths]);
 });

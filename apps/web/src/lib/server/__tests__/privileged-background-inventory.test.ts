@@ -567,6 +567,11 @@ test("critical public APIs preserve the shared response and request-boundary con
   assert.doesNotMatch(slidesRouteSource, /NextResponse/);
   assert.match(slidesWorkerSource, /parseVerifiedBackgroundBody/);
   assert.match(slidesWorkerSource, /slidesGenerationBackgroundRequestSchema\.parse/);
+  assert.doesNotMatch(slidesWorkerSource, /getAuthorizedMaterialComponentAdminForTenant|resolveTenantContext|next\/headers/);
+  assert.match(slidesWorkerSource, /assertSlideWorkerJob\(admin, scope\)/);
+  assert.match(slidesWorkerSource, /loadCurrentUserMemberships\(request.createdBy\)/);
+  assert.match(slidesWorkerSource, /assertSlideWorkerMembership\(admin, scope, memberships\)/);
+  assert.match(slidesWorkerSource, /failSlideWorkerBeforeGeneration\(admin, scope\)/);
 
   const syllabusWorkerSource = readFileSync(
     join(webRoot, "netlify", "functions", "syllabus-generation-background.ts"),

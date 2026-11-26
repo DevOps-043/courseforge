@@ -55,6 +55,16 @@ Salida: un solo criterio de cobertura decide en todos los consumidores, sin salt
 
 Salida: curso nuevo basado en archivos llega a Materiales revisables y al flujo de entrega vigente, con procedencia e invalidación demostrables.
 
+## Extensión para documentos largos
+- [x] Clasificar el documento real de referencia y medir la planificación sin llamadas externas.
+- [x] Ampliar a 600,000 unidades por original y probar la recuperación de una versión agotada, el texto íntegro en PostgreSQL aislado y el registro del plan de Base con el TXT real.
+- [x] Dividir automáticamente originales más largos, validar el presupuesto acumulado de 1,200,000 unidades activas y planificar Base dentro de presupuestos acotados.
+- [ ] Fijar el presupuesto de admisión y almacenamiento por archivo y por curso con mediciones por formato. Implementar ingesta íntegra y consultas paginadas con diagnóstico medible.
+- [ ] Hacer reutilizable el inventario de evidencia entre Base y las rutas de Temario, incluida la compatibilidad de la importación de estructura.
+- [ ] Seleccionar y verificar evidencia por módulo en Plan. Consultar en Materiales las asociaciones aprobadas de la lección sin cargar el catálogo completo.
+- [ ] Probar archivos con y sin menciones web. Verificar cero consultas en modo exclusivo y validación y aprobación en Curaduría antes de usar evidencia web en modo mixto.
+- [ ] Validar documentos largos hasta Materiales, reintentos, cambios de revisión y regresiones de talleres cortos. Activar después de comprobar el consumo y la cobertura, siguiendo F6.
+
 ## F5. QA, seguridad y documentación
 - [ ] Unitarias de políticas, cobertura documental/web/mixta, fragmentación, selección de contexto y validación de citas.
 - [ ] Integración HTTP/Storage/jobs con archivo real por formato, persistencia, duplicados, errores y recuperación tras timeout.
@@ -96,3 +106,13 @@ Comandos de partida: `npm run test:syllabus-duration --workspace=apps/web`, `npm
 | Histórico | Cursos web, sin fuente, importados y SCORM mantienen su comportamiento compatible. |
 
 “100% operativo” exige F0–F6 y evidencia de aceptación desplegada. Tener migraciones locales, un botón de carga o suites verdes no satisface por sí solo esa condición.
+
+## Ampliación: conjunto completo de fuentes válidas (2026-11-20)
+- [x] Sustituir selección manual obligatoria por inventario y continuación versionada.
+- [x] Construir en PostgreSQL el snapshot ALL_VALIDATED con todo el conjunto del ámbito, sin IDs elegidos por cliente.
+- [x] Conservar snapshots MANUAL, exclusión web por política, recibos, citas, vigencia y límites explícitos.
+- [x] Adaptar finalización del buscador y guardas de Materiales/publicación sin fingir aprobación humana.
+- [x] Verificar múltiples fuentes, otra organización, ejecución obsoleta, presupuesto, contratos, UI y compatibilidad de Hub.
+- [ ] Aplicar migración en Architect y ejecutar piloto real autorizado con aplicación y workers coordinados.
+
+Diseño y orden de activación: all-validated-sources.md. Evidencia: reports/all-validated-sources.md.

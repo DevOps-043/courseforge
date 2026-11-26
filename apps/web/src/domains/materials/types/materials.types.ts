@@ -193,6 +193,8 @@ export interface VoiceClip {
 }
 
 export interface MaterialAssets {
+    /** Distribución híbrida con la que se generó el recurso asíncrono. */
+    delivery_route_hash?: string;
     // Campos existentes
     slides_url?: string;
     b_roll_prompts?: string;
@@ -447,7 +449,7 @@ export interface MaterialsGenerationInput {
     fix_instructions?: string;
 }
 
-// Output de generación de materiales (respuesta de Gemini)
+// Output de generación de materiales (respuesta del modelo)
 export interface MaterialsGenerationOutput {
     components: {
         DIALOGUE?: DialogueContent;

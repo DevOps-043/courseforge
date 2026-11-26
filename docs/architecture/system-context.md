@@ -17,8 +17,8 @@ SofLIA Architect es una plataforma multi-tenant para crear, validar, producir y 
 - **Backend web**: Next.js API routes y Netlify Functions para jobs largos del pipeline.
 - **Backend de producción**: Next.js API routes y workers especializados. El servidor Express legado en `apps/api/src/server.ts` solo monta `GET /health`; no monta render local/Lambda ni builds cloud. El worker de escritorio fue retirado de las rutas HTTP; persisten módulos y tablas residuales, que no prueban exposición activa.
 - **DB/Auth**: Supabase PostgreSQL con RLS, tabla `profiles`, Auth Bridge JWT HS256 y soporte multi-organizacion.
-- **IA**: Google Gemini como proveedor principal; OpenAI como fallback y para el bundle agent de Remotion.
-- **Servicios**: Gamma API, Google Search grounding, SofLIA API, Google Drive, Microsoft Graph/OneDrive, Artlist, AWS Remotion Lambda, S3, CodeBuild y CloudFront para templates externos.
+- **IA**: OpenAI para modelos de texto, búsqueda web y generación de imágenes. Los valores predeterminados de texto son GPT-6.1 Terra y GPT-6.2 Sol de respaldo.
+- **Servicios**: Gamma API, la herramienta `web_search` de OpenAI Responses, SofLIA API, Google Drive, Microsoft Graph/OneDrive, Artlist, AWS Remotion Lambda, S3, CodeBuild y CloudFront para templates externos.
 - **Editor de composicion**: el dominio `production/composition-editor` gestiona documento, assets, pistas, mezcla de audio, profundidad de capas, presets de movimiento, auto-organizacion y patches validados de propuestas del agente. El documento se persiste como versiones inmutables con hash y auditoria; el RPC `append_video_composition_draft_document_v2` devuelve resultados explicitos de guardado y evita colas de bloqueo.
 - **HyperFrames**: el dominio `production/hyperframes` cubre borradores, composiciones, preflight, revisiones, preview, render y sincronizacion de assets; sus rutas viven bajo `/api/production/hyperframes`.
 - **Fuente de verdad HyperFrames**: antes de cambiar documento, SFX, preview, snapshot ZIP, variables, upload o render, leer y actualizar `docs/architecture/hyperframes-composition-render-flow-source-of-truth.md` en el mismo cambio.
@@ -117,8 +117,8 @@ Areas admin principales:
 SofLIA es el asistente integrado en la app.
 
 - API: `POST /api/lia`
-- Modelo principal: Gemini (`gemini-3.5-flash` por defecto en los prompts actuales)
-- Usa Google Search grounding cuando aplica.
+- Modelo principal: GPT-6.1 Terra
+- Usa la herramienta `web_search` de OpenAI Responses cuando aplica.
 - Responde en markdown con fuentes.
 - Los prompts y contexto viven principalmente en servicios compartidos y resolvers de prompts.
 
@@ -197,7 +197,7 @@ Procesos principales:
 - `curation-background.ts`
 - `validate-curation-background.ts`
 
-Busca fuentes con Gemini + Google Search grounding, valida URLs, contenido, paywalls, soft 404 y calidad minima. Admin aprueba o rechaza fuentes en QA.
+Busca fuentes con OpenAI Responses y la herramienta `web_search` de OpenAI Responses, valida URLs, contenido, paywalls, soft 404 y calidad minima. Admin aprueba o rechaza fuentes en QA.
 
 ### Fase 5: MATERIALES
 
@@ -262,7 +262,7 @@ Reglas importantes:
 - No usar `RENDER_PROVIDER` como evidencia de un proveedor activo: verificar el consumidor vigente.
 - En produccion local/Cloud Run se requieren timeouts altos para renders largos.
 - Lambda requiere region, function name, serve URL y bucket.
-- Templates externos deben pasar validacion, versionado, aprobacion y, para Lambda, build cloud compatible con Remotion `4.0.484`.
+- Templates externos deben pasar validacion, versionado y aprobacion. Los nuevos bundles usan Remotion `4.0.547`, alineado con `apps/web/package.json` y `apps/web/src/config/remotion.ts`. Un render externo requiere verificar su build y runtime compatibles; actualizar dependencias locales no actualiza servicios cloud ni certifica bundles históricos.
 - El API redacta secretos en logs y diagnosticos.
 
 ## Importacion SCORM
@@ -274,7 +274,7 @@ Flujo:
 1. Upload de `.zip` a storage.
 2. Parsing de manifest, SCOs, recursos y HTML.
 3. Analisis de componentes, quizzes y gaps.
-4. Enriquecimiento con Gemini.
+4. Enriquecimiento con OpenAI.
 5. Transformacion a estructura SofLIA Architect.
 
 Rutas:
@@ -424,6 +424,7 @@ API/Remotion legacy, solo si se usa `apps/api`:
 
 ## Patrones Importantes
 
+- Usar [EngineSelect](../../apps/web/src/components/ui/EngineSelect.tsx) para elegir valores en la interfaz. La variante compacta mantiene el patrón en barras e inspectores. Proveer un nombre accesible y validar las selecciones obligatorias en el formulario.
 - Usar `profiles` en lugar de FK directas a `auth.users`.
 - Mantener `organization_id` en flujos tenant-aware.
 - No ejecutar bundles Remotion subidos sin validacion, versionado y aprobacion.
@@ -433,3 +434,4 @@ API/Remotion legacy, solo si se usa `apps/api`:
 - Mantener business rules fuera de route handlers cuando exista dominio equivalente.
 - Mantener `courseforge-composition-v2` como unica fuente editable para motion: `document.motion` es canonico y el HTML/timeline se compila desde ese documento. Ver [ADR de motion](../architecture/adr-composition-motion-source-of-truth.md).
 - Para medios y render HyperFrames, mantener separados el snapshot inmutable sin credenciales y el ZIP desechable con URLs firmadas materializadas justo antes del upload. Ver [fuente de verdad del flujo](../architecture/hyperframes-composition-render-flow-source-of-truth.md).
+- Al abrir un deck generado en el editor, la proyección narrativa admite únicamente las URLs exactas de imágenes verificadas por el lector editorial; conserva los hashes, registros y permisos independientes del borrador. Diagnóstico y regresión: [corrección de imágenes del borrador](../../openspec/changes/fix-generated-deck-draft-images/design.md).

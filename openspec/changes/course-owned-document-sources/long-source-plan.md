@@ -1,6 +1,6 @@
 # Fuentes largas y generación recuperable
 
-El autor debe poder usar un manual largo como una sola fuente y generar Base en el mismo borrador. Hoy la extracción limita el texto a 40,000 caracteres y el contexto de estructura a 120,000. La cobertura exige recorrer la fuente completa. La relevancia determina qué hallazgos respaldan la salida.
+El autor debe poder usar un manual largo como una sola fuente y generar un taller en el mismo borrador. El flujo original partió de un tope de 40,000 unidades de texto. La ampliación local admite 600,000 y Temario y Plan aún requieren un contexto directo de hasta 120,000. La cobertura exige recorrer la fuente completa. La relevancia determina qué hallazgos respaldan la salida.
 
 1. **Núcleo de lotes.** Particionar fragmentos ordenados, con un contador inyectado que mide la solicitud completa y un límite de lotes. Definir decisiones de recuperación para errores temporales, contextos excedidos, salidas inválidas, fallos permanentes y revisiones obsoletas. Probar estas decisiones sin proveedores.
 2. **Persistencia y manejo de fallos.** Nueva migración aditiva para ejecuciones y lotes privados. Identidad por curso, revisión, propósito y versión del planificador. Lease por lote con vencimiento y token de propietario. Confirmar hallazgos y estado en una transacción. Consultar el estado antes de repetir tras respuesta perdida. Registrar sublotes sin perder cobertura y completar el padre solo cuando se confirmen todos. Persistir el presupuesto de intentos, divisiones, tokens y plazo de la ejecución. Reanudar explícitamente los pendientes recuperables sin reiniciar los confirmados. Exponer progreso y diagnóstico seguro, sin contenido privado en logs.
@@ -11,9 +11,58 @@ El autor debe poder usar un manual largo como una sola fuente y generar Base en 
 
 El primer hito de producto incluye los pasos 1–4. La biblioteca y Base comparten la entrega local del paso 4. Aplicar la migración de progreso antes de desplegar el worker. El piloto con el proveedor y el archivo del taller sigue pendiente.
 
+## Contrato para talleres con documentos largos
+
+### Continuación de Base
+
+La reserva del borrador guarda el trabajo pendiente junto con su estado.
+Un lease por invocación protege la continuación, y los leases de cada lote
+siguen protegiendo sus resultados. El worker conserva los lotes confirmados,
+despacha una continuación firmada cuando termina su ventana y permite recuperar
+despachos perdidos mediante un reconciliador. La política, organización y
+revisión deben seguir vigentes. El avance del navegador es de solo lectura
+para estas ejecuciones.
+
+La recuperación automática respeta los plazos y presupuestos existentes.
+El diagnóstico distingue errores de formato, referencias y citas sin registrar
+texto privado. Un lote que vuelve a producir una salida inválida puede
+dividirse dentro del presupuesto de división. Ante un reintento explícito
+de un curso detenido, una ejecución de lotes vencida y compatible puede
+recibir una sola extensión de dos horas si conserva lotes confirmados y saldo.
+La extensión conserva los límites y consumos originales de intentos y unidades.
+
+El autor carga cada original una vez y mantiene el mismo taller durante todo el pipeline. El objetivo de soporte es un rango medido para archivos y conjuntos de archivos de uso habitual. Fijar presupuestos distintos para transferencia, extracción y almacenamiento por archivo, conjunto documental por curso y contexto de cada llamada. Medir los cuatro formatos admitidos, memoria pico, latencia y concurrencia. Validar como mínimo un original del tamaño del documento de referencia de 530,704 unidades UTF-16 antes de aumentar la admisión. Un original que exceda el presupuesto debe recibir un diagnóstico con la longitud medida, el tope aplicado y la etapa, sin registrar su texto.
+
+1. **Biblioteca e índice.** Conservar un original privado e inmutable. Fragmentar internamente con orden, localizador y versión, conservando los límites de sección donde el formato los exponga. Publicar la extracción solo tras confirmar que la secuencia está completa. Sustituir la lectura global de fragmentos por consultas paginadas y acotadas por curso y organización.
+2. **Base y Temario.** Recorrer toda la revisión en lotes recuperables. Persistir un inventario reutilizable con temas, reglas, excepciones y referencias verificadas a los fragmentos. Base selecciona lo pertinente al propósito. Temario parte de Base aprobada y consulta el inventario completo, con recuperación del texto original cuando el objetivo requiere un detalle. Mantener el manifiesto de versiones separado de las citas de cada llamada.
+3. **Plan.** Recuperar evidencia acotada por módulo, objetivo y tema. Verificar cada salida contra su propio alcance y conservar la procedencia al ensamblar el plan. Mostrar vacíos al revisor. Una revisión obsoleta invalida confirmaciones tardías sin descartar avances de la revisión vigente.
+4. **Curaduría y Materiales.** La revisión documental asocia fragmentos a los objetivos y temas de cada lección. Una URL mencionada en un archivo sigue siendo una mención documental. Si se propone usar la página como evidencia, solo Curaduría puede validarla y asociarla en modo mixto, con revisión y procedencia web separadas. El modo exclusivo conserva cero consultas web. Ambos aportes convergen en la cobertura aprobada por lección. Materiales consulta solo las asociaciones vigentes y usa el generador común.
+
+El documento de referencia es contenido institucional sin enlaces web detectados. Sirve para comprobar escala y cobertura por posición. Probar también con un documento sintético que incluya URLs citadas, enlaces de ejemplo y un requisito curricular sin respaldo. En modo exclusivo el contador de acceso web debe quedar en cero. En mixto, una URL solo puede cubrir el requisito tras validación y aprobación. La detección automática de enlaces se puede entregar aparte del soporte de archivos largos.
+
+### Entrega prioritaria de admisión y Base
+
+La biblioteca y la migración `20261110020000_expand_course_source_extraction.sql` amplían a 600,000 unidades UTF-16 por original. La escritura temporal admite hasta 304 fragmentos por documento en lotes de 16. Los presupuestos de generación por llamada y por curso se aplican por separado. El soporte de Temario y Plan por alcance y cualquier cambio de Curaduría quedan en entregas separadas.
+
+La reserva del intento guarda el límite aplicado. Una versión agotada por `TEXT_LIMIT` obtiene una recuperación al aumentar el límite, conservando el contador y el original. El worker anterior conserva su ruta de reserva y no consume la recuperación reservada a una capacidad superior. Aplicar la migración antes de desplegar la aplicación y el worker ampliados. La reversión de aplicación y worker conserva originales, fragmentos y el último límite registrado. [Verificación de la ampliación](reports/expanded-source-admission.md).
+
+### División automática con presupuesto por curso
+
+Un original puede ocupar todo el presupuesto de 1,200,000 unidades UTF-16 de texto activo de su curso. El worker entrega tramos de hasta 16 fragmentos ordenados sin construir una segunda colección con todo el documento. PostgreSQL serializa la publicación por curso, comprueba el presupuesto acumulado y publica los tramos juntos. Una sustitución puede reutilizar la capacidad del predecesor que retira en esa misma transacción. Conservar el original si la extracción o la publicación se rechazan. Los parsers siguen sujetos a los límites de archivo y formato y la normalización entrega texto en memoria.
+
+### Lectura concurrente de Base
+
+La migración `20261111020000_parallel_documentary_base_batches.sql` permite reservar hasta tres lotes disponibles en una transacción. El presupuesto se descuenta por intento, cada lote mantiene su propio lease y la Base se redacta cuando todos están confirmados. El worker aprovecha los lotes listos antes de esperar reintentos. El progreso se confirma al terminar cada grupo. Las métricas registran duración de planificación y lectura, tiempo acumulado de llamadas al proveedor y consultas de lotes, y número de solicitudes. Aplicar la migración antes del worker.
+
+Base conserva la versión del plan para conjuntos de hasta 64 lotes y usa un plan de hasta 224 lotes cuando esa capacidad no basta. Ambos mantienen el mismo presupuesto por llamada. El plan ampliado acota el costo acumulado y la cantidad de citas por lote, de manera que el texto de la evidencia comprobada cabe en el contexto final. Aplicar la migración `20261110030000_split_long_course_sources.sql` antes de desplegar la aplicación y el worker. Revertir el worker conserva el original y los fragmentos publicados. Temario y Plan por alcance conservan su entrega separada. [Verificación de la división](reports/automatic-source-splitting.md).
+
+Aplicar también `20261110040000_align_base_source_snapshot_budget.sql` para que la RPC de snapshot admita el manifiesto completo de Base. La sustitución conserva firma, permisos y validación de referencias. Temario, Plan y Materiales conservan sus presupuestos de snapshot. La corrección solo requiere actualizar la base con el lector de lotes vigente. Si se revierte la corrección, restaurar la definición anterior de la RPC mediante una migración de reversión. Los snapshots ya registrados se conservan.
+
+La activación exige un piloto de carga a Materiales con fuentes de varios tamaños. Colocar reglas diferentes al principio, en medio y al final, desplazar una regla obligatoria entre secciones y verificar que su cita llega al material correspondiente. Inyectar fallo intermedio y reemplazo concurrente. Medir límites, cobertura, costo y latencia antes de ampliar la admisión. Los [resultados de la revisión local](reports/long-source-reference-review.md) separan la evidencia medida de lo pendiente.
+
 ## Base por lotes del paso 4
 
-La biblioteca admite hasta 250,000 unidades UTF-16 por archivo. Si el conjunto del curso supera 120,000 unidades, Base recorre todos sus fragmentos en orden y usa exclusivamente las citas literales verificadas de los lotes completos para redactar y comprobar su salida. El snapshot mantiene el manifiesto de todos los fragmentos y la revisión completa. Las políticas documentales siguen sin invocar búsqueda web en Base. Temario y Plan mantienen su presupuesto de contexto directo de 120,000 hasta el paso 5.
+El paso 4 habilitó inicialmente hasta 250,000 unidades UTF-16 por archivo. Si el conjunto del curso supera 120,000 unidades, Base recorre todos sus fragmentos en orden y usa exclusivamente las citas literales verificadas de los lotes completos para redactar y comprobar su salida. El snapshot mantiene el manifiesto de todos los fragmentos y la revisión completa. Las políticas documentales siguen sin invocar búsqueda web en Base. Temario y Plan mantienen su presupuesto de contexto directo de 120,000 hasta el paso 5.
 
 Cada lectura usa hasta 36,000 unidades estimadas mediante bytes UTF-8 y margen para esquema y salida. El plan inicial admite hasta 64 lotes. La ejecución duradera limita intentos, divisiones, unidades reservadas y vigencia. El worker tiene un plazo independiente y reserva tiempo para redacción y verificación. Un nuevo intento con la misma revisión, propósito y modelo reutiliza los checkpoints. Cambiar el modelo permite iniciar una lectura nueva tras un fallo permanente del proveedor. El proveedor y el archivo real se miden en el piloto para calibrar cobertura, tiempo y costo.
 

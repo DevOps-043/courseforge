@@ -8,6 +8,7 @@ import type { HtmlSnapshotLocatorScope } from "@/domains/production/composition-
 import { GeneratedDeckInitializationCoordinatorError, type GeneratedDeckInitializationAction } from "@/domains/production/composition-editor/composition-generated-deck-initialization-coordinator.client";
 import { CompositionHtmlPanel } from "./CompositionHtmlPanel";
 import { CompositionHtmlInitialAnchorStep } from "./CompositionHtmlInitialAnchorStep";
+import { HtmlInitialAnchorClientError, describeHtmlInitialAnchorFailure } from "@/domains/production/composition-editor/composition-html-initial-anchor.client";
 
 const writesEnabled = process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INSPECTOR_ENABLED === "true"
   && process.env.NEXT_PUBLIC_COMPOSITION_HTML_EDITING_INITIALIZATION_ENABLED === "true";
@@ -29,6 +30,7 @@ export function CompositionGeneratedDeckPreparationPanel({ scope, host, document
   const tracking = host.generatedDeckTracking?.(scope);
   const boundIds = new Set(document?.htmlEditing?.items.map(item => item.clipId) ?? []);
   const clips = document?.clips.filter(clip => clip.kind === "DECK_SLIDE" && !boundIds.has(clip.id)) ?? [];
+  const preparedCount = document?.clips.filter(clip => clip.kind === "DECK_SLIDE" && boundIds.has(clip.id)).length ?? 0;
   const compatibleHint = clips.length > 0 && clips.every(clip => clip.source.type === "DECK_SLIDE"
     && !clip.source.htmlAssetId && clip.source.html.includes("data-courseforge-editable-id"));
   async function run(action: GeneratedDeckInitializationAction) {
@@ -42,7 +44,8 @@ export function CompositionGeneratedDeckPreparationPanel({ scope, host, document
     } catch (error) {
       if (!controller.signal.aborted) {
         if (host.generatedDeckTracking?.(scope).status === "EMPTY") setCheckAnchorFirst(true);
-        setMessage(error instanceof GeneratedDeckInitializationCoordinatorError && error.code === "ANCHOR_REQUIRED"
+        setMessage(error instanceof HtmlInitialAnchorClientError ? describeHtmlInitialAnchorFailure(error)
+        : error instanceof GeneratedDeckInitializationCoordinatorError && error.code === "ANCHOR_REQUIRED"
         ? "Primero comprueba y prepara la revisión guardada en el paso 1. No se envió el lote."
         : error instanceof GeneratedDeckInitializationCoordinatorError && error.code === "ACK_REQUIRED"
           ? "El recibo todavía no está confirmado. Conserva el seguimiento y vuelve a consultarlo; no repitas el envío."
@@ -55,11 +58,12 @@ export function CompositionGeneratedDeckPreparationPanel({ scope, host, document
       }
     }
   }
-  if (!tracking || !host.prepareGeneratedDeck || (tracking.status === "EMPTY" && !message && !busy && (!writesEnabled || !compatibleHint))) return null;
+  if (!tracking || !host.prepareGeneratedDeck || (tracking.status === "EMPTY" && !message && !busy && preparedCount === 0 && (!writesEnabled || !compatibleHint))) return null;
   return <CompositionHtmlPanel title={tracking.status === "EMPTY" ? clips.length ? `Preparar todas las diapositivas (${clips.length})` : "Diapositivas preparadas" : "Seguimiento de preparación del deck"}
-    label="Preparación de todas las diapositivas" icon={Layers} collapsible initiallyOpen={tracking.status !== "EMPTY"} busy={busy}
+    label="Preparación de todas las diapositivas" icon={Layers} busy={busy}
     description="Habilita juntas las diapositivas de las nuevas generaciones de Engine. Si falta la primera revisión guardada, la prepara dentro de este flujo. Conserva las ya editadas; no convierte HTML antiguo ni cambia escenas, duración o diseño.">
     {tracking.status === "UNAVAILABLE" && <p role="alert">El seguimiento local no está disponible o está dañado. No se borrará ni se reenviará el lote.</p>}
+    {tracking.status === "EMPTY" && preparedCount > 0 && <p role="status">{preparedCount} diapositivas con campos habilitados. Selecciona una diapositiva y pulsa «Cargar campos editables» en el inspector.</p>}
     {tracking.status === "PENDING" && <>
       <p role="status">{tracking.entry.receipt ? "Recibo guardado; falta confirmar el estado actual." : "Resultado desconocido; consulta el recibo sin repetir el envío."}</p>
       <button type="button" disabled={busy} onClick={() => void run({ mode: "RECOVER", operationId: tracking.entry.request.operationId })}>Consultar y verificar preparación</button>

@@ -3,6 +3,7 @@ import { deliveryDocumentSchema } from "../types/delivery.schemas";
 import { readDeliveryContext } from "./delivery-repository";
 import { deliveryReadiness } from "./delivery-readiness";
 import { deliveryEnabled } from "../config/delivery-enabled";
+import { academyScope, assertAcademyPlans } from "../lib/academy-scope";
 
 /** Adapta necesidades de sesión a lecciones reales, sin persistir un plan Nexus ficticio. */
 export async function mergeDeliveryCurationPlan(admin: SupabaseClient, artifactId: string, nexusPlans: unknown) {
@@ -21,6 +22,8 @@ export async function mergeDeliveryCurationPlan(admin: SupabaseClient, artifactI
       components: [{ type: "READING", summary: "Fundamento conceptual de sesión" }, { type: "EXERCISE", summary: "Casos, actividades y respuestas para la sesión" }],
     }));
   if (document.config.mode === "SYNCHRONOUS") return needs;
-  return legacy.map(lesson => ({ ...lesson, components: [...(lesson.components || []), ...(needs.find(need => need.lesson_id === lesson.lesson_id)?.components || [])]
-    .filter((component, index, all) => all.findIndex(candidate => candidate.type === component.type) === index) }));
+  assertAcademyPlans(academyScope(document, context.modules), legacy);
+  return [...legacy.map(lesson => ({ ...lesson, components: [...(lesson.components || []), ...(needs.find(need => need.lesson_id === lesson.lesson_id)?.components || [])]
+    .filter((component, index, all) => all.findIndex(candidate => candidate.type === component.type) === index) })),
+    ...needs.filter(need => !legacy.some(lesson => lesson.lesson_id === need.lesson_id))];
 }

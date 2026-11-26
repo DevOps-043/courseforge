@@ -53,7 +53,7 @@ La sincronizacion del catalogo HeyGen requiere la cadena completa de funciones S
 | Backend web | Next.js API routes + Netlify Functions (background y programadas) |
 | Worker de audio | `apps/api` (Node 20 + FFmpeg; perfil neural opcional con DeepFilterNet) |
 | DB/Auth | Supabase PostgreSQL, RLS, Auth Bridge JWT HS256 |
-| IA | Google Gemini principal, OpenAI fallback/curacion/bundle agent |
+| IA | OpenAI para texto, búsqueda e imágenes |
 | Video | Editor de composicion nativo + HyperFrames Cloud para render; Remotion 4.0.484 (Player y composiciones internas) |
 | Integraciones | SofLIA API, PulseHub, HeyGen, HyperFrames Cloud, Google Search, Google Drive, Microsoft Graph, Artlist |
 
@@ -137,6 +137,8 @@ SofLIA Architect funciona desde `apps/web`:
 2. **`apps/api`**: worker de procesamiento de audio (`start:audio-worker`) y un servidor Express legado que hoy solo expone `GET /health`. Los endpoints Express de render Remotion local/Lambda y builds cloud ya no existen en el codigo.
 
 La regla en `apps/web/src/domains` es crear carpetas por capacidad solo cuando hacen falta: `actions`, `components`, `config`, `hooks`, `lib`, `services`, `types` y `validators`.
+
+Los formularios y editores comparten el diseño de sus selectores de valor. La guía de implementación está en el [contexto operativo](docs/architecture/system-context.md#patrones-importantes).
 
 Los jobs largos se ejecutan como Netlify Background Functions firmadas con `BACKGROUND_FUNCTION_SECRET` y nonces de un solo uso (`background_request_nonces`). Las generaciones de syllabus, curacion y materiales hacen commits atomicos mediante RPCs (`start_/claim_/commit_/reset_material_generation`, `commit_curation_progress`) y tienen logica de recuperacion de corridas atascadas.
 
@@ -483,7 +485,6 @@ Las invocaciones directas de handlers en `localhost` validan firma y expiracion,
 
 IA:
 
-- `GOOGLE_GENERATIVE_AI_API_KEY`
 - `GOOGLE_API_KEY`
 - `GEMINI_MODEL`, `GEMINI_SEARCH_MODEL`, `GEMINI_BUNDLE_AGENT_MODEL`
 - `OPENAI_API_KEY`

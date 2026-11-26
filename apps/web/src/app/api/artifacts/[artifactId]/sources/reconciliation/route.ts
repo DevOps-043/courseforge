@@ -5,6 +5,7 @@ import { CourseSourceError } from "@/domains/course-sources/course-source-error"
 import { parseJsonRequest, API_ERROR_CODE } from "@/lib/server/api-contract";
 import { apiSuccessResponse, apiErrorResponse } from "@/lib/server/api-response";
 import { authorizationUnavailableResponse } from "@/lib/server/authorization-unavailable-response";
+import { rejectCrossOriginMutation } from "@/lib/server/mutation-request-origin";
 import { resolveCorrelationId } from "@/lib/server/operational-logger";
 
 const command = z.discriminatedUnion("action", [z.object({ action: z.literal("inspect") }).strict(),
@@ -16,7 +17,8 @@ export async function POST(request: Request, context: { params: Promise<{ artifa
     const { artifactId } = await context.params;
     if (!z.uuid().safeParse(artifactId).success) throw new CourseSourceError(400, "Curso inválido.");
     if (request.headers.get("content-type")?.split(";")[0] !== "application/json") throw new CourseSourceError(415, "Usa application/json.");
-    if (request.headers.get("sec-fetch-site") === "cross-site" || (request.headers.get("origin") && request.headers.get("origin") !== new URL(request.url).origin)) throw new CourseSourceError(403, "Origen no autorizado.");
+    const rejectedOrigin = rejectCrossOriginMutation(request, { requestId, headers });
+    if (rejectedOrigin) return rejectedOrigin;
     const { tenant, admin } = await requireCourseSourceAccess(artifactId);
     if (!["ADMIN", "SUPERADMIN", "ARQUITECTO"].includes(tenant.platformRole || "")) throw new CourseSourceError(403, "La conciliación requiere un revisor autorizado.");
     const input = await parseJsonRequest(request, command, 1024);

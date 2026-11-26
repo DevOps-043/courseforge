@@ -320,7 +320,9 @@ test("historical UI wiring is draft-rooted, keyed by owner and cannot adopt nati
   const center = await readFile(root + "CompositionHtmlRecoveryCenter.tsx", "utf8");
   const panel = await readFile(root + "CompositionHtmlHistoricalPublicationPanel.tsx", "utf8");
   const preview = await readFile(root + "NativeCompositionPreview.tsx", "utf8");
-  assert.match(preview, /<CompositionHtmlRecoveryCenter/);
+  const tools = await readFile(root + "CompositionSlideEditingTools.tsx", "utf8");
+  assert.match(preview, /<CompositionSlideEditingTools/);
+  assert.match(tools, /<CompositionHtmlRecoveryCenter draftId=\{draftId\} compositionId=\{compositionId\} host=\{host\}/);
   assert.match(center, /<CompositionHtmlHistoricalPublicationPanel key=\{`historical-publication:\$\{context.key\}:\$\{compositionId\}`\}/);
   assert.match(panel, /if \(!readsEnabled && tracking.status === "EMPTY"\) return null/);
   assert.match(panel, /useAuthStore.getState\(\).user\?\.id === context.actorId/);

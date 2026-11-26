@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, CheckCircle2, AlertCircle, ArrowRight, Database } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { FieldHelp } from '@/components/ui/FieldHelp';
 import { getErrorMessage } from '@/lib/errors';
 import type { ScormItem, ScormManifest } from '@/domains/scorm/types';
 import {
@@ -16,7 +17,7 @@ import {
 } from '@/shared/constants/timing';
 
 interface ScormImportFlowProps {
-    onComplete: (importId: string) => void;
+    onComplete: (importId: string) => void | Promise<void>;
 }
 
 type Step = 'upload' | 'uploading' | 'analyzing' | 'review' | 'success';
@@ -148,8 +149,8 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
 
             const response = await axios.post<ScormProcessStatusResponse>('/api/admin/scorm/process', { importId });
             if (response.data.success && response.data.artifactId) {
+                await onComplete(response.data.artifactId);
                 toast.success('Curso importado y procesado correctamente');
-                onComplete(response.data.artifactId);
                 return;
             }
 
@@ -160,8 +161,8 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
 
                 if (status.kind === 'completed' && status.artifactId) {
                     setProgress(100);
+                    await onComplete(status.artifactId);
                     toast.success('Curso importado y procesado correctamente');
-                    onComplete(status.artifactId);
                     return;
                 }
                 if (status.kind === 'failed' || status.kind === 'invalid') {
@@ -202,9 +203,9 @@ export function ScormImportFlow({ onComplete }: ScormImportFlowProps) {
                             <div className="w-16 h-16 rounded-full bg-[var(--engine-info)]/10 flex items-center justify-center mx-auto mb-4 text-[var(--engine-info)]">
                                 <Upload size={32} />
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                            <div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-xl font-bold text-gray-900 dark:text-white">
                                 {isDragActive ? 'Suelta el archivo aquí...' : 'Arrastra tu paquete SCORM aquí'}
-                            </h3>
+                            </h3><FieldHelp label="Paquete SCORM" description="Selecciona un archivo ZIP de un curso SCORM 1.2 o 2004. Architect analizará su estructura para que puedas revisarla antes de procesar la importación; no subas un ZIP de documentos sueltos." /></div>
                             <p className="text-gray-500 dark:text-[var(--engine-text-muted)] mb-6">
                                 Soporta archivos .zip (SCORM 1.2 o 2004)
                             </p>

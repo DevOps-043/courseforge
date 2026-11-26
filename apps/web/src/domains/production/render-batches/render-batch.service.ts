@@ -1,4 +1,5 @@
 import { getServiceRoleClient } from "@/lib/server/artifact-action-auth";
+import { assertAcademyComponentCurrent } from "../../course-delivery/services/academy-scope.server";
 import { DesktopWorkerControlPlane } from "@/lib/server/desktop-worker-control-plane";
 import { getAssemblyAssetReadiness } from "@/remotion/assembly-assets.normalizer";
 import type { MaterialAssets } from "@/domains/materials/types/materials.types";
@@ -104,6 +105,7 @@ export class RenderBatchService {
       if (material?.artifact_id !== request.artifactId) {
         throw new Error(`COMPONENT_FORBIDDEN_FOR_BATCH: ${item.componentId}`);
       }
+      await assertAcademyComponentCurrent(this.supabase, request.artifactId, lesson?.lesson_id || "", component.assets);
       if (!hasRenderableAssets(component)) {
         const readiness = getAssemblyAssetReadiness((component.assets || {}) as MaterialAssets, 30);
         const issue = readiness.blockingIssues[0];

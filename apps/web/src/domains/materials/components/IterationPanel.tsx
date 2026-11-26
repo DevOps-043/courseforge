@@ -8,7 +8,7 @@ interface IterationPanelProps {
     maxIterations: number;
     /** Available component types for this lesson */
     availableComponents?: string[];
-    onStartIteration: (instructions: string, componentTypes?: string[]) => void;
+    onStartIteration: (instructions: string, componentTypes?: string[]) => void | Promise<void>;
     className?: string;
 }
 

@@ -27,6 +27,7 @@ export function installCompositionPanelKeyboard(panel: HTMLElement, options: {
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing) return;
     if (event.key === "Escape" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (owner.activeElement?.matches('[role="combobox"][aria-expanded="true"]')) return;
       event.preventDefault(); event.stopPropagation();
       requestClose();
       return;

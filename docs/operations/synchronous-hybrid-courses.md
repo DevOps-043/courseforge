@@ -1,6 +1,8 @@
 # Operación de cursos sincrónicos e híbridos
 
-Fecha: 2026-10-26. Estado: implementación local bajo habilitación explícita; sin despliegue ni aplicación de SQL remoto.
+La [ampliación de preparación hacia Academy y Hub](../architecture/live-preparation-expansion.md) documenta la entrega local de bloques, tiempos y notas privadas y el orden de publicación requerido.
+
+La funcionalidad exige habilitación explícita. La [evidencia de ejecución](../../openspec/changes/complete-live-preparation-delivery/reports/engine-manual-execution.md) registra la aplicación manual del esquema base de Engine y la verificación posterior. El [registro de pruebas y release](../../openspec/changes/complete-live-preparation-delivery/reports/testing-release.md) documenta un despliegue previo de Engine QA y el estado del historial remoto y del piloto.
 
 El [análisis](../architecture/synchronous-hybrid-course-flow-analysis.md) conserva la intención y el [plan](../architecture/synchronous-hybrid-course-implementation-plan.md) las entregas. Este documento describe los contratos implementados y sus límites.
 
@@ -10,7 +12,23 @@ El usuario confirmó presentación web, guía y cuaderno imprimibles, descarga H
 
 Se conservan las ocho etapas. En híbrido una intención de aprobación coordina las acciones QA existentes de Nexus y confirma la revisión sincrónica. La migración no autoaprueba tablas Nexus ni omite sus validadores. Si la segunda confirmación falla, Nexus puede quedar aprobado por separado; la etapa híbrida sigue incompleta y se reconcilia al reintentar.
 
-La guía y el cuaderno son HTML imprimible, no archivos Word/PPTX ni un servicio nuevo de PDF. La presentación es web estática con notas desplegables. No se modifica HyperFrames, motion ni render audiovisual.
+En Materiales, el resumen «Revisión QA de materiales» permanece visible al cambiar
+entre Hub y Academy. La aprobación conjunta exige permiso de revisión y pasa por
+las validaciones existentes de ambos destinos; una generación completada no
+equivale a aprobación. Academy conserva envío a QA, notas, aprobación y rechazo
+en su apartado. Los pendientes de generación/validación bloquean la acción conjunta.
+
+La guía y el cuaderno son HTML imprimible, no archivos Word/PPTX ni un servicio nuevo de PDF. En Producción, cada sesión aprobada permite producir su deck visual HTML con el renderer y QA compartidos con Academy, verlo dentro del curso y descargarlo. La exportación imprimible del curso se conserva por separado. No se modifica HyperFrames, motion ni render audiovisual.
+
+El deck se guarda en `production_assets` sin componente Academy ficticio. La identidad incorpora tenant, curso, sesión, contenido aprobado y versión del compilador; el reintento recupera el mismo asset. Cambiar o desaprobar entradas impide servir la versión anterior como vigente. Un QA `FAIL` conserva el diagnóstico y bloquea preview/descarga; `WARN` se muestra para revisión. No se incluyen notas ni soluciones privadas en el HTML proyectable. La producción es determinista, sin llamadas a modelos ni proveedores. Contrato y verificación: [presentaciones de sesión](../../openspec/changes/produce-session-decks/design.md).
+
+La paginación v2 busca una distribución completa de fragmentos que cumpla los presupuestos y el mínimo normalizado de QA. Evita páginas residuales sin añadir texto ni reducir validaciones. Reintentar después de desplegar v2 crea la presentación corregida sin reutilizar el asset v1 fallido. Si el contenido es realmente insuficiente, se mantiene el rechazo.
+
+En híbridos, cubrir una lección en vivo no la vuelve exclusiva de Hub: si también figura en un tramo asíncrono, conserva su video de Academy. Producción muestra cantidades por destino y etiqueta los temas compartidos; Producción y Ensamble filtran los recursos históricos que no pertenecen al alcance asíncrono. La ruta de video final verifica el alcance antes del despacho. Cambiar la distribución requiere editar el recorrido en Temario y revalidar las dependencias, sin borrar recursos anteriores. Véase [corrección de alcance y QA](../../openspec/changes/fix-hybrid-production-scope/design.md).
+
+En Temario, «Destino de cada lección» reúne en una sola sección las opciones solo síncrona, solo asíncrona o compartida, sus sesiones de Hub y su tramo Academy. El resumen separa cantidades y pendientes antes de guardar. Los tramos conservan sus ajustes de orden, tiempos, objetivos y evidencia, con una lista de temas de solo lectura. Una elección modifica el borrador; el botón Guardar recorrido híbrido conserva la validación y concurrencia del servidor y deja los pasos dependientes pendientes de revisión. No se seleccionan lecciones de un taller de prueba como regla para nuevos cursos.
+
+B-rolls de sesión: Producción permite cargar MP4/WebM como apoyos opcionales, independientes de avatar, locución y video final. Su ausencia no bloquea la sesión. Cada clip se verifica contra sus bytes reales, se revisa dentro del curso y un revisor puede aprobarlo por separado. Retirar conserva archivo y registro. Los cambios de materiales exigen validar otra vez; los clips no se publican o exportan automáticamente. Límites: 100 MiB, diez minutos y 1920 px en el lado mayor. La reproducción privada usa un enlace de cinco minutos y empieza silenciada. La carga manual no genera contenido con IA. Contrato, recuperación y límites: [apoyos opcionales](../../openspec/changes/optional-session-brolls/design.md).
 
 ## Componentes y persistencia
 
@@ -18,7 +36,7 @@ La guía y el cuaderno son HTML imprimible, no archivos Word/PPTX ni un servicio
 - API: [GET/POST de impartición](../../apps/web/src/app/api/artifacts/[artifactId]/delivery/route.ts). Valida tamaño, comando, identidad, rol y organización.
 - Exportación: [ruta de documentos](../../apps/web/src/app/api/artifacts/[artifactId]/delivery/export/route.ts), con audiencia, vigencia, escape HTML, CSP y ausencia de caché compartida.
 - Generación: [job firmado](../../apps/web/netlify/functions/course-delivery-background.ts). El cuerpo solo contiene el ID reservado; contexto y configuración se leen de una instantánea privada.
-- Persistencia: [migración aditiva](../../supabase/migrations/20261026160000_synchronous_course_delivery.sql), aún no aplicada a un servidor remoto.
+- Persistencia: [migración aditiva](../../supabase/migrations/20261026160000_synchronous_course_delivery.sql), aplicada manualmente en Engine main según [evidencia del usuario y postflight](../../openspec/changes/complete-live-preparation-delivery/reports/engine-manual-execution.md).
 
 Las tablas nuevas son course_delivery_workspaces, course_delivery_versions y course_delivery_runs. No se guardan sesiones como lecciones Nexus ficticias. El borrador es un agregado JSON validado y acotado por curso; las unidades del run conservan progreso por sesión. Un trigger conserva las revisiones anteriores antes de modificar el agregado.
 
@@ -52,7 +70,7 @@ La ejecución fija texto, versión, origen, modelo, parámetros, hash y contexto
 
 ## Activación controlada
 
-1. Revisar y aplicar la migración mediante el proceso autorizado y comprobar catálogo/permisos antes y después. El [plan de activación de Engine](../../openspec/changes/complete-live-preparation-delivery/reports/engine-activation-plan.md) registra la aprobación de emsjctbdevufloxntjll y el acceso pendiente a Supabase. No se ha ejecutado esa migración remota. El guard de versiones no aplica SQL.
+1. El [plan de activación de Engine](../../openspec/changes/complete-live-preparation-delivery/reports/engine-activation-plan.md) registra la aprobación de emsjctbdevufloxntjll. La migración se ejecutó manualmente; el catálogo y permisos esperados constan en el postflight aportado. Comprobar/reconciliar el historial antes de db push y no repetir el archivo de creación. El guard de versiones no aplica SQL ni verifica el historial remoto.
 2. Confirmar modelos de fases heredadas o configurar capacidades propias.
 3. Configurar SYNCHRONOUS_COURSES_ENABLED=true en el entorno autorizado.
 4. La habilitación es global para todas las organizaciones. SYNCHRONOUS_COURSES_ORGANIZATIONS ya no se utiliza y puede eliminarse del entorno; los permisos de curso siguen siendo obligatorios.
@@ -63,7 +81,12 @@ No se modificaron .env, credenciales ni configuración remota. La ausencia de mi
 
 ## Recuperación y reversión
 
+- Los planes de sesión reciben minutos exactos, vínculos permitidos y lecciones compartidas obligatorias calculados desde el recorrido. Una respuesta que incumple esquema o reglas del plan permite una corrección dentro del presupuesto. Se vuelven a ejecutar todos los validadores y la revisión de respaldo antes de guardar. Si falla de nuevo, INVALID_OUTPUT muestra el motivo sin incluir contenido privado y conserva la versión anterior.
+- Para probar modelos o prompts recién guardados, cancela únicamente la ejecución fallida y genera una nueva. Reanudar pendientes conserva la instantánea original; el texto «Configuración para nuevas ejecuciones» no acredita el modelo usado por una ejecución anterior.
+- La revisión documental comprueba afirmaciones, explicaciones y soluciones contra la evidencia aprobada. Las consignas, los casos identificados como hipotéticos y las plantillas vacías pueden ser creaciones didácticas. Los hechos o pasos técnicos que incluyan siguen sujetos a revisión.
+- Materiales de sesión y componentes Nexus pueden corregir una vez una salida con contenido sin respaldo dentro del presupuesto de ejecución. Las citas inexactas pueden pasar por una corrección de revisión. El sistema confirma únicamente contenido con recibo vigente y muestra la etapa del fallo cuando la corrección no basta.
 - Reanudar procesa pendientes; no repite unidades válidas. Un timeout de proveedor no garantiza ausencia de consumo externo.
+- La configuración de cursos admite GPT-6.1 Terra con respaldo GPT-6.2 Sol. Las etapas síncronas pueden heredar Temario, Plan y Materiales. Los modelos guardados se aplican a nuevas ejecuciones; la reserva anterior conserva sus modelos.
 - Cambiar entradas invalida aprobaciones y marca contenido afectado, sin borrarlo. El historial conserva el documento anterior.
 - Cambiar agenda afecta las sesiones modificadas; cambiar configuración pedagógica marca planes y materiales. Los hashes detectan fuentes o planes incompatibles.
 - Una fuente rechazada impide entregar contenido que la cite. Una nueva generación usa las fuentes aprobadas actuales.
@@ -97,12 +120,50 @@ La [QA de documentos](../../scripts/qa-course-delivery-exports.mjs) requiere com
 
 La evidencia y límites se conservan en el [reporte de implementación](../../openspec/changes/archive/2026-10-26-add-synchronous-hybrid-course-flow/reports/implementation.md).
 
-## Entrega a una sesión de Learning
+## Entrega a una sesión de Academy y Hub
 
-La etapa final permite a revisores consultar sus sesiones programadas de Learning en la organización activa y entregar láminas/prácticas aprobadas. La modalidad debe incluir sesiones; cambiar a Nexus conserva los materiales antiguos, pero no autoriza entregarlos. El destino vuelve a validar instructor, organización, curso, revisión y ausencia de respuestas.
+La etapa final permite a revisores consultar sus sesiones programadas de Academy en la organización activa y entregar la preparación aprobada para impartirla en Hub. La modalidad debe incluir sesiones. El destino vuelve a validar instructor, organización, curso, revisión y estado de la sesión.
 
 La conexión usa SOFLIA_API_URL HTTPS y SOFLIA_API_KEY exclusivamente en servidor; Learning verifica su COURSEFORGE_API_KEY mediante HMAC con propósito y fecha de cinco minutos. No se envían credenciales al navegador ni se aceptan URLs de destino del formulario. La entrega reemplaza la preparación anterior de la sesión elegida. Reintentar una respuesta perdida conserva el comando determinista del mismo payload.
 
-El contrato del aula admite 32 KiB, doce láminas con título de 160 y contenido de 500 caracteres y veinte prácticas con instrucciones de 2000 caracteres. El exceso se rechaza con diagnóstico, sin truncar. Guía, notas, respuestas y criterios del facilitador permanecen en Engine; no se convierten respuestas privadas en materiales públicos.
+La entrega admite 256 KiB de JSON, hasta doce láminas con título de 160 y contenido de 500 caracteres y hasta veinte prácticas con instrucciones de 2000 caracteres. Si se excede un límite, se rechaza la entrega completa. El manifiesto incluye bloques, criterios y notas del ponente y admite documentos de sesión con secciones privadas para facilitación. [Contrato de entrega ampliado](../architecture/live-preparation-expansion.md).
 
-Learning debe publicar primero su endpoint interno live-engine-preparation. La migración de participación/guardas 20261103120000 ya se aplicó con aprobación a Learning principal, con versión remota 20261103184120; la de Video tiene versión 20261103184110. El reporte canónico está en docs/reports/live-activation-2026-11-03/ de Learning. La migración de autoría de Engine sigue pendiente de acceso, con autorización recibida. La autoría y descarga HTML existentes conservan su comportamiento. No se publicaron cursos. Para comprobar la copia canónica: definir LEARNING_CHECKOUT y ejecutar node scripts/sync-live-preparation-contract.mjs --check.
+Learning debe publicar primero su endpoint interno live-engine-preparation. La migración de participación/guardas 20261103120000 ya se aplicó con aprobación a Learning principal, con versión remota 20261103184120; la de Video tiene versión 20261103184110. El reporte canónico está en docs/reports/live-activation-2026-11-03/ de Learning. La migración de autoría de Engine ya se ejecutó manualmente y su postflight fue aportado y verificado; sigue pendiente comprobar/reconciliar el historial remoto. La autoría y descarga HTML existentes conservan su comportamiento. No se publicaron cursos. Para comprobar la copia canónica: definir LEARNING_CHECKOUT y ejecutar node scripts/sync-live-preparation-contract.mjs --check.
+
+## Revisión integrada de producción
+
+Diagnóstico de slides en cola: `SLIDES_STILL_PENDING` sólo significa que terminó
+el plazo del sondeo. Consultar el job y los logs de `slides-generation-background`.
+El worker verifica firma/nonce, reserva, creador, membresía y rol vigentes y el
+componente del mismo curso/organización; no puede usar helpers que requieren
+cookies de Next.js. Los eventos `worker_received`, `worker_authorized`,
+`worker_finished` y `worker_failed` permiten distinguir preparación de ejecución.
+Un error de acceso previo a generar marca FAILED sólo en la reserva verificada
+que continúa pendiente/en cola. No se modifica otro job ni se rebaja QA.
+Si el primer intento consume el nonce y después falla, repetir el mismo sobre
+firmado puede registrar `nonce_consumido`. Es protección de replay, no evidencia
+de éxito: corregir el fallo inicial y usar el reintento explícito, que firma una
+solicitud nueva para el mismo job. No desactivar el control de nonce.
+
+En Producción, las sesiones de Hub se revisan en tarjetas desplegables dentro del
+curso. Cada sesión ofrece Presentación, Guía del facilitador y Material del
+participante; el estado muestra contenido pendiente o desactualizado y la revisión
+del workspace. La aprobación y corrección siguen en Materiales. La bibliografía
+permanece en Fuentes y en las exportaciones completas. Descargar HTML es opcional;
+el parámetro de borrador sólo se solicita si los materiales no están aprobados y
+vigentes. Una descarga anterior con `draft=1` no acredita pérdida de aprobación.
+
+Para diagnosticar assets de Academy, distinguir el error de contrato B-roll de un
+trabajo de slides pendiente. Los prompts requieren salida estructurada, validación
+local y mínimo de tomas. Las slides recuperan el último job al abrir la tarjeta;
+«Consultar estado de slides» consulta ese trabajo sin generar otro. Un job ausente
+no se presenta como una cola. Agotar el sondeo no cancela el worker ni autoriza
+marcar un asset como listo. Reintentar slides sin un deck existente conserva el
+mismo job: si lleva más de 90 segundos en cola, reserva de nuevo su despacho. Un
+worker repetido no vuelve a consumir el proveedor. RUNNING nunca se reenvía ni se
+sobrescribe por un error de confirmación del despacho; revisar su estado y logs.
+
+Pruebas locales sin proveedores: `npm run test:production-asset-flow`. La vista
+aislada se inicia con `node scripts/qa-production-asset-flow.cjs` después de
+compilar la suite de impartición. Usa datos simulados; no acredita generación en
+Netlify. No iniciar HeyGen para verificar estos contratos.

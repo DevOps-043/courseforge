@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Clapperboard, Film, Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useMaterials } from "../hooks/useMaterials";
 import { HyperframesCompositionPanel } from "./HyperframesCompositionPanel";
 import { PRODUCTION_THEME } from "./production-asset-ui";
+import { isAcademyProductionLesson } from "../../course-delivery/lib/delivery-production-scope";
 
 interface PostproductionAssemblyContainerProps {
+  academyLessonIds?: readonly string[] | null;
   artifactId: string;
   initialComponentId?: string;
   onNext?: () => void;
@@ -56,6 +58,7 @@ export function PostproductionAssemblyContainer({
   initialComponentId,
   onNext,
   singleVideoOnly = false,
+  academyLessonIds,
 }: PostproductionAssemblyContainerProps) {
   const searchParams = useSearchParams();
   const returnedComponentId = searchParams.get("componentId");
@@ -68,25 +71,35 @@ export function PostproductionAssemblyContainer({
   const [components, setComponents] = useState<VideoComponent[]>([]);
   const [activeComponentId, setActiveComponentId] = useState<string | null>(initialComponentId || null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const hasLoaded = useRef(false);
+  const loadSequence = useRef(0);
+  // El sondeo puede entregar otro arreglo con el mismo recorrido. Su identidad
+  // no debe reiniciar el estudio ni sus peticiones de preparación.
+  const academyScopeKey = academyLessonIds == null ? null : JSON.stringify([...new Set(academyLessonIds)].sort());
+  const academyScope = useMemo<readonly string[] | null>(() => academyScopeKey === null ? null : JSON.parse(academyScopeKey), [academyScopeKey]);
 
   const loadComponents = useCallback(async () => {
+    const sequence = ++loadSequence.current;
+    const isCurrent = () => sequence === loadSequence.current;
     if (!materials?.lessons) {
       if (materialsLoading) return;
       setComponents([]);
       setIsLoading(false);
       return;
     }
-    setIsLoading(true);
+    if (!hasLoaded.current) setIsLoading(true);
     try {
       const lessonMetadata = new Map(
-        materials.lessons.map((lesson, index) => [lesson.id, {
+        materials.lessons.filter(lesson => isAcademyProductionLesson(lesson.lesson_id, academyScope)).map((lesson, index) => [lesson.id, {
           order: index,
           title: lesson.lesson_title,
         }]),
       );
       const artifactComponents = await getArtifactComponents();
+      if (!isCurrent()) return;
       const allComponents = artifactComponents
-        .filter((component) => component.type.includes("VIDEO"))
+        .filter((component) => component.type.includes("VIDEO") && lessonMetadata.has(component.material_lesson_id))
         .sort((left, right) =>
           (lessonMetadata.get(left.material_lesson_id)?.order ?? Number.MAX_SAFE_INTEGER)
           - (lessonMetadata.get(right.material_lesson_id)?.order ?? Number.MAX_SAFE_INTEGER))
@@ -107,17 +120,20 @@ export function PostproductionAssemblyContainer({
         || scoped[0]
         || null;
       setComponents(scoped);
+      setLoadError(null);
       setActiveComponentId((current) => current && scoped.some((component) => component.id === current)
         ? current
         : preferredComponent?.id || null);
     } catch (error) {
+      if (!isCurrent()) return;
       console.error("[VideoAssemblyStudio] No se pudieron cargar los componentes:", error);
-      setComponents([]);
+      setLoadError("No se pudo actualizar la lista de videos. Se conserva el editor abierto.");
     } finally {
-      setIsLoading(false);
+      if (isCurrent()) { hasLoaded.current = true; setIsLoading(false); }
     }
-  }, [getArtifactComponents, initialComponentId, materials, materialsLoading, returnedComponentId, singleVideoOnly]);
+  }, [getArtifactComponents, initialComponentId, materials, materialsLoading, returnedComponentId, singleVideoOnly, academyScope]);
 
+  useEffect(() => () => { loadSequence.current += 1; }, [loadComponents]);
   useEffect(() => { void loadComponents(); }, [loadComponents]);
 
   const activeComponent = useMemo(
@@ -144,13 +160,15 @@ export function PostproductionAssemblyContainer({
       <div className={`${PRODUCTION_THEME.panel} flex min-h-80 flex-col items-center justify-center p-8 text-center`}>
         <Film className="mb-3 text-gray-500" size={40} />
         <h2 className={`text-lg font-bold ${PRODUCTION_THEME.primaryText}`}>No hay videos para ensamblar</h2>
-        <p className={`mt-2 max-w-md text-sm ${PRODUCTION_THEME.secondaryText}`}>Genera materiales con componentes de video antes de entrar al estudio de ensamblaje.</p>
+        <p className={`mt-2 max-w-md text-sm ${PRODUCTION_THEME.secondaryText}`}>{loadError || "Genera materiales con componentes de video antes de entrar al estudio de ensamblaje."}</p>
+        {loadError && <button type="button" onClick={() => void loadComponents()} className="mt-3 rounded border px-3 py-2">Reintentar</button>}
       </div>
     );
   }
 
   return (
     <section className="relative flex h-full min-h-0 flex-col">
+      {loadError && <p role="status" className="px-3 py-2 text-sm">{loadError} <button type="button" onClick={() => void loadComponents()} className="underline">Reintentar</button></p>}
       <header className="sr-only">
         <div>
           <h2 className="flex items-center gap-3 text-xl font-bold text-slate-900 dark:text-white"><Clapperboard className="text-cyan-600 dark:text-cyan-300" /> Estudio de ensamblaje</h2>

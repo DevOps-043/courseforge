@@ -1,9 +1,12 @@
+:root, body {
+  --font-system-display: var(--font-newsreader, Newsreader), Newsreader, Georgia, serif;
+  --font-system-ui: var(--font-inter-tight, "Inter Tight"), Inter, Arial, sans-serif;
+  --font-system-label: var(--font-ibm-plex, "IBM Plex Sans"), Arial, sans-serif;
+  --font-system-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 :root {
   color-scheme: light;
-  --font-system-display: var(--font-newsreader), Newsreader, Georgia, serif;
-  --font-system-ui: var(--font-inter-tight), "Inter Tight", Inter, Arial, sans-serif;
-  --font-system-label: var(--font-ibm-plex), "IBM Plex Sans", Arial, sans-serif;
-  --font-system-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   --engine-primary: #0a2540;
   --engine-primary-hover: #0d2f4d;
@@ -1273,8 +1276,7 @@ code,
 }
 
 .soflia-engine-shell .engine-content input,
-.soflia-engine-shell .engine-content textarea,
-.soflia-engine-shell .engine-content select {
+.soflia-engine-shell .engine-content textarea {
   border-radius: 0.9rem !important;
   border-color: var(--engine-border) !important;
   color: var(--engine-text) !important;
@@ -1282,8 +1284,7 @@ code,
 }
 
 .soflia-engine-shell .engine-content input:focus,
-.soflia-engine-shell .engine-content textarea:focus,
-.soflia-engine-shell .engine-content select:focus {
+.soflia-engine-shell .engine-content textarea:focus {
   border-color: var(--engine-border-active) !important;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--engine-accent) 11%, transparent) !important;
 }

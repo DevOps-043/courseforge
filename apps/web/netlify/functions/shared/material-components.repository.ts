@@ -11,13 +11,14 @@ export async function commitGeneratedLesson(
   logPrefix: string,
   onlyTypes: string[] | undefined,
   durationContractsByType: Partial<Record<ComponentType, VideoDurationContract>> = {},
-  execution: { materialsId: string; version: number; success: boolean; error?: string; sourceEvidenceByType?: Record<string, string> },
+  execution: { materialsId: string; version: number; success: boolean; error?: string; sourceEvidenceByType?: Record<string, string>; academyRouteHash?: string | null },
 ) {
   const rows = buildMaterialComponentWrites({
     lessonId, content, iteration, onlyTypes, durationContractsByType,
     generatedAt: new Date().toISOString(),
   });
   for (const row of rows) {
+    if (execution.academyRouteHash) row.assets = { ...row.assets, ...{ delivery_route_hash: execution.academyRouteHash } };
     const evidenceId = execution.sourceEvidenceByType?.[row.type];
     if (evidenceId) row.assets = { ...row.assets, ...{ course_source_evidence_id: evidenceId } };
   }

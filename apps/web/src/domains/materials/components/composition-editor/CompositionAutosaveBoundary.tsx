@@ -88,7 +88,13 @@ export function CompositionAutosaveBoundary({ children, value, onCommit, disable
     onPointerCancelCapture={() => { pointer.current = false; schedule(true); }}
     onCompositionStartCapture={() => { composing.current = true; }}
     onCompositionEndCapture={() => { composing.current = false; schedule(); }}
-    onKeyUpCapture={(event) => { if (owns(event) && (event.key === "Enter" && !(event.target instanceof HTMLTextAreaElement) || event.target instanceof HTMLInputElement && event.target.type === "range")) schedule(true); }}>
+    onKeyUpCapture={(event) => {
+      if (!owns(event)) return;
+      const target = event.target;
+      const confirmsField = event.key === "Enter" && !(target instanceof HTMLTextAreaElement);
+      const confirmsSelect = event.key === " " && target instanceof HTMLElement && target.matches('[role="combobox"]');
+      if (confirmsField || confirmsSelect || target instanceof HTMLInputElement && target.type === "range") schedule(true);
+    }}>
     {children}
     {state !== "IDLE" && <p role={state === "ERROR" ? "alert" : "status"} className="mt-1 text-[10px] text-slate-500 dark:text-slate-300">
       {state === "SAVING" ? "Guardando…" : state === "ERROR" ? "No se confirmó el cambio. El borrador se conserva; revisa el error del editor." : state === "INVALID" ? "Completa o corrige los valores para guardar automáticamente." : "Cambios pendientes de guardado automático."}

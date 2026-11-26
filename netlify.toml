@@ -3,6 +3,8 @@
   publish = "apps/web/.next"
 
 [build.environment]
+  # Usar el mismo resolvedor de overrides que desarrollo y CI.
+  NPM_VERSION = "11.19.0"
   # El worker de TypeScript supera el heap automático de ~2 GiB en este monorepo.
   # Este máximo es por proceso; no modifica la memoria de las Functions.
   NODE_OPTIONS = "--max-old-space-size=4096"

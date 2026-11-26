@@ -6,11 +6,24 @@ export const DELIVERY_LIMITS = {
   requestBytes: 2 * 1024 * 1024,
   workspaceBytes: 8 * 1024 * 1024,
   generationTimeoutMs: 90_000,
+  unitAttempts: 4,
+  materialsGenerationTimeoutMs: 180_000,
+  groundingBudgetMs: 120_000,
+  persistenceReserveMs: 15_000,
   generationOutputTokens: 16_000,
   pollIntervalMs: 3000,
   snapshotTimeoutMs: 15_000,
   runBudgetMs: 9 * 60_000,
 } as const;
+
+export function deliveryGenerationTimeout(operation: "AGENDA" | "PLAN" | "MATERIALS") {
+  return operation === "MATERIALS" ? DELIVERY_LIMITS.materialsGenerationTimeoutMs : DELIVERY_LIMITS.generationTimeoutMs;
+}
+
+/** Reserva generación, posible respaldo, auditoría y guardado dentro del lease existente. */
+export function deliveryUnitBudget(operation: "AGENDA" | "PLAN" | "MATERIALS", fallback: boolean) {
+  return deliveryGenerationTimeout(operation) * (fallback ? 2 : 1) + DELIVERY_LIMITS.groundingBudgetMs + DELIVERY_LIMITS.persistenceReserveMs;
+}
 
 export const DELIVERY_CAPABILITIES = {
   AGENDA: { setting: "SYNCHRONOUS_AGENDA", parent: "SYLLABUS", prompt: "SYNCHRONOUS_AGENDA" },

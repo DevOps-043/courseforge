@@ -56,17 +56,18 @@ export async function GET(request: Request) {
     return apiErrorResponse({ code: API_ERROR_CODE.internalError, message: "No se pudo consultar el trabajo de slides.", requestId, retryable: true, status: 500 });
   }
 
-  const { data: component } = await authorized.admin
+  const { data: component, error: componentError } = await authorized.admin
     .from("material_components")
     .select("assets")
     .eq("id", parsed.data.componentId)
     .single();
+  if (componentError) throw componentError;
 
   return apiSuccessResponse({
     data: {
       assets: component?.assets || {},
       job: data || null,
-      status: data?.status || "QUEUED",
+      status: data?.status || "NOT_FOUND",
     },
   }, { requestId });
   } catch (error) {

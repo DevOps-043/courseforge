@@ -3,7 +3,6 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { FileStack, MoreHorizontal } from "lucide-react";
-import { deleteArtifactAction } from "@/domains/artifacts/actions/delete-artifact.action";
 import type { Artifact, ArtifactViewMode } from "../artifacts-list.types";
 import {
   artifactStatusConfig,
@@ -21,7 +20,7 @@ interface ArtifactCardProps {
   artifact: Artifact;
   viewMode: ArtifactViewMode;
   basePath: string;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, cleanupPending: boolean) => void;
   position: number;
 }
 
@@ -66,8 +65,6 @@ export function ArtifactCard({
   const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const progress = getArtifactProgress(artifact);
   const normalizeReadyForQa = basePath === "/admin" || basePath.endsWith("/admin");
@@ -88,32 +85,17 @@ export function ArtifactCard({
     menuTriggerRef.current?.focus({ preventScroll: true });
   };
 
-  const openDeleteModal = () => {
-    setDeleteError(null);
-    setShowDeleteModal(true);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (isDeleting) return;
-    setDeleteError(null);
-    setIsDeleting(true);
-
-    try {
-      const result = await deleteArtifactAction(artifact.id);
-
-      if (!result.success) {
-        setDeleteError(result.error);
-        return;
-      }
-
-      setShowDeleteModal(false);
-      onDelete(artifact.id);
-    } catch {
-      setDeleteError("No se pudo confirmar la eliminación. Actualiza la lista antes de reintentar.");
-    } finally {
-      setIsDeleting(false);
-    }
-  };
+  const deletionDialog = showDeleteModal && (
+    <DeleteConfirmationModal
+      artifactId={artifact.id}
+      artifactTitle={artifactTitle}
+      onClose={() => setShowDeleteModal(false)}
+      onDeleted={(cleanupPending) => {
+        setShowDeleteModal(false);
+        onDelete(artifact.id, cleanupPending);
+      }}
+    />
+  );
 
   if (viewMode === "list") {
     return (
@@ -157,18 +139,11 @@ export function ArtifactCard({
         <ArtifactDropdownMenu
           isOpen={showMenu}
           onClose={closeMenu}
-          onDelete={openDeleteModal}
+          onDelete={() => setShowDeleteModal(true)}
           anchor={menuAnchor}
         />
 
-        <DeleteConfirmationModal
-          isOpen={showDeleteModal}
-          onClose={() => setShowDeleteModal(false)}
-          onConfirm={handleDeleteConfirm}
-          artifactTitle={artifactTitle}
-          isDeleting={isDeleting}
-          error={deleteError}
-        />
+        {deletionDialog}
       </>
     );
   }
@@ -226,18 +201,11 @@ export function ArtifactCard({
       <ArtifactDropdownMenu
         isOpen={showMenu}
         onClose={closeMenu}
-        onDelete={openDeleteModal}
+        onDelete={() => setShowDeleteModal(true)}
         anchor={menuAnchor}
       />
 
-      <DeleteConfirmationModal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        onConfirm={handleDeleteConfirm}
-        artifactTitle={artifactTitle}
-        isDeleting={isDeleting}
-        error={deleteError}
-      />
+      {deletionDialog}
     </>
   );
 }

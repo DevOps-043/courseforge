@@ -13,6 +13,7 @@ interface UseMaterialsReturn {
   materials: MaterialsPayload | null;
   loading: boolean;
   error: string | null;
+  actionError: string | null;
   startGeneration: () => Promise<void>;
   runFixIteration: (lessonId: string, fixInstructions: string, componentTypes?: string[]) => Promise<void>;
   validateLesson: (lessonId: string) => Promise<void>;
@@ -56,13 +57,17 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
   const [loading, setLoading] = useState(true);
   const [isStartingGeneration, setIsStartingGeneration] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const retrying = useRef(new Set<string>());
   const [generationStuckInfo, setGenerationStuckInfo] = useState<{
     isStuck: boolean;
     minutesElapsed: number;
   } | null>(null);
   const hasLoadedRef = useRef(false);
+  const readSequence = useRef(0);
 
   const loadMaterials = useCallback(async () => {
+    const sequence = ++readSequence.current;
     try {
       if (!hasLoadedRef.current) {
         setLoading(true);
@@ -70,14 +75,15 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
       setError(null);
 
       const data = await materialsService.getMaterialsByArtifactId(artifactId);
+      if (sequence !== readSequence.current) return;
       setMaterials(data);
       setGenerationStuckInfo(getGenerationStuckInfo(data));
     } catch (err) {
+      if (sequence !== readSequence.current) return;
       console.error('Error loading materials:', err);
       setError('Error al cargar materiales');
     } finally {
-      hasLoadedRef.current = true;
-      setLoading(false);
+      if (sequence === readSequence.current) { hasLoadedRef.current = true; setLoading(false); }
     }
   }, [artifactId]);
 
@@ -106,7 +112,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
   const startGeneration = useCallback(async () => {
     try {
       setIsStartingGeneration(true);
-      setError(null);
+      setActionError(null);
       const result = await materialsService.startMaterialsGeneration(artifactId);
       if (!result.success) {
         const resultError = 'error' in result ? result.error : undefined;
@@ -114,14 +120,14 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
           await loadMaterials();
           return;
         }
-        setError(resultError || 'Error al iniciar generacion');
+        setActionError(resultError || 'Error al iniciar generacion');
         return;
       }
 
       await loadMaterials();
     } catch (err) {
       console.error('Error starting generation:', err);
-      setError('Error al iniciar generacion');
+      setActionError('Error al iniciar generacion');
     } finally {
       setIsStartingGeneration(false);
     }
@@ -129,21 +135,25 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
 
   const runFixIteration = useCallback(
     async (lessonId: string, fixInstructions: string, componentTypes?: string[]) => {
+      if (retrying.current.has(lessonId)) return;
+      retrying.current.add(lessonId);
       try {
-        setError(null);
+        setActionError(null);
         const result = await materialsService.runFixIteration(
           lessonId,
           fixInstructions,
           componentTypes,
         );
         if (!result.success) {
-          setError(result.error || 'Error en iteracion dirigida');
+          setActionError(result.error || 'Error en iteracion dirigida');
           return;
         }
         await loadMaterials();
       } catch (err) {
         console.error('Error running fix iteration:', err);
-        setError('Error en iteracion dirigida');
+        setActionError('Error en iteracion dirigida');
+      } finally {
+        retrying.current.delete(lessonId);
       }
     },
     [loadMaterials],
@@ -284,6 +294,7 @@ export function useMaterials(artifactId: string): UseMaterialsReturn {
     materials,
     loading,
     error,
+    actionError,
     startGeneration,
     runFixIteration,
     validateLesson,

@@ -3,9 +3,6 @@ import { buildComputerUseSystemInstruction } from "@/lib/lia-route-instructions"
 import type {
   LiaAction,
   LiaConfig,
-  LiaGroundingChunk,
-  LiaGroundingMetadata,
-  LiaGroundingSource,
   LiaRequestPayload,
   LiaSettingsRecord,
 } from "@/lib/lia-types";
@@ -20,12 +17,6 @@ interface LiaComputerUseResponse {
   };
 }
 
-function hasGroundingUrl(
-  chunk: LiaGroundingChunk,
-): chunk is { web: { title?: string; uri: string } } {
-  return typeof chunk.web?.uri === "string" && chunk.web.uri.length > 0;
-}
-
 export function getActiveOrgIdFromCookieHeader(cookieHeader: string) {
   const match = cookieHeader.match(/(?:^|;\s*)cf_active_org=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
@@ -35,26 +26,14 @@ export function buildLiaConfig(
   settings: LiaSettingsRecord,
   useComputerUse: boolean,
 ): LiaConfig {
-  const config: LiaConfig = {
+  const level = useComputerUse ? null : settings.thinking_level ?? settings.thinking_le;
+  const thinkingLevel = level === "minimal" ? "low" : level;
+  return {
+    fallbackModel: settings.fallback_model,
+    thinkingLevel: thinkingLevel === "low" || thinkingLevel === "medium" || thinkingLevel === "high" ? thinkingLevel : undefined,
     temperature: settings.temperature,
+    webSearch: !useComputerUse,
   };
-
-  if (settings.thinking_le && !useComputerUse) {
-    config.thinkingConfig = {
-      thinkingBudget:
-        settings.thinking_le === "high"
-          ? 10000
-          : settings.thinking_le === "minimal"
-            ? 1000
-            : 5000,
-    };
-  }
-
-  if (!useComputerUse) {
-    config.tools = [{ googleSearch: {} }];
-  }
-
-  return config;
 }
 
 export function buildConversationPrompt(
@@ -165,21 +144,6 @@ export function buildComputerUseResponse(parsed: {
   }
 
   return responseData;
-}
-
-export function extractGroundingSources(
-  groundingMetadata?: LiaGroundingMetadata,
-): LiaGroundingSource[] {
-  if (!groundingMetadata?.groundingChunks) {
-    return [];
-  }
-
-  return groundingMetadata.groundingChunks
-    .filter(hasGroundingUrl)
-    .map((chunk) => ({
-      title: chunk.web.title || new URL(chunk.web.uri).hostname,
-      url: chunk.web.uri,
-    }));
 }
 
 export function cleanStandardResponse(responseText: string) {

@@ -103,6 +103,8 @@ test("recovers the composition that wins a concurrent initialization", async () 
         insert() { inserting = true; return query; },
         limit() { return query; },
         maybeSingle() {
+          if (table === "course_delivery_workspaces") return Promise.resolve({ data: null, error: null });
+          assert.equal(table, "video_compositions");
           compositionLookupCount += 1;
           return Promise.resolve({ data: compositionLookupCount === 1 ? null : winner, error: null });
         },
@@ -110,6 +112,12 @@ test("recovers the composition that wins a concurrent initialization", async () 
         order() { return query; },
         select() { return query; },
         single() {
+          if (table === "artifacts") {
+            return Promise.resolve({ data: { organization_id: "00000000-0000-4000-8000-000000000605" }, error: null });
+          }
+          if (table === "syllabus") {
+            return Promise.resolve({ data: { state: "STEP_APPROVED", modules: [{ title: "Módulo", lessons: [{ id: "lesson-1", title: "Lección" }] }] }, error: null });
+          }
           if (table === "material_components") {
             return Promise.resolve({
               data: {

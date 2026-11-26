@@ -56,7 +56,7 @@
 .body fieldset:disabled { opacity: 0.65; }
 .body legend { padding-inline: 4px; font-size: 13px; font-weight: 700; }
 .body label { display: grid; gap: 6px; font-family: inherit; font-size: 12px; font-weight: 600; }
-.body input:not([type="checkbox"]), .body select, .body textarea {
+.body input:not([type="checkbox"]), .body textarea {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -74,7 +74,7 @@
 .body input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--engine-accent-strong, #009987); }
 .body label:has(> input[type="checkbox"]) { display: block; }
 .body label > input[type="checkbox"] { margin-inline-end: 6px; vertical-align: middle; }
-.body button {
+.body button:not([role="combobox"]) {
   display: inline-flex;
   min-width: 0;
   min-height: 40px;
@@ -93,14 +93,14 @@
   text-align: center;
   cursor: pointer;
 }
-.body button:hover:not(:disabled) { border-color: var(--engine-accent-strong, #009987); }
+.body button:hover:not(:disabled, [role="combobox"]) { border-color: var(--engine-accent-strong, #009987); }
 .body button[data-primary="true"] {
   border-color: var(--engine-accent, #00d4b3);
   color: #052019;
   background: var(--engine-accent, #00d4b3);
 }
 .body button:disabled { opacity: 0.5; cursor: not-allowed; }
-.panel :is(button, input, textarea, select, summary):focus-visible {
+.panel :is(button, input, textarea, summary):focus-visible {
   outline: 2px solid var(--engine-accent-strong, #009987);
   outline-offset: 3px;
 }

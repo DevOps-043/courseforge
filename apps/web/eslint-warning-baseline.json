@@ -11,11 +11,6 @@
         "d060f090ad8ac5387255d7391dd540851ebc5af519d5b41eec8d4ff119d475ca": 1
       }
     },
-    "netlify/functions/shared/curation-v2/workflow.ts": {
-      "@next/next/no-assign-module-variable": {
-        "2bdaaacfa20068112c82b717c61218f45a23a248f46358a44cb91ab609f0341c": 1
-      }
-    },
     "scripts/check_lesson_assets.ts": {
       "@typescript-eslint/no-explicit-any": {
         "c24e474629392ec1032b6fb0752fa54c159c30c3ca1176752e3bf06fd8b81c52": 1
@@ -89,14 +84,6 @@
     "src/app/admin/artifacts/new/components/CloudStorageProviderSelector.tsx": {
       "react-hooks/set-state-in-effect": {
         "5fdcf6604d753da747a627068fed43845317dec2c40cfac31164fd5da6bbcb8e": 1
-      }
-    },
-    "src/app/admin/artifacts/new/page.tsx": {
-      "@next/next/no-html-link-for-pages": {
-        "ded466fdcb6491745351b07e1b33fc6a48cc7da4f4da7b17e18cf74f1d50585e": 3
-      },
-      "@typescript-eslint/no-unused-vars": {
-        "376c30f78219c41403b291fe5614dfd97e379ffdb8c6bbc198fc2c71e6f9a1e8": 1
       }
     },
     "src/app/admin/heygen/HeygenPlatformTools.tsx": {
@@ -197,14 +184,6 @@
         "c77b9da760e3869be5bc98bb08584fb745166aaf044361bdae6c41d2e3ae5e9e": 1
       }
     },
-    "src/app/builder/artifacts/new/page.tsx": {
-      "@next/next/no-html-link-for-pages": {
-        "ded466fdcb6491745351b07e1b33fc6a48cc7da4f4da7b17e18cf74f1d50585e": 3
-      },
-      "@typescript-eslint/no-unused-vars": {
-        "376c30f78219c41403b291fe5614dfd97e379ffdb8c6bbc198fc2c71e6f9a1e8": 1
-      }
-    },
     "src/app/builder/layout.tsx": {
       "prefer-const": {
         "c77b9da760e3869be5bc98bb08584fb745166aaf044361bdae6c41d2e3ae5e9e": 1
@@ -251,11 +230,6 @@
     "src/domains/course-delivery/components/DeliverySettingsPanel.tsx": {
       "react-hooks/set-state-in-effect": {
         "fdc194d2acd29e91a949a10a9edb46579f53687db9f23a8b02e7426642cbe4f2": 1
-      }
-    },
-    "src/domains/course-delivery/hooks/useCourseDelivery.ts": {
-      "react-hooks/set-state-in-effect": {
-        "068c7cd8ca1b87072dcdc327a57cdbd3d6c3d630488107b40beffc6fec4a7ea1": 1
       }
     },
     "src/domains/curation/components/CurationSettingsManager.tsx": {
@@ -443,9 +417,6 @@
       }
     },
     "src/domains/materials/components/composition-editor/CompositionStudioLibrary.tsx": {
-      "@next/next/no-img-element": {
-        "5ae621581bd063ae185c5adc86cf97413f89ff93857ccc29834a7f3de71ade79": 1
-      },
       "react-hooks/set-state-in-effect": {
         "0668bb90a81bce09066d5876f3104dc6952bac54bf08d908682df65ca494e8c8": 1
       }
@@ -582,11 +553,6 @@
     "src/domains/production/automation/production-automation-run.service.ts": {
       "@typescript-eslint/no-explicit-any": {
         "a0b094805527579d20bd768d35fb5b5558ec5716d714ad6be06832faf78d6426": 2
-      }
-    },
-    "src/domains/production/bundle-agent/ai-spec.service.ts": {
-      "@typescript-eslint/no-explicit-any": {
-        "754bd57209135db32ea24e5ff4ea077b4844d29198d25e9a00d7cfec96f50d1f": 1
       }
     },
     "src/domains/production/bundle-agent/types.ts": {

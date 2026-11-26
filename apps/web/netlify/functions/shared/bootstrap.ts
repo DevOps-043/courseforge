@@ -1,10 +1,9 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
-import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 
 import { resolveBackgroundFunctionOrigin } from "../../../src/lib/server/background-function-origin";
+import { resolveOpenAiTextModel, resolveOpenAiTextModels } from "../../../src/shared/ai/text-model-provider";
 
 function getRequiredEnv(name: string) {
   const value = process.env[name];
@@ -33,34 +32,6 @@ export function hasSupabaseServiceRoleKey() {
 
 export function getSupabaseServiceKey() {
   return getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
-}
-
-export function getGeminiApiKey() {
-  return getOptionalGeminiApiKey() ||
-    (() => {
-      throw new Error(
-        "Missing environment variable: GOOGLE_GENERATIVE_AI_API_KEY or GOOGLE_API_KEY",
-      );
-    })();
-}
-
-export function getOptionalGeminiApiKey() {
-  return (
-    getOptionalEnv("GOOGLE_GENERATIVE_AI_API_KEY") ||
-    getOptionalEnv("GOOGLE_API_KEY")
-  );
-}
-
-export function getGeminiApiKeySource() {
-  if (getOptionalEnv("GOOGLE_GENERATIVE_AI_API_KEY")) {
-    return "GOOGLE_GENERATIVE_AI_API_KEY";
-  }
-
-  if (getOptionalEnv("GOOGLE_API_KEY")) {
-    return "GOOGLE_API_KEY";
-  }
-
-  return "missing";
 }
 
 export function getSofliaInboxEnv() {
@@ -98,18 +69,8 @@ export function createServiceRoleClient() {
   return createClient(getSupabaseUrl(), getSupabaseServiceKey());
 }
 
-export function createGeminiClient() {
-  return new GoogleGenAI({ apiKey: getGeminiApiKey() });
-}
-
 export function createOpenAiClient() {
   return new OpenAI({ apiKey: getOpenAiApiKey() });
-}
-
-export function createGoogleAIProvider() {
-  return createGoogleGenerativeAI({
-    apiKey: getGeminiApiKey(),
-  });
 }
 
 export function createOpenAiAIProvider() {
@@ -119,14 +80,7 @@ export function createOpenAiAIProvider() {
 }
 
 export function resolveAiModel(modelName: string) {
-  const name = modelName.toLowerCase();
-  if (name.startsWith("gpt-") || name.startsWith("o1") || name.startsWith("o3")) {
-    const openaiProvider = createOpenAiAIProvider();
-    return openaiProvider(modelName);
-  }
-
-  const googleProvider = createGoogleAIProvider();
-  return googleProvider(modelName);
+  return createOpenAiAIProvider().responses(resolveOpenAiTextModel(modelName));
 }
 
 export function getFunctionsBaseUrl() {
@@ -171,8 +125,7 @@ export async function resolveModelSetting(
   const data = orgData || globalData;
 
   return {
-    model: data?.model_name || defaults.model,
-    fallbackModel: data?.fallback_model || defaults.fallbackModel,
+    ...resolveOpenAiTextModels(data?.model_name, data?.fallback_model, defaults),
     temperature: data?.temperature ?? defaults.temperature,
     thinkingLevel: data?.thinking_level || defaults.thinkingLevel,
   };
@@ -180,7 +133,7 @@ export async function resolveModelSetting(
 
 /**
  * Resolves a required database-backed model configuration.
- * Unlike resolveModelSetting, this function never substitutes code defaults.
+ * Requiere una fila activa y convierte los modelos históricos a OpenAI.
  */
 export async function resolveConfiguredModelSetting(
   supabase: ReturnType<typeof createServiceRoleClient>,
@@ -221,8 +174,7 @@ export async function resolveConfiguredModelSetting(
   }
 
   return {
-    model: configuredSetting.model_name.trim(),
-    fallbackModel: configuredSetting.fallback_model?.trim() || "",
+    ...resolveOpenAiTextModels(configuredSetting.model_name, configuredSetting.fallback_model),
     temperature: configuredSetting.temperature ?? 0.7,
     thinkingLevel: configuredSetting.thinking_level || "medium",
   };

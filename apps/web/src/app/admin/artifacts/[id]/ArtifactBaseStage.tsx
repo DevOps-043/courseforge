@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { REVIEWER_ROLE_SET } from "@/lib/pipeline-constants";
+import { generationFailureMessage } from "@/lib/pipeline-generation-policy";
 import { CourseSourceBaseStart } from "@/domains/course-sources/CourseSourceBaseStart";
 import type {
   ArtifactDisplayProfile,
@@ -39,6 +40,7 @@ interface ArtifactBaseStageProps {
   validation: ArtifactValidationReport;
   onSaveContent: () => Promise<void>;
   onCancelEdit: () => void;
+  onDocumentaryBaseStarted: () => void;
   onApprove: () => Promise<void>;
   onReject: () => Promise<void>;
   onRegenerate: () => Promise<void>;
@@ -61,6 +63,7 @@ export function ArtifactBaseStage({
   validation,
   onSaveContent,
   onCancelEdit,
+  onDocumentaryBaseStarted,
   onApprove,
   onReject,
   onRegenerate,
@@ -72,16 +75,19 @@ export function ArtifactBaseStage({
   const documentaryDraft = artifact.course_id === `DOC-${artifact.id}`;
   const initialDocumentaryBase = documentaryDraft &&
     ["DRAFT", "ESCALATED"].includes(artifact.state) && !hasReviewableContent;
+  if (artifact.state === "GENERATING") return null;
+  const billingBlocked = validation.diagnostics?.stage === "generation" && validation.diagnostics.status === 402;
   return (
     <>
       {validation.results.filter((result) => result.code === "GENERATION_FAILED").map((result) => (
         <div key={result.code} role="alert" className="rounded-lg border border-red-300 bg-red-50 p-4 text-red-800 dark:bg-red-950 dark:text-red-200">
-          {result.message}
+          {billingBlocked ? generationFailureMessage({ status: 402 }) : result.message}
         </div>
       ))}
       {initialDocumentaryBase && <CourseSourceBaseStart artifactId={artifact.id}
         initialDescription={artifact.generation_metadata?.original_input?.description}
-        onStarted={() => window.location.reload()} />}
+        retry={artifact.state === "ESCALATED"}
+        onStarted={onDocumentaryBaseStarted} />}
       <div className="flex items-center gap-4">
         {["content", "validation"].map((tab) => (
           <button

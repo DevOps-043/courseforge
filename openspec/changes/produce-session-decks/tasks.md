@@ -1,0 +1,6 @@
+- [x] Contrastar el flujo síncrono y el renderer/QA asíncronos.
+- [x] Implementar adaptador, asset inmutable y autorización por sesión.
+- [x] Integrar producción, preview, descarga y diagnóstico dentro del curso.
+- [x] Verificar preservación de contenido, seguridad, QA y regresión visual.
+- [x] Registrar resultados y límites de la validación local.
+- [ ] Validar el flujo desplegado y persistencia real en staging después de despliegue autorizado.

@@ -34,6 +34,16 @@ function sourceSyncFixture() {
         order() { return query; },
         limit() { return query; },
         async single() {
+          if (table === "artifacts") {
+            assert.equal(filters.get("id"), "artefacto");
+            return { error: null, data: { organization_id: "empresa" } };
+          }
+          if (table === "syllabus") {
+            assert.equal(filters.get("artifact_id"), "artefacto");
+            return { error: null, data: { state: "STEP_APPROVED", modules: [{
+              title: "Módulo", lessons: [{ id: "lección", title: "Lección" }],
+            }] } };
+          }
           assert.equal(table, "material_components");
           return { error: null, data: selection === "assets" ? { assets: assets() } : {
             id: "componente", type: "VIDEO_THEORETICAL", assets: assets(),
@@ -45,6 +55,10 @@ function sourceSyncFixture() {
         },
         async maybeSingle() {
           assert.equal(filters.get("organization_id"), "empresa");
+          if (table === "course_delivery_workspaces") {
+            assert.equal(filters.get("artifact_id"), "artefacto");
+            return { error: null, data: null };
+          }
           assert.equal(filters.get("material_component_id"), "componente");
           assert.equal(filters.get("storage_bucket"), "production-assets");
           assert.equal(filters.get("storage_path"), "production-assets/voice/narracion.mp3");

@@ -1,4 +1,3 @@
-import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
 import type { CurationRowInsert } from "../../../src/shared/types/curation.types";
 import { SOURCES_PER_LESSON } from "./curation-runtime";
@@ -7,10 +6,8 @@ import { createCurationBatchResponseSchema } from "./curation-v2/structured-outp
 import {
   buildGroundingFallbackForLesson,
   buildValidatedRowsFromModelSources,
-  extractGeminiSearchSources,
   extractOpenAiSearchSources,
   findLessonResult,
-  getGeminiResponseText,
   getOpenAiResponseText,
   parseLessonsResponse,
 } from "./unified-curation-helpers";
@@ -33,17 +30,6 @@ interface ProcessOpenAiLessonBatchParams {
   systemPrompt: string;
 }
 
-interface ProcessGeminiLessonBatchParams {
-  activeModel: string;
-  attempt: number;
-  batch: LessonToProcess[];
-  batchNum: number;
-  client: GoogleGenAI;
-  courseTitle: string;
-  curationId: string;
-  fullCourseContext: string;
-  systemPrompt: string;
-}
 
 interface ProcessLessonBatchResult {
   failedLessons: LessonToProcess[];
@@ -322,71 +308,6 @@ export async function processOpenAiLessonBatch({
     curationId,
     groundingSources,
     providerLabel: "OpenAI web search",
-    responseText,
-  });
-}
-
-export async function processGeminiLessonBatch({
-  activeModel,
-  attempt,
-  batch,
-  batchNum,
-  client,
-  courseTitle,
-  curationId,
-  fullCourseContext,
-  systemPrompt,
-}: ProcessGeminiLessonBatchParams): Promise<ProcessLessonBatchResult> {
-  const batchPrompt = buildBatchPrompt({
-    attempt,
-    batch,
-    batchNum,
-    courseTitle,
-    fullCourseContext,
-  });
-
-  const response = await client.models.generateContent({
-    model: activeModel,
-    contents: `${systemPrompt}
-
-${batchPrompt}
-
-Return ONLY valid JSON matching this shape:
-{
-  "lessons": [
-    {
-      "lesson_id": "string",
-      "lesson_title": "string",
-      "sources": [
-        {
-          "url": "https://example.com",
-          "title": "string",
-          "rationale": "string",
-          "key_topics_covered": ["string"],
-          "estimated_quality": 8
-        }
-      ]
-    }
-  ]
-}`,
-    config: {
-      temperature: 0.1,
-      tools: [{ googleSearch: {} }],
-    },
-  } as Parameters<typeof client.models.generateContent>[0]);
-
-  const groundingSources = await extractGeminiSearchSources(
-    response,
-    courseTitle,
-  );
-  const responseText = getGeminiResponseText(response);
-
-  return buildRowsFromModelOutput({
-    activeModel,
-    batch,
-    curationId,
-    groundingSources,
-    providerLabel: "Gemini Google Search",
     responseText,
   });
 }

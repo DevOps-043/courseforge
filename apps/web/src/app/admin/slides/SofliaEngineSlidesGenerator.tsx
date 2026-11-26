@@ -1,12 +1,12 @@
 "use client";
 
 import { APP_CONFIG } from "../../../config/app";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, BookOpen, FileJson, FileText, Layers3, Loader2, RefreshCw, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { readApiResponse } from "@/lib/client/api-response";
-import { waitForSlideGeneration } from "@/lib/client/slide-generation";
+import { readSlideGenerationState, waitForSlideGeneration } from "@/lib/client/slide-generation";
 import { EngineSelect } from "@/components/ui/EngineSelect";
 import { resolveSlideHtmlPreviewUrl } from "@/lib/client/slide-preview";
 
@@ -147,9 +147,33 @@ export function SofliaEngineSlidesGenerator({
   const [customSlidesJson, setCustomSlidesJson] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
-  const [lastGeneratedUrl, setLastGeneratedUrl] = useState<string | null>(null);
+  const [generatedDeck, setGeneratedDeck] = useState<{ componentId: string; url: string | null } | null>(null);
+  const generationAbort = useRef<AbortController | null>(null);
 
   const effectiveComponentId = manualComponentId.trim() || selectedComponentId;
+  const lastGeneratedUrl = generatedDeck?.componentId === effectiveComponentId ? generatedDeck.url : null;
+  useEffect(() => {
+    const controller = new AbortController();
+    generationAbort.current = controller;
+    if (effectiveComponentId) void (async () => {
+      try {
+        let state = await readSlideGenerationState({ componentId: effectiveComponentId, signal: controller.signal });
+        if (controller.signal.aborted || state.status === "NOT_FOUND") return;
+        if (["PENDING", "QUEUED", "RUNNING"].includes(state.status)) {
+          setIsGenerating(true);
+          setGenerationStatus(state.status);
+          state = await waitForSlideGeneration({ componentId: effectiveComponentId, jobId: state.job?.id, signal: controller.signal, onStatus: setGenerationStatus });
+        }
+        if (state.status === "SUCCEEDED") setGeneratedDeck({ componentId: effectiveComponentId, url: resolveSlideHtmlPreviewUrl(state.assets) });
+        if (state.status === "FAILED") toast.error(state.job?.provider_error?.message || "El trabajo anterior de slides falló.");
+      } catch (error) {
+        if (!controller.signal.aborted) toast.error(error instanceof Error ? error.message : "No se pudo recuperar el trabajo de slides.");
+      } finally {
+        if (!controller.signal.aborted) { setIsGenerating(false); setGenerationStatus(null); }
+      }
+    })();
+    return () => { generationAbort.current?.abort(); };
+  }, [effectiveComponentId]);
   const selectedCandidate = useMemo(
     () => candidates.find((candidate) => candidate.componentId === selectedComponentId),
     [candidates, selectedComponentId],
@@ -164,6 +188,9 @@ export function SofliaEngineSlidesGenerator({
       return;
     }
 
+    generationAbort.current?.abort();
+    const controller = new AbortController();
+    generationAbort.current = controller;
     setIsGenerating(true);
     setGenerationStatus("QUEUED");
     try {
@@ -173,6 +200,7 @@ export function SofliaEngineSlidesGenerator({
           : parseSimpleSlides(simpleSlidesText);
       const response = await fetch("/api/production/slides/generate", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           appearance,
@@ -192,11 +220,12 @@ export function SofliaEngineSlidesGenerator({
       if (!response.ok || !payload.success) {
         throw new Error(payload.error || "No se pudo generar el deck.");
       }
-      if (response.status === 202 && payload.submissionStatus === "QUEUED") {
+      if (response.status === 202 && payload.jobId) {
         toast.info("Deck en cola. La generacion continuara en segundo plano.");
         const completed = await waitForSlideGeneration({
           componentId: effectiveComponentId,
           jobId: payload.jobId,
+          signal: controller.signal,
           onStatus: setGenerationStatus,
         });
         payload = { success: true, assets: completed.assets };
@@ -206,17 +235,17 @@ export function SofliaEngineSlidesGenerator({
       if (!previewUrl) {
         throw new Error("El deck terminó, pero no devolvió una ruta HTML para visualizarlo.");
       }
-      setLastGeneratedUrl(previewUrl);
+      setGeneratedDeck({ componentId: effectiveComponentId, url: previewUrl });
       toast.success(
         payload.reused
           ? `Deck ${APP_CONFIG.name} recuperado`
           : `Deck ${APP_CONFIG.name} generado`,
       );
     } catch (error) {
+      if (controller.signal.aborted) return;
       toast.error(error instanceof Error ? error.message : "No se pudo generar el deck.");
     } finally {
-      setIsGenerating(false);
-      setGenerationStatus(null);
+      if (!controller.signal.aborted) { setIsGenerating(false); setGenerationStatus(null); }
     }
   };
 

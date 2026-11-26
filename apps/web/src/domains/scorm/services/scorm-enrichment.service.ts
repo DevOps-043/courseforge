@@ -1,5 +1,15 @@
-import { GoogleGenAI } from '@google/genai';
-import { getOptionalGeminiApiKey } from '@/lib/server/env';
+import OpenAI from "openai";
+import { z } from "zod";
+import { getOptionalOpenAIApiKey } from "@/lib/server/env";
+import { COURSE_TEXT_MODELS, withTextModelFallback } from "../../../shared/ai/text-model-provider";
+
+const enrichmentSchema = z.object({
+  objectives: z.array(z.string()),
+  targetAudience: z.string(),
+  level: z.enum(["beginner", "intermediate", "advanced"]),
+  description: z.string(),
+  suggestedTitle: z.string().optional(),
+});
 
 export interface EnrichmentResult {
   objectives: string[];
@@ -10,21 +20,14 @@ export interface EnrichmentResult {
 }
 
 export class ScormEnrichmentService {
-  private genAI: GoogleGenAI;
-  private readonly apiKey: string | null;
-
-  constructor() {
-    this.apiKey = getOptionalGeminiApiKey();
-    this.genAI = new GoogleGenAI({ apiKey: this.apiKey || '' });
-  }
-
   async enrichCourseMetadata(
     courseTitle: string,
     modulesTitles: string[],
     rawManifestSummary: string
   ): Promise<EnrichmentResult> {
 
-    if (!this.apiKey) {
+    const apiKey = getOptionalOpenAIApiKey();
+    if (!apiKey) {
       return {
         objectives: ['Comprender los conceptos básicos', 'Aplicar conocimientos'],
         targetAudience: 'General',
@@ -51,19 +54,13 @@ export class ScormEnrichmentService {
     }
     `;
 
-    try {
-      const result = await this.genAI.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents: prompt
+    const client = new OpenAI({ apiKey, timeout: 45_000, maxRetries: 0 });
+    return withTextModelFallback(COURSE_TEXT_MODELS.model, COURSE_TEXT_MODELS.fallbackModel, async model => {
+      const response = await client.responses.create({
+        model, input: prompt, store: false,
+        max_output_tokens: 2000, text: { format: { type: "json_object" } },
       });
-      
-      const text = result.text || '';
-      const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
-      return JSON.parse(jsonStr);
-
-    } catch (error) {
-      console.error('Enrichment error:', error);
-      throw error;
-    }
+      return enrichmentSchema.parse(JSON.parse(response.output_text));
+    });
   }
 }

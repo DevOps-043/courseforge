@@ -75,7 +75,15 @@ export function SyllabusSetupPanel({
         />
       ) : null}
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-white/5 dark:bg-[var(--engine-surface-hover)]">
+      <details className="group rounded-2xl border border-gray-200 bg-white p-6 dark:border-white/5 dark:bg-[var(--engine-surface-hover)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded text-sm font-semibold text-gray-900 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--engine-accent)] dark:text-white [&::-webkit-details-marker]:hidden">
+          <span>Opciones avanzadas · Prompt del temario</span>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="text-xs font-normal text-gray-500 dark:text-gray-400">{promptLoading ? "Cargando…" : promptError ? "Requiere atención" : promptWasModified ? "Modificado" : "Opcional"}</span>
+            <svg aria-hidden="true" className="h-4 w-4 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="m6 9 6 6 6-6" /></svg>
+          </span>
+        </summary>
+        <div className="mt-5 border-t border-gray-200 pt-5 dark:border-white/10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -139,7 +147,9 @@ export function SyllabusSetupPanel({
             </div>
           </>
         )}
-      </section>
+        </div>
+      </details>
+      {promptError ? <p role="alert" className="text-sm text-red-700 dark:text-red-300">No se pudo cargar el prompt. Abre Opciones avanzadas para revisar el error y reintentar.</p> : null}
 
       <button
         onClick={onGenerate}

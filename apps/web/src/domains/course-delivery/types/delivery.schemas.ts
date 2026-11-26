@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DELIVERY_LIMITS as limits } from "../config/delivery.config";
+import { sessionDocumentsSchema } from "./delivery-documents.schemas";
 
 const text = z.string().trim().min(1).max(limits.text);
 const reference = z.string().trim().min(1).max(200);
@@ -28,6 +29,11 @@ export const agendaSchema = z.array(agendaSessionSchema).min(1).max(limits.sessi
 export const generatedAgendaSchema = z.object({
   sessions: z.array(agendaSessionSchema.omit({ id: true })).min(1).max(limits.sessions),
 }).strict();
+export const hybridRouteSchema = z.array(z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("SYNCHRONOUS"), sessionId: z.uuid() }).strict(),
+  z.object({ kind: z.literal("ASYNCHRONOUS"), id: z.uuid(), title: text, minutes: z.number().int().min(1).max(4800), lessonIds: z.array(reference).min(1).max(limits.lessons) }).strict(),
+])).max(limits.sessions + limits.lessons);
+export type HybridRoute = z.infer<typeof hybridRouteSchema>;
 export const sessionPlanSchema = z.object({
   blocks: z.array(z.object({
     id: reference,
@@ -45,11 +51,13 @@ export const sessionPlanSchema = z.object({
   }).strict()).max(limits.lessons),
 }).strict();
 export const sessionMaterialsSchema = z.object({
+  documents: sessionDocumentsSchema.optional(),
   concepts: z.array(z.object({ title: text, explanation: text, example: text, misconceptions: z.array(text).max(10), sourceRefs: z.array(reference).min(1).max(20) }).strict()).min(1).max(30),
   activities: z.array(z.object({ id: reference, title: text, instructions: text, template: text, answer: text, criteria: z.array(text).min(1).max(10), sourceRefs: z.array(reference).min(1).max(20) }).strict()).min(1).max(30),
   preparation: z.object({ understand: text, explain: text, conduct: text, deepen: text, expand: text }).strict(),
   slides: z.array(z.object({ title: text, points: z.array(text).min(1).max(6), notes: z.string().max(1800), sourceRefs: z.array(reference).min(1).max(20) }).strict()).min(1).max(40),
 }).strict();
+export const generatedSessionMaterialsSchema = sessionMaterialsSchema.extend({ documents: sessionDocumentsSchema });
 export type DeliveryConfig = z.infer<typeof deliveryConfigSchema>;
 export type AgendaSession = z.infer<typeof agendaSessionSchema>;
 export type SessionPlan = z.infer<typeof sessionPlanSchema>;
@@ -57,6 +65,7 @@ export type SessionMaterials = z.infer<typeof sessionMaterialsSchema>;
 export type DeliveryOperation = "AGENDA" | "PLAN" | "MATERIALS";
 export interface DeliveryApproval { revision: number; syllabus: string; nexus: string; sources: string; content: string; userId: string }
 export interface DeliveryDocument {
+  hybridRoute?: HybridRoute;
   config: DeliveryConfig;
   syllabusHash: string;
   agenda: AgendaSession[];
@@ -70,6 +79,7 @@ export interface DeliveryDocument {
   materialsApproval: DeliveryApproval | null;
 }
 export const deliveryDocumentSchema = z.object({
+  hybridRoute: hybridRouteSchema.optional(),
   config: deliveryConfigSchema, syllabusHash: z.string(), agenda: z.array(agendaSessionSchema).max(limits.sessions),
   plans: z.record(z.string(), sessionPlanSchema), materials: z.record(z.string(), sessionMaterialsSchema),
   stalePlans: z.array(z.string()).default([]), staleMaterials: z.array(z.string()).default([]),
@@ -78,6 +88,7 @@ export const deliveryDocumentSchema = z.object({
   materialsApproval: z.object({ revision: z.number().int(), syllabus: z.string(), nexus: z.string(), sources: z.string(), content: z.string(), userId: z.string() }).nullable(),
 }).strict();
 export interface DeliveryWorkspace { artifact_id: string; organization_id: string; revision: number; document: DeliveryDocument }
+export interface CurriculumLesson { id: string; title: string; module: string; objective: string }
 export function emptyDeliveryDocument(): DeliveryDocument {
   return { config: deliveryConfigSchema.parse({}), syllabusHash: "", agenda: [], plans: {}, materials: {}, stalePlans: [], staleMaterials: [], planInputHashes: {}, materialInputHashes: {}, planApproval: null, materialsApproval: null };
 }

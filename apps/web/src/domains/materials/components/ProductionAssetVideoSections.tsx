@@ -71,7 +71,7 @@ export function ProductionAssetPromptsSection({
             ) : (
               <Sparkles size={14} />
             )}
-            {isGenerating ? "Generando Prompts..." : "Generar Prompts con Gemini"}
+            {isGenerating ? "Generando Prompts..." : "Generar prompts con OpenAI"}
           </button>
           {isGenerating && (
             <div className="flex items-center justify-center gap-2 rounded-lg border border-blue-500/10 bg-blue-500/5 p-2 animate-pulse">

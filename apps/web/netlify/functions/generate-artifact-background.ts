@@ -1,8 +1,13 @@
 import { Handler } from "@netlify/functions";
+import { randomUUID } from "node:crypto";
 import { prepareCourseGeneration, attestCourseGeneration } from "../../src/domains/course-sources/course-source-generation.service";
 import { courseSourcePrompt } from "../../src/domains/course-sources/course-source-generation";
 import { BASE_BATCH_LIMITS } from "../../src/domains/course-sources/course-source-base-batches";
-import { CourseSourceError } from "../../src/domains/course-sources/course-source-error";
+import { CourseSourceError, DocumentaryBaseBatchError, DocumentaryBasePendingError } from "../../src/domains/course-sources/course-source-error";
+import {
+  commandDocumentaryBaseInvocation, dispatchDocumentaryBase, type DocumentaryBaseInvocation,
+} from "../../src/domains/course-sources/course-source-base-continuation";
+import type { DocumentaryBaseProgress } from "../../src/domains/course-sources/course-source-base-progress";
 import { markArtifactGenerationFailed } from "../../src/domains/artifacts/lib/artifact-generation-failure";
 import { PIPELINE_GENERATION_LIMITS } from "../../src/lib/pipeline-generation-policy";
 import { generateObject } from "ai";
@@ -11,7 +16,7 @@ import {
   type GeneratedArtifactBase,
 } from "../../src/domains/artifacts/lib/artifact-base-generation.schema";
 import {
-  createGeminiClient,
+  createOpenAiClient,
   createServiceRoleClient,
   resolveAiModel,
   resolveModelSetting,
@@ -36,8 +41,11 @@ import {
 import {
   recordAiFailure,
   recordAiSdkUsage,
-  recordGeminiUsage,
+  recordOpenAiUsage,
 } from "../../src/shared/ai/usage-telemetry";
+import { COURSE_TEXT_MODELS } from "../../src/shared/ai/text-model-provider";
+
+import { extractOpenAiSearchQueries } from "../../src/shared/ai/openai-web-search";
 
 const BLOOM_VERBS = [
   "comprender",
@@ -62,6 +70,7 @@ interface GenerateArtifactFormData {
 
 interface GenerateArtifactRequestBody {
   documentary?: boolean;
+  continuation?: boolean;
   runId?: string;
   artifactId?: string;
   feedback?: string;
@@ -72,24 +81,26 @@ interface GenerateArtifactRequestBody {
   useGoogleDrive?: boolean;
 }
 
-interface ResearchCandidate {
-  groundingMetadata?: {
-    groundingChunks?: unknown[];
-    webSearchQueries?: string[];
-  };
-}
-
-interface ResearchResponse {
-  candidates?: ResearchCandidate[];
-  text?: string;
-}
-
 type GeneratedArtifactContent = GeneratedArtifactBase;
 
 interface ValidationReportItem {
   code: string;
   message: string;
   passed: boolean;
+}
+
+function redactDocumentaryProviderError(failure: unknown) {
+  const details = failure && typeof failure === "object" ? failure as {
+    status?: unknown; statusCode?: unknown; message?: unknown; name?: unknown;
+  } : {};
+  const httpStatus = details.statusCode ?? details.status;
+  const status = typeof httpStatus === "number" && Number.isInteger(httpStatus) && httpStatus >= 400 && httpStatus <= 599
+    ? httpStatus : undefined;
+  const message = typeof details.message === "string" ? details.message : "";
+  const code = /\bapi[_ ]key\b|API_KEY_INVALID|API_KEY_SERVICE_BLOCKED/i.test(message) ? "PROVIDER_API_KEY"
+    : /response[_ ]?schema|generation_config\.response/i.test(message) || details.name === "AI_NoObjectGeneratedError" ? "PROVIDER_SCHEMA"
+    : details.name === "TimeoutError" || details.name === "AbortError" ? "PROVIDER_TIMEOUT" : undefined;
+  return Object.assign(new Error("El proveedor no pudo generar la base documental."), { status, code });
 }
 
 export const handler: Handler = async (event) => {
@@ -108,15 +119,16 @@ export const handler: Handler = async (event) => {
 
   let stage = "request";
   let activeModel: string | undefined;
+  let invocation: { execution: DocumentaryBaseInvocation; owner: string } | undefined;
   try {
-    const { artifactId, runId, formData, userId, feedback, useGoogleDrive, organizationId } = body;
+    const { artifactId, runId, feedback, useGoogleDrive, organizationId } = body;
     const cloudStorageProvider = isCloudStorageProvider(body.cloudStorageProvider)
       ? body.cloudStorageProvider
       : useGoogleDrive
         ? "google_drive"
         : null;
 
-    if (!artifactId || !formData || !runId) {
+    if (!artifactId || !runId || (!body.formData && !body.continuation)) {
       return { statusCode: 400, body: "Missing required fields" };
     }
 
@@ -139,14 +151,47 @@ export const handler: Handler = async (event) => {
     if (scopedArtifact.state !== "GENERATING" || scopedArtifact.generation_metadata?.run_id !== runId) {
       return { statusCode: 200, body: JSON.stringify({ superseded: true }) };
     }
+    const formData = (body.continuation ? scopedArtifact.generation_metadata?.original_input : body.formData) as GenerateArtifactFormData | undefined;
+    const queue = scopedArtifact.generation_metadata?.base_queue;
+    const userId = body.continuation ? queue?.user_id : body.userId;
+    if (Boolean(queue) !== Boolean(body.continuation) ||
+      (body.continuation && (!body.documentary || !organizationId ||
+        !Number.isInteger(queue?.revision) || typeof formData?.title !== "string" ||
+        typeof formData?.description !== "string")) || !formData)
+      return { statusCode: 400, body: "No se pudo resolver la entrada reservada para Base." };
+    if (body.continuation && organizationId) {
+      const execution = { artifactId, organizationId, runId };
+      const owner = randomUUID();
+      if (!await commandDocumentaryBaseInvocation(serviceSupabase, execution, owner, "claim")) {
+        return { statusCode: 200, body: JSON.stringify({ claimed: false }) };
+      }
+      invocation = { execution, owner };
+    }
+    const invocationFilter = invocation?.owner;
+
+    let baseProgress: DocumentaryBaseProgress | undefined;
+    async function publishBaseProgress(progress: DocumentaryBaseProgress) {
+      if (!organizationId) return;
+      const startedAt = new Date(startedJobAt).toISOString();
+      baseProgress = { ...progress, started_at: startedAt };
+      const { data, error } = await serviceSupabase.rpc("record_documentary_base_progress", {
+        p_artifact: artifactId, p_organization: organizationId, p_execution: runId,
+        p_phase: progress.phase, p_confirmed: progress.confirmed, p_total: progress.total,
+        p_started_at: startedAt,
+      });
+      if (error) {
+        console.warn("[Fuentes] No se pudo registrar el avance de Base.", { artifactId, runId, code: error.code });
+      } else if (data === false) {
+        throw new CourseSourceError(409, "La ejecución de Base ya no está activa.");
+      }
+    }
 
     stage = "configuration";
     const modelConfig = await resolveModelSetting(
       serviceSupabase,
       "ARTIFACT_BASE",
       {
-        model: "gemini-3.5-flash",
-        fallbackModel: "gemini-2.5-flash",
+        ...COURSE_TEXT_MODELS,
         temperature: 0.7,
         thinkingLevel: "medium",
       },
@@ -164,6 +209,11 @@ export const handler: Handler = async (event) => {
       purpose: JSON.stringify({ title: formData.title, description: formData.description, feedback }),
       model: modelConfig.model,
       deadline: startedJobAt + BASE_BATCH_LIMITS.workerMs,
+      ...(invocation ? {
+        revision: queue.revision,
+        recoverExpiredBatch: queue.recover_expired_batch === true,
+      } : {}),
+      onProgress: (counts) => publishBaseProgress({ phase: "reading", ...counts }),
     });
     if (body.documentary && !sourceContext) throw new CourseSourceError(409, "La política documental cambió antes de generar Base.");
     if (cloudStorageProvider) {
@@ -199,16 +249,7 @@ export const handler: Handler = async (event) => {
       );
     }
 
-    const configuredSearchModels = [...new Set(configuredModels)]
-      .filter((model) => model?.startsWith("gemini-"));
-    const searchModels = configuredSearchModels.length > 0
-      ? configuredSearchModels
-      : [process.env.GEMINI_SEARCH_MODEL || "gemini-3.5-flash"];
-    if (configuredSearchModels.length === 0 && !sourceContext) {
-      configurationWarnings.push(
-        `ARTIFACT_BASE no incluye un modelo Gemini para research; se usará ${searchModels[0]} exclusivamente para Google Search.`,
-      );
-    }
+    const searchModels = [...new Set(configuredModels)];
     let researchSuccess = false;
 
     const hardcodedResearchPrompt = `
@@ -236,69 +277,28 @@ export const handler: Handler = async (event) => {
     stage = "research";
     for (const modelName of sourceContext ? [] : searchModels) {
       const startedAt = Date.now();
+      const context = { artifactId, operation: "research_artifact_base", organizationId, pipelineStep: "BASE", runId, userId };
       try {
         console.log(`[Background Job] Researching with ${modelName}...`);
 
-        const result = (await createGeminiClient().models.generateContent({
-          model: modelName,
-          contents: researchPrompt,
-          config: {
-            httpOptions: { timeout: PIPELINE_GENERATION_LIMITS.requestTimeoutMs },
-            tools: [{ googleSearch: {} }],
-            temperature: 0.7,
-          },
-        })) as ResearchResponse;
-
-        await recordGeminiUsage({
-          context: {
-            artifactId,
-            operation: "research_artifact_base",
-            organizationId,
-            pipelineStep: "BASE",
-            runId,
-            userId,
-          },
-          model: modelName,
-          response: result,
-          startedAt,
-          supabase: serviceSupabase,
-        });
-
-        researchContext = result.text || "";
-
-        const grounding = result.candidates?.[0]?.groundingMetadata;
-        if (grounding?.webSearchQueries) {
-          detectedSearchQueries = grounding.webSearchQueries;
-          console.log(
-            `[Background Job] Google Search used. Queries: ${detectedSearchQueries.join(", ")}`,
-          );
-        } else {
-          console.log(
-            `[Background Job] Warning: Model ${modelName} did NOT perform a Google Search.`,
-          );
-        }
-
-        const groundingChunks = grounding?.groundingChunks || [];
-        console.log(
-          `[Background Job] Grounding URLs found: ${groundingChunks.length}`,
-        );
-
-        console.log(`[Background Job] Research complete using ${modelName}.`);
+        const timeoutMs = Math.min(PIPELINE_GENERATION_LIMITS.requestTimeoutMs, jobDeadline - startedAt);
+        if (timeoutMs < 1000) break;
+        const result = await createOpenAiClient().responses.create({
+          model: modelName, input: researchPrompt, max_output_tokens: 5000,
+          tools: [{ type: "web_search" }], tool_choice: "required", store: false,
+        }, { timeout: timeoutMs, maxRetries: 0, signal: AbortSignal.timeout(timeoutMs) });
+        await recordOpenAiUsage({ context, model: modelName, response: result, startedAt, supabase: serviceSupabase });
+        researchContext = result.output_text?.trim() || "";
+        if (!researchContext) continue;
+        detectedSearchQueries = extractOpenAiSearchQueries(result.output);
         researchSuccess = true;
         break;
       } catch (error: unknown) {
         await recordAiFailure({
-          context: {
-            artifactId,
-            operation: "research_artifact_base",
-            organizationId,
-            pipelineStep: "BASE",
-            runId,
-            userId,
-          },
+          context,
           error,
           model: modelName,
-          provider: "gemini",
+          provider: "openai",
           startedAt,
           supabase: serviceSupabase,
         });
@@ -322,9 +322,8 @@ export const handler: Handler = async (event) => {
       modelConfig.fallbackModel &&
       modelConfig.model.trim() === modelConfig.fallbackModel.trim()
     ) {
-      const emergencyFallback = modelConfig.model.startsWith("gemini-")
-        ? "gpt-4o-mini"
-        : "gemini-3.5-flash";
+      const emergencyFallback = modelConfig.model === COURSE_TEXT_MODELS.fallbackModel
+        ? COURSE_TEXT_MODELS.model : COURSE_TEXT_MODELS.fallbackModel;
       genModels.push(emergencyFallback);
       configurationWarnings.push(
         `Se agregó ${emergencyFallback} como respaldo operativo porque la configuración guardada repite el modelo principal.`,
@@ -372,22 +371,27 @@ export const handler: Handler = async (event) => {
         version: researchPromptResolution.version,
       },
     };
-    const { error: diagnosticsError } = await serviceSupabase
-      .from("artifacts")
-      .update({
-        generation_metadata: {
-          ...(scopedArtifact.generation_metadata || {}),
-          configuration_warnings: configurationWarnings,
-          prompt_resolution: promptResolution,
-        },
-      })
-      .eq("id", artifactId)
-      .eq("state", "GENERATING")
-      .eq("generation_metadata->>run_id", runId);
-
-    if (diagnosticsError) {
-      throw diagnosticsError;
+    const inputMetadata = { ...scopedArtifact.generation_metadata };
+    delete inputMetadata.base_queue;
+    if (!invocation) {
+      const { error: diagnosticsError } = await serviceSupabase
+        .from("artifacts")
+        .update({
+          generation_metadata: {
+            ...inputMetadata,
+            ...(baseProgress ? { base_progress: baseProgress } : {}),
+            configuration_warnings: configurationWarnings,
+            prompt_resolution: promptResolution,
+          },
+        })
+        .eq("id", artifactId)
+        .eq("state", "GENERATING")
+        .eq("generation_metadata->>run_id", runId);
+      if (diagnosticsError) throw diagnosticsError;
     }
+    if (sourceContext) await publishBaseProgress({
+      phase: "writing", confirmed: baseProgress?.confirmed ?? null, total: baseProgress?.total ?? null,
+    });
 
     let content: GeneratedArtifactContent | null = null;
     let genModelUsed = "";
@@ -403,7 +407,7 @@ export const handler: Handler = async (event) => {
           model: resolveAiModel(modelName),
           schema: ArtifactBaseGenerationSchema,
           prompt: systemPrompt,
-          ...(modelName.startsWith("gemini-") ? { temperature: modelConfig.temperature } : {}),
+          providerOptions: { openai: { store: false } },
           abortSignal: AbortSignal.timeout(Math.max(1, Math.min(PIPELINE_GENERATION_LIMITS.requestTimeoutMs, jobDeadline - startedAt))),
           maxRetries: 0,
         });
@@ -428,7 +432,7 @@ export const handler: Handler = async (event) => {
         );
         break;
       } catch (failure: unknown) {
-        const error = sourceContext ? new Error("El proveedor no pudo generar la base documental. No se registra su contenido.") : failure;
+        const error = sourceContext ? redactDocumentaryProviderError(failure) : failure;
         await recordAiFailure({
           context: {
             artifactId,
@@ -440,7 +444,7 @@ export const handler: Handler = async (event) => {
           },
           error,
           model: modelName,
-          provider: modelName.startsWith("gemini-") ? "gemini" : "openai",
+          provider: "openai",
           startedAt,
           supabase: serviceSupabase,
         });
@@ -506,10 +510,16 @@ export const handler: Handler = async (event) => {
 
     const allPassed = validationReport.every((result) => result.passed);
 
-    stage = "persistence";
+    if (sourceContext) {
+      stage = "verification";
+      await publishBaseProgress({
+        phase: "verifying", confirmed: baseProgress?.confirmed ?? null, total: baseProgress?.total ?? null,
+      });
+    }
     const sourceEvidenceId = await attestCourseGeneration(serviceSupabase, sourceContext, {
       nombres: content.nombres, objetivos: content.objetivos, descripcion: content.descripcion,
     }, [genModelUsed, ...genModels], jobDeadline);
+    stage = "persistence";
     let updateArtifactQuery = serviceSupabase
       .from("artifacts")
       .update({
@@ -518,7 +528,8 @@ export const handler: Handler = async (event) => {
         objetivos: content.objetivos,
         descripcion: content.descripcion,
         generation_metadata: {
-          ...(scopedArtifact.generation_metadata || {}),
+          ...inputMetadata,
+          ...(baseProgress ? { base_progress: baseProgress } : {}),
           source_configuration_dirty: false,
           ...(sourceContext ? { course_source_snapshot_id: sourceContext.snapshotId } : {}),
           research_summary: researchContext.slice(0, 2000),
@@ -540,6 +551,7 @@ export const handler: Handler = async (event) => {
     updateArtifactQuery = organizationId
       ? updateArtifactQuery.eq("organization_id", organizationId)
       : updateArtifactQuery.is("organization_id", null);
+    if (invocationFilter) updateArtifactQuery = updateArtifactQuery.eq("generation_metadata->base_queue->>owner", invocationFilter);
     const { error } = await updateArtifactQuery;
 
     if (error) {
@@ -551,7 +563,30 @@ export const handler: Handler = async (event) => {
     );
     return { statusCode: 200, body: JSON.stringify({ success: true }) };
   } catch (error: unknown) {
-    console.error("[Background Job] Failed", error);
+    if (body.continuation && !invocation) {
+      console.warn("[Fuentes] No se pudo confirmar la reserva de la invocación de Base.", { artifactId: body.artifactId, runId: body.runId });
+      return { statusCode: 503, body: JSON.stringify({ retryable: true }) };
+    }
+    if (invocation && error instanceof DocumentaryBasePendingError) {
+      const { execution, owner } = invocation;
+      try {
+        const released = await commandDocumentaryBaseInvocation(createServiceRoleClient(), execution, owner, error.defer ? "retry" : "yield");
+        if (released && !error.defer)
+          await dispatchDocumentaryBase(execution);
+      } catch {
+        console.warn("[Fuentes] Continuación de Base disponible para reconciliación.", execution);
+      }
+      return { statusCode: 200, body: JSON.stringify({ pending: true }) };
+    }
+    if (invocation) {
+      console.error("[Fuentes] Falló la generación documental de Base.", {
+        ...invocation.execution, stage,
+        ...(error instanceof CourseSourceError ? { status: error.status, groundingReason: error.groundingReason } : {}),
+        ...(error instanceof DocumentaryBaseBatchError ? { batchReason: error.batchReason } : {}),
+      });
+    } else {
+      console.error("[Background Job] Failed", error);
+    }
     if (body.artifactId && body.runId) {
       const status = error && typeof error === "object"
         ? "statusCode" in error ? Number(error.statusCode) : "status" in error ? Number(error.status) : undefined
@@ -559,11 +594,15 @@ export const handler: Handler = async (event) => {
       await markArtifactGenerationFailed(createServiceRoleClient(), body.artifactId, body.runId, error, undefined, {
         stage, model: activeModel, errorName: error instanceof Error ? error.name : "PersistenceError",
         status: Number.isFinite(status) ? status : undefined,
-      });
+        ...(error instanceof DocumentaryBaseBatchError ? { batchReason: error.batchReason } : {}),
+      }, invocation);
     }
     return {
       statusCode: 500,
-      body: JSON.stringify({ success: false, error: getErrorMessage(error) }),
+      body: JSON.stringify({
+        success: false,
+        error: invocation && !(error instanceof CourseSourceError) ? "Falló la generación documental de Base." : getErrorMessage(error),
+      }),
     };
   }
 };

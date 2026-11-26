@@ -12,8 +12,11 @@ function fixture(kind: CompositionKeyboardPanelKind) {
     isConnected = true;
     disabled = false;
     hidden = false;
+    expandedCombobox = false;
     focusCount = 0;
-    matches() { return this.disabled; }
+    matches(selector: string) {
+      return selector === '[role="combobox"][aria-expanded="true"]' ? this.expandedCombobox : this.disabled;
+    }
     closest() { return this.hidden ? this : null; }
     getClientRects() { return this.hidden ? [] : [{}]; }
     focus() { this.focusCount++; owner.activeElement = this; }
@@ -74,4 +77,14 @@ test("closing does not steal focus from another control, disconnected opener or 
 test("IME and previously consumed events remain owned by inputs or nested controls", () => {
   const f = fixture("MODAL"); f.send("Escape", { isComposing: true }); f.send("Escape", { defaultPrevented: true });
   assert.equal(f.closed(), 0); f.cleanup();
+});
+test("Escape conserva el panel abierto mientras el selector tiene su lista desplegada", () => {
+  const f = fixture("MODAL");
+  f.first.expandedCombobox = true;
+  assert.equal(f.send("Escape"), false);
+  assert.equal(f.closed(), 0);
+  f.first.expandedCombobox = false;
+  assert.equal(f.send("Escape"), true);
+  assert.equal(f.closed(), 1);
+  f.cleanup();
 });

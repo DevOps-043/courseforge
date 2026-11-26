@@ -10,6 +10,11 @@ El sistema SHALL ofrecer un borrador autorizado en estado DRAFT y reservas idemp
 - **THEN** se verifica la recepción en servidor y se guarda UPLOADED, sin declarar READY
 - **AND** otra organización o actor no puede confirmar la reserva
 
+#### Scenario: El adaptador reconstruye la URL de una mutación documental
+- **WHEN** una mutación documental del mismo origen llega por un proxy con una URL interna distinta de la URL pública
+- **THEN** el servidor reconoce el origen HTTPS válido con la señal `Sec-Fetch-Site: same-origin` del navegador y comprueba la autorización habitual
+- **AND** rechaza solicitudes entre orígenes, incluso entre subdominios del mismo sitio, con un código distinto de una denegación por rol
+
 #### Scenario: Reintento y cuota
 - **WHEN** se repite la misma clave con los mismos campos
 - **THEN** se recupera el mismo borrador o documento sin duplicarlo
@@ -34,6 +39,41 @@ El sistema SHALL permitir cargar y reutilizar PDF textual, DOCX, PPTX y TXT desd
 #### Scenario: Exceso o formato falso
 - **WHEN** los bytes reales, contenido extraído, MIME o estructura incumplen el contrato
 - **THEN** se rechaza el archivo sin truncar silenciosamente ni aprobar contenido parcial
+
+### Requirement: Talleres con originales largos
+El sistema SHALL admitir originales largos dentro de presupuestos medidos y reutilizar evidencia versionada desde Base hasta Materiales, conservando los originales como archivos individuales y la trazabilidad de cada cita.
+
+#### Scenario: El autor consulta el avance de Base
+- **WHEN** la generación de Base está activa o se detiene tras confirmar parte de sus lotes
+- **THEN** el detalle del curso muestra la etapa y los lotes confirmados disponibles con la consulta de estado existente
+- **AND** muestra el resultado cuando termina y permite distinguir una pausa de un fallo al consultar el estado
+- **AND** una ejecución anterior u otra organización no pueden publicar avance para el trabajo actual
+
+#### Scenario: Lectura concurrente con presupuesto compartido
+- **WHEN** hay varios lotes documentales pendientes
+- **THEN** PostgreSQL concede como máximo tres reservas vigentes de la misma ejecución y descuenta cada intento del presupuesto compartido
+- **AND** un fallo de un lote conserva los resultados confirmados de los demás y permite reanudar los pendientes
+- **AND** las versiones de planificación existentes conservan sus límites y su cobertura ordenada
+
+#### Scenario: La evidencia relevante está al final del original
+- **WHEN** un autor autorizado aporta un documento largo válido y una regla relevante aparece en su última sección
+- **THEN** el sistema recorre todos los fragmentos, recupera la regla para el objetivo o tema correspondiente y permite verificar la cita contra el original
+- **AND** Materiales recibe el conjunto completo válido permitido por la política, acotado a su presupuesto sin recortarlo silenciosamente
+
+#### Scenario: El curso contiene varios originales largos
+- **WHEN** el total de texto no cabe en una llamada pero cumple el presupuesto de trabajo del curso
+- **THEN** las etapas estructurales consultan evidencia por alcance y la selección mantiene procedencia y revisión
+- **AND** superar el presupuesto de admisión produce un diagnóstico medible sin truncar ni publicar fragmentos parciales
+
+#### Scenario: Un original ocupa el presupuesto del curso
+- **WHEN** el texto extraído de un original supera 600,000 unidades y cabe en el presupuesto de 1,200,000 unidades UTF-16 activas del curso
+- **THEN** se guarda en tramos internos bajo un solo original y se publica el conjunto completo en orden
+- **AND** una publicación concurrente que exceda el saldo del curso conserva su original y devuelve el diagnóstico de cuota sin publicar fragmentos
+
+#### Scenario: El archivo menciona una página externa
+- **WHEN** una URL aparece como cita o ejemplo dentro del texto aportado
+- **THEN** la mención conserva su procedencia documental y el modo exclusivo no consulta la página
+- **AND** en modo mixto únicamente las fuentes web validadas en Curaduría y vinculadas a la lección pueden respaldar Materiales con procedencia web
 
 ### Requirement: Sustitución conserva versiones inmutables
 El sistema SHALL crear un original nuevo vinculado a su predecesor y conservar el anterior disponible hasta que la extracción del sucesor se confirme atómicamente.
@@ -79,11 +119,11 @@ El sistema SHALL resolver y fijar en servidor una política documental exclusiva
 - **AND** no envía fragmentos privados como consulta a un buscador
 
 #### Scenario: Información insuficiente
-- **WHEN** un componente necesita contenido no respaldado por las fuentes aprobadas
+- **WHEN** un componente necesita contenido no respaldado por el conjunto de fuentes válidas
 - **THEN** se muestra el vacío y se impide aprobar el componente sin inventar citas o habilitar web implícitamente
 
 ### Requirement: Cobertura por evidencia curricular
-El sistema SHALL evaluar cobertura documental por objetivos y temas de lección mediante asociaciones revisables y versionadas, con el mismo criterio en interfaz, API y jobs.
+El sistema SHALL usar todos los documentos procesados permitidos por la política y todas las fuentes web válidas de la lección, sin exigir selección ni confirmación manual por objetivo. La validación de respaldo y citas de cada material se conserva.
 
 #### Scenario: Manual único
 - **WHEN** un documento contiene evidencia suficiente para todas las lecciones
@@ -93,9 +133,14 @@ El sistema SHALL evaluar cobertura documental por objetivos y temas de lección 
 - **WHEN** se autoriza complementar documentos con web
 - **THEN** la cobertura distingue ambas procedencias y expone vacíos y contradicciones para revisión
 
-#### Scenario: Propuesta todavía no revisada
-- **WHEN** el sistema propone fragmentos coincidentes con un objetivo o tema
-- **THEN** se conservan como sugerencias sin suficiencia confirmada y no permiten aprobar hasta su revisión
+#### Scenario: Varias fuentes válidas por lección
+- **WHEN** una lección tiene tres fuentes web validadas y el curso tiene documentos procesados
+- **THEN** el conjunto incluye todas esas fuentes según la política y no se reduce a una elección manual
+- **AND** el servidor construye el snapshot sin aceptar IDs de evidencia seleccionados por el cliente
+
+#### Scenario: Compatibilidad de revisiones históricas
+- **WHEN** se consulta un snapshot manual previo
+- **THEN** conserva su contrato de revisión; los nuevos snapshots identifican ALL_VALIDATED sin fabricar una aprobación humana
 
 #### Scenario: URL sin identidad curricular
 - **WHEN** una URL heredada no identifica la lección a la que pertenece
@@ -110,7 +155,7 @@ El sistema SHALL evaluar cobertura documental por objetivos y temas de lección 
 - **THEN** se revierte también la revisión, política y demás modificaciones de esa transacción
 
 ### Requirement: Contexto completo dentro de límites explícitos
-El sistema SHALL conservar el texto extraído válido y recuperar los fragmentos aprobados relevantes para cada consumidor, sin limitarse al extracto inicial de validación.
+El sistema SHALL conservar el texto extraído válido y recuperar el conjunto completo permitido para cada consumidor, sin limitarse al extracto inicial de validación.
 
 #### Scenario: Sección posterior al extracto histórico
 - **WHEN** el respaldo de una lección aparece después del carácter 12,000
@@ -118,7 +163,7 @@ El sistema SHALL conservar el texto extraído válido y recuperar los fragmentos
 
 #### Scenario: Presupuesto insuficiente
 - **WHEN** el contexto seleccionado excede el presupuesto de la operación
-- **THEN** se explica la limitación y se requiere selección o división, sin omisión silenciosa
+- **THEN** se explica la limitación y se requiere reducir el alcance o dividir el curso, sin omisión silenciosa
 
 ### Requirement: Trazabilidad e invalidación transaccional
 El sistema SHALL congelar política, versiones y fragmentos por ejecución, validar citas contra ese snapshot y controlar vigencia al aprobar y consumir los resultados.
@@ -137,6 +182,11 @@ El sistema SHALL congelar política, versiones y fragmentos por ejecución, vali
 - **THEN** el componente queda pendiente y se conservan otros componentes válidos
 - **AND** una decisión semántica desfavorable no activa otro modelo para obtener aprobación
 
+#### Scenario: Diagnóstico de respaldo rechazado en Base
+- **WHEN** el verificador rechaza Base por falta de respaldo, una fuente ajena al contexto, una cita que no coincide o una afirmación ausente de la salida
+- **THEN** Base queda detenida antes de guardar el contenido y el reporte identifica la etapa de verificación y el motivo con un código distinto para cada caso
+- **AND** el reporte de fallo excluye citas, texto privado y la explicación del auditor
+
 #### Scenario: Reintento de la misma ejecución
 - **WHEN** se repite la reserva de contexto para el mismo run, iteración o unidad con entradas idénticas
 - **THEN** se recupera el snapshot existente sin duplicar sus fragmentos
@@ -147,14 +197,29 @@ El sistema SHALL congelar política, versiones y fragmentos por ejecución, vali
 - **THEN** no los vincula al fingerprint nuevo y se detiene antes de generar
 
 #### Scenario: Base usa un documento largo del taller
-- **WHEN** la biblioteca procesa un documento de hasta 250,000 unidades UTF-16 que supera el contexto directo de Base
+- **WHEN** la biblioteca procesa un documento que supera el contexto directo de Base y cumple los presupuestos del curso y de lotes
 - **THEN** conserva íntegro el texto extraído y el job recorre todos sus fragmentos en lotes acotados
 - **AND** la redacción y la verificación usan citas literales de lotes confirmados mientras el manifiesto identifica la revisión completa
+
+#### Scenario: Reprocesamiento tras ampliar el límite
+- **WHEN** un documento agotó sus intentos con `TEXT_LIMIT` y se solicita extracción con un límite superior
+- **THEN** el worker con la capacidad nueva puede reservar un intento adicional sobre el original existente
+- **AND** el contador histórico se conserva y el mismo límite no permite repetir esa recuperación
 
 #### Scenario: Base reanuda una lectura documental interrumpida
 - **WHEN** el autor reintenta con el mismo propósito, revisión y modelo tras un fallo recuperable
 - **THEN** el job conserva los lotes confirmados y continúa con los pendientes dentro del presupuesto vigente
 - **AND** la salida solo puede llegar a revisión tras completar todos los lotes y verificar su respaldo
+
+#### Scenario: Continuación automática de Base documental
+- **WHEN** una invocación llega a su ventana de lectura con lotes recuperables pendientes
+- **THEN** el worker guarda la continuación y despacha otra invocación firmada sobre la misma ejecución
+- **AND** si se pierde el despacho o vence el lease, el reconciliador del mismo ambiente puede recuperar el trabajo
+- **AND** una invocación duplicada u obsoleta no puede confirmar el resultado del curso
+
+#### Scenario: Recuperación explícita de un plazo de lectura vencido
+- **WHEN** un autor reintenta Base en un curso detenido y la ejecución vencida conserva revisión, plan, progreso confirmado y saldo
+- **THEN** se concede una sola extensión acotada, sin reiniciar los contadores de la ejecución ni repetir lotes confirmados
 
 #### Scenario: Fallo de la primera generación de Base
 - **WHEN** la generación falla antes de obtener un recibo de evidencia

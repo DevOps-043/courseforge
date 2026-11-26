@@ -1,5 +1,45 @@
 # Evidencia y límites — 2026-11-06
 
+## Meta de 10 segundos al cambiar de video
+
+- Referencia reportada: entre 15 y 20 segundos. Criterio de QA: medir desde la
+  selección de otro video hasta que se vea la biblioteca de ese video, usando
+  el mismo curso, videos y condiciones de conexión para ambas versiones.
+  Registrar la primera apertura y los cambios entre videos ya visitados.
+- Se eliminó la llamada previa a la recuperación local en el camino exitoso
+  de HeyGen. La recuperación histórica ya la ejecuta. Si falla la credencial
+  o la consulta histórica, la ruta sigue intentando recuperar los medios locales.
+- Con servicios simulados se verificaron cinco casos de la ruta: éxito,
+  credencial no disponible, proveedor fallido, recuperación local fallida y
+  rol denegado. Se comprobó el alcance por organización, el conteo de clips
+  pendientes y la presencia de los tres tiempos en las respuestas exitosas.
+- `npm run verify:pr` completó la compuerta con código 0. Tipos, lint, enlaces
+  y OpenSpec pasaron. El registro se conserva en `.tmp/assembly-10s-verify-pr.log`.
+- En staging, revisar `Server-Timing` del POST de sincronización para separar
+  preparación, recuperación y registro. Comparar también el tiempo del borrador
+  y la biblioteca en DevTools. El fixture local no valida el umbral de 10 segundos.
+
+## Seguimiento de cambio de video y biblioteca — 2026-11-11
+
+- El arranque ya resolvía el identificador del borrador y volvía a pedir la
+  misma fila antes de hidratarlo. Se elimina una consulta serial por apertura.
+- La biblioteca esperaba el registro de medios antes de consultar el catálogo
+  HTML. Ambas lecturas comparten el alcance autorizado y se solapan.
+- Cada miniatura de video montaba una fuente MP4 con precarga de metadatos.
+  Cada solicitud podía pasar por autorización, dos lecturas de datos, firma y
+  redirección a Storage. La biblioteca ahora usa iconos y difiere las imágenes.
+- Verificación local. La suite de HyperFrames aprobó 705 pruebas, el chequeo de
+  tipos pasó, lint quedó sin diferencias tras retirar una tolerancia obsoleta,
+  se comprobaron los enlaces y OpenSpec validó 56 elementos. En Chrome local, un fixture con
+  ocho videos y una imagen mostró las nueve entradas, cero reproductores y
+  cero fuentes MP4 en la biblioteca. Se comprobó el atributo de carga diferida
+  de la imagen y la acción de añadir un video a la línea de tiempo.
+- Pendiente en staging. Comparar con el mismo curso el tiempo de selección a
+  editor utilizable y el de apertura de Medios a lista visible. Revisar por
+  separado sincronización, borrador, biblioteca y reproducción con DevTools.
+  El fixture no mide la latencia real de Storage ni verifica la reproducción
+  contra un borrador autenticado.
+
 ## Diagnóstico por inspección
 
 - `ArtifactStageContent.tsx` importaba estáticamente las siete etapas posteriores

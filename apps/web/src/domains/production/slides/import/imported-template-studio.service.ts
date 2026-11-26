@@ -44,7 +44,7 @@ export async function createImportedTemplateStudioSpec(input: {
   }
   const spec = prepareImportedSlidePackage(input.title, design);
   const detached = detachedImportedDesign(design);
-  return { model, source: options.reviseWithAi ? "gemini" as const : "design_base" as const, warning: null,
+  return { model, source: options.reviseWithAi ? "openai" as const : "design_base" as const, warning: null,
     spec: parseSlideTemplateAgentSpec({ ...spec, designBase: resolved.base, changeSummary: summary,
       importedDesign: detached, examples: spec.examples.map(example => ({ ...example, importedDesign: detached })) }) };
 }

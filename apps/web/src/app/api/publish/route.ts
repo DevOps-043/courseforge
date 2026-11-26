@@ -69,8 +69,8 @@ export async function POST(request: Request) {
         }
         try {
             await assertDeliveryPublicationReady(admin, artifactId, tenant.organizationId);
-        } catch {
-            return apiErrorResponse({ code: API_ERROR_CODE.conflict, message: 'Revisa la modalidad y aprueba el paquete completo y vigente antes de publicar. Los cursos sincrónicos se entregan desde Engine.', requestId: correlationId, status: 409 });
+        } catch (error) {
+            return apiErrorResponse({ code: API_ERROR_CODE.conflict, message: error instanceof Error ? error.message : 'Revisa la modalidad y aprueba el paquete vigente antes de publicar.', requestId: correlationId, status: 409 });
         }
 
         const { request: publicationRequest, lessons, artifact, materialsPackage } =

@@ -4,7 +4,7 @@ import { htmlEditingReferenceSchema, HTML_EDITABLE_COMPOSITION_DOCUMENT_FORMAT }
 import { hashCompositionDocumentInBrowser } from "./composition-recovery-journal";
 import { readHtmlEditingNativePayload, type HtmlEditingNativePayload } from "./composition-html-editing-rebase.client";
 import { boundedWait } from "./composition-html-editing-dispatch.client";
-import { requestHtmlInitialAnchor } from "./composition-html-initial-anchor.client";
+import { requestHtmlInitialAnchor, HtmlInitialAnchorClientError } from "./composition-html-initial-anchor.client";
 import { htmlSnapshotLocatorScopeSchema, type HtmlSnapshotLocatorScope, type HtmlSnapshotLocatorStorage } from "./composition-html-snapshot-locator.client";
 import type { HtmlSnapshotPublicationLock } from "./composition-html-snapshot-publication-lock.client";
 import { GENERATED_DECK_INITIALIZATION_POLICY, type GeneratedDeckInitializationCurrent, type GeneratedDeckInitializationReceipt } from "./composition-generated-deck-initialization.contract";
@@ -154,6 +154,7 @@ export async function coordinateGeneratedDeckInitialization(input: {
       return current;
     })), signal);
   } catch (error) {
+    if (!dispatched && error instanceof HtmlInitialAnchorClientError) throw error;
     if (error instanceof GeneratedDeckInitializationCoordinatorError) throw error;
     throw new GeneratedDeckInitializationCoordinatorError(confirmed ? "REFRESH_REQUIRED" : dispatched ? "OUTCOME_UNKNOWN" : "NOT_READY");
   }

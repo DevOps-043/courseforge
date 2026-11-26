@@ -8,6 +8,8 @@ export interface SlideCopyBudget {
   maxTitleCharacters: number;
 }
 
+export const MIN_SLIDE_EXPLANATION_CHARACTERS = 60;
+
 export function normalizedVisibleText(value: string) {
   return value.toLocaleLowerCase("es").normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")

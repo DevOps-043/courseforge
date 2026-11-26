@@ -4,6 +4,14 @@ import {
 } from "../types/syllabus.types";
 import type { SyllabusSourceDocument } from "../syllabus-source-documents";
 import { calculateEstimatedCourseHours } from "./lesson-duration-estimator";
+import { COURSE_CONFIG } from "../config/syllabus.config";
+
+export class SyllabusOutputValidationError extends Error {
+  constructor(readonly issues: string[]) {
+    super(`El temario generado no cumple los requisitos: ${issues.join(" | ")}`);
+    this.name = "SyllabusOutputValidationError";
+  }
+}
 
 export interface SyllabusGenerationContent {
   modules: SyllabusModule[];
@@ -121,6 +129,7 @@ export function buildSyllabusGenerationPrompt({
     requiredRuntimeContext,
     documentContext,
     SYLLABUS_OUTPUT_CONTRACT,
+    `RESTRICCIONES DE VALIDACIÓN OBLIGATORIAS:\nGenera exactamente ${objetivos.length} módulos, uno por objetivo general. Cada módulo debe contener entre ${COURSE_CONFIG.minLessonsPerModule} y ${COURSE_CONFIG.maxLessonsPerModule} lecciones. La duración total estimada de todas las lecciones no debe exceder ${COURSE_CONFIG.maxTotalHours} horas; no confundas la duración de un video con la duración completa de estudio de una lección. Ajusta el alcance a ese presupuesto y evita duplicar temas. Estas restricciones se mantienen aunque la plantilla solicite una estructura más extensa.`,
   ].filter(Boolean).join("\n\n");
 }
 

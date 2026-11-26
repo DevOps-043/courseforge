@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import { readJsonResponseWithLimit } from "../../../lib/server/outbound-http";
 import { isVideoStudioReasoningModel } from "../hyperframes/video-studio-model-options";
 import {
@@ -13,7 +12,7 @@ export class CompositionAgentProviderError extends Error {
   constructor(
     message: string,
     readonly code: "PROVIDER_INVALID_JSON" | "PROVIDER_INVALID_OUTPUT" | "PROVIDER_REQUEST_FAILED",
-    readonly provider: "gemini" | "openai",
+    readonly provider: "openai",
     readonly providerStatus: number | null = null,
   ) {
     super(message);
@@ -24,6 +23,7 @@ export function buildOpenAiCompositionProposalRequest(params: { allowReply?: boo
   const request: Record<string, unknown> = {
     input: params.prompt,
     model: params.model,
+    store: false,
     text: {
       format: {
         name: "composition_edit_proposal",
@@ -37,28 +37,18 @@ export function buildOpenAiCompositionProposalRequest(params: { allowReply?: boo
   return request;
 }
 
-export function buildGeminiCompositionProposalConfig(temperature: number, allowReply = false) {
-  return {
-    responseJsonSchema: getCompositionAgentProviderJsonSchema(allowReply),
-    responseMimeType: "application/json",
-    temperature,
-  };
-}
-
 export async function requestCompositionAgentPatch(params: {
   allowReply: boolean;
   apiKey: string;
   model: string;
   prompt: string;
-  provider: "gemini" | "openai";
+  provider: "openai";
   temperature: number;
   timeoutMs?: number;
 }) {
   let text: string;
   try {
-    text = params.provider === "gemini"
-      ? await requestGeminiProposal(params)
-      : await requestOpenAiProposal(params);
+    text = await requestOpenAiProposal(params);
   } catch (error) {
     if (error instanceof CompositionAgentProviderError) throw error;
     throw new CompositionAgentProviderError(
@@ -79,20 +69,6 @@ export async function requestCompositionAgentPatch(params: {
   } catch {
     throw new CompositionAgentProviderError("La salida no cumple el contrato de edición.", "PROVIDER_INVALID_OUTPUT", params.provider);
   }
-}
-
-async function requestGeminiProposal(params: { allowReply: boolean; apiKey: string; model: string; prompt: string; temperature: number; timeoutMs?: number }) {
-  const client = new GoogleGenAI({ apiKey: params.apiKey });
-  const result = await client.models.generateContent({
-    model: params.model,
-    contents: [{ role: "user", parts: [{ text: encodeCompositionAgentPrompt(params.prompt) }] }],
-    config: {
-      ...buildGeminiCompositionProposalConfig(params.temperature, params.allowReply),
-      abortSignal: AbortSignal.timeout(providerTimeout(params.timeoutMs)),
-    },
-  });
-  if (!result.text) throw new CompositionAgentProviderError("Gemini no devolvió contenido.", "PROVIDER_INVALID_OUTPUT", "gemini");
-  return result.text;
 }
 
 async function requestOpenAiProposal(params: { allowReply: boolean; apiKey: string; model: string; prompt: string; temperature: number; timeoutMs?: number }) {

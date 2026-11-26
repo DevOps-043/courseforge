@@ -5,7 +5,29 @@
   "workspaces": [
     "apps/*"
   ],
+  "engines": {
+    "node": ">=22.13.0",
+    "npm": ">=11.19.0 <12"
+  },
+  "packageManager": "npm@11.19.0",
+  "overrides": {
+    "netlify-cli": {
+      "@vercel/nft": "1.11.15",
+      "minimatch@^10.0.0": "11.0.9"
+    }
+  },
   "scripts": {
+    "test:tooling-security": "node --test scripts/test-netlify-tooling-security.mjs",
+    "test:slide-worker-session": "tsc -p apps/web/tsconfig.remotion-test.json && node --test apps/web/.tmp/remotion-tests/domains/production/slides/__tests__/slide-worker-access.test.js",
+    "test:session-decks": "npm run test:course-delivery -w apps/web && node scripts/test-session-decks.cjs && node scripts/test-production-review-ui.cjs",
+    "test:session-brolls": "npm run test:course-delivery -w apps/web && node scripts/test-session-broll-ui.cjs && node scripts/test-production-review-ui.cjs",
+    "test:slide-fields": "npm run test:slide-fields -w apps/web",
+    "test:assembly-stability": "npm run test:assembly-stability -w apps/web",
+    "test:generated-deck-draft": "npm run test:generated-deck-draft -w apps/web",
+    "test:hybrid-production": "npm run test:session-decks && node scripts/test-hybrid-assignment-ui.cjs",
+    "test:production-asset-flow": "npm run test:course-delivery -w apps/web && tsc -p apps/web/tsconfig.remotion-test.json && node --test apps/web/.tmp/remotion-tests/lib/client/__tests__/slide-generation.test.js apps/web/.tmp/remotion-tests/domains/production/jobs/__tests__/production-jobs.service.test.js apps/web/.tmp/remotion-tests/domains/production/validation/__tests__/broll-output.test.js && node scripts/test-production-review-ui.cjs",
+    "test:coordinated-materials": "npm run test:course-delivery && npm run test:materials-generation -w apps/web && node --test scripts/test-coordinated-material-retries.mjs",
+    "qa:hybrid-materials": "node scripts/qa-hybrid-materials.cjs",
     "test:course-sources": "npm run test:course-sources --workspace=apps/web && node --test scripts/test-course-source-migration.mjs",
     "qa:course-sources": "node scripts/qa-course-source-library.cjs",
     "qa:course-source-policy": "node scripts/qa-course-source-policy.cjs",
@@ -88,7 +110,7 @@
     "test:composition-worker-runtime": "npm run build:composition-worker && node --test scripts/composition-worker-runtime.test.mjs apps/web/tools/controlled-hyperframes/materialized-producer-collector.test.mjs apps/web/tools/controlled-hyperframes/materialized-producer-bridge-configuration.test.mjs",
     "start:composition-conformance-worker": "npm run build -w apps/api && npm run build:composition-worker && node scripts/run-composition-conformance-worker.mjs",
     "qa:composition-final-video-gate": "npm run build -w apps/api && npm run build:composition-worker && node scripts/run-composition-final-video-gate.mjs",
-    "verify": "npm run lint && npm run typecheck && npm run architecture:cycles && npm run db:migrations:check && npm run test:branding && npm run test:security-boundaries && npm run test:audio-processing && npm run test:coverage-gaps -w apps/web && npm run test:course-delivery",
+    "verify": "npm run lint && npm run typecheck && npm run architecture:cycles && npm run test:tooling-security && npm run db:migrations:check && npm run test:branding && npm run test:security-boundaries && npm run test:audio-processing && npm run test:coverage-gaps -w apps/web && npm run test:course-delivery",
     "docs:audit": "powershell -ExecutionPolicy Bypass -File scripts/audit-documentation.ps1",
     "compliance:sbom": "powershell -ExecutionPolicy Bypass -File scripts/generate-sbom.ps1",
     "compliance:check": "node scripts/check-third-party-compliance.mjs",
@@ -116,15 +138,12 @@
     "dotenv": "^17.2.3",
     "eslint": "^9.39.2",
     "madge": "^8.0.0",
-    "netlify-cli": "^23.13.3",
+    "netlify-cli": "^27.20.1",
     "prettier": "^3.8.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.10",
     "@ai-sdk/openai": "^3.0.12",
-    "@google/genai": "^1.37.0",
-    "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.8.0",
     "ai": "^6.0.39",
     "bcryptjs": "^3.0.3",
@@ -135,7 +154,7 @@
     "htmlparser2": "^10.1.0",
     "jose": "^6.2.0",
     "jszip": "^3.10.1",
-    "next": "^16.1.3",
+    "next": "^16.4.6",
     "openai": "^6.16.0",
     "postcss-value-parser": "^4.2.0",
     "react": "^19.2.3",
@@ -145,6 +164,6 @@
     "sanitize-html": "^2.17.0",
     "scorm-again": "^3.0.0",
     "sonner": "^2.0.7",
-    "zod": "^4.3.5"
+    "zod": "^4.6.7"
   }
 }

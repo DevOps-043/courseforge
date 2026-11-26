@@ -1,4 +1,5 @@
 import type { SyllabusModule } from "@/domains/syllabus/types/syllabus.types";
+import type { DocumentaryBaseProgress } from "@/domains/course-sources/course-source-base-progress";
 
 export type ArtifactEditingSection =
   | "nombres"
@@ -14,6 +15,8 @@ export interface ArtifactDescription {
 }
 
 export interface ArtifactGenerationMetadata {
+  base_progress?: DocumentaryBaseProgress | null;
+  run_id?: string;
   search_queries?: string[];
   original_input?: { description?: string };
   [key: string]: unknown;
@@ -27,6 +30,7 @@ export interface ArtifactValidationResultItem {
 
 export interface ArtifactValidationReport {
   all_passed?: boolean;
+  diagnostics?: { stage?: string; status?: number };
   results: ArtifactValidationResultItem[];
 }
 
@@ -66,6 +70,7 @@ export interface ArtifactMaterialsRelation extends ArtifactStageRelation {
 }
 
 export interface ArtifactViewRecord {
+  can_retry_documentary_base?: boolean;
   courseId?: string | null;
   course_id?: string | null;
   created_at: string;

@@ -6,12 +6,14 @@ import * as policy from "../course-source-policy";
 import * as errors from "../course-source-error";
 import * as contract from "../../../lib/server/api-contract";
 import * as responses from "../../../lib/server/api-response";
+import * as mutationOrigin from "../../../lib/server/mutation-request-origin";
 import { AuthIdentityLookupError } from "../../../lib/server/auth-identity-error";
 import { TenantContextLookupError } from "../../../lib/server/tenant-context-error";
+import * as initializationPolicy from "../../course-delivery/lib/delivery-initialization-policy";
 
 const course = "10000000-0000-4000-8000-000000000001";
 const logger = { createOperationalLogger: () => ({ info() {}, warn() {} }), resolveCorrelationId: () => "prueba-fuentes" };
-function fixture(stage: "allowed" | "anonymous" | "role" | "foreign" | "unavailable" = "allowed") {
+function fixture(stage: "allowed" | "anonymous" | "role" | "foreign" | "unavailable" = "allowed", sessionsEnabled = true) {
   const effects: string[] = [];
   const tenant = { organizationId: course, userId: course, platformRole: stage === "role" ? "INVITADO" : "CONSTRUCTOR" };
   const access = load("src/domains/course-sources/course-source-access.ts", {
@@ -42,11 +44,18 @@ function fixture(stage: "allowed" | "anonymous" | "role" | "foreign" | "unavaila
       "./course-source-legacy": {},
       "../../lib/server/api-contract": contract, "../../lib/server/api-response": responses,
       "../../lib/server/authorization-unavailable-response": mapper, "../../lib/server/operational-logger": logger,
+      "../../lib/server/mutation-request-origin": mutationOrigin,
       "./course-source-access": access, "./course-source-policy": policy, "./course-source-error": errors,
       "./course-source.repository": { CourseSourceRepository: Repository },
       "./course-source.service": { CourseSourceService: class { constructor() { effects.push("service"); } } },
       "./course-source-storage": { createSourceStorage: () => { effects.push("storage"); return {}; } },
       "./course-source.schema": schema,
+      "../course-delivery/lib/delivery-initialization-policy": initializationPolicy,
+      "../course-delivery/config/delivery-enabled": { deliveryEnabled: () => sessionsEnabled },
+      "../course-delivery/services/delivery-initialization": { initializeArtifactDelivery: async (_admin: unknown, artifactId: string, organizationId: string, config: {mode:string}) => {
+        assert.equal(artifactId, course); assert.equal(organizationId, course);
+        if (config.mode !== "NEXUS") effects.push("modality");
+      } },
     });
   return { effects, respond: http.courseSourceHttp };
 }
@@ -82,6 +91,16 @@ test("borrador devuelve DRAFT y no construye servicio de carga ni generador", as
   const body = await result.json(); assert.equal(body.state, "DRAFT"); assert.equal(body.artifactId, course);
 });
 
+test("borrador inicializa la modalidad autorizada y rechaza sesiones apagadas antes de crear", async () => {
+  const body = {idempotencyKey:course,title:"Taller",deliveryConfig:{mode:"SYNCHRONOUS",sessionCount:2,sessionMinutes:60}};
+  const allowed = fixture();
+  assert.equal((await allowed.respond(request(body), "draft")).status, 200);
+  assert.deepEqual(allowed.effects, ["admin", "repository", "draft", "modality"]);
+  const disabled = fixture("allowed", false);
+  assert.equal((await disabled.respond(request(body), "draft")).status, 403);
+  assert.equal(disabled.effects.includes("draft"), false);
+});
+
 test("UUID inválido, autoridad enviada en payload y paginación excesiva fallan sin escritura", async () => {
   const invalidId = fixture(); assert.equal((await invalidId.respond(request(), "reserve", "falso")).status, 400);
   assert.deepEqual(invalidId.effects, []);
@@ -102,11 +121,29 @@ test("mutaciones rechazan formularios y origen cruzado antes de consultar autori
     { "Content-Type": "text/plain" },
     { "Content-Type": "application/json", Origin: "https://otro.invalid" },
     { "Content-Type": "application/json", "Sec-Fetch-Site": "cross-site" },
+    { "Content-Type": "application/json", Origin: "https://example.invalid", "Sec-Fetch-Site": "same-site" },
+    { "Content-Type": "application/json", Origin: "null", "Sec-Fetch-Site": "same-origin" },
+    { "Content-Type": "application/json", Origin: "https://otro.invalid", "X-Forwarded-Host": "otro.invalid" },
   ];
   for (const headers of cases) {
     const f = fixture(); const result = await f.respond(new Request("https://example.invalid", {
       method: "POST", headers, body: JSON.stringify({ idempotencyKey: course, title: "Curso" }),
     }), "draft");
     assert.ok([403, 415].includes(result.status)); assert.deepEqual(f.effects, []);
+    if (result.status === 403) assert.equal((await result.json()).code, "ORIGIN_FORBIDDEN");
+  }
+});
+
+test("un navegador del mismo origen llega a autorización cuando el proxy reconstruye la URL", async () => {
+  for (const [stage, status] of [["allowed", 200], ["anonymous", 401], ["role", 403]] as const) {
+    const f = fixture(stage);
+    const result = await f.respond(new Request("http://localhost:3000/api/artifacts/drafts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "https://staging.example.invalid", "Sec-Fetch-Site": "same-origin" },
+      body: JSON.stringify({ idempotencyKey: course, title: "Curso" }),
+    }), "draft");
+    assert.equal(result.status, status);
+    assert.deepEqual(f.effects, stage === "allowed" ? ["admin", "repository", "draft"] : []);
+    if (stage === "role") assert.equal((await result.json()).code, "ROLE_FORBIDDEN");
   }
 });

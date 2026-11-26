@@ -19,7 +19,7 @@ test("DOCX y TXT largos conservan la sección final con un presupuesto de labora
     const initialRss = process.memoryUsage().rss;
     const extracted = await extractSyllabusSourceDocument(file, { maxCharacters: 250_000 });
     assert.equal(extracted.text, text);
-    assert.equal(fragmentSourceText(extracted.text).map(fragment => fragment.text).join(""), text);
+    assert.equal(Array.from(fragmentSourceText(extracted.text), fragment => fragment.text).join(""), text);
     t.diagnostic(`${file.name}: ${file.size} bytes, ${text.length} unidades UTF-16, ${Math.round(performance.now() - started)} ms, delta RSS ${process.memoryUsage().rss - initialRss} bytes`);
     await assert.rejects(extractSyllabusSourceDocument(file), /40,000/);
   }
@@ -28,7 +28,7 @@ import { extractSyllabusSourceDocument } from "../../syllabus/lib/syllabus-docum
 
 test("fragmentación preserva todo el texto y localizadores posteriores al extracto histórico", () => {
   const text = "Contenido con acentos y ejemplos. ".repeat(1000);
-  const fragments = fragmentSourceText(text);
+  const fragments = Array.from(fragmentSourceText(text));
   assert.equal(fragments.map(fragment => fragment.text).join(""), text);
   assert.ok(fragments.some(fragment => fragment.locator.characterStart > 12000));
   for (const fragment of fragments) {
@@ -39,15 +39,16 @@ test("fragmentación preserva todo el texto y localizadores posteriores al extra
 
 test("un carácter Unicode en el límite se conserva íntegro en el JSON de PostgreSQL", () => {
   const text = "a".repeat(1999) + "😀" + " texto final";
-  const fragments = fragmentSourceText(text);
+  const fragments = Array.from(fragmentSourceText(text));
   assert.equal(fragments[0].locator.characterEnd, 1999);
   assert.equal(fragments[1].locator.characterStart, 1999);
   assert.equal(fragments.map(fragment => fragment.text).join(""), text);
   assert.doesNotMatch(JSON.stringify(fragments), /\\ud[89a-f][0-9a-f]{2}/i);
 });
 
-test("TXT y DOCX mayores de 120,000 llegan íntegros al commit documental", async () => {
-  const text = "a".repeat(1999) + "😀 " + "Sección del manual. ".repeat(6400) + "Texto al final del manual.";
+test("TXT y DOCX superiores al tope anterior llegan íntegros al commit documental", async () => {
+  const text = "a".repeat(1999) + "😀 " + "Sección del manual. ".repeat(46000) + "Texto al final del manual.";
+  const expectedFragments = Array.from(fragmentSourceText(text));
   const archive = new JSZip();
   archive.file("[Content_Types].xml", "<Types/>");
   archive.file("word/document.xml", `<w:document><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:document>`);
@@ -64,7 +65,7 @@ test("TXT y DOCX mayores de 120,000 llegan íntegros al commit documental", asyn
       expires_at: "", created_at: "", uploaded_at: null,
     };
     const query = { select: () => query, eq: () => query, maybeSingle: async () => ({ data: document }) };
-    const calls: { p_action: string; p_fragments?: ReturnType<typeof fragmentSourceText> }[] = [];
+    const calls: { p_action: string; p_fragments?: unknown }[] = [];
     const admin = {
       from: () => query,
       storage: { from: () => ({
@@ -78,10 +79,13 @@ test("TXT y DOCX mayores de 120,000 llegan íntegros al commit documental", asyn
     } as unknown as SupabaseClient;
     await extractCourseSource(admin, document.artifact_id, document.id, document.organization_id);
     assert.equal(calls[0].p_action, "reserve");
+    assert.deepEqual(calls[0].p_fragments, { textLimitUnits: 1_200_000 });
     assert.equal(calls.at(-1)?.p_action, "publish");
     const appends = calls.slice(1, -1);
     assert.ok(appends.length > 1 && appends.every(call => call.p_action === "append"));
-    assert.equal(appends.flatMap(call => call.p_fragments ?? []).map(fragment => fragment.text).join(""), text);
+    const batches = appends.map(call => call.p_fragments as typeof expectedFragments);
+    assert.ok(batches.every(batch => batch.length <= 16));
+    assert.deepEqual(batches.flat(), expectedFragments);
     assert.doesNotMatch(JSON.stringify(appends), /\\ud[89a-f][0-9a-f]{2}/i);
   }
 });

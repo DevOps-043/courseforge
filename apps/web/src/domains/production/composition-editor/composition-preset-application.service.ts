@@ -1,5 +1,6 @@
 import {
   compositionEditorDocumentSchema,
+  exceedsCompositionTimelineBoundary,
   type CompositionClip,
   type CompositionEditorDocument,
 } from "./composition-document.types";
@@ -220,10 +221,16 @@ function resolveRuleTimings(
       durationSeconds: rule.variants[index]!.durationRatio! * document.canvas.durationSeconds,
     }));
   }
-  const startFrame = Math.round(rule.timing.startRatio * document.canvas.durationSeconds * document.canvas.fps);
-  const endFrame = Math.round(rule.timing.endRatio * document.canvas.durationSeconds * document.canvas.fps);
+  const { durationSeconds, fps } = document.canvas;
+  const startFrame = Math.round(rule.timing.startRatio * durationSeconds * fps);
+  const roundedEndFrame = Math.round(rule.timing.endRatio * durationSeconds * fps);
+  // El frame más cercano puede caer después del final de un canvas con duración fraccionaria.
+  const endFrame = exceedsCompositionTimelineBoundary(roundedEndFrame / fps, durationSeconds)
+    ? roundedEndFrame - 1
+    : roundedEndFrame;
   const availableFrames = endFrame - startFrame;
-  if (availableFrames < clips.length) {
+  const requiredFrames = rule.timing.mode === "STACK" ? 1 : clips.length;
+  if (availableFrames < requiredFrames) {
     throw new CompositionPresetApplicationError(
       `El rango de ${rule.selector.semanticRole} no alcanza para ${clips.length} elementos.`,
       "COMPOSITION_PRESET_TIMELINE_CAPACITY",
@@ -232,8 +239,8 @@ function resolveRuleTimings(
   }
   if (rule.timing.mode === "STACK") {
     return clips.map(() => ({
-      durationSeconds: availableFrames / document.canvas.fps,
-      startSeconds: startFrame / document.canvas.fps,
+      durationSeconds: availableFrames / fps,
+      startSeconds: startFrame / fps,
     }));
   }
   const weights = clips.map((_, index) => rule.variants[index % rule.variants.length]!.durationWeight);
@@ -258,7 +265,7 @@ function resolveRuleTimings(
   }
   let currentFrame = startFrame;
   return allocatedFrames.map((durationFrames) => {
-    const timing = { durationSeconds: durationFrames / document.canvas.fps, startSeconds: currentFrame / document.canvas.fps };
+    const timing = { durationSeconds: durationFrames / fps, startSeconds: currentFrame / fps };
     currentFrame += durationFrames;
     return timing;
   });

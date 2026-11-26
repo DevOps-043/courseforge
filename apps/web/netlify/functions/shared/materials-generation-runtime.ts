@@ -1,5 +1,10 @@
 import { loadAptaSources } from "./materials-source-context";
+import { readAcademyScope } from "../../../src/domains/course-delivery/services/academy-scope.server";
+import { assertAcademyPlans, assertAcademyLesson } from "../../../src/domains/course-delivery/lib/academy-scope";
 import { prepareCourseGeneration, attestCourseGeneration } from "../../../src/domains/course-sources/course-source-generation.service";
+import { CourseSourceError, sourceGroundingFailure } from "../../../src/domains/course-sources/course-source-error";
+import { MATERIAL_GROUNDING_CORRECTION, SOURCE_GENERATION_LIMITS } from "../../../src/domains/course-sources/course-source-generation";
+import { createOperationalLogger } from "../../../src/lib/server/operational-logger";
 import { readCourseSourcePolicy } from "../../../src/domains/course-sources/course-source-settings";
 import { readSyllabusWithOrigin } from "../../../src/domains/syllabus/services/syllabus-workflow-read";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -62,6 +67,8 @@ export async function loadLessonPlans(
     .eq("artifact_id", artifactId)
     .single();
   if (error) throw error;
+  const scope = await readAcademyScope(supabase, artifactId);
+  assertAcademyPlans(scope, planRecord?.lesson_plans);
   return (planRecord?.lesson_plans || []) as LessonPlanRecord[];
 }
 
@@ -169,21 +176,13 @@ export async function markMaterialsValidating(
   materialsId: string,
   version: number,
 ) {
-  const { data: lessons, error: lessonsError } = await supabase.from("material_lessons")
-    .select("state").eq("materials_id", materialsId);
-  if (lessonsError) throw lessonsError;
-  const complete = Boolean(lessons?.length) && lessons!.every((lesson) =>
-    ["GENERATED", "APPROVABLE"].includes(lesson.state));
-  const { data: updated, error } = await supabase
-    .from("materials")
-    .update({ state: complete ? "PHASE3_VALIDATING" : "PHASE3_NEEDS_FIX", updated_at: new Date().toISOString() })
-    .eq("id", materialsId).eq("version", version).eq("state", "PHASE3_GENERATING").select("id").maybeSingle();
+  const { data: complete, error } = await supabase.rpc("finish_material_generation", { p_materials_id: materialsId, p_version: version });
   if (error) throw error;
-  return complete && Boolean(updated);
+  return complete === true;
 }
 
 export async function processGenerationResult(params: {
-  execution: { materialsId: string; version: number };
+  execution: { materialsId: string; version: number; academyRouteHash?: string | null };
   supabase: SupabaseClient;
   lessonId: string;
   lessonTitle: string;
@@ -247,6 +246,9 @@ export async function generateLessonMaterials(params: {
     modelRuntimeConfig,
   } = params;
 
+  const academy = await readAcademyScope(supabase, generationContext.artifactId, organizationId || undefined);
+  assertAcademyPlans(academy, generationContext.lessonPlans);
+  assertAcademyLesson(academy, lesson.lesson_id);
   const sourceContext = generationContext.documentary ? await prepareCourseGeneration(supabase, generationContext.artifactId, "MATERIALS", lesson.lesson_id, undefined, `${params.execution.materialsId}:${params.execution.version}:${lesson.id}:${iterationNumber || lesson.iteration_count || 1}`, { plans: generationContext.lessonPlans }) : null;
   const lessonSources = findLessonSources(generationContext.lessonSources, lesson);
   const planDetails = findPlanDetails(generationContext.lessonPlans, lesson);
@@ -292,11 +294,13 @@ export async function generateLessonMaterials(params: {
     if (error) throw error;
     savedComponents = saved || [];
     if (!selectedTypes?.length) selectedTypes = selectMaterialRetryTypes(input, savedComponents);
+    const planned = new Set<string>(input.lesson.components.map(component => component.type));
+    if (academy.routeHash && !componentTypes?.length) selectedTypes = [...new Set([...(selectedTypes || []), ...savedComponents.filter(component => planned.has(component.type) && component.assets?.delivery_route_hash !== academy.routeHash).map(component => component.type)])];
     if (sourceContext && params.resumePendingOnly && !componentTypes?.length) {
       const current = await supabase.rpc("current_course_source_component_ids", { p_artifact: generationContext.artifactId });
       if (current.error) throw new Error("No se pudo verificar qué componentes conservan respaldo documental.");
       const valid = new Set<string>(current.data || []);
-      selectedTypes = [...new Set([...(selectedTypes || []), ...savedComponents.filter(component => !valid.has(component.id)).map(component => component.type)])];
+      selectedTypes = [...new Set([...(selectedTypes || []), ...savedComponents.filter(component => planned.has(component.type) && !valid.has(component.id)).map(component => component.type)])];
     }
   }
   const completeInput = { ...input, lesson: { ...input.lesson } };
@@ -309,47 +313,74 @@ export async function generateLessonMaterials(params: {
   }
 
   const deadlineMs = Date.now() + VIDEO_GENERATION_LIMITS.lessonTimeoutMs;
+  const reviewReserve = sourceContext ? Math.min(SOURCE_GENERATION_LIMITS.timeoutMs, input.lesson.components.length * 30_000) : 0;
+  const generate = (generationInput: typeof input, generationDeadline: number) => generateMaterialsByComponent({
+    input: generationInput,
+    generateStandard: (standardInput) => generateWithRetry(
+      standardInput, logPrefix, models, modelRuntimeConfig, supabase,
+      standardInput.lesson.components.map((component) => component.type), organizationId,
+      generationDeadline, generationContext.artifactId, lesson.id,
+    ),
+    generateVideo: (componentType, contract) => generateAndTraceMaterialVideo({
+      supabase, input: generationInput, componentType, contract, models, modelRuntimeConfig, organizationId,
+      artifactId: generationContext.artifactId, lessonId: lesson.id, deadlineMs: generationDeadline,
+    }),
+  });
   // Resume can finish through validation alone, without rewriting stored components.
   let result: MaterialsGenerationResult = selectedTypes?.length === 0
     ? { success: true, content: { components: {}, source_refs_used: [] } }
-    : await generateMaterialsByComponent({
-        input,
-        generateStandard: (standardInput) => generateWithRetry(
-          standardInput, logPrefix, models, modelRuntimeConfig, supabase,
-          standardInput.lesson.components.map((component) => component.type), organizationId,
-          deadlineMs,
-          generationContext.artifactId,
-          lesson.id,
-        ),
-        generateVideo: (componentType, contract) => generateAndTraceMaterialVideo({
-          supabase, input, componentType, contract, models, modelRuntimeConfig, organizationId,
-          artifactId: generationContext.artifactId,
-          lessonId: lesson.id,
-          deadlineMs,
-        }),
-      });
+    : await generate(input, deadlineMs - reviewReserve - (sourceContext ? 5000 : 0));
+  const sourceEvidenceByType: Record<string, string> = {};
+  if (sourceContext && result.content) {
+    const groundingErrors: string[] = [];
+    const content = result.content;
+    const components = Object.entries(content.components);
+    for (const [index, [key, component]] of components.entries()) {
+      const type = key as ComponentType;
+      const now = Date.now();
+      const reviewDeadline = now + Math.floor((deadlineMs - 5000 - now) / (components.length - index));
+      try {
+        let receipt: string | null;
+        try {
+          receipt = await attestCourseGeneration(supabase, sourceContext, component, models, reviewDeadline);
+        } catch (failure) {
+          const correctionDeadline = reviewDeadline - 30_000;
+          if (!(failure instanceof CourseSourceError) || failure.groundingReason !== "UNSUPPORTED_OUTPUT" || correctionDeadline - Date.now() < 30_000) throw failure;
+          const correction = await generate({
+            ...input,
+            lesson: { ...input.lesson, components: input.lesson.components.filter(plannedComponent => plannedComponent.type === type) },
+            fix_instructions: [input.fix_instructions, MATERIAL_GROUNDING_CORRECTION].filter(Boolean).join("\n"),
+          }, correctionDeadline);
+          const corrected = correction.content?.components[type];
+          if (!correction.success || !corrected) throw failure;
+          receipt = await attestCourseGeneration(supabase, sourceContext, corrected, models, reviewDeadline);
+          content.components = { ...content.components, [type]: corrected };
+          content.source_refs_used = [...new Set([...content.source_refs_used, ...correction.content.source_refs_used])];
+        }
+        if (receipt) sourceEvidenceByType[type] = receipt;
+      } catch (error) {
+        const diagnostic = sourceGroundingFailure(error);
+        createOperationalLogger("materiales.respaldo").error("componente_rechazado", diagnostic, {
+          artifactId: generationContext.artifactId, lessonId: lesson.id, componentType: type,
+          snapshotId: sourceContext.snapshotId, remainingMs: Math.max(0, deadlineMs - Date.now()),
+        });
+        delete content.components[type];
+        groundingErrors.push(`${type} [${diagnostic.code}]: ${diagnostic.message} Reintenta el componente pendiente tras revisar el diagnóstico.`);
+      }
+    }
+    if (groundingErrors.length) result = { success: false, content: result.content, error: [...(result.success ? [] : [result.error]), ...groundingErrors].join(" | ") };
+  }
   if (result.success) {
     const validation = validateGeneratedMaterialLesson(completeInput, result.content, savedComponents);
     if (validation.errors.length) {
       result = { success: false, content: result.content, error: validation.errors.join(" | ") };
     }
   }
-  const sourceEvidenceByType: Record<string, string> = {};
-  if (sourceContext && result.content) {
-    const groundingErrors: string[] = [];
-    for (const [type, content] of Object.entries(result.content.components)) {
-      try {
-        const receipt = await attestCourseGeneration(supabase, sourceContext, content, models, deadlineMs);
-        if (receipt) sourceEvidenceByType[type] = receipt;
-      } catch {
-        delete result.content.components[type as ComponentType];
-        groundingErrors.push(`${type}: no se pudo confirmar su respaldo vigente. Revisa las fuentes y reintenta el componente pendiente.`);
-      }
-    }
-    if (groundingErrors.length) result = { success: false, content: result.content, error: [...(result.success ? [] : [result.error]), ...groundingErrors].join(" | ") };
-  }
+  const currentAcademy = await readAcademyScope(supabase, generationContext.artifactId, organizationId || undefined);
+  if (currentAcademy.routeHash !== academy.routeHash) throw new Error("El recorrido cambió durante la generación. No se guardaron los materiales de Academy.");
+  assertAcademyLesson(currentAcademy, lesson.lesson_id);
   return processGenerationResult({
-    execution: params.execution,
+    execution: { ...params.execution, academyRouteHash: academy.routeHash },
     supabase,
     lessonId: lesson.id,
     lessonTitle: lesson.lesson_title,

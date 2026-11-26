@@ -5,8 +5,14 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { readCourseSourcePolicy } from "@/domains/course-sources/course-source-settings";
 import { CourseSourceError } from "@/domains/course-sources/course-source-error";
+import { canRetryUnclaimedDocumentaryBase } from "@/domains/course-sources/course-source-base-progress";
 import { SOURCE_GENERATION_LIMITS } from "@/domains/course-sources/course-source-generation";
 import { markArtifactGenerationFailed } from "../lib/artifact-generation-failure";
+import { configureCreatedArtifactDeliveryAction } from "../../course-delivery/actions/delivery-initialization.actions";
+import { validateInitialDeliveryConfig } from "../../course-delivery/lib/delivery-initialization-policy";
+import { deliveryEnabled } from "../../course-delivery/config/delivery-enabled";
+import type { DeliveryConfig } from "../../course-delivery/types/delivery.schemas";
+import { deliveryHash } from "../../course-delivery/lib/delivery-hash";
 import { isGenerationStale } from "@/lib/pipeline-generation-policy";
 import { getErrorMessage } from "@/lib/errors";
 import { createClient } from "@/utils/supabase/server";
@@ -42,19 +48,24 @@ export async function getArtifactGenerationSnapshotAction(artifactId: string) {
 
   const { data: artifact, error } = await authorized.admin
     .from("artifacts")
-    .select("descripcion, generation_metadata, nombres, objetivos, production_complete, qa_status, state, validation_report, updated_at")
+    .select("descripcion, generation_metadata, nombres, objetivos, production_complete, state, validation_report, updated_at")
     .eq("id", artifactId)
+    .eq("organization_id", authorized.artifact.organization_id)
     .single();
 
   if (error || !artifact) {
     return { success: false as const, error: error?.message || "Artifact snapshot unavailable" };
   }
 
-  if (artifact.state === "GENERATING" && isGenerationStale(artifact.updated_at)) {
+  const generationStartedAt = artifact.generation_metadata?.base_progress?.started_at || artifact.updated_at;
+  if (artifact.state === "GENERATING" && !artifact.generation_metadata?.base_queue && isGenerationStale(generationStartedAt)) {
     await markArtifactGenerationFailed(authorized.admin, artifactId, artifact.generation_metadata?.run_id, new Error("timeout"), artifact.updated_at);
     return getArtifactGenerationSnapshotAction(artifactId);
   }
-  return { success: true as const, artifact };
+  return { success: true as const, artifact: {
+    ...artifact,
+    can_retry_documentary_base: artifact.state === "GENERATING" && canRetryUnclaimedDocumentaryBase(artifact.generation_metadata),
+  } };
 }
 
 export async function generateArtifactAction(formData: {
@@ -67,6 +78,7 @@ export async function generateArtifactAction(formData: {
   useGoogleDrive?: boolean;
   videoDurationPolicy?: VideoDurationPolicy;
   requestId?: string;
+  deliveryConfig?: DeliveryConfig;
 }) {
   const supabase = await createClient();
   const authUser = await getAuthenticatedUser(supabase);
@@ -90,6 +102,7 @@ export async function generateArtifactAction(formData: {
       };
     }
     const videoDurationPolicy = resolveVideoDurationPolicy(parsedVideoDurationPolicy.data);
+    const deliveryConfig = validateInitialDeliveryConfig(formData.deliveryConfig, deliveryEnabled());
     let finalCourseId = formData.courseId?.trim();
     if (!finalCourseId) {
       const prefix = formData.title
@@ -112,7 +125,7 @@ export async function generateArtifactAction(formData: {
         descripcion: {},
         generation_metadata: {
           run_id: runId,
-          original_input: { ...formData, videoDurationPolicy },
+          original_input: { ...formData, videoDurationPolicy, deliveryConfig },
           started_at: new Date().toISOString(),
           video_duration_policy: videoDurationPolicy,
         },
@@ -125,9 +138,12 @@ export async function generateArtifactAction(formData: {
 
     if (error) {
       if (error.code === "23505") {
-        const { data: existing } = await supabase.from("artifacts").select("id, state")
+        const { data: existing } = await supabase.from("artifacts").select("id, state, generation_metadata")
           .eq("id", artifactId).eq("created_by", authUser.userId).maybeSingle();
         if (existing) {
+          const previousConfig = validateInitialDeliveryConfig(existing.generation_metadata?.original_input?.deliveryConfig, deliveryEnabled());
+          if (deliveryHash(previousConfig) !== deliveryHash(deliveryConfig)) throw new Error("Esta solicitud ya creó un curso con otra modalidad. Abre el curso existente para editarla.");
+          if (deliveryConfig.mode !== "NEXUS") await configureCreatedArtifactDeliveryAction(existing.id, deliveryConfig);
           return {
             success: true,
             artifactId: existing.id,
@@ -140,12 +156,16 @@ export async function generateArtifactAction(formData: {
     }
     created = true;
 
+    if (deliveryConfig.mode !== "NEXUS") {
+      await configureCreatedArtifactDeliveryAction(artifact.id, deliveryConfig);
+    }
+
     await dispatchBackgroundFunctionJson(
       "generate-artifact-background",
       {
         artifactId: artifact.id,
         runId,
-        formData: { ...formData, videoDurationPolicy },
+        formData: { ...formData, videoDurationPolicy, deliveryConfig },
         userId: authUser.userId,
           cloudStorageProvider:
             formData.cloudStorageProvider ||
@@ -234,6 +254,8 @@ export async function regenerateArtifactAction(
 
   const originalInput = artifact.generation_metadata?.original_input;
   if (!originalInput) return { success: false, error: "Original input lost" };
+  const originalMetadata = { ...artifact.generation_metadata };
+  delete originalMetadata.base_queue;
 
   let resetQuery = supabase
     .from("artifacts")
@@ -243,8 +265,9 @@ export async function regenerateArtifactAction(
       descripcion: {},
       state: "GENERATING",
       generation_metadata: {
-        ...artifact.generation_metadata,
+        ...originalMetadata,
         run_id: runId,
+        base_progress: null,
         started_at: new Date().toISOString(),
         feedback_history: [
           ...(artifact.generation_metadata.feedback_history || []),

@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url);
 assert.ok(process.argv.includes("--live"), "Use --live to authorize provider smoke requests.");
 require("dotenv").config({ path: "apps/web/.env.local", quiet: true });
 const { generateObject } = require("ai");
-const { createGoogleGenerativeAI } = require("@ai-sdk/google");
+const { createOpenAI } = require("@ai-sdk/openai");
 const OpenAI = require("openai");
 const { ArtifactBaseGenerationSchema } = require("../apps/web/.tmp/model-json-response-tests/domains/artifacts/lib/artifact-base-generation.schema.js");
 const { searchLessonCandidates } = require("../apps/web/.tmp/curation-tests/netlify/functions/shared/curation-v2/search.js");
@@ -13,9 +13,9 @@ const { validateAutomaticCandidates } = require("../apps/web/.tmp/curation-tests
 const { generateWithRetry } = require("../apps/web/.tmp/materials-generation-tests/netlify/functions/shared/materials-generation-helpers.js");
 
 try {
-  const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY });
+  const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const base = await generateObject({
-    model: google(process.env.PIPELINE_SMOKE_BASE_MODEL || "gemini-2.5-flash"),
+    model: openai.responses(process.env.PIPELINE_SMOKE_BASE_MODEL || "gpt-6.1-terra"),
     schema: ArtifactBaseGenerationSchema,
     prompt: "Define un curso introductorio de Python para adultos: exactamente tres nombres, tres objetivos iniciados con Identificar, Aplicar y Analizar, y una descripción de más de 30 caracteres. No generes módulos.",
     abortSignal: AbortSignal.timeout(60_000), maxRetries: 0,
@@ -26,7 +26,7 @@ try {
 
   const candidates = await searchLessonCandidates({
     client: new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0 }),
-    model: process.env.PIPELINE_SMOKE_SEARCH_MODEL || "gpt-5.4-mini",
+    model: process.env.PIPELINE_SMOKE_SEARCH_MODEL || "gpt-6.1-terra",
     courseContext: "Curso de fundamentos de Python.",
     lessons: [{ lesson_id: "smoke-1", lesson_title: "Listas y diccionarios de Python",
       lesson_objective: "Distinguir listas y diccionarios usando documentación oficial.",
@@ -44,7 +44,7 @@ try {
     sources: selected.map(({ candidate, validation }, index) => ({ id: `source-${index}`,
       source_title: candidate.title, source_ref: validation.normalizedUrl, cobertura_completa: true })),
     iteration_number: 1,
-  }, "[Live smoke]", [process.env.PIPELINE_SMOKE_MATERIALS_MODEL || "gemini-3.6-flash", "gemini-3.5-flash"],
+  }, "[Live smoke]", [process.env.PIPELINE_SMOKE_MATERIALS_MODEL || "gpt-6.1-terra", "gpt-6.2-sol"],
   { temperature: 0.7, thinkingLevel: "medium" }, undefined, undefined, undefined, Date.now() + 90_000);
   assert.ok(result.success, "Material generation failed; inspect provider diagnostics.");
   assert.ok(result.content.components.EXERCISE);

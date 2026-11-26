@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useCourseDelivery } from "@/domains/course-delivery/hooks/useCourseDelivery";
+import { retryUnclaimedDocumentaryBaseAction } from "@/domains/course-sources/course-source-base.action";
 import {
   getArtifactGenerationSnapshotAction,
   regenerateArtifactAction,
@@ -25,6 +26,7 @@ import type {
 } from "@/domains/publication/types/publication.types";
 import { PRODUCTION_THEME } from "@/domains/materials/components/production-asset-ui";
 import { ArtifactStageContent } from "./ArtifactStageContent";
+import { ArtifactBaseProgress } from "./ArtifactBaseProgress";
 import { ArtifactToast } from "./ArtifactToast";
 import { ArtifactWorkflowHeader } from "./ArtifactWorkflowHeader";
 import { ArtifactWorkflowStepper } from "./ArtifactWorkflowStepper";
@@ -77,6 +79,8 @@ export default function ArtifactClientView({
   );
   const [feedback, setFeedback] = useState("");
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [generationSyncFailed, setGenerationSyncFailed] = useState(false);
+  const [retryingDocumentaryBase, setRetryingDocumentaryBase] = useState(false);
   const [reviewState, setReviewState] = useState<
     "pending" | "approved" | "rejected"
   >(
@@ -100,7 +104,7 @@ export default function ArtifactClientView({
   }>({ show: false, message: "", type: "info" });
 
   const snapshot = buildWorkflowSnapshot(artifact, publicationRequest);
-  const delivery = useCourseDelivery(artifact.id);
+  const delivery = useCourseDelivery(artifact.id, initialArtifact.temario?.state || "");
   const hasSessions = Boolean(delivery.snapshot && delivery.snapshot.workspace.document.config.mode !== "NEXUS");
   const coursePlanApproved = hasSessions ? Boolean(delivery.snapshot?.readiness.planReady) : isInstructionalPlanApproved(snapshot);
   const courseMaterialsApproved = hasSessions ? Boolean(delivery.snapshot?.readiness.materialsReady) : isMaterialsApprovedFromSnapshot(snapshot);
@@ -137,31 +141,35 @@ export default function ArtifactClientView({
   }, [artifact]);
 
   useEffect(() => {
-    if (artifact.state === "GENERATING" || isRegenerating) {
+    if (artifact.state === "GENERATING") {
       let cancelled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const syncGenerationSnapshot = async () => {
+        let continuePolling = true;
         try {
           const result = await getArtifactGenerationSnapshotAction(artifact.id);
-          if (!result.success || cancelled) return;
+          if (cancelled) return;
+          setGenerationSyncFailed(!result.success);
+          if (!result.success) return;
           setArtifact((current) => ({ ...current, ...result.artifact }));
-        } catch (error) {
-          // A transient server-action transport failure must not interrupt the
-          // user's current workspace. The next polling interval can retry.
-          if (!cancelled) {
-            console.warn("[ArtifactDetail] Generation snapshot sync failed", error);
+          continuePolling = result.artifact.state === "GENERATING";
+          if (result.artifact.state === "APPROVED") setReviewState("approved");
+        } catch {
+          if (!cancelled) setGenerationSyncFailed(true);
+        } finally {
+          if (!cancelled && continuePolling) {
+            timer = setTimeout(() => void syncGenerationSnapshot(), ARTIFACT_REFRESH_POLL_INTERVAL_MS);
           }
         }
       };
 
       void syncGenerationSnapshot();
-      const interval = setInterval(() => void syncGenerationSnapshot(), ARTIFACT_REFRESH_POLL_INTERVAL_MS);
-
       return () => {
         cancelled = true;
-        clearInterval(interval);
+        clearTimeout(timer);
       };
     }
-  }, [artifact.id, artifact.state, isRegenerating]);
+  }, [artifact.id, artifact.state]);
 
   useEffect(() => {
     const enabled = currentStep === 7;
@@ -233,6 +241,21 @@ export default function ArtifactClientView({
     } catch (error) {
       console.error(error);
       showToast("Error de conexiҳn", "error");
+    }
+  };
+
+  const handleRetryDocumentaryBase = async () => {
+    const runId = artifact.generation_metadata?.run_id;
+    if (!runId || retryingDocumentaryBase) return;
+    setRetryingDocumentaryBase(true);
+    try {
+      const result = await retryUnclaimedDocumentaryBaseAction({ artifactId: artifact.id, runId });
+      if (!result.success) showToast(result.error, "error");
+      setArtifact(current => ({ ...current, can_retry_documentary_base: false }));
+    } catch {
+      showToast("No se confirmó el reintento. Comprueba el estado de Base.", "error");
+    } finally {
+      setRetryingDocumentaryBase(false);
     }
   };
 
@@ -392,11 +415,20 @@ export default function ArtifactClientView({
         />
       </div>
 
+      <ArtifactBaseProgress artifact={artifact} syncFailed={generationSyncFailed} showResult={currentStep === 1}
+        onRetry={() => void handleRetryDocumentaryBase()} retrying={retryingDocumentaryBase} />
       <div className={isAssemblyStudio ? "min-h-0 flex-1 overflow-hidden" : ""}>
         <ArtifactStageContent
           delivery={delivery}
           activeTab={activeTab}
           artifact={artifact}
+          onDocumentaryBaseStarted={() => {
+            setGenerationSyncFailed(false);
+            setArtifact(current => ({
+              ...current, state: "GENERATING",
+              generation_metadata: { ...current.generation_metadata, base_progress: null },
+            }));
+          }}
           basePath={basePath}
           currentStep={currentStep}
           editedContent={editedContent}

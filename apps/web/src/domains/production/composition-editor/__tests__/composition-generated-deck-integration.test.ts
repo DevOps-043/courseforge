@@ -31,7 +31,7 @@ async function scenario(withImage = false) {
 
 describe("generated material to native editing integration", () => {
   it("preserves approved narrative associations only for the exact current presentation, not stale slide indexes", async () => {
-    const fixture = await scenario();
+    const fixture = await scenario(true);
     const source = buildSceneVisualCatalog(fixture.verified.presentationSource())!;
     const scriptHash = "a".repeat(64);
     const scene: CompositionNarrativeScene = { id: "scene-one", order: 1, scriptText: "Narración", scriptHash,

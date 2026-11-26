@@ -1,5 +1,29 @@
 # Verificación local
 
+## Doble confirmación con fuentes
+
+- La suite SQL en PGlite pasó 28 casos. El caso añadido verifica manifiesto
+  obsoleto, acceso ajeno, bloqueo de roles de navegador, reversión de datos y
+  cola ante una FK protegida y eliminación de un curso con fuente reservada,
+  documento histórico, importación y recibo de Base. Usa fixtures históricos y
+  migraciones documentales reales.
+- La suite dirigida de autoridad pasó 10 casos. Verifica rechazo de solicitudes
+  sin confirmación, rol insuficiente, resolución de organización en servidor,
+  respuesta segura y metadatos sin rutas privadas.
+- La suite web de fuentes pasó 63 casos, incluida la limpieza que conserva
+  la cola si Storage falla y solo acusa las rutas reclamadas.
+- Chrome a 390 × 420 verificó el flujo con componentes y CSS reales y APIs
+  simuladas: dos pasos, foco en la revisión, lista, acciones de descarga,
+  rechazo de lista obsoleta y retiro de la tarjeta tras confirmar el éxito.
+- `npm run typecheck`, ESLint dirigido, `npm run test:security-boundaries`,
+  `npm run db:migrations:check`, `npm run docs:check`,
+  `npm run openspec:validate` y `git diff --check` terminaron con salida 0.
+- Pendiente en un entorno autorizado: validar descargas y eliminación física
+  desde un curso prescindible con Supabase Storage real, así como el ejecutor
+  programado y los tiempos de elegibilidad. No se aplicaron migraciones remotas.
+
+## Borrado anterior
+
 El esquema real de fuentes, ejecutado en PGlite, reprodujo el fallo
 `23503` de `course_source_settings_artifact_id_fkey` al intentar borrar
 un borrador documental recién creado. La acción previa enviaba los borrados

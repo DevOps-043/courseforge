@@ -7,13 +7,17 @@ import { agendaIssues, completeSessionPlan, materialIssues, sessionSources } fro
 import { deliveryHash } from "../lib/delivery-hash";
 import { readDeliveryContext, saveDeliveryWorkspace, type DeliveryContext } from "./delivery-repository";
 import { resolveDeliverySettings } from "./delivery-settings";
+import { hybridRouteSchema } from "../types/delivery.schemas";
+import { hybridRouteIssues, routeIssues } from "../lib/hybrid-route";
+import { z } from "zod";
+import { academyScope, assertAcademyPlans } from "../lib/academy-scope";
+import { assertAcademyMaterialsCurrent } from "./academy-scope.server";
 import { deliveryReadiness, planContentHash, sessionPlanInputHash, sessionMaterialInputHash } from "./delivery-readiness";
-import { getInstructionalPlanCompletenessIssues } from "../../plan/lib/plan-completeness";
 import { updateInstructionalPlanStatusAction } from "../../plan/actions/plan.actions";
 import { applyMaterialsQaDecisionAction, submitMaterialsToQaAction } from "../../materials/actions/materials.actions";
 
 function requireValid(issues: string[]) { if (issues.length) throw new Error(issues.join(" ")); }
-export async function editDelivery(admin: SupabaseClient, workspace: DeliveryWorkspace, kind: "CONFIG" | "AGENDA" | "PLAN" | "MATERIALS", value: unknown, sessionId?: string) {
+export async function editDelivery(admin: SupabaseClient, workspace: DeliveryWorkspace, kind: "CONFIG" | "AGENDA" | "HYBRID_ROUTE" | "PLAN" | "MATERIALS", value: unknown, sessionId?: string) {
   const document = structuredClone(workspace.document);
   const context = await readDeliveryContext(admin, workspace.artifact_id, workspace.organization_id);
   if (kind === "CONFIG") {
@@ -23,9 +27,21 @@ export async function editDelivery(admin: SupabaseClient, workspace: DeliveryWor
     document.staleMaterials = document.agenda.map(session => session.id);
   } else {
     if (!context.syllabusApproved || (document.syllabusHash && document.syllabusHash !== context.syllabusHash)) throw new Error("El temario cambió. Regenera la agenda antes de editar sus dependencias.");
-    if (kind === "AGENDA") {
+    if (kind === "HYBRID_ROUTE") {
+      if (document.config.mode !== "HYBRID") throw new Error("El recorrido combinado requiere modalidad híbrida.");
+      const parsed = z.object({ agenda: agendaSchema, route: hybridRouteSchema }).strict().parse(value);
+      requireValid(agendaIssues(parsed.agenda, context.lessons, document.config.sessionCount, false));
+      requireValid(hybridRouteIssues(parsed.route, parsed.agenda, context.lessons));
+      if (document.hybridRoute && deliveryHash(parsed.agenda) === deliveryHash(document.agenda) && deliveryHash(parsed.route) === deliveryHash(document.hybridRoute)) return workspace.revision;
+      document.agenda = parsed.agenda;
+      document.hybridRoute = parsed.route;
+      document.syllabusHash = context.syllabusHash;
+      document.stalePlans = document.agenda.map(session => session.id);
+      document.staleMaterials = document.agenda.map(session => session.id);
+    } else if (kind === "AGENDA") {
       document.agenda = agendaSchema.parse(value);
-      requireValid(agendaIssues(document.agenda, context.lessons, document.config.sessionCount));
+      requireValid(agendaIssues(document.agenda, context.lessons, document.config.sessionCount, document.config.mode !== "HYBRID"));
+      if (document.hybridRoute) requireValid(hybridRouteIssues(document.hybridRoute, document.agenda, context.lessons));
       document.syllabusHash = context.syllabusHash;
       for (const session of document.agenda) {
         const previous = workspace.document.agenda.find(item => item.id === session.id);
@@ -65,13 +81,15 @@ export async function approveDelivery(admin: SupabaseClient, workspace: Delivery
   if (document.agenda.some(session => document.stalePlans.includes(session.id))) throw new Error("Hay planes de sesión pendientes de actualizar.");
   if (document.agenda.some(session => document.planInputHashes[session.id] !== sessionPlanInputHash(document, session, context))) throw new Error("Las entradas del plan cambiaron. Actualiza las sesiones afectadas.");
   if (!context.syllabusApproved || document.syllabusHash !== context.syllabusHash) throw new Error("El plan no corresponde al temario aprobado actual.");
-  if (document.config.mode === "HYBRID") requireValid(getInstructionalPlanCompletenessIssues(context.modules, context.nexus));
+  if (document.config.mode === "HYBRID") assertAcademyPlans(academyScope(document, context.modules), context.nexus);
   if (operation === "MATERIALS") {
+    if (document.config.mode === "HYBRID") await assertAcademyMaterialsCurrent(admin, workspace.artifact_id);
     if (!deliveryReadiness(document, context).planReady || context.curation?.state !== "PHASE2_APPROVED") throw new Error("Aprueba el plan y la curación vigentes antes de aprobar materiales.");
     for (const session of document.agenda) {
       if (document.staleMaterials.includes(session.id)) throw new Error("Hay materiales de sesión pendientes de actualizar.");
       if (document.materialInputHashes[session.id] !== sessionMaterialInputHash(document, session, context)) throw new Error("Las fuentes o el plan de una sesión cambiaron. Actualiza sus materiales.");
       if (!document.materials[session.id]) throw new Error(`Faltan materiales de ${session.title}.`);
+      if (!document.materials[session.id].documents) throw new Error(`Actualiza los documentos de ${session.title} antes de aprobar materiales.`);
       requireValid(materialIssues(document.plans[session.id], document.materials[session.id], sessionSources(session, context.sources).map(source => source.id)));
     }
   }
@@ -95,6 +113,7 @@ export async function approveDelivery(admin: SupabaseClient, workspace: Delivery
   }
   requireValid(completeSessionPlan(document, context.lessons));
   if (!context.syllabusApproved || document.syllabusHash !== context.syllabusHash) throw new Error("El temario cambió durante la aprobación.");
+  if (document.config.mode === "HYBRID") assertAcademyPlans(academyScope(document, context.modules), context.nexus);
   const approval = {
     revision: workspace.revision, userId, syllabus: context.syllabusHash, nexus: context.nexusHash,
     sources: context.sourcesHash, content: operation === "PLAN" ? planContentHash(document) : deliveryHash(document.materials),
@@ -114,7 +133,7 @@ export async function approveDelivery(admin: SupabaseClient, workspace: Delivery
   if (error) throw new Error("El curso cambió durante la revisión. Actualiza y vuelve a comprobarlo.");
   return data;
 }
-export interface DeliveryRunUnit { id: string; ready: boolean; model?: string }
+export interface DeliveryRunUnit { id: string; ready: boolean; model?: string; error?: string; attempts?: number; generating?: boolean; retryable?: boolean }
 export interface DeliveryRunSnapshot {
   document: DeliveryWorkspace["document"];
   context: Pick<DeliveryContext, "title" | "modules" | "lessons" | "syllabusHash" | "nexusHash" | "sourcesHash" | "sources">;
@@ -125,10 +144,14 @@ export async function reserveDeliveryRun(admin: SupabaseClient, workspace: Deliv
   const document = workspace.document;
   if (document.config.mode === "NEXUS") throw new Error("Selecciona modalidad sincrónica o híbrida antes de generar sesiones.");
   if (!context.syllabusApproved) throw new Error("Aprueba el temario antes de generar sesiones.");
+  if (operation === "AGENDA" && document.config.mode === "HYBRID" && document.hybridRoute) throw new Error("Edita el recorrido híbrido guardado antes de sustituir su distribución.");
   if (!context.lessons.length || context.lessons.length > DELIVERY_LIMITS.lessons) throw new Error("El temario supera los límites de lecciones admitidos o está vacío.");
   if (operation === "AGENDA" && (document.config.sessionCount || context.modules.length) > DELIVERY_LIMITS.sessions) throw new Error("Configura una cantidad de sesiones dentro del límite antes de generar la agenda.");
   if (operation !== "AGENDA" && document.syllabusHash !== context.syllabusHash) throw new Error("Regenera la agenda: el temario cambió.");
-  if (operation === "PLAN") requireValid(agendaIssues(document.agenda, context.lessons, document.config.sessionCount));
+  if (operation === "PLAN") {
+    requireValid(agendaIssues(document.agenda, context.lessons, document.config.sessionCount, document.config.mode !== "HYBRID"));
+    requireValid(routeIssues(document, context.lessons));
+  }
   if (operation === "MATERIALS") {
     if (!deliveryReadiness(document, context).planReady || context.curation?.state !== "PHASE2_APPROVED") throw new Error("Se requieren plan y fuentes aprobados y vigentes.");
     for (const session of document.agenda) {
@@ -143,7 +166,7 @@ export async function reserveDeliveryRun(admin: SupabaseClient, workspace: Deliv
   const units: DeliveryRunUnit[] = operation === "AGENDA" ? [{ id: randomUUID(), ready: false }] :
     document.agenda.map(session => ({ id: session.id, ready: operation === "PLAN"
       ? Boolean(document.plans[session.id]) && !document.stalePlans.includes(session.id) && document.planInputHashes[session.id] === sessionPlanInputHash(document, session, context)
-      : Boolean(document.materials[session.id]) && !document.staleMaterials.includes(session.id) && document.materialInputHashes[session.id] === sessionMaterialInputHash(document, session, context) }));
+      : Boolean(document.materials[session.id]?.documents) && !document.staleMaterials.includes(session.id) && document.materialInputHashes[session.id] === sessionMaterialInputHash(document, session, context) }));
   if (units.every(unit => unit.ready)) throw new Error("Las sesiones ya tienen contenido. Edita la unidad que requiere cambios o modifica su agenda antes de generar pendientes.");
   const { data, error } = await admin.rpc("reserve_course_delivery_run", {
     p_artifact_id: workspace.artifact_id, p_organization_id: workspace.organization_id, p_revision: workspace.revision,

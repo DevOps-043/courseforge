@@ -4,7 +4,7 @@ import JSZip from "jszip";
 import { normalizeGeneratedBundleSpec } from "../ai-spec-normalizer.service";
 import { buildBundleBlueprint } from "../blueprint.service";
 import { buildControlledBundleZip } from "../generation.service";
-import { resolveGeminiBundleModel, resolveOpenAIBundleModel } from "../provider-model.service";
+import { resolveOpenAiTextModels } from "../../../../shared/ai/text-model-provider";
 import { buildSpecFromConversation } from "../spec.service";
 
 const STAGED_PROMPT = [
@@ -91,19 +91,10 @@ describe("Bundle Agent regression coverage", () => {
     assert.deepEqual(normalized.authoringIntent, fallback.authoringIntent);
   });
 
-  it("never sends an OpenAI model name to Gemini", () => {
-    assert.equal(resolveGeminiBundleModel({
-      configuredModel: "gpt-5.6-terra",
-      configuredFallback: "gemini-2.5-flash",
-    }), "gemini-2.5-flash");
-    assert.equal(resolveGeminiBundleModel({
-      configuredModel: "gpt-5.6-terra",
-      configuredFallback: "gpt-4.1-mini",
-      environmentModel: "gemini-2.0-flash",
-    }), "gemini-2.0-flash");
-    assert.equal(resolveOpenAIBundleModel({
-      configuredModel: "gemini-2.5-flash",
-      configuredFallback: "gpt-4.1-mini",
-    }), "gpt-4.1-mini");
+  it("resuelve modelos históricos de producción con OpenAI", () => {
+    assert.deepEqual(resolveOpenAiTextModels("gemini-2.5-flash", "gpt-4.1-mini"), {
+      model: "gpt-6.1-terra",
+      fallbackModel: "gpt-4.1-mini",
+    });
   });
 });

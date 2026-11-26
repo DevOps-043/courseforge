@@ -1,5 +1,6 @@
 "use client";
 
+import { EngineSelect } from "@/components/ui/EngineSelect";
 import { useEffect, useId, useRef, useState } from "react";
 import type { CompositionHtmlEditorialHost } from "@/domains/production/composition-editor/composition-html-editing-native-host.client";
 import type { HtmlSnapshotLocatorScope } from "@/domains/production/composition-editor/composition-html-snapshot-locator.client";
@@ -87,14 +88,21 @@ export function CompositionHtmlInitializationPanel({ scope, target, host }: {
       {catalog.view && catalog.view.templates.length === 0 && <p role="status">No hay una plantilla instalada compatible. Un administrador debe preparar una antes de continuar. No se modificó la diapositiva.</p>}
       {catalog.view && catalog.view.templates.length > 0 && <>
         <label htmlFor={templateInputId}>Plantilla instalada para este HTML</label>
-        <select id={templateInputId} value={choice ? selectedTemplate : ""} onChange={event => setSelectedTemplate(event.target.value)}
-          disabled={busy || catalog.busy} required className="w-full rounded border p-1">
-          <option value="">Selecciona una plantilla</option>
-          {catalog.view.templates.map(template => <option key={JSON.stringify([template.templateId, template.templateVersion])}
-            value={JSON.stringify([template.templateId, template.templateVersion])}>
-            {template.templateId} · v{template.templateVersion} · {template.fieldCount} campos
-          </option>)}
-        </select>
+        <EngineSelect
+          id={templateInputId}
+          disabled={busy || catalog.busy}
+          required
+          size="compact"
+          value={choice ? selectedTemplate : ""}
+          onValueChange={setSelectedTemplate}
+          options={[
+            { value: "", label: "Selecciona una plantilla" },
+            ...catalog.view.templates.map((template) => ({
+              value: JSON.stringify([template.templateId, template.templateVersion]),
+              label: `${template.templateId} · v${template.templateVersion} · ${template.fieldCount} campos`,
+            })),
+          ]}
+        />
       </>}
       <button type="submit" data-primary="true" disabled={busy || catalog.busy || !choice || !host.initialize || Boolean(host.initialAnchor && !anchorAvailable)}>Habilitar campos con esta plantilla</button>
     </form>}

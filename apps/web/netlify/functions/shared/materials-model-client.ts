@@ -1,12 +1,10 @@
-import type { GoogleGenAI } from "@google/genai";
 import type OpenAI from "openai";
 import { ModelJsonResponseError, parseModelJsonResponse } from "../../../src/shared/ai/model-json-response";
 import { getMaterialsModelProvider } from "../../../src/shared/ai/materials-model-provider";
 import { VIDEO_GENERATION_LIMITS, VideoModelResponseError, type VideoModelRequest, type VideoModelResponse } from "../../../src/domains/materials/generation/video-generation.contracts";
-import { createGeminiClient, createOpenAiClient } from "./bootstrap";
+import { createOpenAiClient } from "./bootstrap";
 import {
   recordAiFailure,
-  recordGeminiUsage,
   recordOpenAiUsage,
   type AiUsageContext,
 } from "../../../src/shared/ai/usage-telemetry";
@@ -28,46 +26,12 @@ export function createMaterialsModelRequest(
   runtime: MaterialsModelRuntimeConfig,
   telemetry?: MaterialsModelTelemetry,
 ): VideoModelRequest {
-  let gemini: GoogleGenAI | undefined;
   let openai: OpenAI | undefined;
   return async ({ model, prompt, timeoutMs }) => {
     const provider = getMaterialsModelProvider(model);
-    if (provider === "gemini") return requestGeminiJson(gemini ||= createGeminiClient(), model, prompt, runtime, timeoutMs, telemetry);
     if (provider === "openai") return requestOpenAiJson(openai ||= createOpenAiClient(), model, prompt, runtime, timeoutMs, telemetry);
     throw new Error("UNSUPPORTED_MATERIALS_MODEL: El modelo configurado no tiene proveedor implementado.");
   };
-}
-
-export async function requestGeminiJson(
-  client: GoogleGenAI,
-  model: string,
-  prompt: string,
-  runtime: MaterialsModelRuntimeConfig,
-  timeoutMs: number = VIDEO_GENERATION_LIMITS.requestTimeoutMs,
-  telemetry?: MaterialsModelTelemetry,
-): Promise<VideoModelResponse> {
-  await checkSourceSnapshot(telemetry);
-  const startedAt = Date.now();
-  let response;
-  try {
-    response = await client.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        temperature: runtime.temperature,
-        maxOutputTokens: VIDEO_GENERATION_LIMITS.maximumOutputTokens,
-        responseMimeType: "application/json",
-        abortSignal: AbortSignal.timeout(timeoutMs),
-        httpOptions: { timeout: timeoutMs },
-      },
-    });
-  } catch (error) {
-    if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "gemini", startedAt });
-    throw privateSourceFailure(error, telemetry);
-  }
-  if (telemetry) await recordGeminiUsage({ ...telemetry, model, response, startedAt });
-  const finishReason = response.candidates?.[0]?.finishReason;
-  return parseResponse(response.text, finishReason, response.usageMetadata?.candidatesTokenCount);
 }
 
 export async function requestOpenAiJson(
@@ -86,8 +50,9 @@ export async function requestOpenAiJson(
       model,
       input: prompt,
       max_output_tokens: VIDEO_GENERATION_LIMITS.maximumOutputTokens,
-      reasoning: { effort: normalizeReasoningEffort(runtime.thinkingLevel) },
+      reasoning: { effort: normalizeReasoningEffort(runtime.thinkingLevel, model) },
       text: { format: { type: "json_object" } },
+      store: false,
     }, { timeout: timeoutMs, maxRetries: 0, signal: AbortSignal.timeout(timeoutMs) });
   } catch (error) {
     if (telemetry) await recordAiFailure({ ...telemetry, error, model, provider: "openai", startedAt });
@@ -120,8 +85,10 @@ async function checkSourceSnapshot(telemetry?: MaterialsModelTelemetry) {
   if (current.error || current.data !== true) throw new Error("SOURCE_GENERATION_STALE: Las fuentes cambiaron. Detén esta ejecución y actualiza antes de reintentar.");
 }
 
-function normalizeReasoningEffort(value: string): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
-  switch (value.trim().toLowerCase()) {
+function normalizeReasoningEffort(value: string, model: string): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
+  const effort = value.trim().toLowerCase();
+  if (/^gpt-6\./i.test(model) && (effort === "none" || effort === "minimal")) return "low";
+  switch (effort) {
     case "none": return "none";
     case "minimal": return "minimal";
     case "low": return "low";

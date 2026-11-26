@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { assertAcademyComponentCurrent } from "../../course-delivery/services/academy-scope.server";
 import { assertCourseSourcePublication } from "../../course-sources/course-source-publication";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertProviderSupportsJobType } from "../providers/production-provider-registry";
@@ -134,6 +135,7 @@ export async function resolveProductionComponentContext(params: {
   if (!material?.artifact_id) {
     throw new Error("No se pudo resolver el artefacto del componente.");
   }
+  await assertAcademyComponentCurrent(supabase, material.artifact_id, lesson?.lesson_id || "", component.assets);
 
   return {
     artifactId: material.artifact_id,
@@ -245,7 +247,7 @@ export async function createOrReuseProductionJob(
       let concurrentQuery = supabase
         .from("production_jobs")
         .select("id, attempt, output_snapshot, provider_job_id, status")
-        .eq("idempotency_key", params.idempotencyKey)
+        .eq("idempotency_key", idempotencyKey)
         .eq("job_type", params.jobType)
         .eq("provider", params.provider);
       concurrentQuery = params.context.organizationId
@@ -302,6 +304,45 @@ export async function markProductionJobRunning(params: {
   }
 }
 
+/** Una entrega repetida del worker no vuelve a consumir el proveedor. */
+export async function claimQueuedSlideJob(params: { componentId: string; jobId: string; supabase: SupabaseClient }) {
+  const now = new Date().toISOString();
+  const { data, error } = await params.supabase.from("production_jobs")
+    .update({ status: PRODUCTION_JOB_STATUSES.RUNNING, started_at: now, updated_at: now })
+    .eq("id", params.jobId)
+    .eq("material_component_id", params.componentId)
+    .eq("job_type", PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION)
+    .in("status", [PRODUCTION_JOB_STATUSES.PENDING, PRODUCTION_JOB_STATUSES.QUEUED])
+    .select("id").maybeSingle();
+  if (error) throw error;
+  return Boolean(data?.id);
+}
+
+export const SLIDE_DISPATCH_RECOVERY_MS = 90_000;
+
+/** Sólo un solicitante despacha; una cola antigua puede reenviar el mismo job. */
+export async function reserveSlideJobDispatch(params: { componentId: string; jobId: string; status: string; supabase: SupabaseClient; now?: number }) {
+  if (![PRODUCTION_JOB_STATUSES.PENDING, PRODUCTION_JOB_STATUSES.QUEUED].some(status => status === params.status)) return false;
+  const now = params.now ?? Date.now();
+  let query = params.supabase.from("production_jobs")
+    .update({ status: PRODUCTION_JOB_STATUSES.QUEUED, updated_at: new Date(now).toISOString() })
+    .eq("id", params.jobId).eq("material_component_id", params.componentId)
+    .eq("job_type", PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION).eq("status", params.status);
+  if (params.status === PRODUCTION_JOB_STATUSES.QUEUED) query = query.lt("updated_at", new Date(now - SLIDE_DISPATCH_RECOVERY_MS).toISOString());
+  const { data, error } = await query.select("id").maybeSingle();
+  if (error) throw error;
+  return Boolean(data?.id);
+}
+
+/** Un fallo de transporte no sustituye un estado ya reclamado por el worker. */
+export async function failQueuedSlideDispatch(params: { componentId: string; jobId: string; supabase: SupabaseClient }) {
+  const { error } = await params.supabase.from("production_jobs")
+    .update({ status: PRODUCTION_JOB_STATUSES.FAILED, failed_at: new Date().toISOString(), provider_error: { code: "SLIDES_DISPATCH_FAILED", message: "No se pudo confirmar el despacho de slides. Consulta el estado antes de reintentar." } })
+    .eq("id", params.jobId).eq("material_component_id", params.componentId)
+    .eq("job_type", PRODUCTION_JOB_TYPES.SLIDE_DECK_GENERATION).eq("status", PRODUCTION_JOB_STATUSES.QUEUED);
+  if (error) throw error;
+}
+
 export async function completeBrollPromptProductionJob(
   supabase: SupabaseClient,
   params: CompleteBrollPromptJobParams,
@@ -329,7 +370,7 @@ export async function completeBrollPromptProductionJob(
       module_id: params.context.moduleId,
       organization_id: params.context.organizationId,
       production_job_id: params.jobId,
-      provider: PRODUCTION_PROVIDERS.GEMINI,
+      provider: PRODUCTION_PROVIDERS.OPENAI,
       qa_status: PRODUCTION_QA_STATUSES.GENERATED,
     },
     ...(slideDeckSpec
