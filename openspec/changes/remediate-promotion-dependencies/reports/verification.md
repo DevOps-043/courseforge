@@ -80,3 +80,11 @@ registro consultado, no ausencia general de vulnerabilidades.
 
 La compilación y QA en Linux/Node 22 y el build desplegable corresponden al CI
 del nuevo commit; hasta que terminen no se acredita la promoción a main.
+
+## Reproducibilidad de instalación
+
+CI del commit `9524e2e9` falló en `npm ci` antes de las pruebas: su resolvedor
+rechazó las versiones de los overrides anidados del lockfile. Localmente
+`npm ci --dry-run --ignore-scripts` con npm 11.19.0 termina en código 0.
+Se fija npm 11.19.0 en packageManager, CI y Netlify, manteniendo `npm ci` activo.
+La instalación real en Linux debe confirmarse en el siguiente CI.

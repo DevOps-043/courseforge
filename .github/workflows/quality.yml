@@ -30,6 +30,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Alinear npm con el lockfile verificado
+        run: npm install --global npm@11.19.0
       - run: npm ci
       - name: Verificar arnés de desarrollo
         run: npm run verify:harness
