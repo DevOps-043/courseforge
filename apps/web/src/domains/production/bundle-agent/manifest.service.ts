@@ -1,4 +1,5 @@
 import { APP_CONFIG } from "../../../config/app";
+import { REMOTION_VERSION } from "../../../config/remotion";
 import type { BundleAgentSpec } from "./types";
 import type { BundleBlueprint } from "./blueprint.service";
 import {
@@ -93,6 +94,6 @@ export function buildBundleManifest(spec: BundleAgentSpec, blueprint: BundleBlue
       visualVariantId: typeof spec.defaultProps.visualVariantId === "string" ? spec.defaultProps.visualVariantId : selectedVariant.id,
     },
     editableLayers: blueprint.editableLayers,
-    remotionVersion: "4.0.484",
+    remotionVersion: REMOTION_VERSION,
   };
 }

@@ -7,6 +7,17 @@ Alcance: editor nativo, documento versionado, previews, snapshots ZIP, entrega d
 
 ## 1. Regla de mantenimiento
 
+### Dependencias de producción verificadas (2026-11-26)
+
+Los paquetes de Remotion se actualizan juntos a `4.0.547`. La constante en
+`apps/web/src/config/remotion.ts` determina la versión de los manifiestos y
+dependencias de bundles nuevos; una regresión la compara con el runtime instalado.
+Los bundles históricos no se reescriben. Un servicio de render externo conserva
+su propia instalación y requiere verificar compatibilidad antes de usar estos
+bundles. Next y Zod se actualizan por seguridad, sin cambiar permisos, documento
+canónico ni el bloqueo de publicación híbrida.
+[Alcance y verificación](../../openspec/changes/remediate-promotion-dependencies/design.md).
+
 ### Campos de diapositivas desde Herramientas (2026-11-24)
 
 El monitor integra preparación y recuperación editorial en Herramientas → Campos

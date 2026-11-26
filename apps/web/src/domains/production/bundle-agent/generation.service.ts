@@ -1,4 +1,5 @@
 import { APP_CONFIG } from "../../../config/app";
+import { REMOTION_VERSION } from "../../../config/remotion";
 import crypto from "crypto";
 import JSZip from "jszip";
 import { DEFAULT_BUNDLE_AGENT_CREATIVE_BRIEF, bundleAgentSpecSchema, type BundleAgentSpec } from "./types";
@@ -13,8 +14,8 @@ function buildPackageJson() {
     dependencies: {
       react: "19.2.3",
       "react-dom": "19.2.3",
-      "@remotion/media": "4.0.484",
-      remotion: "4.0.484",
+      "@remotion/media": REMOTION_VERSION,
+      remotion: REMOTION_VERSION,
     },
   };
 }

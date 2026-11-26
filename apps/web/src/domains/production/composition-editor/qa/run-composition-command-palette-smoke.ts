@@ -98,7 +98,13 @@ async function main() {
 }
 
 async function dispatchKey(client: CompositionQaCdpClient, key: string, code: string, modifiers: number) {
-  await client.send("Input.dispatchKeyEvent", { code, key, modifiers, type: "rawKeyDown", windowsVirtualKeyCode: virtualKeyCode(key) });
+  // Enter sin texto solo genera keydown: no activa el botón nativo en Chromium.
+  const enterText = key === "Enter" && modifiers === 0 ? "\r" : undefined;
+  await client.send("Input.dispatchKeyEvent", {
+    code, key, modifiers, type: enterText ? "keyDown" : "rawKeyDown",
+    ...(enterText ? { text: enterText, unmodifiedText: enterText } : {}),
+    windowsVirtualKeyCode: virtualKeyCode(key),
+  });
   await client.send("Input.dispatchKeyEvent", { code, key, modifiers, type: "keyUp", windowsVirtualKeyCode: virtualKeyCode(key) });
 }
 

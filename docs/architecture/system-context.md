@@ -262,7 +262,7 @@ Reglas importantes:
 - No usar `RENDER_PROVIDER` como evidencia de un proveedor activo: verificar el consumidor vigente.
 - En produccion local/Cloud Run se requieren timeouts altos para renders largos.
 - Lambda requiere region, function name, serve URL y bucket.
-- Templates externos deben pasar validacion, versionado, aprobacion y, para Lambda, build cloud compatible con Remotion `4.0.484`.
+- Templates externos deben pasar validacion, versionado y aprobacion. Los nuevos bundles usan Remotion `4.0.547`, alineado con `apps/web/package.json` y `apps/web/src/config/remotion.ts`. Un render externo requiere verificar su build y runtime compatibles; actualizar dependencias locales no actualiza servicios cloud ni certifica bundles históricos.
 - El API redacta secretos en logs y diagnosticos.
 
 ## Importacion SCORM
