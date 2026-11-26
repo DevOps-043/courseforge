@@ -107,4 +107,3 @@ Para esos supuestos, Actions más HeyGen suman USD 1.272 por video. Falta añadi
 ## 6. Mejoras adicionales recomendadas
 
 Orden de inversión: propuesta de cortes y captions en Ensamble, después estilos nativos, después ampliación de formatos y volumen. Abrir OpenSpec al iniciar la implementación para registrar el contrato, los escenarios y la evidencia. Activar por organización y detener nuevos despachos desde el flag si el piloto falla. Conservar versiones, propuestas y la auditoría para terminar o cancelar jobs ya aceptados.
-
