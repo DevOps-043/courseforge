@@ -1,5 +1,7 @@
 'use client';
 
+import { useId } from 'react';
+
 import {
   CheckCircle2,
   Film,
@@ -18,6 +20,7 @@ interface PublicationHeaderProps {
   status?: string;
   profile?: PublicationProfile;
   isReady: boolean;
+  publicationBlock: string | null;
   metadataCompleteCount: number;
   selectedLessonsCount: number;
   selectableLessonsCount: number;
@@ -43,6 +46,7 @@ export function PublicationHeader({
   status,
   profile,
   isReady,
+  publicationBlock,
   metadataCompleteCount,
   selectedLessonsCount,
   selectableLessonsCount,
@@ -53,6 +57,7 @@ export function PublicationHeader({
   onSaveDraft,
   onPublish,
 }: PublicationHeaderProps) {
+  const blockId = useId();
   return (
     <header className={styles.releaseHeader}>
       <div className={styles.releaseIdentity}>
@@ -129,6 +134,7 @@ export function PublicationHeader({
             type="button"
             onClick={onPublish}
             disabled={!isReady || isSaving || isPublishing}
+            aria-describedby={publicationBlock ? blockId : undefined}
             className={styles.primaryButton}
           >
             {isPublishing ? (
@@ -140,6 +146,7 @@ export function PublicationHeader({
           </button>
         )}
       </div>
+      {publicationBlock && <p id={blockId} role="status" className={styles.releaseBlock}>{publicationBlock}</p>}
     </header>
   );
 }

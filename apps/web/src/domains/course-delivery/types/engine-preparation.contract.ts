@@ -41,14 +41,22 @@ export const engineConductionSchema = z.object({
   }
 });
 
-export const engineSessionManifestSchema = z.object({
-  version: z.literal(1), course_id: id, revision: text(100),
+const sessionContent = z.object({
   scenes: z.array(scene).max(12),
   materials: z.array(material).max(20),
   quizzes: z.array(quiz).max(20),
   practices: z.array(z.object({ id, title: text(160), instructions: text(2000) }).strict()).max(20),
   preparation: engineConductionSchema.optional(),
-}).strict().superRefine((manifest, context) => {
+}).strict();
+
+type SessionContent = z.infer<typeof sessionContent>;
+function validateSessionContent(
+  manifest: Pick<SessionContent, 'preparation' | 'practices' | 'quizzes'> & {
+    scenes: { id: string }[];
+    materials: { id: string }[];
+  },
+  context: z.RefinementCtx,
+) {
   for (const field of ['scenes', 'materials', 'quizzes', 'practices'] as const) {
     if (new Set(manifest[field].map(item => item.id)).size !== manifest[field].length) {
       context.addIssue({ code: 'custom', path: [field], message: 'El manifiesto tiene identificadores duplicados' });
@@ -62,6 +70,23 @@ export const engineSessionManifestSchema = z.object({
   }
   if (manifest.preparation.blocks.some(block => new Set(block.practice_ids).size !== block.practice_ids.length || block.practice_ids.some(key => !practiceIds.has(key)))) {
     context.addIssue({ code: 'custom', path: ['preparation', 'blocks'], message: 'La práctica debe pertenecer a la preparación y aparecer una sola vez por bloque.' });
+  }
+}
+
+export const engineSessionManifestSchema = sessionContent.extend({
+  version: z.literal(1), course_id: id, revision: text(100),
+}).superRefine(validateSessionContent);
+
+// Plantilla previa a la programación. Los archivos se resuelven en el servidor
+// desde el paquete autorizado antes de construir el manifiesto de impartición.
+export const engineSessionTemplateSchema = sessionContent.extend({
+  scenes: z.array(scene.omit({ asset_path: true }).extend({ asset_id: id.optional() })).max(12),
+  materials: z.array(material.omit({ asset_path: true, mime: true, bytes: true }).extend({ asset_id: id })).max(20),
+  preparation: engineConductionSchema,
+}).superRefine((template, context) => {
+  validateSessionContent(template, context);
+  if (!template.preparation.documents) {
+    context.addIssue({ code: 'custom', path: ['preparation', 'documents'], message: 'Faltan los documentos de la preparación aprobada.' });
   }
 });
 export const enginePreparationSchema = z.object({

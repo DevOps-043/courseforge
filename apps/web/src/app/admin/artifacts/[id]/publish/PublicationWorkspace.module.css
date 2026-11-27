@@ -54,6 +54,11 @@
   border-radius: 1.35rem;
 }
 
+.releaseBlock {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 .releaseIdentity,
 .panelHeading,
 .releaseTitleRow,

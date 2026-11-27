@@ -37,6 +37,7 @@ interface PublicationClientViewProps {
     existingRequest?: PublicationRequestRecord | null;
     profile?: PublicationProfile;
     basePath?: string;
+    publicationBlock: string | null;
 }
 
 async function savePublicationDraftRequest(
@@ -75,6 +76,7 @@ export default function PublicationClientView({
     existingRequest,
     profile,
     basePath: _basePath = '/admin',
+    publicationBlock,
 }: PublicationClientViewProps) {
     const initialMappings = buildInitialVideoMappings(lessons, existingRequest);
     const lockedEmail = profile?.email || null;
@@ -118,7 +120,7 @@ export default function PublicationClientView({
     const missingSlug = !courseData.slug;
     const missingThumbnail = !courseData.thumbnail_url;
     const isMetadataComplete = !missingEmail && !missingSlug && !missingThumbnail;
-    const isReady = isMetadataComplete;
+    const isReady = isMetadataComplete && publicationBlock === null;
     const metadataCompleteCount =
         3 - [missingEmail, missingSlug, missingThumbnail].filter(Boolean).length;
 
@@ -241,6 +243,7 @@ export default function PublicationClientView({
     };
 
     const handlePublish = async () => {
+        if (!isReady) return;
         setIsPublishing(true);
         setIsPublishConfirmModalOpen(false);
 
@@ -312,6 +315,7 @@ export default function PublicationClientView({
                 status={existingRequest?.status}
                 profile={profile}
                 isReady={isReady}
+                publicationBlock={publicationBlock}
                 metadataCompleteCount={metadataCompleteCount}
                 selectedLessonsCount={selectedLessons.size}
                 selectableLessonsCount={selectableLessonsCount}
@@ -338,6 +342,7 @@ export default function PublicationClientView({
 
                 <aside className={styles.sideRail} aria-label="Configuración de publicación">
                     <PublicationAlerts
+                        deliveryBlocked={publicationBlock !== null}
                         missingEmail={missingEmail}
                         missingSlug={missingSlug}
                         missingThumbnail={missingThumbnail}
