@@ -17,6 +17,7 @@
 - [Propuesta de flujo sincrónico e híbrido, sin etapas adicionales](architecture/synchronous-hybrid-course-flow-analysis.md)
 - [Plan de implementación del flujo sincrónico e híbrido](architecture/synchronous-hybrid-course-implementation-plan.md)
 - [Operación del flujo sincrónico e híbrido](operations/synchronous-hybrid-courses.md)
+- [Puente híbrido Architect–Academy: estado y contrato](architecture/hybrid-publication-bridge.md)
 - [Compliance HeyGen/HyperFrames](compliance/protocolo-actualizacion-heygen-hyperframes.md)
 
 Los documentos existentes conservan sus rutas. docs/archive/ contiene guías

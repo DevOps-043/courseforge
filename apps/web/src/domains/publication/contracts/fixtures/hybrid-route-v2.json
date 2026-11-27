@@ -1,0 +1,23 @@
+{
+  "source": {
+    "platform": "courseengine", "version": "2.0",
+    "organization_id": "10000000-0000-4000-8000-000000000001", "organization_slug": "empresa-prueba",
+    "artifact_id": "10000000-0000-4000-8000-000000000002",
+    "publication_id": "10000000-0000-4000-8000-000000000003", "revision": 7
+  },
+  "delivery": {
+    "mode": "HYBRID", "approach": "COMPLEMENTARY",
+    "curriculum": [{"module_id":"module-stable","title":"Organización del trabajo","lessons":[
+      {"lesson_id":"lesson-hub","title":"Práctica en vivo"},
+      {"lesson_id":"lesson-academy","title":"Estudio individual"},
+      {"lesson_id":"lesson-shared","title":"Preparación y aplicación"}
+    ]}],
+    "academy_lesson_ids": ["lesson-academy", "lesson-shared"],
+    "sessions": [{"session_id":"10000000-0000-4000-8000-000000000004","title":"Aplicación en grupo","minutes":60,"preparation_revision":7,
+      "coverage":[{"lesson_id":"lesson-hub","review":false},{"lesson_id":"lesson-shared","review":false}]}],
+    "route": [
+      {"kind":"ASYNCHRONOUS","segment_id":"10000000-0000-4000-8000-000000000005","title":"Preparación","minutes":30,"lesson_ids":["lesson-academy","lesson-shared"]},
+      {"kind":"SYNCHRONOUS","session_id":"10000000-0000-4000-8000-000000000004"}
+    ]
+  }
+}

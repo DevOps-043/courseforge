@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { assertLegacyCourseImportCompatible } from "./contracts/hybrid-publication-route";
 
 export const publicationOutboxRequestSchema = z.object({
   correlationId: z.string().uuid().optional(),
@@ -15,7 +16,10 @@ export const publicationOutboxPayloadSchema = z.object({
     slug: z.string().trim().min(1).max(160),
   }).passthrough(),
   modules: z.array(z.unknown()),
-}).passthrough();
+}).passthrough().superRefine((payload, context) => {
+  try { assertLegacyCourseImportCompatible(payload); }
+  catch { context.addIssue({ code: "custom", message: "El outbox v1 no admite modalidades o versiones incompatibles." }); }
+});
 
 export const PUBLICATION_OUTBOX_STEP = {
   queued: "QUEUED",

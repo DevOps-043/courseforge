@@ -4,6 +4,7 @@ import { useMemo, type Dispatch, type SetStateAction } from "react";
 import dynamic from "next/dynamic";
 import { HybridPlanLayout } from "@/domains/plan/components/HybridPlanLayout";
 import { DeliveryStagePanel } from "@/domains/course-delivery/components/DeliveryStagePanel";
+import { deliveryPublicationBlock } from "@/domains/course-delivery/lib/delivery-publication-block";
 import { academyLessonId } from "@/domains/course-delivery/lib/academy-scope";
 import { deliveryProductionScope } from "@/domains/course-delivery/lib/delivery-production-scope";
 import type { CourseDeliveryController } from "@/domains/course-delivery/hooks/useCourseDelivery";
@@ -232,6 +233,12 @@ export function ArtifactStageContent({
       <div className={STAGE_WRAPPER}>
         {sessions && sessionPanel}
         {academyNotice}
+        {!delivery.snapshot && delivery.error && (
+          <div role="alert">
+            <p>{delivery.error}</p>
+            <button type="button" onClick={() => void delivery.refresh()}>Volver a consultar la modalidad</button>
+          </div>
+        )}
         <PublicationClientView
           artifactId={artifact.id}
           artifactTitle={artifact.idea_central || "Artefacto"}
@@ -239,6 +246,7 @@ export function ArtifactStageContent({
           existingRequest={publicationRequest}
           profile={profile}
           basePath={basePath}
+          publicationBlock={deliveryPublicationBlock(delivery.snapshot?.workspace.document.config.mode)}
         />
       </div>
     );

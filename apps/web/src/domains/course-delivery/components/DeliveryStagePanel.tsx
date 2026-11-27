@@ -59,7 +59,6 @@ export function DeliveryStagePanel({ controller, stage, coordinatedReview = fals
     <header className={styles.panelHeader}><p className={styles.eyebrow}>Impartición · {document.config.mode === "HYBRID" ? "Curso híbrido" : document.config.mode === "NEXUS" ? "Modalidad del curso" : "Sesiones en vivo"}</p>
     <h2>{stage === 1 ? "Modalidad del curso" : stage === 2 ? "Agenda de sesiones" : stage === 3 ? "Planes de sesiones en vivo · Hub" : stage === 5 ? "Materiales para impartir · Hub" : stage === 6 ? "Presentación y documentos · Hub" : "Entrega del paquete sincrónico · Hub"}</h2></header>
     {document.config.mode === "HYBRID" && [3, 5].includes(stage) && <p>Este apartado genera únicamente la preparación de las sesiones en vivo. El estudio asíncrono se prepara en el apartado de Academy. La aprobación conjunta verifica ambas partes.</p>}
-    {document.config.mode === "HYBRID" && stage === 8 && <p role="status">La publicación del recorrido en Academy requiere ampliar su contrato receptor. La entrega de preparación a sesiones programadas de Hub utiliza el flujo independiente de abajo.</p>}
     {controller.error && <p role="alert">{controller.error}</p>}{localError && <p role="alert">{localError}</p>}
     {materialRun && <DeliveryMaterialRunStatus status={run!.status} units={run!.units as DeliveryRunUnit[]} />}
     <button type="button" className="block" disabled={controller.busy} onClick={() => void controller.refresh()}>Actualizar estado</button>

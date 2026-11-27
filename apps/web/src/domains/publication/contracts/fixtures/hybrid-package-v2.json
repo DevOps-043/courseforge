@@ -1,0 +1,212 @@
+{
+  "source": {
+    "platform": "courseengine",
+    "version": "2.0",
+    "organization_id": "10000000-0000-4000-8000-000000000001",
+    "organization_slug": "empresa-prueba",
+    "artifact_id": "10000000-0000-4000-8000-000000000002",
+    "publication_id": "10000000-0000-4000-8000-000000000003",
+    "revision": 7
+  },
+  "delivery": {
+    "mode": "HYBRID",
+    "approach": "COMPLEMENTARY",
+    "curriculum": [
+      {
+        "module_id": "module-stable",
+        "title": "Organización del trabajo",
+        "lessons": [
+          {
+            "lesson_id": "lesson-hub",
+            "title": "Práctica en vivo"
+          },
+          {
+            "lesson_id": "lesson-academy",
+            "title": "Estudio individual"
+          },
+          {
+            "lesson_id": "lesson-shared",
+            "title": "Preparación y aplicación"
+          }
+        ]
+      }
+    ],
+    "academy_lesson_ids": [
+      "lesson-academy",
+      "lesson-shared"
+    ],
+    "sessions": [
+      {
+        "session_id": "10000000-0000-4000-8000-000000000004",
+        "title": "Aplicación en grupo",
+        "minutes": 60,
+        "preparation_revision": 7,
+        "coverage": [
+          {
+            "lesson_id": "lesson-hub",
+            "review": false
+          },
+          {
+            "lesson_id": "lesson-shared",
+            "review": false
+          }
+        ]
+      }
+    ],
+    "route": [
+      {
+        "kind": "ASYNCHRONOUS",
+        "segment_id": "10000000-0000-4000-8000-000000000005",
+        "title": "Preparación",
+        "minutes": 30,
+        "lesson_ids": [
+          "lesson-academy",
+          "lesson-shared"
+        ]
+      },
+      {
+        "kind": "SYNCHRONOUS",
+        "session_id": "10000000-0000-4000-8000-000000000004"
+      }
+    ]
+  },
+  "course": {
+    "title": "Organización del trabajo",
+    "slug": "organizacion-del-trabajo",
+    "description": "Taller sintético.",
+    "instructor_id": "10000000-0000-4000-8000-000000000006",
+    "category": "desarrollo",
+    "level": "beginner"
+  },
+  "lessons": [
+    {
+      "lesson_id": "lesson-academy",
+      "duration_seconds": 900,
+      "video": {
+        "provider": "youtube",
+        "video_id": "AbCdEfGhIj0"
+      },
+      "summary": "Resumen de prueba.",
+      "transcription": "",
+      "activities": [
+        {
+          "id": "reading",
+          "title": "Lectura",
+          "type": "reading",
+          "body": "Prioriza dos actividades."
+        }
+      ],
+      "attachments": []
+    },
+    {
+      "lesson_id": "lesson-shared",
+      "duration_seconds": 900,
+      "video": {
+        "provider": "youtube",
+        "video_id": "AbCdEfGhIj0"
+      },
+      "summary": "Resumen de prueba.",
+      "transcription": "",
+      "activities": [
+        {
+          "id": "reading",
+          "title": "Lectura",
+          "type": "reading",
+          "body": "Prioriza dos actividades."
+        }
+      ],
+      "attachments": []
+    }
+  ],
+  "session_preparations": [
+    {
+      "session_id": "10000000-0000-4000-8000-000000000004",
+      "revision": 7,
+      "template": {
+        "scenes": [
+          {
+            "id": "10000000-0000-4000-8000-000000000007",
+            "name": "Lámina 1",
+            "kind": "slide",
+            "title": "Prioridades",
+            "description": "Práctica"
+          }
+        ],
+        "materials": [
+          {
+            "id": "10000000-0000-4000-8000-000000000008",
+            "name": "Hoja de trabajo",
+            "kind": "file",
+            "asset_id": "10000000-0000-4000-8000-000000000009"
+          }
+        ],
+        "quizzes": [
+          {
+            "id": "10000000-0000-4000-8000-000000000010",
+            "question": "¿Qué criterio se usa primero?",
+            "options": [
+              "Urgencia",
+              "Orden alfabético"
+            ],
+            "correct": 0
+          }
+        ],
+        "practices": [
+          {
+            "id": "10000000-0000-4000-8000-000000000011",
+            "title": "Plan semanal",
+            "instructions": "Ordena tres tareas."
+          }
+        ],
+        "preparation": {
+          "minutes": 60,
+          "blocks": [
+            {
+              "id": "practice",
+              "purpose": "Aplicar el criterio",
+              "minutes": 60,
+              "explanation": "Evalúa cada tarea.",
+              "activity": "Prioriza tres tareas.",
+              "criteria": [
+                "Justifica el orden"
+              ],
+              "practice_ids": [
+                "10000000-0000-4000-8000-000000000011"
+              ]
+            }
+          ],
+          "speaker_notes": [
+            {
+              "scene_id": "10000000-0000-4000-8000-000000000007",
+              "content": "Nota privada de prueba."
+            }
+          ],
+          "documents": [
+            {"id":"course_plan","kind":"course_plan","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"agenda","kind":"agenda","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"session_plan","kind":"session_plan","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"assessment","kind":"assessment","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"participant_material","kind":"participant_material","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[{"heading":"Práctica","body":"Consigna pública."}],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"presentation","kind":"presentation","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"facilitator_guide","kind":"facilitator_guide","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"contingencies","kind":"contingencies","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"record_template","kind":"record_template","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"sources","kind":"sources","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"quick_guide","kind":"quick_guide","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"job_aid","kind":"job_aid","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"follow_up","kind":"follow_up","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]},
+            {"id":"absence_activity","kind":"absence_activity","title":"Documento de prueba","applicable":true,"reason":"","block_ids":["practice"],"source_refs":[],"participant_sections":[],"facilitator_sections":[{"heading":"Conducción","body":"Detalle privado."}]}
+          ]
+        }
+      }
+    }
+  ],
+  "assets": [
+    {
+      "id": "10000000-0000-4000-8000-000000000009",
+      "mime": "application/pdf",
+      "bytes": 128,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}

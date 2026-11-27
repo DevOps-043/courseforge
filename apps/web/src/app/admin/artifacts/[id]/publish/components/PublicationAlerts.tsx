@@ -4,6 +4,7 @@ import { AlertTriangle, Check, CircleAlert, ShieldCheck } from 'lucide-react';
 import styles from '../PublicationWorkspace.module.css';
 
 interface PublicationAlertsProps {
+  deliveryBlocked: boolean;
   missingEmail: boolean;
   missingSlug: boolean;
   missingThumbnail: boolean;
@@ -13,6 +14,7 @@ interface PublicationAlertsProps {
 }
 
 export function PublicationAlerts({
+  deliveryBlocked,
   missingEmail,
   missingSlug,
   missingThumbnail,
@@ -20,7 +22,7 @@ export function PublicationAlerts({
   selectedLessonsCount,
   selectableLessonsCount,
 }: PublicationAlertsProps) {
-  const hasBlockers = missingEmail || missingSlug || missingThumbnail;
+  const hasBlockers = deliveryBlocked || missingEmail || missingSlug || missingThumbnail;
   const showPartialNotice =
     missingVideos > 0 ||
     (selectedLessonsCount > 0 &&
@@ -38,7 +40,7 @@ export function PublicationAlerts({
           <h3>Antes de publicar</h3>
         </div>
         <span className={styles.validationBadge} data-state={hasBlockers ? 'blocked' : 'ready'}>
-          {hasBlockers ? `${blockerCount} pendiente${blockerCount === 1 ? '' : 's'}` : 'Datos completos'}
+          {deliveryBlocked ? 'Envío bloqueado' : hasBlockers ? `${blockerCount} pendiente${blockerCount === 1 ? '' : 's'}` : 'Datos completos'}
         </span>
       </div>
 
@@ -52,12 +54,14 @@ export function PublicationAlerts({
         <div className={styles.partialNotice}>
           <AlertTriangle size={15} />
           <div>
-            <strong>La entrega será parcial</strong>
+            <strong>{deliveryBlocked ? 'Videos del curso' : 'La entrega será parcial'}</strong>
             <p>
               {missingVideos > 0
                 ? `${missingVideos} lecciones aún no tienen video. `
                 : ''}
-              Se enviarán {selectedLessonsCount} de {selectableLessonsCount} videos disponibles.
+              {deliveryBlocked
+                ? `${selectedLessonsCount} de ${selectableLessonsCount} videos disponibles están seleccionados.`
+                : `Se enviarán ${selectedLessonsCount} de ${selectableLessonsCount} videos disponibles.`}
             </p>
           </div>
         </div>
